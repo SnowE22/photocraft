@@ -127,6 +127,19 @@ impl TipShape {
             TipShape::Stored(r) => Some((r.width, r.height)),
         }
     }
+
+    /// The tip's shorter side as a share of its size (Size is the longer side), its height
+    /// squashed by `roundness`. Photoshop's Spacing is a percentage of this side (measured
+    /// 2026-10-17): a 158 × 475 tip at 150 px and 200 % lays dabs 100 px apart, not 300, and a
+    /// round tip at 25 % roundness spaces by its flat height. 1 for an unsquashed round tip.
+    pub fn short_side(&self, roundness: f32) -> f32 {
+        let r = if roundness.is_finite() { roundness.clamp(0.01, 1.0) } else { 1.0 };
+        let (w, h) = match self.bitmap_size() {
+            Some((w, h)) if w > 0 && h > 0 => (w as f32, h as f32),
+            _ => (1.0, 1.0),
+        };
+        (w.min(h * r) / w.max(h)).clamp(0.001, 1.0)
+    }
 }
 
 /// Shape Dynamics.

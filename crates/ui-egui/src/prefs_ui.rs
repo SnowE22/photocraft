@@ -220,6 +220,7 @@ pub fn load(app: &mut PhotocraftApp) {
     }
     crate::dock::restore(app);
     crate::brush_picker::restore(app);
+    crate::brush_panel::restore_panel(app);
     crate::last_brush::restore(app);
     sync_rulers(app);
     crate::tool_memory::restore(app);
@@ -2701,6 +2702,38 @@ mod tests {
         app2.run("prefs.set", json!({"values": {"fileHandling.recentFileCount": 100}})).unwrap();
         app2.session.prefs.edit(|p| p.file_handling.recent_file_count = u32::MAX);
         assert_eq!(app2.recent_cap(), 100);
+    }
+
+    #[test]
+    fn brushes_panel_view_survives_a_restart() {
+        // User report (2026-10-17): open groups and the thumbnail size reset after a restart.
+        let (mut app, store) = app_with_store();
+        let ctx = egui::Context::default();
+        tick(&mut app, &ctx);
+        app.ui.brushes_panel.collapsed = vec!["General".into(), "jojos/old".into()];
+        app.ui.brushes_panel.tile = 150.0;
+        app.ui.brushes_panel.show_tip = true;
+        app.ui.brushes_panel.filter = "ink".into();
+        crate::brush_panel::persist_panel(&mut app, &ctx);
+        tick(&mut app, &ctx);
+        assert_eq!(stored(&store)["brushesPanel"]["tile"], json!(150.0));
+        let saved = store.lock().unwrap().clone().unwrap();
+        let (mut app2, _) = app_with_saved(Some(saved));
+        tick(&mut app2, &ctx);
+        let st = &app2.ui.brushes_panel;
+        assert_eq!(st.collapsed, vec!["General".to_string(), "jojos/old".to_string()]);
+        assert!((st.tile - 150.0).abs() < 1e-6);
+        assert!(st.show_tip && st.show_name && st.show_stroke);
+        // The search is per session.
+        assert!(st.filter.is_empty());
+        // A hand-edited file: the size is clamped, junk entries dropped, a tile never empty.
+        let bad = json!({"brushesPanel": {"collapsed": ["A", 3, null], "tile": 1e9, "showName": false, "showStroke": false, "showTip": false}}).to_string();
+        let (mut app3, _) = app_with_saved(Some(bad));
+        tick(&mut app3, &ctx);
+        let st = &app3.ui.brushes_panel;
+        assert_eq!(st.collapsed, vec!["A".to_string()]);
+        assert_eq!(st.tile, *crate::brushes_tab::TILE_RANGE.end());
+        assert!(st.show_name || st.show_stroke || st.show_tip);
     }
 
     #[test]

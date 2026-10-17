@@ -783,11 +783,11 @@ fn out_of_range_scatter_is_rejected_and_the_maximum_still_paints() {
         let d: Vec<i64> = r["damage"].as_array().unwrap().iter().map(|v| v.as_i64().unwrap()).collect();
         assert!(d[0].abs() < 1000 && d[1].abs() < 1000 && d[2] > 0 && d[3] > 0, "{r}");
     }
-    // Control: 200 % scatter paints where it did before the cap (the soft default tip reaches a
-    // little past its radius).
+    // Control: 200 % scatter paints a finite dab within its reach (the soft default tip reaches a
+    // little past its radius). Both Axes scatters in a disc, like Photoshop (2026-10-17).
     let mut s = new();
     s.execute("tools.setBrush", json!({ "brush": scatter(2.0) })).unwrap();
-    assert_eq!(s.execute("paint.stroke", stroke).unwrap(), json!({"damage": [15, 12, 27, 27]}));
+    assert_eq!(s.execute("paint.stroke", stroke).unwrap(), json!({"damage": [12, -16, 27, 27]}));
 }
 
 #[test]

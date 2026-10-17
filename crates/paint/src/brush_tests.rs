@@ -6,7 +6,7 @@ use photocraft_raster::Surface;
 
 use crate::brush::*;
 use crate::dynamics::{Smoother, smooth_points};
-use crate::render::{BrushContext, StrokeRenderer, mask_combine, render_stroke, texture_combine};
+use crate::render::{BrushContext, StrokeRenderer, dual_combine, render_stroke, texture_combine, wet_edges};
 use crate::tile::GrayTile;
 use crate::{Dab, Stroke, StrokePoint, dabs};
 
@@ -544,8 +544,8 @@ fn texture_modulates_coverage() {
         MaskMode::Height,
     ] {
         for t in [0.0, 0.3, 1.0] {
-            assert_eq!(mask_combine(m, 0.0, t, 1.0), 0.0, "{m:?}");
-            let v = mask_combine(m, 0.7, t, 0.8);
+            assert_eq!(dual_combine(m, 0.0, t), 0.0, "{m:?}");
+            let v = dual_combine(m, 0.7, t);
             assert!((0.0..=1.0).contains(&v), "{m:?}");
         }
         for t in [0.0, 0.3, 1.0] {
@@ -554,8 +554,7 @@ fn texture_modulates_coverage() {
             assert!((0.0..=1.0).contains(&v), "{m:?}");
         }
         assert!((0.0..=1.0).contains(&texture_combine(m, 0.7, f32::NAN, f32::INFINITY)), "{m:?}");
-        // Full-white texture never reduces multiply-like masks below the brush.
-        assert!(mask_combine(m, 0.6, 1.0, 1.0) >= 0.6 - 1e-5 || matches!(m, MaskMode::Overlay), "{m:?}");
+        assert!((0.0..=1.0).contains(&dual_combine(m, 0.7, f32::NAN)), "{m:?}");
     }
     // Depth jitter per tip is deterministic and within [min depth, depth].
     let mut b = tex(MaskMode::Multiply, 0.8, true);
@@ -632,12 +631,88 @@ fn texture_modes_match_photoshop() {
         // Color Burn / Color Dodge below full depth.
         (ColorBurn, 0.5, 224.0, 72.0, 207.0),
         (ColorDodge, 0.5, 99.0, 120.0, 130.0),
+        // ... and at full depth, where they act at 248/255 of it (2026-10-17, each the mean of
+        // hundreds of pixels; full depth itself gives 30 and 216).
+        (ColorBurn, 1.0, 128.0, 144.0, 35.0),
+        (ColorDodge, 1.0, 128.0, 104.0, 212.0),
+        (ColorDodge, 1.0, 128.0, 80.0, 184.0),
         // Unchanged modes.
         (Multiply, 0.13, 255.0, 8.0, 223.0),
         (Darken, 0.5, 255.0, 8.0, 131.0),
+        // Hard Mix is a steep ramp, not a threshold (2026-10-17, Photoshop 2026, a hard dab over
+        // a pattern): half paint survives only on the pattern's light half, less with less depth.
+        (HardMix, 1.0, 128.0, 83.0, 0.0),
+        (HardMix, 1.0, 128.0, 103.0, 56.0),
+        (HardMix, 1.0, 128.0, 131.0, 140.0),
+        (HardMix, 0.5, 128.0, 131.0, 0.0),
+        (HardMix, 0.5, 255.0, 83.0, 255.0),
+        // Linear Burn takes depth × (1 − pattern) away.
+        (LinearBurn, 0.5, 128.0, 83.0, 42.0),
+        (LinearBurn, 0.5, 128.0, 131.0, 66.0),
+        (LinearBurn, 0.5, 255.0, 103.0, 179.0),
     ] {
         let got = texture_combine(m, v / 255.0, t / 255.0, d) * 255.0;
         assert!((got - want).abs() <= 3.0, "{m:?} depth {d}, coverage {v}, ramp {t}: {got} (Photoshop {want})");
+    }
+}
+
+/// The Dual Brush modes against single Photoshop 2026 dabs (2026-10-17): a hard dab at 25, 50 and
+/// 75 % flow under a soft dual dab, as (mode, stroke coverage, dual coverage, opacity read back,
+/// tolerance) in levels of 255. Where the dual's coverage is near half, Photoshop's own reading of
+/// it moves by about 3 levels between strokes (Darken shows it), and the steep modes multiply that.
+#[test]
+fn dual_modes_match_photoshop() {
+    use MaskMode::*;
+    for (m, v, t, want, tol) in [
+        (Multiply, 64.0, 224.0, 56.0, 3.0),
+        (Multiply, 128.0, 125.0, 64.0, 3.0),
+        (Multiply, 191.0, 224.0, 169.0, 3.0),
+        (Darken, 64.0, 125.0, 64.0, 3.0),
+        (Darken, 191.0, 125.0, 128.0, 3.0),
+        (Overlay, 64.0, 224.0, 113.0, 3.0),
+        (Overlay, 128.0, 224.0, 226.0, 3.0),
+        (Overlay, 191.0, 125.0, 191.0, 3.0),
+        (ColorDodge, 64.0, 125.0, 125.0, 3.0),
+        (ColorDodge, 128.0, 125.0, 249.0, 9.0),
+        (ColorDodge, 191.0, 224.0, 255.0, 3.0),
+        (ColorBurn, 64.0, 224.0, 39.0, 3.0),
+        (ColorBurn, 64.0, 125.0, 0.0, 3.0),
+        (ColorBurn, 128.0, 224.0, 112.0, 3.0),
+        (ColorBurn, 128.0, 125.0, 8.0, 9.0),
+        (ColorBurn, 191.0, 125.0, 130.0, 9.0),
+        // Where the dual tip never lands, near-solid paint fades rather than vanishing: Color
+        // Burn acts at 248/255 of full depth (one hard dab at 97–100 % flow, read outside the dual).
+        (ColorBurn, 247.0, 0.0, 0.0, 3.0),
+        (ColorBurn, 250.0, 0.0, 73.0, 3.0),
+        (ColorBurn, 252.0, 0.0, 146.0, 3.0),
+        (ColorBurn, 255.0, 0.0, 255.0, 0.5),
+        (LinearBurn, 64.0, 224.0, 35.0, 3.0),
+        (LinearBurn, 128.0, 224.0, 99.0, 3.0),
+        (LinearBurn, 191.0, 125.0, 62.0, 3.0),
+        (HardMix, 64.0, 224.0, 166.0, 3.0),
+        (HardMix, 64.0, 125.0, 0.0, 3.0),
+        (HardMix, 128.0, 125.0, 128.0, 9.0),
+        (HardMix, 191.0, 125.0, 255.0, 3.0),
+        (LinearHeight, 64.0, 224.0, 15.0, 3.0),
+        (LinearHeight, 128.0, 224.0, 31.0, 3.0),
+        (LinearHeight, 128.0, 125.0, 129.0, 3.0),
+        (LinearHeight, 191.0, 224.0, 142.0, 3.0),
+    ] {
+        let got = dual_combine(m, v / 255.0, t / 255.0) * 255.0;
+        assert!((got - want).abs() <= tol, "{m:?}, coverage {v}, dual {t}: {got} (Photoshop {want})");
+    }
+    // A full dual tip keeps the paint in every mode but Linear Height, which inverts the tip.
+    for m in [Multiply, Darken, Overlay, ColorDodge, ColorBurn, LinearBurn, HardMix] {
+        assert!(dual_combine(m, 0.6, 1.0) >= 0.6 - 1e-5, "{m:?}");
+    }
+    // Where the dual tip never lands, solid paint stays whole in the modes that work on partial
+    // paint (a Color Burn dual brush is a whole stroke with a broken edge, not dots) and goes in
+    // the ones that keep only what the tip covers.
+    for m in [Overlay, ColorDodge, ColorBurn, HardMix, LinearHeight] {
+        assert_eq!(dual_combine(m, 1.0, 0.0), 1.0, "{m:?}");
+    }
+    for m in [Multiply, Darken, LinearBurn] {
+        assert_eq!(dual_combine(m, 1.0, 0.0), 0.0, "{m:?}");
     }
 }
 
@@ -657,6 +732,78 @@ fn low_depth_height_texture_paints() {
     }
 }
 
+/// Photoshop's Spacing is a percentage of the tip's shorter side (measured 2026-10-17 in
+/// Photoshop 2026): its 158 × 475 "Dark Hatcher" tip at 150 px and 200 % lays dabs 100 px apart,
+/// a round tip at 25 % roundness spaces by its flat height, and the Dual Brush tip (298 × 214 at
+/// 100 px, 300 %) lands every 215 px. Spacing by the full size left gaps between tall dabs.
+#[test]
+fn spacing_follows_the_tips_shorter_side() {
+    let gaps = |b: &BrushSettings| {
+        let mut g = crate::dynamics::DabGenerator::new(b, 1.0);
+        let (mut dabs, mut duals) = (Vec::new(), Vec::new());
+        g.push(&line(100.0, 900.0, 200.0), &mut dabs, &mut duals);
+        g.finish(&mut dabs, &mut duals);
+        let gap = |d: &[Dab]| d.windows(2).map(|w| w[1].center.x - w[0].center.x).next().unwrap_or(0.0);
+        (gap(&dabs), gap(&duals))
+    };
+    let tall = TipShape::Sampled(GrayTile::from_fn(158, 475, |_, _| 1.0));
+    let b = BrushSettings { size: 150.0, spacing: 2.0, tip: tall, ..brush() };
+    assert!((gaps(&b).0 - 100.0).abs() < 1.0, "tall tip: {:?}", gaps(&b));
+    let flat = BrushSettings { size: 80.0, spacing: 1.5, roundness: 0.25, ..brush() };
+    assert!((gaps(&flat).0 - 30.0).abs() < 1.0, "flat round tip: {:?}", gaps(&flat));
+    let round = BrushSettings { size: 80.0, spacing: 1.5, ..brush() };
+    assert!((gaps(&round).0 - 120.0).abs() < 1.0, "round tip: {:?}", gaps(&round));
+    let wide = TipShape::Sampled(GrayTile::from_fn(298, 214, |_, _| 1.0));
+    let dual = DualBrush { enabled: true, tip: wide, size: 100.0, spacing: 3.0, ..Default::default() };
+    let b = BrushSettings { size: 260.0, spacing: 0.01, dual_brush: dual, ..brush() };
+    assert!((gaps(&b).1 - 215.4).abs() < 1.5, "dual tip: {:?}", gaps(&b));
+}
+
+/// Photoshop turns each Dual Brush dab to a random angle (measured 2026-10-17: an oval dual tip at
+/// angle 0 with Flip off lands at all angles), so a rectangular dual tip doesn't leave a band
+/// with square ends.
+#[test]
+fn dual_dabs_turn_at_random() {
+    use std::f32::consts::{FRAC_PI_2, TAU};
+    let dual = DualBrush { enabled: true, size: 40.0, spacing: 0.5, roundness: 0.3, ..Default::default() };
+    let b = BrushSettings { size: 200.0, dual_brush: dual, ..brush() };
+    let mut g = crate::dynamics::DabGenerator::new(&b, 1.0);
+    let (mut dabs, mut duals) = (Vec::new(), Vec::new());
+    g.push(&line(0.0, 2000.0, 100.0), &mut dabs, &mut duals);
+    g.finish(&mut dabs, &mut duals);
+    assert!(duals.len() > 50, "{} dual dabs", duals.len());
+    for quarter in 0..4 {
+        let n = duals.iter().filter(|d| (d.angle.rem_euclid(TAU) / FRAC_PI_2) as usize == quarter).count();
+        assert!(n > duals.len() / 8, "quarter {quarter}: {n} of {}", duals.len());
+    }
+}
+
+/// Scatter with Both Axes fills a disc, densest near the path, for the tip and the Dual Brush tip
+/// alike (Photoshop 2026, 2026-10-17: 10 px dots at 1000 % land within 50 px of the path with a
+/// mean offset across it of 14–16 px; a square would give 25).
+#[test]
+fn both_axes_scatter_fills_a_disc() {
+    let offsets = |b: &BrushSettings, dual: bool| {
+        let mut g = crate::dynamics::DabGenerator::new(b, 1.0);
+        let (mut dabs, mut duals) = (Vec::new(), Vec::new());
+        g.push(&line(0.0, 20_000.0, 500.0), &mut dabs, &mut duals);
+        g.finish(&mut dabs, &mut duals);
+        let d = if dual { duals } else { dabs };
+        let along: Vec<f64> = d.iter().map(|d| d.center.y - 500.0).collect();
+        let far = d.iter().map(|d| ((d.center.y - 500.0).powi(2)).sqrt()).fold(0.0, f64::max);
+        (along.iter().map(|v| v.abs()).sum::<f64>() / along.len() as f64, far, along.len())
+    };
+    let mut tip = BrushSettings { size: 10.0, spacing: 3.0, ..brush() };
+    tip.scattering = Scattering { enabled: true, scatter: Dynamic { jitter: 10.0, ..Default::default() }, both_axes: true, count: 2, ..Default::default() };
+    let dual = DualBrush { enabled: true, size: 10.0, spacing: 3.0, scatter: 10.0, both_axes: true, count: 2, ..Default::default() };
+    let under = BrushSettings { size: 900.0, spacing: 0.01, dual_brush: dual, ..brush() };
+    for (what, (mean, far, n)) in [("tip", offsets(&tip, false)), ("dual tip", offsets(&under, true))] {
+        assert!(n > 500, "{what}: {n} dabs");
+        assert!(far <= 50.0 + 1e-6, "{what}: {far}");
+        assert!((mean - 50.0 / std::f64::consts::PI).abs() < 2.0, "{what}: mean offset {mean}");
+    }
+}
+
 #[test]
 fn dual_brush_intersects() {
     // Dual tip: small dabs far apart → the stroke survives only where they land.
@@ -673,35 +820,74 @@ fn dual_brush_intersects() {
 }
 
 #[test]
-fn wet_edges_shape_the_stroke_not_each_dab() {
-    // #2088: Wet Edges darkens the rim of the whole stroke. Along the centre of a straight stroke
-    // of overlapping dabs the paint is even (no chain of per-dab rings), and the stroke's sides are
-    // darker than its centre.
-    let b = BrushSettings { size: 40.0, hardness: 0.8, wet_edges: true, ..brush() };
-    let s = paint(&b, &line(20.0, 220.0, 50.0), 240, 100);
-    let centre: Vec<f32> = (60..180).map(|x| s.rgba(x, 50)[3]).collect();
-    let (lo, hi) = centre.iter().fold((f32::MAX, f32::MIN), |(lo, hi), &a| (lo.min(a), hi.max(a)));
-    assert!(hi - lo < 0.02, "centre line is even: {lo}..{hi}");
-    assert!(hi < 0.6, "wet interior is lighter: {hi}");
-    for x in [80, 120, 160] {
-        let side = s.rgba(x, 50 + 16)[3];
-        assert!(side > hi + 0.15, "the side at x={x} is darker than the centre: {side} vs {hi}");
+fn wet_edges_curve_matches_photoshop() {
+    // Photoshop 2026 (2026-10-17): a soft dab with and without Wet Edges, as (coverage, opacity
+    // read back) in levels of 255. Half paint gains half again, solid paint eases back to 150.
+    for (m, want) in [(255.0, 151.0), (234.0, 164.0), (178.0, 186.0), (129.0, 192.0), (84.0, 126.0), (50.0, 74.0)] {
+        let got = wet_edges(m / 255.0) * 255.0;
+        assert!((got - want).abs() <= 3.0, "coverage {m}: {got} (Photoshop {want})");
     }
+    assert_eq!(wet_edges(0.0), 0.0);
+    assert_eq!(wet_edges(f32::NAN), 0.0);
+    assert_eq!(wet_edges(f32::INFINITY), 0.0);
+    assert!((wet_edges(1.5) - wet_edges(1.0)).abs() < 1e-6);
 }
 
 #[test]
-fn wet_edges_and_noise() {
-    let b = BrushSettings { size: 40.0, hardness: 0.0, wet_edges: true, ..brush() };
-    let s = paint(&b, &line(20.0, 120.0, 50.0), 140, 100);
-    let centre = s.rgba(70, 50)[3];
-    assert!(centre < 0.6, "wet interior is lighter: {centre}");
-    // Overlap doesn't build up past a single dab.
-    let single = paint(&b, &[StrokePoint::new(70.0, 50.0, 1.0)], 140, 100).rgba(70, 50)[3];
-    assert!((centre - single).abs() < 0.05, "{centre} vs {single}");
-    // Rim is darker than the interior for a hard tip.
-    let hb = BrushSettings { hardness: 1.0, ..b };
-    let d = paint(&hb, &[StrokePoint::new(50.0, 50.0, 1.0)], 100, 100);
-    assert!(d.rgba(50 + 18, 50)[3] > d.rgba(50, 50)[3] + 0.2);
+fn wet_edges_shape_the_whole_stroke() {
+    // #2088 and Photoshop 2026: a hard stroke is even and see-through inside (150/255), with no
+    // chain of per-dab rings; only its antialiased rim is darker.
+    let b = BrushSettings { size: 40.0, hardness: 1.0, wet_edges: true, ..brush() };
+    let s = paint(&b, &line(20.0, 220.0, 50.0), 240, 100);
+    for y in [36, 50, 66] {
+        for x in [60, 120, 180] {
+            let a = s.rgba(x, y)[3];
+            assert!((a - 150.0 / 255.0).abs() < 0.01, "({x}, {y}): {a}");
+        }
+    }
+    // A soft stroke rings: Photoshop's centre is 150/255 and its sides peak near 192/255.
+    let soft = BrushSettings { hardness: 0.0, ..b.clone() };
+    let s = paint(&soft, &line(20.0, 220.0, 50.0), 240, 100);
+    let centre = s.rgba(120, 50)[3];
+    assert!((centre - 150.0 / 255.0).abs() < 0.02, "soft centre {centre}");
+    let side = (50..75).map(|y| s.rgba(120, y)[3]).fold(0.0, f32::max);
+    assert!((side - 0.75).abs() < 0.02, "soft side {side} vs centre {centre}");
+    // Opacity comes after Wet Edges (Photoshop: 75/255 at 50 %).
+    let half = paint(&BrushSettings { opacity: 0.5, ..b }, &line(20.0, 220.0, 50.0), 240, 100);
+    assert!((half.rgba(120, 50)[3] - 75.0 / 255.0).abs() < 0.01, "{}", half.rgba(120, 50)[3]);
+}
+
+/// The user's report (2026-10-17): a Color Burn Dual Brush with Wet Edges painted only where its
+/// dual tip landed. Photoshop masks with the dual tip first and applies Wet Edges after it, so
+/// solid paint the tip misses stays whole (and see-through).
+#[test]
+fn dual_brush_comes_before_wet_edges() {
+    let dual = DualBrush { enabled: true, mode: MaskMode::ColorBurn, size: 6.0, spacing: 5.0, hardness: 1.0, ..Default::default() };
+    let b = BrushSettings { size: 30.0, wet_edges: true, dual_brush: dual, ..brush() };
+    let s = paint(&b, &line(20.0, 200.0, 30.0), 220, 60);
+    // Dual dabs every 30 px from x = 20: x = 35 is between them.
+    for x in [35, 20, 95] {
+        let a = s.rgba(x, 30)[3];
+        assert!((a - 150.0 / 255.0).abs() < 0.02, "x = {x}: {a}");
+    }
+}
+
+/// Photoshop applies a (not per-tip) Texture before the Dual Brush: Color Dodge under a dual dab
+/// lifts textured half paint back to full; with the order reversed it would stay at half.
+#[test]
+fn texture_comes_before_the_dual_brush() {
+    let half = GrayTile::from_fn(8, 8, |_, _| 0.5);
+    let texture = Texture { enabled: true, pattern: Pattern::Tile(half), mode: MaskMode::Multiply, depth: 1.0, ..Default::default() };
+    let dual = DualBrush { enabled: true, mode: MaskMode::ColorDodge, size: 10.0, spacing: 5.0, hardness: 1.0, ..Default::default() };
+    let b = BrushSettings { size: 30.0, texture, dual_brush: dual, ..brush() };
+    let s = paint(&b, &line(20.0, 200.0, 30.0), 220, 60);
+    // A dual dab at x = 20, the next at x = 70.
+    assert!(s.rgba(20, 30)[3] > 0.97, "under the dual dab: {}", s.rgba(20, 30)[3]);
+    assert!((s.rgba(45, 30)[3] - 0.5).abs() < 0.02, "between dual dabs: {}", s.rgba(45, 30)[3]);
+}
+
+#[test]
+fn noise_makes_soft_tips_grainy() {
     // Noise: soft tip coverage becomes grainy (more pixels near 0/1).
     let soft = BrushSettings { size: 40.0, hardness: 0.0, ..brush() };
     let a = paint(&soft, &[StrokePoint::new(50.0, 50.0, 1.0)], 100, 100);

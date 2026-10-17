@@ -173,18 +173,21 @@ fn enum_value(d: &Descriptor, k: &str) -> Option<String> {
     }
 }
 
+/// A Texture or Dual Brush mode. Photoshop CC writes most of them as long string IDs
+/// (`colorBurn`, `overlay`), older files as four-character codes (`CBrn`, `Ovrl`, `hMix`,
+/// `lHgt`, `lbrn`, `hght`); both kinds turn up in one brush library.
 fn mask_mode(code: Option<String>) -> Option<MaskMode> {
     Some(match code?.as_str() {
-        "Mltp" => MaskMode::Multiply,
-        "Sbtr" => MaskMode::Subtract,
-        "Drkn" => MaskMode::Darken,
-        "Ovrl" => MaskMode::Overlay,
-        "CDdg" => MaskMode::ColorDodge,
-        "CBrn" => MaskMode::ColorBurn,
-        "linearBurn" => MaskMode::LinearBurn,
-        "hardMix" => MaskMode::HardMix,
-        "linearHeight" => MaskMode::LinearHeight,
-        "height" | "Hght" => MaskMode::Height,
+        "Mltp" | "multiply" => MaskMode::Multiply,
+        "Sbtr" | "subtract" => MaskMode::Subtract,
+        "Drkn" | "darken" => MaskMode::Darken,
+        "Ovrl" | "overlay" => MaskMode::Overlay,
+        "CDdg" | "colorDodge" => MaskMode::ColorDodge,
+        "CBrn" | "colorBurn" => MaskMode::ColorBurn,
+        "lbrn" | "linearBurn" => MaskMode::LinearBurn,
+        "hMix" | "hardMix" => MaskMode::HardMix,
+        "lHgt" | "linearHeight" => MaskMode::LinearHeight,
+        "hght" | "Hght" | "height" => MaskMode::Height,
         _ => return None,
     })
 }

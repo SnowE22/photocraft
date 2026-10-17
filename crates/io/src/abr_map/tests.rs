@@ -429,6 +429,50 @@ fn dual_brush_spacing_comes_from_its_tip() {
     assert!((spacing(dual(tip)) - 1.0).abs() < 1e-6, "no tip spacing: the outer value");
 }
 
+/// Photoshop CC writes most Texture and Dual Brush modes as long string IDs (`colorBurn`,
+/// `overlay`), older presets four-character codes (`hMix`, `lHgt`, `lbrn`, `hght` among them);
+/// the unknown ones used to fall back to Multiply, and a Color Burn dual brush then ate most of
+/// the stroke. Every spelling found in a real Photoshop 2026 library maps.
+#[test]
+fn texture_and_dual_modes_read_long_and_short_ids() {
+    let preset = |mode: &str| {
+        Descriptor::new("brushPreset")
+            .with("Nm  ", t("Modes"))
+            .with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 30.0))))
+            .with("useTexture", Value::Boolean(true))
+            .with("textureBlendMode", en("BlnM", mode))
+            .with("Txtr", Value::Descriptor(Descriptor::new("Ptrn").with("Nm  ", t("Grit")).with("Idnt", t("pat-uuid"))))
+            .with(
+                "dualBrush",
+                Value::Descriptor(
+                    Descriptor::new("dualBrush")
+                        .with("useDualBrush", Value::Boolean(true))
+                        .with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 20.0))))
+                        .with("BlnM", en("BlnM", mode)),
+                ),
+            )
+    };
+    for (codes, want) in [
+        (["multiply", "Mltp"], MaskMode::Multiply),
+        (["subtract", "Sbtr"], MaskMode::Subtract),
+        (["darken", "Drkn"], MaskMode::Darken),
+        (["overlay", "Ovrl"], MaskMode::Overlay),
+        (["colorDodge", "CDdg"], MaskMode::ColorDodge),
+        (["colorBurn", "CBrn"], MaskMode::ColorBurn),
+        (["linearBurn", "lbrn"], MaskMode::LinearBurn),
+        (["hardMix", "hMix"], MaskMode::HardMix),
+        (["linearHeight", "lHgt"], MaskMode::LinearHeight),
+        (["height", "hght"], MaskMode::Height),
+        (["Hght", "Hght"], MaskMode::Height),
+    ] {
+        for code in codes {
+            let bytes = write_v6(2, &[], &[grit_pattern()], &[preset(code)], false).unwrap();
+            let b = read_abr(&bytes, "Test").unwrap().presets[0].brush.clone();
+            assert_eq!((b.texture.mode, b.dual_brush.mode), (want, want), "{code}");
+        }
+    }
+}
+
 /// Photoshop's Capture Brush Size in Preset (`useBrushSize`) and Include Tool Settings (a
 /// `toolOptions` object) decide what picking the preset changes; most downloaded brushes leave both
 /// off, so picking one keeps the tool's size, opacity, flow and mode.

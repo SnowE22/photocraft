@@ -512,6 +512,56 @@ pub fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 /// Show the Brushes panel (Window › Brushes, the Brushes button in Brush Settings, an import of
 /// brushes): shown and expanded wherever the workspace docks it. Unlike the Window menu item it
 /// never hides it.
+/// Most collapsed groups and folders kept across restarts (a hand-edited file can't make the
+/// panel walk a huge list).
+const MAX_REMEMBERED_COLLAPSED: usize = 10_000;
+
+/// The Brushes panel's view remembered across restarts: the collapsed groups and folders, the
+/// thumbnail size and the tile parts (`Preferences::brushes_panel`). The search, the selection
+/// and a rename in progress belong to the session.
+fn panel_view(app: &PhotocraftApp) -> Value {
+    let st = &app.ui.brushes_panel;
+    json!({"collapsed": st.collapsed, "tile": st.tile, "showName": st.show_name, "showStroke": st.show_stroke, "showTip": st.show_tip})
+}
+
+/// Remember the Brushes panel's view in the preferences once the user lets go of the pointer
+/// (so a thumbnail-size drag is one write). Cheap: a small JSON compare per frame. Run every
+/// frame, so a view changed by the control channel is remembered too.
+pub fn persist_panel(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    if ctx.input(|i| i.pointer.any_down()) {
+        return;
+    }
+    let now = panel_view(app);
+    if app.session.prefs().brushes_panel != now {
+        app.session.prefs.edit(|p| p.brushes_panel = now);
+    }
+}
+
+/// Restore the Brushes panel's remembered view at launch. A missing or malformed part keeps its
+/// default, the thumbnail size is clamped to its slider's range, and the three tile parts can't
+/// all come back off (a tile would show nothing).
+pub fn restore_panel(app: &mut PhotocraftApp) {
+    let saved = app.session.prefs().brushes_panel.clone();
+    let st = &mut app.ui.brushes_panel;
+    if let Some(list) = saved.get("collapsed").and_then(Value::as_array) {
+        st.collapsed = list.iter().filter_map(Value::as_str).take(MAX_REMEMBERED_COLLAPSED).map(str::to_string).collect();
+    }
+    if let Some(v) = saved.get("tile").and_then(Value::as_f64)
+        && v.is_finite()
+    {
+        let r = crate::brushes_tab::TILE_RANGE;
+        st.tile = (v as f32).clamp(*r.start(), *r.end());
+    }
+    for (key, part) in [("showName", &mut st.show_name), ("showStroke", &mut st.show_stroke), ("showTip", &mut st.show_tip)] {
+        if let Some(v) = saved.get(key).and_then(Value::as_bool) {
+            *part = v;
+        }
+    }
+    if ![st.show_name, st.show_stroke, st.show_tip].into_iter().any(|b| b) {
+        (st.show_name, st.show_stroke) = (true, true);
+    }
+}
+
 pub fn show_brushes_panel(app: &mut PhotocraftApp) {
     if app.ui.docking.is_some() {
         if let Some(Err(e)) = crate::panel_docking::command(app, "window.panel.brushes", &json!({"show": true})) {

@@ -459,16 +459,18 @@ pub struct DabBuilder {
     /// Per-stroke colour (Color Dynamics with per-tip off), computed at the first step.
     stroke_color: Option<[f32; 4]>,
     next_index: u64,
+    /// The tip's shorter side as a share of its size: Spacing is a percentage of it.
+    short_side: f32,
 }
 
 impl DabBuilder {
     pub fn new(brush: &BrushSettings) -> Self {
-        Self { brush: brush.clone(), seed: brush.seed, stroke_color: None, next_index: 0 }
+        Self { brush: brush.clone(), seed: brush.seed, stroke_color: None, next_index: 0, short_side: brush.tip.short_side(brush.roundness) }
     }
 
     pub fn step_len(&self, p: &StrokePoint) -> f64 {
         let s = StepInput { point: *p, direction: 0.0, initial_direction: 0.0, step: 0 };
-        let d = base_diameter(&self.brush, &s).max(1.0);
+        let d = base_diameter(&self.brush, &s).max(1.0) * self.short_side;
         f64::from(d * self.brush.spacing.max(0.01)).max(0.5)
     }
 
@@ -532,8 +534,9 @@ impl DabBuilder {
             if sc.enabled && sc.scatter.jitter > 0.0 {
                 let cv = control_value(sc.scatter.control, sc.scatter.fade_steps, s);
                 let amt = f64::from(sc.scatter.jitter * cv * radius);
-                let (ox, oy) = (rand_signed(seed, i, stream::SCATTER_X) as f64 * amt, rand_signed(seed, i, stream::SCATTER_Y) as f64 * amt);
+                let ox = rand_signed(seed, i, stream::SCATTER_X) as f64 * amt;
                 if sc.both_axes {
+                    let (ox, oy) = disc_offset(seed, i, stream::SCATTER_X, stream::SCATTER_Y, amt);
                     c.x += ox;
                     c.y += oy;
                 } else {
@@ -585,20 +588,32 @@ impl DabBuilder {
     }
 }
 
+/// Scatter with Both Axes, as Photoshop does it (measured 2026-10-17): a random direction and a
+/// random distance up to `amt`, so the dabs fill a disc that is densest near the path (a dab's
+/// mean offset across the stroke is about a third of `amt`, not half as in a square).
+fn disc_offset(seed: u64, i: u64, dist_stream: u64, angle_stream: u64, amt: f64) -> (f64, f64) {
+    let dist = f64::from(rand01(seed, i, dist_stream)) * amt;
+    let angle = f64::from(rand01(seed, i, angle_stream)) * std::f64::consts::TAU;
+    (dist * angle.cos(), dist * angle.sin())
+}
+
 /// Builds Dual Brush dabs (the second tip: size, spacing, scatter, count, flip).
 #[derive(Clone, Debug)]
 pub struct DualBuilder {
     pub brush: BrushSettings,
     next_index: u64,
+    /// The dual tip's shorter side as a share of its size (see [`crate::brush::TipShape::short_side`]).
+    short_side: f32,
 }
 
 impl DualBuilder {
     pub fn new(brush: &BrushSettings) -> Self {
-        Self { brush: brush.clone(), next_index: 0 }
+        let d = &brush.dual_brush;
+        Self { brush: brush.clone(), next_index: 0, short_side: d.tip.short_side(d.roundness) }
     }
     pub fn step_len(&self, _p: &StrokePoint) -> f64 {
         let d = &self.brush.dual_brush;
-        f64::from(d.size.max(1.0) * d.spacing.max(0.01)).max(0.5)
+        f64::from(d.size.max(1.0) * self.short_side * d.spacing.max(0.01)).max(0.5)
     }
     pub fn build(&mut self, s: &StepInput, out: &mut Vec<Dab>) {
         let d = &self.brush.dual_brush;
@@ -608,9 +623,10 @@ impl DualBuilder {
             self.next_index += 1;
             let radius = (d.size / 2.0).max(0.5);
             let amt = f64::from(d.scatter * radius);
-            let (ox, oy) = (rand_signed(seed, i, stream::DUAL_X) as f64 * amt, rand_signed(seed, i, stream::DUAL_Y) as f64 * amt);
+            let ox = rand_signed(seed, i, stream::DUAL_X) as f64 * amt;
             let mut c = Point::new(s.point.x, s.point.y);
             if d.both_axes {
+                let (ox, oy) = disc_offset(seed, i, stream::DUAL_X, stream::DUAL_Y, amt);
                 c.x += ox;
                 c.y += oy;
             } else {
@@ -619,11 +635,15 @@ impl DualBuilder {
                 c.y += dx * ox;
             }
             let flip = d.flip && rand01(seed, i, stream::DUAL_FLIP) < 0.5;
+            // Photoshop turns every dual dab to a random angle (measured 2026-10-17: an oval dual
+            // tip at angle 0, Flip off, lands at all angles), so a square dual tip's stroke has
+            // round ends and reaches its diagonal.
+            let turn = rand01(seed, i, stream::DUAL_ANGLE) * std::f32::consts::TAU;
             out.push(Dab {
                 center: c,
                 radius,
                 alpha: 1.0,
-                angle: d.angle.to_radians(),
+                angle: d.angle.to_radians() + turn,
                 roundness: d.roundness.clamp(0.01, 1.0),
                 flip_x: flip,
                 flip_y: false,
@@ -687,7 +707,7 @@ impl DabGenerator {
         let dual_on = brush.dual_brush.enabled;
         let mut walker = if brush.spacing_enabled { PathWalker::new(interval) } else { PathWalker::new(interval).speed_spacing(SPEED_SPACING_MS) };
         // A small aliased tip whose dabs are at most a pixel apart steps pixel by pixel (#2139).
-        if brush.aliased && brush.size * brush.spacing.max(0.01) <= 1.0 {
+        if brush.aliased && brush.size * brush.tip.short_side(brush.roundness) * brush.spacing.max(0.01) <= 1.0 {
             walker = walker.pixel_grid(f64::from(crate::render::grid_center(0.0, 0.0, brush.size).0));
         }
         Self {
