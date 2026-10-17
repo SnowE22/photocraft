@@ -1,4 +1,6 @@
-//! Window › Brush Settings (F5) and Window › Brushes: Photoshop's floating brush panel.
+//! Window › Brush Settings (F5): Photoshop's floating brush panel. Window › Brushes is a separate
+//! dock panel ([`show_brushes_panel`]), as in Photoshop; the Brushes button at the top of Brush
+//! Settings opens it.
 //!
 //! Brush Settings: the section list with enable boxes on the left (clicking a controls section
 //! shows and enables it; the last five rows only toggle), the selected section's controls on the right (see [`crate::brush_sections`]),
@@ -56,14 +58,15 @@ fn checkbox_only(section: usize) -> bool {
 pub(crate) const WIDTH: f32 = 540.0;
 const STRIP: (u32, u32) = (488, 76);
 
-/// How the Brushes tab lists presets.
+/// `ui.set {brushesView}`: which parts the Brushes panel's tiles show (Photoshop's panel has one
+/// view, set by the panel menu's Brush Name, Brush Stroke and Brush Tip).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum BrushesView {
-    /// Rows: tip, size, stroke preview, name.
+    /// The strokes with their names.
     #[default]
     List,
-    /// Tip thumbnails with their sizes.
+    /// The tips alone, with their sizes.
     Grid,
 }
 
@@ -89,15 +92,25 @@ pub struct BrushesPanelState {
     pub collapsed: Vec<String>,
     /// Case-insensitive name filter.
     pub filter: String,
-    pub view: BrushesView,
     pub renaming: Option<Renaming>,
-    /// The Brush Preset picker's cards: show the preset's name. At least one of the three parts
-    /// is always on, and the picker's cards never go empty (see [`crate::brush_picker`]).
+    /// The tiles (the picker's cards) show the preset's name. At least one of the three parts is
+    /// always on, and the cards never go empty (see [`crate::brush_picker`]).
     pub show_name: bool,
-    /// The Brush Preset picker's cards: show the stroke preview.
+    /// The tiles show the stroke preview.
     pub show_stroke: bool,
-    /// The Brush Preset picker's cards: show the tip thumbnail.
+    /// The tiles show the tip thumbnail.
     pub show_tip: bool,
+    /// The selected presets and folders, as Shift- and Ctrl-clicks left them; the current preset
+    /// is selected whenever it changes.
+    pub selected: Vec<crate::brushes_tab::BrushItem>,
+    /// Where a Shift-click range starts.
+    pub anchor: Option<crate::brushes_tab::BrushItem>,
+    /// The Brushes panel's thumbnail size: how wide a tile asks to be, in points (its footer
+    /// slider, [`crate::brushes_tab::TILE_RANGE`]); the tiles stretch to fill each row.
+    pub tile: f32,
+    /// The current preset the selection last followed.
+    #[serde(skip)]
+    pub followed: Option<String>,
     /// The Brush Preset picker's cards: their size scale, from the picker's footer slider
     /// (`crate::brush_picker::body`). 1 is the standard size; the cards' width, height and
     /// insides multiply by it (`crate::brushes_tab`) — the height down to a 0.50 floor, the
@@ -111,11 +124,15 @@ impl Default for BrushesPanelState {
         Self {
             collapsed: Vec::new(),
             filter: String::new(),
-            view: BrushesView::default(),
             renaming: None,
+            // Photoshop's tiles: the stroke and the name (the picker adds the tip).
             show_name: true,
             show_stroke: true,
-            show_tip: true,
+            show_tip: false,
+            selected: Vec::new(),
+            anchor: None,
+            tile: crate::brushes_tab::TILE_DEFAULT,
+            followed: None,
             scale: 1.0,
         }
     }
@@ -258,7 +275,8 @@ fn section_list(app: &mut PhotocraftApp, ui: &mut egui::Ui, b: &mut BrushSetting
         let galley = ui.painter().layout_no_wrap(tl!("Brushes").to_string(), theme::semibold(12.0), if br_resp.hovered() { t.text } else { t.text_dim });
         ui.painter().galley(egui::pos2(br_rect.left() + 26.0, br_rect.center().y - galley.size().y / 2.0), galley, t.text);
         if br_resp.clicked() {
-            let _ = crate::menus::invoke(app, ui.ctx(), "window.panel.brushes", json!({}));
+            // Photoshop's Brushes button brings the Brushes panel up (it never hides it).
+            show_brushes_panel(app);
         }
         ui.add_space(3.0);
         widgets::hairline(ui);
@@ -491,6 +509,19 @@ pub fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
 }
 
+/// Show the Brushes panel (Window › Brushes, the Brushes button in Brush Settings, an import of
+/// brushes): shown and expanded wherever the workspace docks it. Unlike the Window menu item it
+/// never hides it.
+pub fn show_brushes_panel(app: &mut PhotocraftApp) {
+    if app.ui.docking.is_some() {
+        if let Some(Err(e)) = crate::panel_docking::command(app, "window.panel.brushes", &json!({"show": true})) {
+            app.ui.status = e;
+        }
+    } else {
+        crate::dock::reveal(app, crate::dock::Group::Brushes);
+    }
+}
+
 pub fn window(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if !app.ui.panels.brush_settings {
         return;
@@ -513,13 +544,9 @@ pub fn window(app: &mut PhotocraftApp, ctx: &egui::Context) {
         .show(ctx, |ui| {
             ui.set_width(WIDTH);
             ui.horizontal(|ui| {
-                let mut tab = app.ui.brush_tab;
-                for (i, name) in [tl!("Brush Settings"), tl!("Brushes")].iter().enumerate() {
-                    if widgets::pill_tab(ui, name, tab == i).clicked() {
-                        tab = i;
-                    }
-                }
-                app.ui.brush_tab = tab;
+                // Photoshop's Brush Settings panel: just its title. The presets are the separate
+                // Brushes panel, opened by the Brushes button above the section list.
+                widgets::pill_tab(ui, tl!("Brush Settings"), true);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if icons::button(ui, "x", 20.0, false, tl!("Close")).clicked() {
                         open = false;
@@ -544,11 +571,7 @@ pub fn window(app: &mut PhotocraftApp, ctx: &egui::Context) {
             ui.add_space(6.0);
             widgets::hairline(ui);
             ui.add_space(6.0);
-            if app.ui.brush_tab == 1 {
-                crate::brushes_tab::show(app, ui);
-            } else {
-                settings_tab(app, ui);
-            }
+            settings_tab(app, ui);
         });
     if !open {
         app.ui.panels.brush_settings = false;

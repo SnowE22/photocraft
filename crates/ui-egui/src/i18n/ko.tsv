@@ -3319,3 +3319,11 @@ curves	Smooth	매끄럽게
 	Sent to {printer}	{printer}(으)로 전송됨
 	set in Print Settings…	인쇄 설정에서 지정…
 	ICO is limited to 256 × 256 pixels	ICO는 256 × 256픽셀로 제한됩니다
+	Panel Icons	패널 아이콘
+	Move Tools panel	도구 패널 이동
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	드래그하여 도구 패널을 이동하고, 캔버스 가장자리에 놓으면 도킹됩니다
+	New Document…	새 문서…
+	Open Document…	문서 열기…
+	Delete Brushes	브러시 삭제
+	Thumbnail size	썸네일 크기
+	New Group	새 그룹

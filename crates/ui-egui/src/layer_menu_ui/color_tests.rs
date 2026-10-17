@@ -80,6 +80,13 @@ fn layer_color_background_is_confined_to_the_eye_column_in_every_theme() {
             _ => {}
         }
     }
+    fn has_pupil(shape: &egui::Shape, c: egui::Pos2) -> bool {
+        match shape {
+            egui::Shape::Circle(k) => k.center.distance(c) < 1.0 && k.radius < 3.0 && k.fill.a() > 0,
+            egui::Shape::Vec(shapes) => shapes.iter().any(|s| has_pupil(s, c)),
+            _ => false,
+        }
+    }
     fn has_icon(shape: &egui::Shape, rect: egui::Rect) -> bool {
         match shape {
             egui::Shape::Rect(r) => r.brush.is_some() && r.rect == rect,
@@ -102,7 +109,15 @@ fn layer_color_background_is_confined_to_the_eye_column_in_every_theme() {
             assert_eq!(fills, vec![egui::Rect::from_min_max(r.left_top(), pos2(r.left() + 30.0, r.bottom()))], "{kind:?}");
             use egui::emath::GuiRounding;
             let icon = egui::Rect::from_center_size(pos2(r.left() + 15.0, r.center().y), vec2(15.0, 15.0)).round_to_pixels(h.ctx.pixels_per_point());
-            assert_eq!(h.output().shapes.iter().any(|s| has_icon(&s.shape, icon)), visible, "centred eye in {kind:?}");
+            // Photoshop's themes draw their own eye (an outline with a round pupil) instead of
+            // the icon image: look for its pupil, centred in the eye column.
+            // By the tokens the row was drawn with (the app may apply its saved theme over `kind`).
+            let shown = if crate::theme::Tokens::get(&h.ctx).pro {
+                h.output().shapes.iter().any(|s| has_pupil(&s.shape, pos2(r.left() + 14.5, r.center().y)))
+            } else {
+                h.output().shapes.iter().any(|s| has_icon(&s.shape, icon))
+            };
+            assert_eq!(shown, visible, "centred eye in {kind:?}");
         }
         let eye = pos2(row(&h, red).left() + 17.0, row(&h, red).center().y);
         click(&mut h, eye, PointerButton::Primary, Modifiers::NONE);

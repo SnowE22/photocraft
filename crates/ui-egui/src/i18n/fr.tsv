@@ -3146,3 +3146,10 @@ curves	Smooth	Lisser
 	Sent to {printer}	Envoyé à {printer}
 	set in Print Settings…	défini dans les paramètres d’impression…
 	ICO is limited to 256 × 256 pixels	Le format ICO est limité à 256 × 256 pixels
+	Panel Icons	Icônes des panneaux
+	Move Tools panel	Déplacer le panneau Outils
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Faites glisser pour déplacer le panneau Outils ; déposez-le au bord du canevas pour l’ancrer
+	New Document…	Nouveau document…
+	Open Document…	Ouvrir un document…
+	Delete Brushes	Supprimer les pinceaux
+	Thumbnail size	Taille des vignettes

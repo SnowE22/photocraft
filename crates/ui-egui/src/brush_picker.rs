@@ -36,7 +36,7 @@ pub const DEFAULT_SIZE: [f32; 2] = [WIDTH, 420.0];
 pub const MIN_SIZE: [f32; 2] = [230.0, 170.0];
 /// The picker's preset list: denser than the Brushes tab's, and always the cards (its tip, stroke
 /// and name cells, set by [`BrushesPanelState::show_name`] and friends).
-pub(crate) const LIST: ListLayout = ListLayout { id: "brush-picker-presets", max_height: 300.0, cell: 44.0, indent: 4.0, cards: true };
+pub(crate) const LIST: ListLayout = ListLayout { id: "brush-picker-presets", max_height: 300.0, indent: 4.0, cards: true };
 /// The scale slider's height (the Size and Hardness sliders').
 const SLIDER_H: f32 = 18.0;
 /// The least gap between the preset list and the slider under it.
@@ -104,7 +104,8 @@ pub fn close(ui: &mut crate::state::UiState) {
 
 /// The state the picker's preset list starts from: every card part on (tip, stroke and name).
 pub fn list_state() -> BrushesPanelState {
-    BrushesPanelState::default()
+    // The picker's cards show the tip too.
+    BrushesPanelState { show_tip: true, ..BrushesPanelState::default() }
 }
 
 /// The picker's view remembered across restarts: the gear's three card parts and the footer

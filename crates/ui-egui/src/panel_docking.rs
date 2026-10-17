@@ -16,6 +16,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("adjustments", "Adjustments", Group::Properties),
     ("character", "Character", Group::Character),
     ("paragraph", "Paragraph", Group::Character),
+    ("brushes", "Brushes", Group::Brushes),
     ("navigator", "Navigator", Group::Navigator),
     ("histogram", "Histogram", Group::Navigator),
     ("info", "Info", Group::Navigator),
@@ -51,7 +52,15 @@ fn cancel_legacy_drag(app: &mut PhotocraftApp, ctx: &egui::Context) -> bool {
     }
 }
 
+/// The Tools panel's id in a customized dock: it can sit between dock columns, as in Photoshop,
+/// at its own fixed width with an empty tab (`panels::ToolbarPlace::Dock`). It belongs to no
+/// legacy dock group.
+pub(crate) const TOOLS: &str = "tools";
+
 pub(crate) fn normalize(raw: &str) -> Option<&'static str> {
+    if raw.trim().eq_ignore_ascii_case(TOOLS) {
+        return Some(TOOLS);
+    }
     PANELS.iter().find(|(id, label, _)| id.eq_ignore_ascii_case(raw.trim()) || label.eq_ignore_ascii_case(raw.trim())).map(|p| p.0)
 }
 
@@ -77,6 +86,7 @@ fn legacy_layout(app: &PhotocraftApp, all: bool) -> Layout<String> {
             Group::Color => app.ui.dock_tabs.color,
             Group::Properties => app.ui.dock_tabs.properties,
             Group::Character => app.ui.dock_tabs.character,
+            Group::Brushes => app.ui.dock_tabs.brushes,
             Group::Navigator => app.ui.dock_tabs.navigator,
             Group::History => app.ui.dock_tabs.history,
             Group::Layers => app.ui.dock_tabs.layers,
@@ -384,6 +394,21 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             return false;
         }
     }
+    // The Tools panel keeps the toolbar's width beside the column it was docked next to.
+    {
+        let w = crate::panels::toolbar_width(crate::theme::Tokens::get(ui.ctx()).pro, app.ui.panels.toolbar_double);
+        if let Some(layout) = app.ui.docking.as_ref()
+            && layout.contains(&TOOLS.to_string())
+        {
+            let mut fixed = layout.clone();
+            if let Some(root) = fixed.root.as_mut() {
+                fix_tools_width(root, w, 0);
+            }
+            if fixed != *layout {
+                app.ui.docking = Some(fixed);
+            }
+        }
+    }
     let Some(layout) = app.ui.docking.as_ref() else { return false };
     if !valid(layout) {
         app.ui.docking = None;
@@ -397,6 +422,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
     let locked = app.session.prefs().workspace_locked;
     let collapsed = collapsed_members(app, &layout);
     let requested_width = ui.ctx().data_mut(|data| data.remove_temp::<f32>(crate::panels::dock_width_id()));
+    let tools_w = crate::panels::toolbar_width(t.pro, app.ui.panels.toolbar_double);
     let mut commands = Vec::new();
     let mut targets = Vec::new();
     let mut draw = |ui: &mut egui::Ui| {
@@ -426,9 +452,18 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             ui,
             &layout,
             &style,
-            |id| PANELS.iter().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()).unwrap_or_else(|| id.clone()),
+            |id| {
+                if id == TOOLS {
+                    return tl!("Toolbar").to_string();
+                }
+                PANELS.iter().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()).unwrap_or_else(|| id.clone())
+            },
             |_| craft_ui::docking::Permissions { movable: !locked, floatable: !locked, closable: !locked, accepts_tabs: !locked },
             |id| {
+                if id == TOOLS {
+                    // The Tools panel keeps the toolbar's width, however the columns are resized.
+                    return craft_ui::docking::PanelLimits { min: egui::vec2(tools_w, 160.0), max: egui::vec2(tools_w, 1_000_000.0) };
+                }
                 if collapsed.contains(id) {
                     craft_ui::docking::PanelLimits { min: egui::vec2(220.0, 0.0), max: egui::vec2(1_000_000.0, 0.0) }
                 } else {
@@ -444,7 +479,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
     let output = if layout.root.is_some() {
         let mut panel = egui::Panel::right("shared-panel-dock")
             .default_size(if t.pro { 290.0 } else { 300.0 })
-            .size_range(crate::panels::DOCK_WIDTH)
+            .size_range(crate::panels::dock_width_range(ui.ctx()))
             .resizable(!locked)
             .frame(egui::Frame::NONE.fill(t.card));
         if let Some(width) = requested_width {
@@ -489,8 +524,107 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             app.ui.status = error;
         }
     }
+    // The drop targets, for a Tools panel dragged over the dock next frame (`tools_drop`).
+    let frame = ui.ctx().cumulative_pass_nr();
+    ui.ctx().data_mut(|data| data.insert_temp(dock_targets_id(), DockTargets { frame, targets: targets.clone() }));
     crate::dock::persist(app, ui.ctx());
     true
+}
+
+/// The customized dock's drop targets as drawn, and the frame they were drawn in.
+#[derive(Clone, Default)]
+struct DockTargets {
+    frame: u64,
+    targets: Vec<craft_ui::docking::DropTarget<String>>,
+}
+
+fn dock_targets_id() -> egui::Id {
+    egui::Id::new("photocraft-panel-docking").with("tools-targets")
+}
+
+/// Where a Tools panel released at `pointer` docks: beside the dock column under the pointer, on
+/// the side the pointer is nearer (anchor panel, side, and the strip it would take). `None` off the
+/// customized dock, or when the dock wasn't drawn last frame.
+pub(crate) fn tools_drop(ctx: &egui::Context, pointer: egui::Pos2, width: f32) -> Option<(String, Zone, egui::Rect)> {
+    let now = ctx.cumulative_pass_nr();
+    let d = ctx.data(|data| data.get_temp::<DockTargets>(dock_targets_id()))?;
+    if now.saturating_sub(d.frame) > 2 || !pointer.is_finite() {
+        return None;
+    }
+    let target = d.targets.iter().rev().find(|t| t.rect.is_finite() && t.rect.contains(pointer) && t.anchor != TOOLS)?;
+    let r = target.rect;
+    let w = width.clamp(1.0, r.width().max(1.0));
+    let (zone, strip) = if pointer.x < r.center().x {
+        (Zone::Left, egui::Rect::from_min_max(r.min, egui::pos2(r.left() + w, r.bottom())))
+    } else {
+        (Zone::Right, egui::Rect::from_min_max(egui::pos2(r.right() - w, r.top()), r.max))
+    };
+    Some((target.anchor.clone(), zone, strip))
+}
+
+/// Give the split beside the Tools panel's column a fixed size, the toolbar's width `w` (a split
+/// halves the space when a panel is docked). The walk stops at craft-ui's depth limit.
+fn fix_tools_width(node: &mut Node<String>, w: f32, depth: usize) {
+    let is_tools = |n: &Node<String>| matches!(n, Node::Tabs { panels, .. } if panels.len() == 1 && panels.first().is_some_and(|p| p == TOOLS));
+    if depth > craft_ui::docking::MAX_DEPTH {
+        return;
+    }
+    if let Node::Split { axis: SplitAxis::Horizontal, size, first, second } = node {
+        if is_tools(first) {
+            *size = SplitSize::FixedFirst(w);
+        } else if is_tools(second) {
+            *size = SplitSize::FixedSecond(w);
+        }
+    }
+    if let Node::Split { first, second, .. } = node {
+        fix_tools_width(first, w, depth + 1);
+        fix_tools_width(second, w, depth + 1);
+    }
+}
+
+/// The width the customized dock had when last drawn (the union of its panels), for growing it
+/// by the Tools panel's width when that docks.
+pub(crate) fn dock_drawn_width(ctx: &egui::Context) -> Option<f32> {
+    let d = ctx.data(|data| data.get_temp::<DockTargets>(dock_targets_id()))?;
+    let r = d.targets.iter().filter(|t| t.rect.is_finite()).fold(egui::Rect::NOTHING, |acc, t| acc.union(t.rect));
+    (r.is_positive() && r.width().is_finite()).then_some(r.width())
+}
+
+/// Is the Tools panel in the customized dock?
+pub(crate) fn tools_docked(app: &PhotocraftApp) -> bool {
+    app.ui.docking.as_ref().is_some_and(|layout| layout.contains(&TOOLS.to_string()))
+}
+
+/// Dock the Tools panel beside `anchor`'s column, on side `zone` (Left or Right).
+pub(crate) fn dock_tools(app: &mut PhotocraftApp, anchor: &str, zone: Zone) -> Result<(), String> {
+    if app.session.prefs().workspace_locked {
+        return Err("workspace is locked".into());
+    }
+    let anchor = normalize(anchor).filter(|a| *a != TOOLS).ok_or("anchor must name a docked panel")?;
+    let mut layout = app.ui.docking.clone().ok_or("the dock isn't customized")?;
+    if !valid(&layout) {
+        return Err("saved panel layout is invalid; reset the workspace first".into());
+    }
+    if layout.contains(&TOOLS.to_string()) {
+        layout.apply(Action::Close { panel: TOOLS.into() }).map_err(|e| e.to_string())?;
+    }
+    ensure(&mut layout, TOOLS)?;
+    layout.apply(Action::Move { panel: TOOLS.into(), anchor: anchor.into(), placement: Placement::Split(zone) }).map_err(|e| e.to_string())?;
+    if let Some(root) = layout.root.as_mut() {
+        fix_tools_width(root, crate::panels::toolbar_width(true, app.ui.panels.toolbar_double), 0);
+    }
+    app.ui.docking = Some(layout);
+    Ok(())
+}
+
+/// Take the Tools panel out of the customized dock (it is being dragged away).
+pub(crate) fn undock_tools(app: &mut PhotocraftApp) {
+    if let Some(layout) = app.ui.docking.as_mut()
+        && layout.contains(&TOOLS.to_string())
+        && layout.apply(Action::Close { panel: TOOLS.into() }).is_err()
+    {
+        app.ui.status = "Couldn't take the Tools panel out of the dock".into();
+    }
 }
 
 pub(crate) fn legacy_tab(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str, response: &egui::Response) {
@@ -541,6 +675,13 @@ fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: &str) {
     let pro = crate::theme::Tokens::get(ui.ctx()).pro;
     let Some(tab) = group.tabs(pro).iter().position(|name| name == label) else { return };
     *group.tab_mut(&mut app.ui.dock_tabs) = tab;
+    // The Color field fills its panel here too, docked or floating, so resizing the panel
+    // resizes the field (the legacy dock sets this the same way). Without it, moving any panel
+    // left the field at a fixed 120 pt.
+    if pro && id == "color" {
+        let inner = ui.available_height().max(0.0);
+        ui.data_mut(|d| d.insert_temp(crate::panels::color_field_fill_id(), inner));
+    }
     if group.scrolls_itself(tab) {
         crate::panels::dock_body(app, ui, *group, tab);
     } else {
@@ -789,6 +930,7 @@ pub(crate) fn prepare_legacy_update(
                 Group::Color => tabs.color,
                 Group::Properties => tabs.properties,
                 Group::Character => tabs.character,
+                Group::Brushes => tabs.brushes,
                 Group::Navigator => tabs.navigator,
                 Group::History => tabs.history,
                 Group::Layers => tabs.layers,
@@ -849,6 +991,10 @@ fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str) {
             crate::brush_panel::panel_menu(app, ui);
             ui.separator();
         }
+        "brushes" => {
+            crate::brushes_tab::panel_menu(app, ui);
+            ui.separator();
+        }
         "actions" => {
             crate::actions::panel_menu(app, ui);
             ui.separator();
@@ -859,6 +1005,10 @@ fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str) {
 
 impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     fn body(&mut self, ui: &mut egui::Ui, id: &String) {
+        if id == TOOLS {
+            crate::panels::toolbar_docked(self.app, ui);
+            return;
+        }
         if let Some(target) = self.targets.iter_mut().find(|target| target.anchor == *id) {
             target.rect = target.rect.union(ui.max_rect());
             if let Some(strip) = target.tab_strip.as_mut() {
@@ -880,8 +1030,13 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     fn panel_menu(&mut self, ui: &mut egui::Ui, id: &String) {
         panel_menu(self.app, ui, id);
     }
-    fn group_header_width(&self, _panels: &[String], _active: &String, _floating: bool) -> f32 {
-        28.0
+    fn group_header_width(&self, _panels: &[String], active: &String, _floating: bool) -> f32 {
+        // The Tools panel has no panel menu, and takes no other panels.
+        if active == TOOLS { 0.0 } else { 28.0 }
+    }
+    fn label(&mut self, _ui: &egui::Ui, panel: &String, logical: &str, _font: &egui::FontId, _color: egui::Color32) -> egui::WidgetText {
+        // The Tools panel's tab is a bare drag handle (its name stays the accessible label).
+        if panel == TOOLS { "".into() } else { logical.into() }
     }
     fn group_header(&mut self, ui: &mut egui::Ui, panels: &[String], active: &String, floating: bool) {
         if !floating {

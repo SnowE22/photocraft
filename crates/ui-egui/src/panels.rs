@@ -78,18 +78,222 @@ fn visible_sections(hidden: &[String]) -> Vec<Vec<(usize, Vec<Tool>)>> {
     sections
 }
 
+/// The Tools panel's width for its column count.
+pub(crate) fn toolbar_width(pro: bool, double: bool) -> f32 {
+    toolbar_metrics(pro, double).0
+}
+
+/// The Tools panel's width and margin for its column count.
+fn toolbar_metrics(pro: bool, double: bool) -> (f32, f32, i8) {
+    let (w1, bx, m) = if pro { (40.0, 30.0, 5i8) } else { (50.0, 36.0, 7i8) };
+    (if double { w1 + bx + 2.0 } else { w1 }, bx, m)
+}
+
+/// A Tools panel drag in progress: the pointer's offset from the panel's top-left corner. It is
+/// tracked here rather than through the grip's own response, because the grip moves from the
+/// docked panel to the floating one when the drag starts.
+#[derive(Clone, Copy, Debug)]
+struct ToolbarDrag {
+    offset: egui::Vec2,
+}
+
+fn toolbar_drag_id() -> egui::Id {
+    egui::Id::new("toolbar-drag")
+}
+
+/// How close (points) to an edge of the canvas a dragged Tools panel must be released to dock.
+const TOOLBAR_DOCK_REACH: f32 = 48.0;
+
+/// Where a Tools panel dragged with its top-left corner at `corner` lands when released with the
+/// pointer at `pointer`: docked at the start or end side when the pointer is near that edge of
+/// `area` (the canvas plus any docked toolbar), floating otherwise (kept inside `screen`).
+pub(crate) fn toolbar_drop_place(pointer: Pos2, corner: Pos2, area: Rect, screen: Rect) -> crate::state::ToolbarPlace {
+    use crate::state::ToolbarPlace;
+    let (start, end) = if crate::direction::is_rtl() { (area.right(), area.left()) } else { (area.left(), area.right()) };
+    if (pointer.x - start).abs() <= TOOLBAR_DOCK_REACH {
+        return ToolbarPlace::Start;
+    }
+    if (pointer.x - end).abs() <= TOOLBAR_DOCK_REACH {
+        return ToolbarPlace::End;
+    }
+    let finite = |v: f32, fallback: f32| if v.is_finite() { v } else { fallback };
+    let x = finite(corner.x, screen.left()).clamp(screen.left(), (screen.right() - 40.0).max(screen.left()));
+    let y = finite(corner.y, screen.top()).clamp(screen.top(), (screen.bottom() - 40.0).max(screen.top()));
+    ToolbarPlace::Floating { x, y }
+}
+
+/// Follow a running Tools panel drag: the panel floats under the pointer, and the release docks it
+/// at a canvas edge or leaves it floating there. Shows where it would dock.
+fn toolbar_drag_update(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    let Some(drag) = ctx.data(|d| d.get_temp::<ToolbarDrag>(toolbar_drag_id())) else { return };
+    let (down, pointer) = ctx.input(|i| (i.pointer.primary_down(), i.pointer.latest_pos()));
+    let Some(p) = pointer else { return };
+    // A Tools panel dragged out of the dock leaves it at once and floats under the pointer.
+    if app.ui.panels.toolbar_place == crate::state::ToolbarPlace::Dock {
+        crate::panel_docking::undock_tools(app);
+    }
+    let screen = ctx.content_rect();
+    let area = app.last_canvas_rect;
+    let corner = p - drag.offset;
+    let place = toolbar_drop_place(p, corner, area, screen);
+    // Over the customized dock: beside the column under the pointer, between two columns
+    // (Photoshop docks the Tools panel anywhere among the panels).
+    let t = Tokens::get(ctx);
+    let in_dock = if app.session.prefs().workspace_locked { None } else { crate::panel_docking::tools_drop(ctx, p, toolbar_width(t.pro, app.ui.panels.toolbar_double)) };
+    if down && !ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.ui.panels.toolbar_place = crate::state::ToolbarPlace::Floating { x: corner.x, y: corner.y };
+        ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+        let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, toolbar_drag_id()));
+        if let Some((_, _, strip)) = &in_dock {
+            painter.rect_stroke(*strip, 0.0, Stroke::new(2.0, t.accent), StrokeKind::Inside);
+        } else {
+            let edge = match place {
+                crate::state::ToolbarPlace::Start => Some(if crate::direction::is_rtl() { area.right() } else { area.left() }),
+                crate::state::ToolbarPlace::End => Some(if crate::direction::is_rtl() { area.left() } else { area.right() }),
+                crate::state::ToolbarPlace::Floating { .. } | crate::state::ToolbarPlace::Dock => None,
+            };
+            if let Some(x) = edge {
+                painter.line_segment([pos2(x, area.top()), pos2(x, area.bottom())], Stroke::new(4.0, t.accent));
+            }
+        }
+        ctx.request_repaint();
+    } else {
+        app.ui.panels.toolbar_place = place;
+        if let Some((anchor, zone, _)) = in_dock {
+            let before = crate::panel_docking::dock_drawn_width(ctx);
+            match crate::panel_docking::dock_tools(app, &anchor, zone) {
+                Ok(()) => {
+                    app.ui.panels.toolbar_place = crate::state::ToolbarPlace::Dock;
+                    // The dock grows by the Tools column, so the other columns keep their width.
+                    if let Some(w) = before {
+                        let grown = w + toolbar_width(t.pro, app.ui.panels.toolbar_double) + 6.0;
+                        ctx.data_mut(|d| d.insert_temp(dock_width_id(), grown));
+                    }
+                }
+                Err(e) => app.ui.status = e,
+            }
+        }
+        ctx.data_mut(|d| d.remove::<ToolbarDrag>(toolbar_drag_id()));
+    }
+}
+
+/// The Tools panel's grip, along its top: drag it to float the panel, and onto a canvas edge to
+/// dock it there (Photoshop). `corner` is the panel's top-left corner.
+fn toolbar_grip(ui: &mut egui::Ui, t: &Tokens, corner: Pos2) {
+    let (r, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 8.0), Sense::click_and_drag());
+    let color = if resp.hovered() || resp.dragged() { t.text_dim } else { t.text_faint };
+    // Two rows of dots, like Photoshop's grip.
+    let n = ((r.width() - 8.0) / 4.0).floor().max(1.0) as usize;
+    let x0 = r.center().x - (n as f32 - 1.0) * 2.0;
+    for k in 0..n {
+        for dy in [-1.5, 1.5] {
+            ui.painter().circle_filled(pos2(x0 + k as f32 * 4.0, r.center().y + dy), 0.7, color);
+        }
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+    }
+    let resp = resp.on_hover_text(tl!("Drag to move the Tools panel; drop it at the side of the canvas to dock it"));
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Move Tools panel")));
+    if resp.drag_started()
+        && let Some(p) = ui.input(|i| i.pointer.press_origin()).or_else(|| resp.interact_pointer_pos())
+    {
+        ui.ctx().data_mut(|d| d.insert_temp(toolbar_drag_id(), ToolbarDrag { offset: p - corner }));
+    }
+}
+
 pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let ctx = ui.ctx().clone();
+    toolbar_drag_update(app, &ctx);
+    // The dock's layout decides whether the Tools panel is in it (a workspace reset or closing
+    // its tab takes it out; a saved workspace can bring it back).
+    let dragging = ctx.data(|d| d.get_temp::<ToolbarDrag>(toolbar_drag_id())).is_some();
+    let docked = crate::panel_docking::tools_docked(app);
+    if !dragging {
+        if docked {
+            app.ui.panels.toolbar_place = crate::state::ToolbarPlace::Dock;
+        } else if app.ui.panels.toolbar_place == crate::state::ToolbarPlace::Dock {
+            app.ui.panels.toolbar_place = crate::state::ToolbarPlace::Start;
+        }
+    }
+    match app.ui.panels.toolbar_place {
+        crate::state::ToolbarPlace::Start => {
+            let t = Tokens::get(&ctx);
+            let (w, _, m) = toolbar_metrics(t.pro, app.ui.panels.toolbar_double);
+            crate::direction::start_panel("toolbar")
+                .resizable(false)
+                .exact_size(w)
+                .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(m, 8)))
+                .show(ui, |ui| toolbar_body(app, ui));
+        }
+        // Drawn after the dock, so it sits between the canvas and the dock (`toolbar_end`); in
+        // the dock, the dock draws it (`toolbar_docked`).
+        crate::state::ToolbarPlace::End | crate::state::ToolbarPlace::Dock => {}
+        crate::state::ToolbarPlace::Floating { x, y } => floating_toolbar(app, &ctx, pos2(x, y)),
+    }
+}
+
+/// The Tools panel as a panel of the customized dock (between two dock columns, say): the
+/// toolbar with its usual margins.
+pub(crate) fn toolbar_docked(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
-    let (w1, bx, m) = if t.pro { (40.0, 30.0, 5i8) } else { (50.0, 36.0, 7i8) };
-    let sections = visible_sections(&app.session.prefs().toolbar.hidden);
-    // Two columns when the header chevron asks for them; a column that doesn't fit scrolls.
-    let double = app.ui.panels.toolbar_double;
-    let w = if double { w1 + bx + 2.0 } else { w1 };
-    crate::direction::start_panel("toolbar")
+    let (_, _, m) = toolbar_metrics(t.pro, app.ui.panels.toolbar_double);
+    egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(m, 8)).show(ui, |ui| {
+        ui.set_min_height(ui.available_height());
+        toolbar_body(app, ui);
+    });
+}
+
+/// The Tools panel docked at the end side, between the canvas and the panel dock. Call after the
+/// dock; does nothing unless the panel is docked there.
+pub fn toolbar_end(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if app.ui.panels.toolbar_place != crate::state::ToolbarPlace::End {
+        return;
+    }
+    let t = Tokens::get(ui.ctx());
+    let (w, _, m) = toolbar_metrics(t.pro, app.ui.panels.toolbar_double);
+    crate::direction::end_panel("toolbar-end")
         .resizable(false)
         .exact_size(w)
         .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(m, 8)))
-        .show(ui, |ui| {
+        .show(ui, |ui| toolbar_body(app, ui));
+}
+
+/// The floating Tools panel, with its top-left corner at `corner` (kept on screen).
+fn floating_toolbar(app: &mut PhotocraftApp, ctx: &egui::Context, corner: Pos2) {
+    let t = Tokens::get(ctx);
+    let (w, _, m) = toolbar_metrics(t.pro, app.ui.panels.toolbar_double);
+    let screen = ctx.content_rect();
+    let corner =
+        pos2(corner.x.clamp(screen.left(), (screen.right() - w).max(screen.left())), corner.y.clamp(screen.top(), (screen.bottom() - 60.0).max(screen.top())));
+    let frame = egui::Frame::NONE
+        .fill(t.chrome)
+        .stroke(Stroke::new(1.0, t.card_border))
+        .shadow(egui::Shadow { offset: [0, 6], blur: 18, spread: 0, color: t.shadow })
+        .inner_margin(egui::Margin::symmetric(m, 8));
+    egui::Area::new(egui::Id::new("toolbar-floating")).order(egui::Order::Middle).fixed_pos(corner).constrain(false).show(ctx, |ui| {
+        frame.show(ui, |ui| {
+            let inner_w = w - 2.0 * f32::from(m);
+            ui.set_width(inner_w);
+            // As tall as the tools need, but never past the bottom of the window.
+            ui.set_max_height((screen.bottom() - corner.y - 24.0).max(120.0));
+            toolbar_body(app, ui);
+        });
+    });
+}
+
+/// The Tools panel's contents (docked or floating): the grip, the tools, the colour chips and the
+/// mode buttons.
+fn toolbar_body(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let t = Tokens::get(ui.ctx());
+    let (_, bx, m) = toolbar_metrics(t.pro, app.ui.panels.toolbar_double);
+    let sections = visible_sections(&app.session.prefs().toolbar.hidden);
+    // Two columns when the header chevron asks for them; a column that doesn't fit scrolls.
+    let double = app.ui.panels.toolbar_double;
+    {
+        {
+            let corner = ui.max_rect().min - vec2(f32::from(m), 8.0);
+            toolbar_grip(ui, &t, corner);
             if t.pro {
                 // Photoshop's toolbar header chevrons switch between one and two columns.
                 let (cr, resp) = ui.allocate_exact_size(vec2(bx, 14.0), Sense::click());
@@ -102,9 +306,11 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 }
                 ui.add_space(4.0);
             }
-            // Subtle violet wash at the bottom of the toolbar.
+            // Subtle violet wash at the bottom of the toolbar (docked: a floating panel's rect is
+            // not its own height).
             let full = ui.max_rect();
-            if !t.bevel && !t.pro && t.dark() {
+            let docked = !matches!(app.ui.panels.toolbar_place, crate::state::ToolbarPlace::Floating { .. });
+            if docked && !t.bevel && !t.pro && t.dark() {
                 let mut mesh = egui::Mesh::default();
                 let r = Rect::from_min_max(pos2(full.left() - 7.0, full.bottom() - 260.0), pos2(full.right() + 7.0, full.bottom() + 8.0));
                 let top = Color32::TRANSPARENT;
@@ -364,7 +570,8 @@ pub fn toolbar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     });
                 });
             }
-        });
+        }
+    }
 }
 
 /// Glyph size of a toolbar tool button. Pro fills two thirds of the button, close to Photoshop's
@@ -1595,10 +1802,25 @@ fn hint(ui: &mut egui::Ui, s: &str) {
 
 /// The status bar's height and the height of the controls in it (zoom field, Fit), which leaves
 /// them an even margin above and below inside the bar (#2823).
+/// The status bar's height and its controls' height: Photoshop's thin bar in the Pro themes.
 pub fn status_bar_heights(t: &Tokens) -> (f32, f32) {
-    if t.pro { (24.0, 18.0) } else { (30.0, 22.0) }
+    if t.pro { (22.0, 16.0) } else { (30.0, 22.0) }
 }
 
+/// The status bar's free space past its controls: the horizontal scrollbar goes there
+/// (`scrollbars::show_outside`), as in Photoshop. A few points in from each side and from the top
+/// and bottom.
+fn status_track(ui: &mut egui::Ui) {
+    let r = ui.available_rect_before_wrap();
+    let track = egui::Rect::from_min_max(egui::pos2(r.left() + 6.0, r.top() + 2.0), egui::pos2(r.right() - 2.0, r.bottom() - 2.0));
+    if track.width() > 24.0 && track.height() > 4.0 {
+        crate::scrollbars::set_status_track(ui.ctx(), track);
+    }
+}
+
+/// The status bar, at the bottom of the document area (as Photoshop's document window has it, so
+/// the docks reach the bottom of the window): the zoom, the document info and the horizontal
+/// scrollbar in the space after them.
 pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     egui::Panel::bottom("status_bar")
@@ -1610,10 +1832,12 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             crate::direction::horizontal_centered(ui, |ui| {
                 if t.pro {
                     crate::chrome_ui::status_bar_pro(app, ui);
-                    // Background job progress with Cancel, at the far end (#210).
+                    // Background job progress with Cancel, at the far end (#210), and the
+                    // horizontal scrollbar in between.
                     ui.with_layout(crate::direction::trailing(), |ui| {
                         crate::jobs_ui::status_progress(app, ui);
                         crate::background_redraw::status(app, ui);
+                        status_track(ui);
                     });
                     return;
                 }
@@ -1636,11 +1860,6 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 } else {
                     label(ui, tl!("No document"));
                 }
-                if !app.ui.status.is_empty() {
-                    widgets::vline(ui, 16.0);
-                    let is_err = app.ui.status_error || app.ui.status.starts_with("Couldn");
-                    ui.label(RichText::new(&app.ui.status).color(if is_err { t.warning } else { t.text_faint }));
-                }
                 ui.with_layout(crate::direction::trailing(), |ui| {
                     if app.session.active().is_some()
                         && !t.pro
@@ -1654,6 +1873,7 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         crate::jobs_ui::status_progress(app, ui);
                     }
                     crate::background_redraw::status(app, ui);
+                    status_track(ui);
                 });
             });
         });
@@ -1669,14 +1889,25 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if t.pro && !customized {
         dock_panels(app, ui, &p, &t);
     }
-    // Narrow icon rail, unless an embedding app hides it: shows, expands or collapses panel groups.
-    if p.rail {
+    // Narrow icon rail, unless an embedding app hides it or the user closed it: shows, expands or
+    // collapses panel groups.
+    if p.rail && !p.rail_closed {
         let (rw, rb) = if t.pro { (36.0, 28.0) } else { (44.0, 32.0) };
         crate::direction::end_panel("rail")
             .resizable(false)
             .exact_size(rw)
             .frame(egui::Frame::NONE.fill(t.chrome).inner_margin(egui::Margin::symmetric(4, 8)))
             .show(ui, |ui| {
+                // Right-click the rail (outside its buttons) to close it, like any Photoshop panel
+                // column; Reset Workspace brings it back.
+                let bg = ui.interact(ui.max_rect().expand2(vec2(4.0, 8.0)), ui.id().with("rail-background"), Sense::click());
+                bg.context_menu(|ui| {
+                    crate::widgets::style_spectrum_popup_menu(ui);
+                    if ui.button(tl!("Close")).clicked() {
+                        app.ui.panels.rail_closed = true;
+                        ui.close();
+                    }
+                });
                 // The separator is on the canvas side.
                 let r = ui.max_rect();
                 let x = if crate::direction::is_rtl() { r.right() + 6.0 } else { r.left() - 6.0 };
@@ -1707,11 +1938,25 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if !t.pro && !customized {
         dock_panels(app, ui, &p, &t);
     }
+    // The Tools panel docked at this side sits between the canvas and the dock.
+    if p.toolbar {
+        toolbar_end(app, ui);
+    }
     crate::dock::persist(app, ui.ctx());
 }
 
-/// The dock's width range (points). It is the right dock, on the left in a right-to-left UI.
-pub(crate) const DOCK_WIDTH: std::ops::RangeInclusive<f32> = 250.0..=520.0;
+/// The dock's narrowest width (points). It is the right dock, on the left in a right-to-left UI.
+pub(crate) const DOCK_MIN_WIDTH: f32 = 250.0;
+/// Room a widened dock always leaves for the canvas and the toolbar.
+const DOCK_CANVAS_ROOM: f32 = 240.0;
+
+/// The dock's width range in this window. Like Photoshop's, a docked column has no fixed upper
+/// bound: it can be dragged as wide as the window allows, short of covering the canvas.
+pub(crate) fn dock_width_range(ctx: &egui::Context) -> std::ops::RangeInclusive<f32> {
+    let screen = ctx.content_rect().width();
+    let max = if screen.is_finite() { (screen - DOCK_CANVAS_ROOM).max(DOCK_MIN_WIDTH) } else { DOCK_MIN_WIDTH };
+    DOCK_MIN_WIDTH..=max
+}
 
 pub(crate) fn dock_width_id() -> egui::Id {
     egui::Id::new("dock-width-request")
@@ -1719,7 +1964,8 @@ pub(crate) fn dock_width_id() -> egui::Id {
 
 /// Set the right dock's width on the next frame (`ui.set {dockWidth}`); clamped to its range.
 pub fn request_dock_width(ctx: &egui::Context, w: f32) {
-    let w = if w.is_finite() { w.clamp(*DOCK_WIDTH.start(), *DOCK_WIDTH.end()) } else { *DOCK_WIDTH.start() };
+    let range = dock_width_range(ctx);
+    let w = if w.is_finite() { w.clamp(*range.start(), *range.end()) } else { *range.start() };
     ctx.data_mut(|d| d.insert_temp(dock_width_id(), w));
 }
 
@@ -1730,6 +1976,7 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
         (Group::Color, p.color),
         (Group::Properties, t.pro && p.properties),
         (Group::Character, p.character),
+        (Group::Brushes, p.brushes),
         (Group::Navigator, p.navigator),
         (Group::History, p.history),
         (Group::Layers, p.layers),
@@ -1741,7 +1988,7 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
         return;
     }
     let margin = if t.pro { 2 } else { 8 };
-    let mut panel = crate::direction::end_panel("dock").resizable(true).default_size(if t.pro { 290.0 } else { 300.0 }).size_range(DOCK_WIDTH);
+    let mut panel = crate::direction::end_panel("dock").resizable(true).default_size(if t.pro { 290.0 } else { 300.0 }).size_range(dock_width_range(ui.ctx()));
     if let Some(w) = ui.ctx().data_mut(|d| d.remove_temp::<f32>(dock_width_id())) {
         panel = panel.exact_size(w);
     }
@@ -1765,6 +2012,7 @@ pub(crate) fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate
         (Group::Properties, 0) => properties_body(app, ui),
         (Group::Properties, _) => adjustments_grid(app, ui),
         (Group::Character, tab) => crate::type_tool::character_panel(app, ui, tab == 1),
+        (Group::Brushes, _) => crate::brushes_tab::show(app, ui),
         (Group::Navigator, 0) => navigator(app, ui),
         (Group::Navigator, 1) => crate::tone::histogram_panel(app, ui),
         (Group::Navigator, _) => info_panel(app, ui),
@@ -2330,6 +2578,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         .min_scrolled_height(if fill { rows_h } else { 0.0 })
         .auto_shrink([false, !fill])
         .show(ui, |ui| {
+            // Rows sit flush, as in Photoshop: a dock or floating panel may come with the
+            // default item spacing, which left a gap between rows (very visible between rows
+            // with colour labels).
+            if Tokens::get(&ctx).pro {
+                ui.spacing_mut().item_spacing.y = 0.0;
+            }
             // The drag keys are set only by actual layer-row and fx drags, not clicks or
             // ordinary scrolling. The ScrollArea applies this to its own content.
             // An fx drag that never saw its release (the panel was hidden) must not outlive the button.
@@ -2741,6 +2995,40 @@ fn paint_clipping_indicator(painter: &egui::Painter, at: Pos2, color: Color32) {
     painter.add(egui::Shape::line(vec![at + vec2(2.0, 0.0), tip, at + vec2(8.0, 0.0)], stroke));
 }
 
+/// Photoshop's Layers panel with medium thumbnails, measured at 100%: 41 pt layer rows, 25 pt
+/// group rows (a group has no thumbnail, only a folder glyph), a 30 pt eye column, thumbnails
+/// fitted into 32 pt and names 9 pt after the thumbnail.
+const PRO_ROW_H: f32 = 41.0;
+const PRO_GROUP_ROW_H: f32 = 25.0;
+const EYE_COL_W: f32 = 30.0;
+const PRO_THUMB: f32 = 32.0;
+const PRO_THUMB_GAP: f32 = 9.0;
+/// The Layers panel's name size in Photoshop's themes (Photoshop's small UI font).
+const PRO_NAME_SIZE: f32 = 10.0;
+
+/// Height of `l`'s Layers panel row.
+fn layer_row_height(l: &Layer, pro: bool) -> f32 {
+    match (pro, l.is_group()) {
+        (true, true) => PRO_GROUP_ROW_H,
+        (true, false) => PRO_ROW_H,
+        (false, _) => 46.0,
+    }
+}
+
+/// The Layers panel's row dividers in the Pro themes: halfway between the theme's separator and
+/// the panel, lighter than a full separator line, as Photoshop draws them.
+pub(crate) fn layer_divider(t: &Tokens) -> Color32 {
+    let mix = |a: u8, b: u8| ((u16::from(a) + u16::from(b)) / 2) as u8;
+    let (s, c) = (t.separator, t.card);
+    Color32::from_rgb(mix(s.r(), c.r()), mix(s.g(), c.g()), mix(s.b(), c.b()))
+}
+
+/// `c` darkened towards black by `k` (0 = unchanged, 1 = black), keeping its alpha.
+fn darken(c: Color32, k: f32) -> Color32 {
+    let f = |v: u8| (f32::from(v) * (1.0 - k.clamp(0.0, 1.0))).round() as u8;
+    Color32::from_rgba_premultiplied(f(c.r()), f(c.g()), f(c.b()), c.a())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn layer_row(
     app: &mut PhotocraftApp,
@@ -2754,8 +3042,8 @@ fn layer_row(
 ) -> Rect {
     let selected = row.selected;
     let t = Tokens::get(ctx);
-    // Photoshop's default (medium) thumbnails: 32 pt rows.
-    let row_h = if t.pro { 32.0 } else { 46.0 };
+    // Photoshop's default (medium) thumbnails; group rows are much shorter.
+    let row_h = layer_row_height(l, t.pro);
     let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click_and_drag());
     // A drag from a mask's thumbnail drags that mask, not the layer (#3113, #3119).
     let mask_drag = starts_mask_drag(ctx, l, &resp);
@@ -2796,24 +3084,38 @@ fn layer_row(
         painter.rect_filled(rect, t.radius, t.hover.gamma_multiply(0.5));
         painter.rect_filled(rect, t.radius, t.accent.gamma_multiply(0.12));
     }
-    let eye_cell = Rect::from_min_max(rect.left_top(), pos2((rect.left() + 30.0).min(rect.right()), rect.bottom()));
-    if let Some((_, background)) = t.layer_label_colors(l.label) {
+    let eye_cell = Rect::from_min_max(rect.left_top(), pos2((rect.left() + EYE_COL_W).min(rect.right()), rect.bottom()));
+    let label = t.layer_label_colors(l.label);
+    if let Some((_, background)) = label {
         painter.rect_filled(eye_cell, 0.0, background);
     }
     if t.pro {
-        // Paint dividers over the label so the eye column stays distinct.
-        painter.line_segment([pos2(rect.left() + 30.0, rect.top()), pos2(rect.left() + 30.0, rect.bottom())], Stroke::new(1.0, t.separator));
-        painter.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, t.separator));
+        // Dividers inside the row, so rows sit flush with no gap between them (Photoshop): the
+        // theme's separator under the row and beside the eye column, and a darker shade of a
+        // label colour between coloured eye cells.
+        let bottom = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 1.0), rect.right_bottom());
+        let divider = layer_divider(&t);
+        painter.rect_filled(bottom, 0.0, divider);
+        painter.rect_filled(Rect::from_min_max(pos2(eye_cell.right() - 1.0, rect.top()), eye_cell.right_bottom()), 0.0, divider);
+        if let Some((_, background)) = label {
+            let line = Rect::from_min_max(pos2(eye_cell.left(), rect.bottom() - 2.0), pos2(eye_cell.right() - 1.0, rect.bottom()));
+            painter.rect_filled(line, 0.0, darken(background, 0.22));
+        }
     }
     let mut x = rect.left() + 6.0;
-    let eye = Rect::from_min_size(pos2(x, rect.center().y - 11.0), vec2(22.0, 22.0));
+    // The whole eye column is the eye's hit area, as in Photoshop: a click anywhere in it, however
+    // far to the side or above or below the glyph, toggles visibility instead of selecting the row.
+    let eye = eye_cell;
     // The eye takes drags too (so a drag starting on it never reorders the row): dragging down
     // the eyes gives every row swept over the visibility the first eye toggled to.
     let eye_resp = ui.interact(eye, ui.id().with(("eye", l.id.0)), Sense::click_and_drag());
     // A hidden layer's eye box is left empty (still clickable).
     if l.visible {
-        // Centre the drawing in the column while preserving the visibility hit area.
-        icons::paint(ui, eye_cell, "eye", 15.0, t.layer_label_icon(l.label));
+        if t.pro {
+            crate::layer_row_ui::paint_eye(&painter, eye_cell.center() - vec2(0.5, 0.0), t.layer_label_icon(l.label));
+        } else {
+            icons::paint(ui, eye_cell, "eye", 15.0, t.layer_label_icon(l.label));
+        }
     }
     eye_sweep(ctx, l, rect, &eye_resp, actions);
     if eye_resp.clicked() {
@@ -2835,7 +3137,7 @@ fn layer_row(
         + if l.is_group() { crate::layer_tree_ui::TRIANGLE_W } else { 0.0 }
         + if l.clipped { 12.0 } else { 0.0 }
         + crate::layer_row_ui::reserved_width(l);
-    let ts = crate::mask_thumbs_ui::thumb_size(l, if t.pro { 24.0 } else { 34.0 }, rect.width() - others);
+    let ts = crate::mask_thumbs_ui::thumb_size(l, if t.pro { PRO_THUMB } else { 34.0 }, rect.width() - others);
     let fixed = others + ts + 6.0 + crate::mask_thumbs_ui::width(l, ts);
     x += 28.0 + crate::layer_row_ui::indent(depth, rect.width(), fixed);
     let toggled = crate::layer_tree_ui::disclosure(ui, rect, &mut x, l, actions);
@@ -2843,9 +3145,20 @@ fn layer_row(
         paint_clipping_indicator(&painter, pos2(x, rect.center().y), t.text_faint);
         x += 12.0;
     }
-    let thumb = Rect::from_min_size(pos2(x, rect.center().y - ts / 2.0), vec2(ts, ts));
-    draw_layer_thumb(app, ctx, ui, doc, l, thumb, row.primary);
-    x += ts + 6.0;
+    let thumb = if t.pro && l.is_group() {
+        // Photoshop's group rows: a small folder glyph instead of a thumbnail.
+        let folder = Rect::from_min_size(pos2(x.round(), (rect.center().y - 5.5).round()), vec2(15.0, 11.0));
+        crate::layer_row_ui::paint_folder(&painter, folder, t.text_dim);
+        x += folder.width() + 12.0;
+        folder
+    } else {
+        let cell = Rect::from_min_size(pos2(x, rect.center().y - ts / 2.0), vec2(ts, ts));
+        let thumb = layer_thumb_rect(app, ctx, doc, l, cell, t.pro);
+        draw_layer_thumb(app, ctx, ui, doc, l, thumb, row.primary);
+        // The name follows the thumbnail as drawn, so a narrow one leaves it further left.
+        x = thumb.right() + if t.pro { PRO_THUMB_GAP } else { 6.0 };
+        thumb
+    };
     // Link chains and pixel / vector mask thumbnails (#153).
     let masks = crate::mask_thumbs_ui::paint(app, ctx, ui, &painter, doc, l, &mut x, rect.center().y, ts, actions);
     let mask_rect = masks.thumb(crate::mask_thumbs_ui::MaskKind::Pixel);
@@ -2860,6 +3173,8 @@ fn layer_row(
         } else {
             Some(thumb)
         };
+        // A group's folder glyph is no thumbnail: Photoshop frames nothing there.
+        let target = target.filter(|r| !(t.pro && l.is_group() && *r == thumb));
         if let Some(r) = target {
             crate::mask_thumbs_ui::paint_brackets(&painter, r, t.text);
         }
@@ -2882,7 +3197,7 @@ fn layer_row(
         actions.push(simple_lock_toggle(doc.is_background(l.id), l));
     }
     let name_color = if l.visible { t.text } else { t.text_faint };
-    let font = if selected && !t.pro { theme::medium(13.0) } else { egui::FontId::proportional(if t.pro { 12.0 } else { 13.0 }) };
+    let font = if selected && !t.pro { theme::medium(13.0) } else { egui::FontId::proportional(if t.pro { PRO_NAME_SIZE } else { 13.0 }) };
     // Photoshop before 2026 set the Background layer's name in italics; 2026 sets it upright.
     let italic = !t.pro && doc.is_background(l.id);
     // Photoshop rows show only the name; the kind sub-label is a Studio-theme addition.
@@ -2924,8 +3239,9 @@ fn layer_row(
         let mode = select_mode(ui.input(|i| i.modifiers));
         actions.push(("layer.select".into(), json!({"layer": l.id.0, "mode": mode})));
         crate::smart_ui::deselect(ctx, doc.id);
-        // A thumbnail explicitly selects content or a mask. Selecting an adjustment/fill row
-        // defaults to its mask, but clicking its content thumbnail must leave the mask target.
+        // A thumbnail explicitly selects content or a mask. A click elsewhere on an
+        // adjustment/fill row targets the layer itself (its settings show in Properties); only its
+        // mask thumbnail targets the mask.
         let pos = resp.interact_pointer_pos();
         let on_mask = mask_rect.zip(pos).is_some_and(|(r, p)| r.expand(2.0).contains(p));
         let on_thumb = pos.is_some_and(|p| thumb.expand(2.0).contains(p));
@@ -2941,13 +3257,13 @@ fn layer_row(
             // Paths panel selects the layer's path.
             app.ui.selected_path = Some("layer".into());
             actions.push(("ui.vectorMaskTarget".into(), json!(true)));
-        } else if on_mask || (content_less && l.mask.is_some() && !on_thumb) {
+        } else if on_mask {
             if on_mask {
                 // The mask thumbnail also switches Properties to the mask (#3369).
                 app.ui.properties_layer = None;
             }
             actions.push(("ui.maskTarget".into(), json!(true)));
-        } else if on_thumb || !row.primary {
+        } else if on_thumb || !row.primary || content_less {
             actions.push(("ui.maskTarget".into(), json!(false)));
         }
         // ⌥-click the layer thumbnail: fit the layer on screen, as Photoshop does.
@@ -3027,10 +3343,38 @@ fn layer_row(
     rect
 }
 
-/// Screen rect and UVs for a layer thumbnail: the document-shaped part of the square cell and of
-/// the letterboxed square texture, so tall and wide documents don't show empty bars.
-fn layer_thumb_fit(cell: Rect, w: u32, h: u32) -> (Rect, Rect) {
-    crate::channels_panel::fit_thumb(cell, w, h)
+/// The thin border around Layers panel thumbnails in Photoshop's themes: a little lighter than
+/// the panel in the dark greys (Photoshop's #666 on its darkest grey), darker in the light ones.
+pub(crate) fn pro_thumb_border(t: &Tokens) -> Color32 {
+    let card = t.card.r();
+    if card < 128 { Color32::from_gray(card.saturating_add(20).max(102)) } else { Color32::from_gray(card.saturating_sub(70)) }
+}
+
+/// Does `l`'s row show its pixels (pixel, shape and Smart Object layers), rather than a tile?
+fn thumb_shows_pixels(l: &Layer) -> bool {
+    !matches!(l.content, LayerContent::Adjustment(_) | LayerContent::Group(_) | LayerContent::Text(_) | LayerContent::Fill(_))
+}
+
+/// `w` x `h` scaled to fit `cell`, keeping its aspect ratio (at least 4 pt each way), left-aligned
+/// (Photoshop's themes) or centred, and vertically centred.
+fn fit_in_cell(cell: Rect, w: f32, h: f32, left: bool) -> Rect {
+    let (w, h) = (if w.is_finite() { w.max(1.0) } else { 1.0 }, if h.is_finite() { h.max(1.0) } else { 1.0 });
+    let k = (cell.width() / w).min(cell.height() / h);
+    let size = vec2((w * k).round().max(4.0), (h * k).round().max(4.0)).min(cell.size());
+    let min = if left { pos2(cell.left(), cell.center().y - size.y / 2.0) } else { cell.center() - size / 2.0 };
+    Rect::from_min_size(pos2(min.x.round(), min.y.round()), size)
+}
+
+/// Where a Layers panel row draws `l`'s thumbnail inside its square `cell`. Like Photoshop's
+/// default (Layers Panel Options > Thumbnail Contents > Layer Bounds), a layer with pixels shows
+/// only what it covers, at that area's own shape: a wide strip gets a wide thumbnail, a tall one a
+/// tall one, an empty layer the canvas. Other kinds fill the cell.
+fn layer_thumb_rect(app: &mut PhotocraftApp, ctx: &egui::Context, doc: &photocraft_doc::Document, l: &Layer, cell: Rect, pro: bool) -> Rect {
+    if !thumb_shows_pixels(l) {
+        return cell;
+    }
+    let (_, [w, h]) = app.layer_bounds_thumb(ctx, doc, l);
+    fit_in_cell(cell, w as f32, h as f32, pro)
 }
 
 fn draw_layer_thumb(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &egui::Ui, doc: &photocraft_doc::Document, l: &Layer, rect: Rect, selected: bool) {
@@ -3059,16 +3403,15 @@ fn draw_layer_thumb(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &egui::Ui,
         _ => {
             // Keep row layout and outside thumbnail decorations when the image is clipped.
             if ui.is_rect_visible(rect) {
-                // The texture is a letterboxed square: draw only the part the document fills.
-                let (fitted, uv) = layer_thumb_fit(rect, doc.size.width, doc.size.height);
-                widgets::checker(p, fitted, 5.0);
-                let tex = app.layer_thumb(ctx, doc, l);
-                p.image(tex, fitted, uv, Color32::WHITE);
+                // `rect` already has the layer bounds' shape (`layer_thumb_rect`).
+                widgets::checker(p, rect, if t.pro { 4.0 } else { 5.0 });
+                let (tex, _) = app.layer_bounds_thumb(ctx, doc, l);
+                p.image(tex, rect, Rect::from_min_max(egui::Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
             }
         }
     }
     let stroke = if t.pro {
-        Stroke::new(1.0, Color32::from_gray(20))
+        Stroke::new(1.0, pro_thumb_border(&t))
     } else if selected {
         Stroke::new(1.5, t.text)
     } else {
@@ -3511,12 +3854,14 @@ pub(crate) fn color_field_fill_id() -> egui::Id {
     egui::Id::new("color-field-fill-height")
 }
 
-/// Height of the Color field: the group body's height (when docked) less the hex/RGB readout,
-/// which folds onto a second line in a narrow dock. 120 pt when nothing sets a height.
-fn color_field_height(avail: Option<f32>, width: f32) -> f32 {
-    let reserve = 32.0 + if width < 280.0 { 26.0 } else { 0.0 };
-    avail.filter(|a| a.is_finite()).map_or(120.0, |a| (a - reserve).clamp(120.0, 2000.0))
+/// Height of the Color field: the group body's height (when docked or floating), so dragging the
+/// group taller or shorter resizes the field, as in Photoshop. 120 pt when nothing sets a height.
+fn color_field_height(avail: Option<f32>) -> f32 {
+    avail.filter(|a| a.is_finite()).map_or(120.0, |a| (a - 2.0).clamp(COLOR_FIELD_MIN_H, 4000.0))
 }
+
+/// The shortest the Color field gets in a squeezed group (the group scrolls below that).
+const COLOR_FIELD_MIN_H: f32 = 48.0;
 
 /// The colour the SV field draws for `hsva`, with what the field showed last (`hue`, `saturation`)
 /// filling in what the colour itself cannot carry: a grey has no hue of its own, and black has
@@ -3546,11 +3891,11 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     hsva = field_hsva(hsva, remembered);
     let w = ui.available_width();
     let strip_w = 14.0;
-    // Photoshop's Color panel field fills the panel: take the height the dock offers, less the
-    // hex/RGB readout (which folds onto a second line in a narrow dock). Without a dock, 120 pt.
-    // Only Photoshop's themes stretch it over the group: the other themes put sliders under it.
+    // Photoshop's Color panel is just the field: it fills the panel, whatever height the dock (or
+    // a floating group) gives it. Without a dock, 120 pt. Only Photoshop's themes stretch it over
+    // the group: the other themes put sliders under it.
     let fill = if t.pro { ui.data(|d| d.get_temp::<f32>(color_field_fill_id())) } else { None };
-    let h = color_field_height(fill, w);
+    let h = color_field_height(fill);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         let (chips, _) = ui.allocate_exact_size(vec2(38.0, h), Sense::hover());
@@ -3622,6 +3967,11 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             ui.data_mut(|d| d.insert_temp(key, (hsva.h, hsva.s)));
         }
     });
+    // Photoshop's Color panel has no numeric readout: exact values are typed in the Color Picker
+    // (click a chip) or the Info panel shows them. The other themes keep a hex and RGB readout.
+    if t.pro {
+        return;
+    }
     ui.add_space(6.0);
     ui.horizontal(|ui| {
         let mut c = if bg_active { app.session.tools.background } else { app.session.tools.foreground };
@@ -3668,7 +4018,7 @@ fn hsva_color32(h: egui::ecolor::Hsva) -> Color32 {
     Color32::from_rgb(r, g, b)
 }
 
-/// The Color panel's editable colour readout: a hex field and R, G, B fields, all drawn like the
+/// The Color panel's editable colour readout (themes other than Photoshop's): a hex field and R, G, B fields, all drawn like the
 /// dock's [`widgets::value_field`] so they sit in the theme. Editing any of them sets `color`
 /// (sRGB-encoded floats) and returns `true`.
 fn color_readout(ui: &mut egui::Ui, id: egui::Id, color: &mut [f32; 4]) -> bool {
@@ -4298,7 +4648,7 @@ mod color_tests {
         assert_eq!(srgb_bytes(h.state().session.tools.foreground), [0x00, 0x80, 0x00]);
     }
 
-    /// The pro Color panel's hex readout edits the foreground too.
+    /// The Color field's hex readout (themes other than Photoshop's) edits the foreground too.
     #[test]
     fn color_field_hex_field_takes_a_typed_hex() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
@@ -4306,6 +4656,27 @@ mod color_tests {
         let mut h = field_harness(app);
         type_hex(&mut h, "003300");
         assert_eq!(srgb_bytes(h.state().session.tools.foreground), [0x00, 0x33, 0x00]);
+    }
+
+    /// Photoshop's Color panel is only the field and the hue strip: no hex or RGB readout (the
+    /// other themes keep theirs, above).
+    #[test]
+    fn pro_color_panel_has_no_numeric_readout() {
+        use egui_kittest::kittest::Queryable;
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.session.tools.foreground = [0.2, 0.4, 0.6, 1.0];
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(300.0, 200.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    color_field(app, ui);
+                }
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ProMedium);
+        h.run_steps(2);
+        assert!(h.query_by_role(egui::accesskit::Role::TextInput).is_none(), "no hex field");
+        assert!(h.query_by_role(egui::accesskit::Role::SpinButton).is_none(), "no R, G, B fields");
     }
 
     #[test]
@@ -4338,15 +4709,16 @@ mod color_tests {
         assert_eq!(srgb_bytes(h.state().session.tools.foreground), [0, 255, 0]);
     }
 
-    /// The Color field fills the dock group, never shrinks below 120 pt, and ignores a bad height.
+    /// The Color field fills the dock group (all of it: there's no readout under it), keeps a
+    /// small minimum, and ignores a bad height.
     #[test]
     fn color_field_height_fills_the_group() {
-        assert_eq!(color_field_height(None, 300.0), 120.0);
-        assert_eq!(color_field_height(Some(500.0), 300.0), 468.0);
-        assert_eq!(color_field_height(Some(500.0), 200.0), 442.0);
-        assert_eq!(color_field_height(Some(60.0), 300.0), 120.0);
-        assert_eq!(color_field_height(Some(f32::NAN), 300.0), 120.0);
-        assert_eq!(color_field_height(Some(1.0e9), 300.0), 2000.0);
+        assert_eq!(color_field_height(None), 120.0);
+        assert_eq!(color_field_height(Some(500.0)), 498.0);
+        assert_eq!(color_field_height(Some(200.0)), 198.0);
+        assert_eq!(color_field_height(Some(10.0)), COLOR_FIELD_MIN_H);
+        assert_eq!(color_field_height(Some(f32::NAN)), 120.0);
+        assert_eq!(color_field_height(Some(1.0e9)), 4000.0);
     }
 
     fn field_harness(app: PhotocraftApp) -> egui_kittest::Harness<'static, PhotocraftApp> {
@@ -5437,6 +5809,100 @@ mod embedding_tests {
         assert!(drawn(&h, "dock"), "the dock itself stays");
     }
 
+    /// The icon rail can be closed (its right-click menu runs the same toggle) and Reset Workspace
+    /// brings it back.
+    #[test]
+    fn the_icon_rail_can_be_closed_and_reset_restores_it() {
+        let mut h = whole_app(true, true);
+        let ctx = h.ctx.clone();
+        let rail = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("rail")).unwrap().outer_rect;
+        // Right-click below the rail's buttons: its menu has Close.
+        h.input_mut().events.push(egui::Event::PointerMoved(rail.center_bottom() - vec2(0.0, 30.0)));
+        h.run_steps(1);
+        let at = rail.center_bottom() - vec2(0.0, 30.0);
+        for pressed in [true, false] {
+            h.input_mut().events.push(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(1);
+        }
+        h.run_steps(2);
+        let close = h.query_all_by_label("Close").last().map(|n| n.rect().center());
+        let close = close.expect("the rail's menu offers Close");
+        h.input_mut().events.push(egui::Event::PointerMoved(close));
+        for pressed in [true, false] {
+            h.input_mut().events.push(egui::Event::PointerButton {
+                pos: close,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(1);
+        }
+        h.run_steps(2);
+        assert!(h.state().ui.panels.rail_closed, "Close hides the rail");
+        crate::menus::invoke(h.state_mut(), &ctx, "window.workspace.resetWorkspace", json!({})).unwrap();
+        assert!(!h.state().ui.panels.rail_closed, "Reset Workspace restores it");
+        crate::menus::invoke(h.state_mut(), &ctx, "window.toggle.rail", json!({})).unwrap();
+        assert!(h.state().ui.panels.rail_closed, "the toggle command closes it too");
+    }
+
+    /// The Tools panel docks at the canvas edge it is dropped near and floats anywhere else,
+    /// always on screen.
+    #[test]
+    fn toolbar_drops_dock_at_the_edges_and_float_elsewhere() {
+        use crate::state::ToolbarPlace;
+        let area = Rect::from_min_max(pos2(40.0, 60.0), pos2(1000.0, 700.0));
+        let screen = Rect::from_min_max(pos2(0.0, 0.0), pos2(1280.0, 800.0));
+        assert_eq!(toolbar_drop_place(pos2(50.0, 300.0), pos2(30.0, 280.0), area, screen), ToolbarPlace::Start);
+        assert_eq!(toolbar_drop_place(pos2(990.0, 300.0), pos2(970.0, 280.0), area, screen), ToolbarPlace::End);
+        assert_eq!(toolbar_drop_place(pos2(500.0, 300.0), pos2(480.0, 280.0), area, screen), ToolbarPlace::Floating { x: 480.0, y: 280.0 });
+        assert_eq!(toolbar_drop_place(pos2(500.0, 300.0), pos2(-500.0, 5000.0), area, screen), ToolbarPlace::Floating { x: 0.0, y: 760.0 });
+        let odd = toolbar_drop_place(pos2(500.0, 300.0), pos2(f32::NAN, f32::INFINITY), area, screen);
+        assert!(matches!(odd, ToolbarPlace::Floating { x, y } if x.is_finite() && y.is_finite()), "{odd:?}");
+    }
+
+    /// Drag the Tools panel by its grip: it floats where it is dropped and still works there, and
+    /// dropping it at the left edge of the canvas docks it again.
+    #[test]
+    fn the_tools_panel_floats_and_docks_again() {
+        use crate::state::ToolbarPlace;
+        fn drag(h: &mut egui_kittest::Harness<'static, PhotocraftApp>, from: Pos2, to: Pos2) {
+            h.input_mut().events.push(egui::Event::PointerMoved(from));
+            h.run_steps(1);
+            let button = |pos, pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE };
+            h.input_mut().events.push(button(from, true));
+            h.run_steps(1);
+            for i in 1..=8 {
+                h.input_mut().events.push(egui::Event::PointerMoved(from + (to - from) * (i as f32 / 8.0)));
+                h.run_steps(1);
+            }
+            h.input_mut().events.push(button(to, false));
+            h.run_steps(3);
+        }
+        let mut h = whole_app(true, true);
+        assert_eq!(h.state().ui.panels.toolbar_place, ToolbarPlace::Start);
+        let grip = h.get_by_label("Move Tools panel").rect().center();
+        drag(&mut h, grip, pos2(600.0, 300.0));
+        let ToolbarPlace::Floating { x, y } = h.state().ui.panels.toolbar_place else { panic!("floats: {:?}", h.state().ui.panels.toolbar_place) };
+        // The panel docked at the window's left edge, so the grip's offset is its x.
+        assert!((x - (600.0 - grip.x)).abs() < 2.0 && y < 300.0, "lands under the pointer: {x}, {y}");
+        // The floating panel has its grip too: it moves on.
+        let grip = h.get_by_label("Move Tools panel").rect().center();
+        assert!((grip.x - 600.0).abs() < 4.0 && (grip.y - 300.0).abs() < 4.0, "the floating panel is drawn where it was dropped: {grip:?}");
+        let canvas = h.state().last_canvas_rect;
+        drag(&mut h, grip, pos2(canvas.left() + 10.0, 400.0));
+        assert_eq!(h.state().ui.panels.toolbar_place, ToolbarPlace::Start, "dropped at the canvas edge it docks");
+        // Reset Workspace docks it on the left too.
+        h.state_mut().ui.panels.toolbar_place = ToolbarPlace::Floating { x: 300.0, y: 200.0 };
+        let ctx = h.ctx.clone();
+        crate::menus::invoke(h.state_mut(), &ctx, "window.workspace.resetWorkspace", json!({})).unwrap();
+        assert_eq!(h.state().ui.panels.toolbar_place, ToolbarPlace::Start);
+    }
+
     /// Settings saved before the flags existed load with both on.
     #[test]
     fn panels_without_the_flags_deserialize_with_both_on() {
@@ -5571,13 +6037,36 @@ mod group_drag_selection_tests {
         assert_eq!(layer_drop_payload(a.0, group, "below", &[]), json!({"layer": 10, "target": 20, "position": "below"}));
     }
 
+    /// Layer-bounds thumbnails keep their content's shape in the 32 pt cell: a wide strip is
+    /// wide, a tall one tall, left-aligned in Photoshop's themes (the name follows its right edge)
+    /// and centred in the others.
     #[test]
-    fn layer_thumb_of_a_tall_document_fills_the_height() {
-        let cell = Rect::from_min_size(pos2(10.0, 20.0), vec2(30.0, 30.0));
-        let (r, uv) = layer_thumb_fit(cell, 100, 400);
-        assert_eq!((r.top(), r.bottom()), (cell.top(), cell.bottom()));
-        assert!((r.width() - 7.5).abs() < 1e-3, "{r:?}");
-        assert!((uv.width() - 0.25).abs() < 1e-3 && (uv.height() - 1.0).abs() < 1e-3, "{uv:?}");
+    fn layer_thumbs_take_the_shape_of_their_content() {
+        let cell = Rect::from_min_size(pos2(10.0, 20.0), vec2(32.0, 32.0));
+        let wide = fit_in_cell(cell, 200.0, 100.0, true);
+        assert_eq!((wide.left(), wide.width(), wide.height()), (10.0, 32.0, 16.0));
+        assert_eq!(wide.center().y, cell.center().y);
+        let tall = fit_in_cell(cell, 64.0, 256.0, true);
+        assert_eq!((tall.left(), tall.width(), tall.top(), tall.bottom()), (10.0, 8.0, cell.top(), cell.bottom()));
+        let centred = fit_in_cell(cell, 64.0, 256.0, false);
+        assert_eq!(centred.center().x, cell.center().x);
+        // A hairline still gets a visible thumbnail, and nonsense sizes stay inside the cell.
+        assert!(fit_in_cell(cell, 10_000.0, 1.0, true).height() >= 4.0);
+        for (w, h) in [(f32::NAN, 5.0), (0.0, 0.0), (f32::INFINITY, 1.0)] {
+            let r = fit_in_cell(cell, w, h, true);
+            assert!(cell.expand(0.5).contains_rect(r), "{w} x {h}: {r:?}");
+        }
+    }
+
+    /// Group rows are much shorter than layer rows in Photoshop's themes.
+    #[test]
+    fn group_rows_are_shorter_than_layer_rows() {
+        let group = Layer::group("G", vec![]);
+        let pixel = Layer::raster("L", photocraft_color::PixelFormat::RGBA8);
+        assert_eq!(layer_row_height(&pixel, true), PRO_ROW_H);
+        assert_eq!(layer_row_height(&group, true), PRO_GROUP_ROW_H);
+        const { assert!(PRO_GROUP_ROW_H < PRO_ROW_H * 0.7) };
+        assert_eq!(layer_row_height(&group, false), layer_row_height(&pixel, false));
     }
 }
 

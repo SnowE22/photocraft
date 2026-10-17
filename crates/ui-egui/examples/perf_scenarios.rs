@@ -927,6 +927,81 @@ fn algorithm_scenarios(b: &mut Bench, sz: &Sizes) {
             Ok(ms(t) + b.refresh_rect(s, photocraft_geom::Rect::EMPTY)?)
         });
     }
+    large_brush_frame_scenario(b, sz);
+}
+
+/// A soft blob tip `w × h` with some grain, as an imported sampled brush has (`brush` JSON).
+fn blob_tip_json(w: u32, h: u32) -> Value {
+    let data: Vec<f32> = (0..h)
+        .flat_map(|y| {
+            (0..w).map(move |x| {
+                let (u, v) = ((x as f32 + 0.5) / w as f32 * 2.0 - 1.0, (y as f32 + 0.5) / h as f32 * 2.0 - 1.0);
+                let r = (u * u + v * v).sqrt();
+                ((1.0 - r) * 1.6).clamp(0.0, 1.0) * (0.6 + 0.4 * ((x * 7 + y * 13) % 11) as f32 / 10.0)
+            })
+        })
+        .collect();
+    json!({"sampled": {"width": w, "height": h, "data": data}})
+}
+
+/// P60: one frame of a stroke with a large imported-style brush (a 500 px sampled tip at 3 %
+/// spacing whose angle follows the stroke, a Dual Brush and a Height texture): the live stroke
+/// renders the frame's two pointer samples of a fast (1500 px/s) stroke and the canvas
+/// re-composites what changed.
+fn large_brush_frame_scenario(b: &mut Bench, sz: &Sizes) {
+    let name = "brush live frame: 500 px sampled 3 %, dual + texture (push + refresh)";
+    if !b.wanted(name) {
+        return;
+    }
+    let (w, h) = sz.big_photo;
+    let mut s = Session::new();
+    if let Err(e) = exec(&mut s, "file.new", json!({"width": w, "height": h, "background": "white"})).and_then(|_| exec(&mut s, "layer.new.layer", json!({"name": "paint"}))) {
+        b.errors.push((name.into(), e));
+        return;
+    }
+    let _ = b.refresh(&s, true);
+    let brush = json!({
+        "tip": blob_tip_json(338, 294),
+        "spacing": 0.03,
+        "shapeDynamics": {"enabled": true, "size": {"control": "penPressure", "minimum": 0.15}, "angle": {"control": "direction"}, "flipXJitter": true},
+        "transfer": {"enabled": true, "flow": {"control": "penPressure"}},
+        "dualBrush": {"enabled": true, "tip": blob_tip_json(158, 89), "size": 257.0, "spacing": 0.1, "count": 3, "scatter": 1.05, "flip": true},
+        "texture": {"enabled": true, "mode": "height", "depth": 0.14, "contrast": 0.2},
+    });
+    let (fw, fh) = (f64::from(w), f64::from(h));
+    let point = |k: usize| {
+        let x = fw * 0.1 + 12.5 * k as f64;
+        [x % (fw * 0.8) + fw * 0.1, fh * 0.5 + fh * 0.2 * (k as f64 / 40.0).sin(), 0.8 + 0.2 * (k as f64 / 9.0).sin()]
+    };
+    let p = json!({"points": [point(0)], "size": 500, "color": "#20304a", "smoothing": 0.0, "brush": brush});
+    let mut live = match photocraft_engine::brush_cmds::LiveStroke::begin(&s, &p) {
+        Ok(l) => l,
+        Err(e) => {
+            b.errors.push((name.into(), e.to_string()));
+            return;
+        }
+    };
+    let frames = b.reps.max(60);
+    b.time(name, &mut s, frames, true, |b, _, i| {
+        use photocraft_engine::paint::StrokePoint;
+        let pts: Vec<StrokePoint> = [point(2 * i + 1), point(2 * i + 2)].iter().map(|q| StrokePoint::new(q[0], q[1], q[2] as f32)).collect();
+        let t = Instant::now();
+        let dmg = live.push(&pts).map_err(|e| e.to_string())?;
+        let doc = live.doc.clone();
+        let r = dmg.intersect(&doc.bounds());
+        if !r.is_empty() {
+            match &b.gpu {
+                Some((g, rs)) => {
+                    g.refresh(doc.id.0, &doc, Some(r), None);
+                    let _ = rs.device.poll(eframe::wgpu::PollType::Wait { submission_index: None, timeout: None });
+                }
+                None => {
+                    std::hint::black_box(photocraft_compose::render(&doc, r));
+                }
+            }
+        }
+        Ok(ms(t))
+    });
 }
 
 /// A source-resolution Liquify brush update on the visible part of a 3500×2200 layer.

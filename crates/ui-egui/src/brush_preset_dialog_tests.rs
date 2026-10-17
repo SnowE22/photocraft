@@ -64,7 +64,8 @@ fn every_new_preset_button_opens_the_dialog_and_cancel_saves_nothing() {
     h.get_by_label("Create new brush from these settings").click();
     h.run_steps(3);
     cancel(&mut h);
-    h.state_mut().ui.brush_tab = 1;
+    // The Brushes panel, a dock panel of its own.
+    crate::brush_panel::show_brushes_panel(h.state_mut());
     h.run_steps(3);
     h.get_by_label("Create new brush from the current settings").click();
     h.run_steps(3);

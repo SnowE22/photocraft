@@ -1,6 +1,6 @@
 # UI parity: tools, handles, modifiers and feel
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (smart filter reordering by drag; smart object perspective row corrected to done, #426; Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows; stale missing-tool rows corrected: Color Replacement, Red Eye and the Add/Delete Anchor Point pair are live toolbar tools, Frame landed; no percentage changed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-17 · **Change:** minor (status bar and scrollbars as in Photoshop's document window, Tools panel between dock columns, ⌘-click layer pick, disclosure modifier clicks, Blend If split handles, thin gradients; smart filter reordering by drag; smart object perspective row corrected to done, #426; Free Transform H/V skew fields; toolbar tool shortcuts can be reassigned; ⇧-dragged guides land on ruler ticks; layer and selection keys; tool keys; spring-loaded tool letters; type formatting keys; Pen Auto Add/Delete, #4144; smart filter rows; stale missing-tool rows corrected: Color Replacement, Red Eye and the Add/Delete Anchor Point pair are live toolbar tools, Frame landed; no percentage changed) · **Target:** Adobe Photoshop 2026
 
 How PhotoCraft's direct manipulation compares with Photoshop 2026 (27.11.0): the toolbox, the
 handles and modifier keys of each gesture, nudging, snapping, numeric precision, navigation,
@@ -53,6 +53,14 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Group remembers the last tool used | partial | L always resets to Lasso (#2608) |
 | Press-and-hold or click-drag opens the flyout | missing | right-click only (#2301) |
 | Edit Toolbar customization | done | `edit.toolbar` |
+| Tools panel moves: drag its grip to float it, drop it at either side of the canvas to dock it; Reset Workspace docks it on the left | done (2026-10-16) | `panels.rs` `toolbar_drop_place`, `Panels::toolbar_place` |
+| Tools panel docks among the panels: drag its grip over a customized dock to drop it beside a column (between two columns) at its own width | done (2026-10-17) | `panel_docking::dock_tools`, `ToolbarPlace::Dock` |
+| Status bar belongs to the document window: 22 pt tall, the docks and Tools panel reach the window bottom, the horizontal scrollbar sits in its free space, the vertical one beside the canvas; status messages fade in a card over the canvas | done (2026-10-17) | `scrollbars::show_outside`, `chrome_ui::status_toast` |
+| Auto-scroll and scrolling reach the image edge: the scrollbars no longer cover the canvas's last 12 pt | done (2026-10-17) | `scrollbars::outside` |
+| ⌘-click on the canvas with another tool selects the layer under the pointer (temporary Move tool) | done (2026-10-17) | `canvas::move_press_picks` |
+| Layers disclosure triangles: ⌘-click sets every group beside it, ⌥-click it and its subgroups, ⌘⌥ both, within its folder; lighter row dividers | done (2026-10-17) | `layer.setExpanded {scope}` |
+| Blend If: ⌥-drag splits a handle; a split handle's halves move alone without ⌥; a whole one moves as one | done (2026-10-17) | `layer_style::drag_splits` |
+| Live gradient: short drags make thin gradients (handles not held to the Scale field's 10 %); Space while drawing moves the whole line | done (2026-10-17) | `gradient_fill_cmds::HANDLE_SCALE_RANGE`, `gradient_ui::set_space` |
 
 ## Free Transform (⌘T) and transform handles
 
@@ -208,8 +216,12 @@ Paragraph; the rest open as in-app floating windows.
 | UI scale presets | missing | UI-217-9, #2492 |
 | History snapshots: camera button, snapshot rows (click returns, rename, delete), `history.*Snapshot` commands | partial | `history_cmds.rs`, `snapshot_rows` in `panels.rs`; New Snapshot dialog, first snapshot and History Options to come (#2966) |
 | Themes: Photoshop's four greys | partial | five themes; #2661 |
-| Document tabs: overflow, context menu, reorder | done | UI-217-6; middle-click close #2570 |
+| Document tabs: overflow, context menu, reorder | done | UI-217-6; middle-click close #2570; the menu has Close, Close All, Close Others, New Document and Open Document, and the empty strip offers New, Open and Close All (2026-10-16) |
 | Layers panel: wheel steps blend modes, drop on New/Trash | partial | UI-217-14 |
+| Layers panel look (Photoshop themes): 41 pt layer rows and 25 pt group rows with a folder glyph and thin chevron, rows flush with label-coloured eye cells split by a darker line, the plain almond eye with the whole eye column as its hit area, Layer Bounds thumbnails at the content's own shape, full-tile fill thumbnails, 10.5 pt names | done (2026-10-16) | `panels.rs` `layer_row`, `layer_row_ui::paint_eye` |
+| Color panel: only the field and hue strip (no hex/RGB readout), filling its panel docked or floating, after any layout change | done (2026-10-16) | `color_field`, `panel_docking::body` |
+| Brushes is its own panel (Window › Brushes), groupable with any other; Brush Settings keeps a Brushes button that opens it | done (2026-10-16) | `dock::Group::Brushes`, `brush_panel::show_brushes_panel` |
+| Docked panel column has no fixed maximum width; the icon rail beside the dock can be closed (right-click › Close) | done (2026-10-16) | `dock_width_range`, `Panels::rail_closed` |
 | Smart filter rows: click selects, drag onto another smart object moves, ⌥-drag copies, drag onto Delete removes | done | `smart_ui.rs`, `layer.smartFilter.transfer` (#4271) |
 | Smart filter rows: drag up or down the stack to reorder (a line marks the drop; the bottom filter is applied first) | done | `smart_ui.rs` `reorder_drop`, `layer.smartFilter.move` |
 
@@ -217,6 +229,8 @@ Paragraph; the rest open as in-app floating windows.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-17 | minor | Status bar in the document window with the horizontal scrollbar in it, docks to the window bottom, scrollbars outside the canvas; Tools panel docks between dock columns; ⌘-click picks layers; ⌘/⌥/⌘⌥ disclosure clicks; Blend If split handles; thin live gradients and Space reposition; no percentage changed |
+| 2026-10-16 | minor | Layers panel rows match Photoshop's metrics and glyphs, Layer Bounds thumbnails, Color panel readout removed and its field always fills, Brushes split from Brush Settings, movable Tools panel, dock width uncapped, closable icon rail, document tab menu gains New/Open; no percentage changed |
 | 2026-10-13 | minor | Stale "missing tool" rows corrected against main: Color Replacement (`paint.colorReplacement`), Red Eye (`paint.redEye`) and Add/Delete Anchor Point (the P flyout cycle) are live toolbar tools, so only Art History Brush is missing; no percentage or estimate changed |
 | 2026-10-13 | minor | Smart object perspective (non-affine) corrected to done: #426 landed four-corner placements with PSD round trip; scorecard FILE-215-6 flipped |
 | 2026-10-10 | major | First version, from a source audit against Photoshop 2026 27.11.0's shortcuts file and the open issues |

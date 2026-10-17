@@ -316,17 +316,19 @@ fn commands_fail_gracefully() {
     s.execute(SET, json!({"scale": 1e30, "angle": 1e9, "offset": [1e4, -1e4]})).unwrap();
     let g = s.execute(GET, json!({})).unwrap();
     assert!(g["scale"].as_f64().unwrap().is_finite() && g["from"][0].as_f64().unwrap().is_finite());
-    // Scale stays within Photoshop's 10–150 %, also for a handle dragged far away.
+    // A typed scale stays within Photoshop's 10–150 %; handles reach further, up to 10 000 %.
     assert!((g["scale"].as_f64().unwrap() - 150.0).abs() < 1e-3, "{g}");
     let g = s.execute(SET, json!({"from": [0, 0], "to": [1e6, 0]})).unwrap();
-    assert!((g["scale"].as_f64().unwrap() - 150.0).abs() < 1e-3, "{g}");
+    assert!((g["scale"].as_f64().unwrap() - 10_000.0).abs() < 1e-2, "{g}");
     let g = s.execute(SET, json!({"scale": 1})).unwrap();
     assert!((g["scale"].as_f64().unwrap() - 10.0).abs() < 1e-3, "{g}");
 }
 
-/// Dragging one handle past the scale range stops it; the other handle stays put (#1243).
+/// A handle dragged close to the other makes a thin gradient: it lands where it was dropped and
+/// the other handle stays put (Photoshop's live gradient isn't held to the Scale field's 10 %).
+/// Dragged past the handle range, it stops and the other still stays (#1243).
 #[test]
-fn a_clamped_handle_drag_leaves_the_other_handle_alone() {
+fn a_short_or_clamped_handle_drag_leaves_the_other_handle_alone() {
     let pt = |g: &Value, k: &str| [g[k][0].as_f64().unwrap(), g[k][1].as_f64().unwrap()];
     let close = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 1e-2 && (a[1] - b[1]).abs() < 1e-2;
     for style in STYLES {
@@ -334,18 +336,27 @@ fn a_clamped_handle_drag_leaves_the_other_handle_alone() {
         {
             let mut s = session(8, "white");
             s.execute(CREATE, json!({"from": from, "to": to, "style": style})).unwrap();
-            // End dragged almost onto the start: far below 10 %.
+            // End dragged almost onto the start: far below 10 %, and it lands there.
             let g = s.execute(SET, json!({"to": short})).unwrap();
-            assert!((g["scale"].as_f64().unwrap() - 10.0).abs() < 1e-3, "{style}: {g}");
+            assert!(g["scale"].as_f64().unwrap() < 10.0, "{style}: {g}");
             assert!(close(pt(&g, "from"), from), "{style}: start moved to {:?}", pt(&g, "from"));
-            // The end stops on the line towards the pointer.
-            let e = pt(&g, "to");
-            assert!((e[0] - from[0]) * (short[0] - from[0]) >= 0.0 && (e[1] - from[1]) * (short[1] - from[1]) >= 0.0, "{style}: {e:?}");
+            assert!(close(pt(&g, "to"), short), "{style}: end at {:?}", pt(&g, "to"));
+            // A thin gradient drawn from scratch keeps both points where the drag put them.
+            let mut s = session(8, "white");
+            s.execute(CREATE, json!({"from": from, "to": short, "style": style})).unwrap();
+            let g = s.execute(GET, json!({})).unwrap();
+            assert!(close(pt(&g, "from"), from) && close(pt(&g, "to"), short), "{style}: {g}");
             // And the same for the start handle.
             let mut s = session(8, "white");
             s.execute(CREATE, json!({"from": from, "to": to, "style": style})).unwrap();
             let g = s.execute(SET, json!({"from": short_start})).unwrap();
             assert!(close(pt(&g, "to"), to), "{style}: end moved: {g}");
+            // Far past the range: the end stops on the line towards the pointer, the start stays.
+            let far = [from[0] + (to[0] - from[0]) * 1e4, from[1] + (to[1] - from[1]) * 1e4];
+            let g = s.execute(SET, json!({"from": from, "to": to})).and_then(|_| s.execute(SET, json!({"to": far}))).unwrap();
+            assert!(close(pt(&g, "from"), from), "{style}: start moved to {:?}", pt(&g, "from"));
+            let e = pt(&g, "to");
+            assert!((e[0] - from[0]) * (far[0] - from[0]) >= 0.0 && (e[1] - from[1]) * (far[1] - from[1]) >= 0.0, "{style}: {e:?}");
         }
     }
 }

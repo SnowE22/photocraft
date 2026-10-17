@@ -428,3 +428,43 @@ fn dual_brush_spacing_comes_from_its_tip() {
     assert!((spacing(dual(tip.clone().with("Spcn", prc(10.0)))) - 0.10).abs() < 1e-6, "the tip's 10 %, not the outer 100 %");
     assert!((spacing(dual(tip)) - 1.0).abs() < 1e-6, "no tip spacing: the outer value");
 }
+
+/// Photoshop's Capture Brush Size in Preset (`useBrushSize`) and Include Tool Settings (a
+/// `toolOptions` object) decide what picking the preset changes; most downloaded brushes leave both
+/// off, so picking one keeps the tool's size, opacity, flow and mode.
+#[test]
+fn captured_size_and_tool_settings_follow_the_file() {
+    let preset = |name: &str, use_size: Option<bool>, tool: Option<Descriptor>| {
+        let mut d = Descriptor::new("brushPreset").with("Nm  ", t(name)).with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 1700.0))));
+        if let Some(v) = use_size {
+            d = d.with("useBrushSize", Value::Boolean(v));
+        }
+        if let Some(to) = tool {
+            d = d.with("toolOptions", Value::Descriptor(to));
+        }
+        d
+    };
+    let multiply = Descriptor::new("currentToolOptions").with("Md  ", en("BlnM", "multiply")).with("Opct", Value::Integer(90));
+    let behind = Descriptor::new("currentToolOptions").with("Md  ", en("BlnM", "behind"));
+    let presets = [
+        preset("Loose", Some(false), None),
+        preset("Sized", Some(true), Some(multiply)),
+        preset("Older file", None, None),
+        preset("Behind", Some(false), Some(behind)),
+    ];
+    let bytes = write_v6(2, &[], &[], &presets, false).unwrap();
+    let imported = read_abr(&bytes, "Test").unwrap();
+    let p = &imported.presets;
+    assert_eq!((p[0].captures.size, p[0].captures.tool_settings), (false, false), "useBrushSize off, no tool options");
+    assert_eq!((p[1].captures.size, p[1].captures.tool_settings), (true, true));
+    assert_eq!(p[1].brush.mode, photocraft_color::BlendMode::Multiply, "the tool's blend mode comes with its settings");
+    assert!((p[1].brush.opacity - 0.9).abs() < 1e-6);
+    assert_eq!((p[2].captures.size, p[2].captures.tool_settings), (true, false), "a file without the key captured the size");
+    assert_eq!(p[3].brush.mode, photocraft_color::BlendMode::Normal, "Behind has no brush mode");
+    assert!(imported.warnings.iter().any(|w| w.contains("Behind or Clear")), "{:?}", imported.warnings);
+    assert!(!imported.warnings.iter().any(|w| w.contains("useBrushSize")), "useBrushSize is mapped now: {:?}", imported.warnings);
+    // Picking the uncaptured preset keeps the tool's size, as Photoshop does.
+    let current = BrushSettings { size: 40.0, opacity: 0.5, ..Default::default() };
+    let picked = p[0].picked_over(&current);
+    assert_eq!((picked.size, picked.opacity), (40.0, 0.5));
+}

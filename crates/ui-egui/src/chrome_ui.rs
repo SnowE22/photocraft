@@ -1,7 +1,7 @@
 //! Photoshop 2026 window chrome details: the status bar's info field and its "Show" menu, and the
 //! Home button at the start of the options bar.
 
-use egui::{RichText, Sense, Stroke, vec2};
+use egui::{RichText, Sense, vec2};
 use photocraft_doc::{Document, LayerContent};
 use serde::{Deserialize, Serialize};
 
@@ -143,8 +143,6 @@ pub fn status_bar_pro(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let (Some(st), Some(i)) = (app.session.active(), app.session.active_index()) else {
         ui.label(RichText::new(tl!("No document")).color(t.text_dim));
-        // A command run with no document open still reports here (#1567: File › Automate › Batch).
-        status_message(app, ui, &t);
         return;
     };
     let text = status_info_text_with_units(
@@ -180,18 +178,63 @@ pub fn status_bar_pro(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
         }
     });
-    status_message(app, ui, &t);
 }
 
-/// The latest status message after a separator, in the warning colour when it is an error.
-fn status_message(app: &PhotocraftApp, ui: &mut egui::Ui, t: &Tokens) {
-    if app.ui.status.is_empty() {
+/// How long a status message stays up (seconds): an error longer.
+const STATUS_SECS: f64 = 5.0;
+const STATUS_ERROR_SECS: f64 = 10.0;
+/// The last part of that time it fades out.
+const STATUS_FADE_SECS: f64 = 0.6;
+
+/// Is the status message an error (shown in the warning colour, and longer)?
+pub fn status_is_error(app: &PhotocraftApp) -> bool {
+    app.ui.status_error || app.ui.status.starts_with("Couldn")
+}
+
+/// The latest status message, in a small card at the bottom left of the document `area` for a few
+/// seconds after it changes (errors longer, in the warning colour), then faded out. The status
+/// bar's free space holds the horizontal scrollbar, as in Photoshop. The message stays readable
+/// over the control channel (`ui.inspect`'s `status`).
+pub fn status_toast(app: &PhotocraftApp, ctx: &egui::Context, area: egui::Rect) {
+    if app.ui.status.is_empty() || !area.is_positive() {
         return;
     }
-    let (r, _) = ui.allocate_exact_size(vec2(17.0, 16.0), Sense::hover());
-    ui.painter().line_segment([r.center_top(), r.center_bottom()], Stroke::new(1.0, t.separator));
-    let is_err = app.ui.status_error || app.ui.status.starts_with("Couldn");
-    ui.label(RichText::new(&app.ui.status).color(if is_err { t.warning } else { t.text_faint }));
+    let id = egui::Id::new("pc-status-toast");
+    let now = ctx.input(|i| i.time);
+    let is_err = status_is_error(app);
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        (&app.ui.status, is_err).hash(&mut h);
+        h.finish()
+    };
+    let since = match ctx.data(|d| d.get_temp::<(u64, f64)>(id)) {
+        Some((k, t)) if k == key => t,
+        _ => {
+            ctx.data_mut(|d| d.insert_temp(id, (key, now)));
+            now
+        }
+    };
+    let life = if is_err { STATUS_ERROR_SECS } else { STATUS_SECS };
+    let left = life - (now - since);
+    if left <= 0.0 {
+        return;
+    }
+    ctx.request_repaint_after(std::time::Duration::from_secs_f64(left.clamp(0.01, STATUS_FADE_SECS / 6.0)));
+    let alpha = (left / STATUS_FADE_SECS).clamp(0.0, 1.0) as f32;
+    let t = Tokens::get(ctx);
+    egui::Area::new(id.with("card"))
+        .order(egui::Order::Foreground)
+        .pivot(egui::Align2::LEFT_BOTTOM)
+        .fixed_pos(area.left_bottom() + vec2(10.0, -10.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            ui.set_opacity(alpha);
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.set_max_width((area.width() * 0.6).max(120.0));
+                ui.label(RichText::new(&app.ui.status).color(if is_err { t.warning } else { t.text }));
+            });
+        });
 }
 
 /// Home button at the very start of Photoshop 2026's options bar: toggles the Home (start)
@@ -445,10 +488,20 @@ mod tests {
         let e = crate::menus::invoke(&mut app, &egui::Context::default(), "file.automate.batch", json!({})).unwrap_err();
         app.ui.status = e.clone();
         app.ui.status_error = true;
-        let mut h = Harness::builder().with_size(vec2(900.0, 40.0)).build_ui_state(|ui, app| status_bar_pro(app, ui), app);
+        // The message shows in a card over the document area (the status bar's free space is the
+        // horizontal scrollbar, as in Photoshop).
+        let mut h = Harness::builder()
+            .with_size(vec2(900.0, 300.0))
+            .build_ui_state(
+                |ui, app| {
+                    status_bar_pro(app, ui);
+                    status_toast(app, ui.ctx(), ui.max_rect());
+                },
+                app,
+            );
         h.run_steps(2);
         assert!(h.query_by_label("No document").is_some());
-        assert!(h.query_by_label(&e).is_some(), "status bar shows {e:?}");
+        assert!(h.query_by_label(&e).is_some(), "the status card shows {e:?}");
     }
 
     #[test]

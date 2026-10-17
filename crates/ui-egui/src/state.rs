@@ -376,6 +376,23 @@ impl Tool {
     }
 }
 
+/// Where the Tools panel is: docked at the start edge of the window (left; Photoshop's
+/// default), docked at the end edge (beside the panel dock), or floating with its top-left corner
+/// at `x`, `y` (screen points).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolbarPlace {
+    #[default]
+    Start,
+    End,
+    Floating {
+        x: f32,
+        y: f32,
+    },
+    /// In the customized panel dock, e.g. between two dock columns (the dock's `tools` panel).
+    Dock,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Panels {
     pub layers: bool,
@@ -392,9 +409,17 @@ pub struct Panels {
     /// Window › Character / Paragraph: the Character | Paragraph dock group (#150).
     #[serde(default)]
     pub character: bool,
+    /// Window › Brushes: the Brushes panel, a dock panel of its own like Photoshop's (Brush
+    /// Settings stays a separate floating panel).
+    #[serde(default)]
+    pub brushes: bool,
     /// The toolbar's header chevron: two columns even when one fits (#1197).
     #[serde(default)]
     pub toolbar_double: bool,
+    /// Where the Tools panel sits. Like Photoshop's, it can be dragged by its grip to float
+    /// anywhere, and docked again at either side of the canvas.
+    #[serde(default)]
+    pub toolbar_place: ToolbarPlace,
     /// The right-hand panel dock. ⇧Tab hides and shows it, as in Photoshop (#1313).
     #[serde(default = "yes")]
     pub dock: bool,
@@ -404,6 +429,11 @@ pub struct Panels {
     /// The right dock's icon rail. An app that embeds PhotoCraft's UI can hide it for a simpler view.
     #[serde(default = "yes")]
     pub rail: bool,
+    /// The user closed the icon rail (its right-click menu, `window.toggle.rail`). Unlike `rail`,
+    /// which the embedding host owns, this is part of the workspace: Reset Workspace brings the
+    /// rail back.
+    #[serde(default)]
+    pub rail_closed: bool,
     /// The title bar with the in-window menus. An app that embeds PhotoCraft's UI and draws its own
     /// bar can hide it; the caption buttons of a custom title bar go with it.
     #[serde(default = "yes")]
@@ -428,10 +458,13 @@ impl Default for Panels {
             status_bar: true,
             brush_settings: false,
             character: false,
+            brushes: false,
             toolbar_double: false,
+            toolbar_place: ToolbarPlace::Start,
             dock: true,
             hidden_by_tab: None,
             rail: true,
+            rail_closed: false,
             menu_bar: true,
             gradient_editor: false,
         }
@@ -1031,6 +1064,8 @@ pub struct DockTabs {
     pub history: usize,
     /// Character | Paragraph.
     pub character: usize,
+    /// Brushes (a group of one).
+    pub brushes: usize,
 }
 
 /// Color panel state.

@@ -1231,8 +1231,17 @@ fn blend_quad(v: Option<&Value>) -> [u8; 4] {
     q
 }
 
+/// Does a Blend If drag that starts on a handle whose halves are at `low` and `high` move only the
+/// half grabbed? With Alt (splitting a whole handle), or when the handle is already split.
+fn drag_splits(alt: bool, low: u8, high: u8) -> bool {
+    alt || low != high
+}
+
 /// A Blend If slider: a black-to-white ramp with a black and a white handle, each split in two
-/// halves by Alt-dragging (the layer fades between them). Returns whether `q` changed.
+/// halves by an Alt-drag (the layer fades between them). As in Photoshop, the split is decided when
+/// the drag starts: Alt on a whole handle drags one half off it, a handle already split moves just
+/// the half grabbed (no Alt needed), and a whole handle without Alt moves as one. Returns whether
+/// `q` changed.
 fn blend_if_bar(ui: &mut egui::Ui, id: egui::Id, q: &mut [u8; 4]) -> bool {
     let t = Tokens::get(ui.ctx());
     let w = ui.available_width().clamp(120.0, 320.0);
@@ -1252,24 +1261,40 @@ fn blend_if_bar(ui: &mut egui::Ui, id: egui::Id, q: &mut [u8; 4]) -> bool {
     // Handles: triangles under the ramp; a split handle shows two half triangles.
     let mut changed = false;
     let drag_key = id.with("handle");
+    // Which handles are split (black, white): Alt-click splits one in place, so it shows as two
+    // halves even while they sit at the same level, as in Photoshop.
+    let split_key = id.with("split");
+    let mut split_flags: [bool; 2] = ui.data(|d| d.get_temp(split_key)).unwrap_or_default();
+    let alt = ui.input(|i| i.modifiers.alt);
+    let nearest = |x: f32| (0..4).min_by(|a, b| (x_of(q[*a]) - x).abs().total_cmp(&(x_of(q[*b]) - x).abs())).unwrap_or(0);
+    if resp.clicked()
+        && alt
+        && let Some(pos) = resp.interact_pointer_pos()
+    {
+        split_flags[nearest(pos.x) / 2] = true;
+    }
     if resp.drag_started()
         && let Some(pos) = resp.interact_pointer_pos()
     {
-        let near = (0..4).min_by(|a, b| (x_of(q[*a]) - pos.x).abs().total_cmp(&(x_of(q[*b]) - pos.x).abs())).unwrap_or(0);
+        let near = nearest(pos.x);
         // Between two coinciding halves, pick by the side of the pointer.
         let near = match near {
             0 | 1 if q[0] == q[1] => usize::from(pos.x > x_of(q[0])),
             2 | 3 if q[2] == q[3] => 2 + usize::from(pos.x > x_of(q[2])),
             n => n,
         };
-        ui.data_mut(|d| d.insert_temp(drag_key, near));
+        let pair = if near < 2 { 0 } else { 2 };
+        let split = drag_splits(alt || split_flags[pair / 2], q[pair], q[pair + 1]);
+        if split {
+            split_flags[pair / 2] = true;
+        }
+        ui.data_mut(|d| d.insert_temp(drag_key, (near, split)));
     }
     if resp.dragged()
-        && let (Some(h), Some(pos)) = (ui.data(|d| d.get_temp::<usize>(drag_key)), resp.interact_pointer_pos())
+        && let (Some((h, split)), Some(pos)) = (ui.data(|d| d.get_temp::<(usize, bool)>(drag_key)), resp.interact_pointer_pos())
         && let Some(cur) = q.get(h).copied()
     {
         let target = v_of(pos.x);
-        let split = ui.input(|i| i.modifiers.alt);
         let mut n = *q;
         let pair = if h < 2 { 0 } else { 2 };
         if split {
@@ -1297,6 +1322,11 @@ fn blend_if_bar(ui: &mut egui::Ui, id: egui::Id, q: &mut [u8; 4]) -> bool {
             changed = true;
         }
     }
+    // Halves dragged back together join again once released.
+    if resp.drag_stopped() {
+        split_flags = rejoined(split_flags, q);
+    }
+    ui.data_mut(|d| d.insert_temp(split_key, split_flags));
     let base = ramp.bottom() + 1.0;
     let tri = |x: f32, half: i8, fill: Color32| {
         let (l, r) = match half {
@@ -1311,14 +1341,25 @@ fn blend_if_bar(ui: &mut egui::Ui, id: egui::Id, q: &mut [u8; 4]) -> bool {
     let light = Color32::from_gray(240);
     for (pair, fill) in [(0usize, dark), (2, light)] {
         let (a, b) = (q[pair], q[pair + 1]);
-        if a == b {
+        if !split_flags[pair / 2] && a == b {
             tri(x_of(a), 0, fill);
         } else {
-            tri(x_of(a), -1, fill);
-            tri(x_of(b), 1, fill);
+            // Split: two halves, with a small gap while they sit at the same level.
+            let gap = if a == b { SPLIT_GAP } else { 0.0 };
+            tri(x_of(a) - gap, -1, fill);
+            tri(x_of(b) + gap, 1, fill);
         }
     }
     changed
+}
+
+/// Half the gap between the two halves of a split Blend If handle at one level, in points.
+const SPLIT_GAP: f32 = 1.5;
+
+/// The split flags once a drag is released: a handle whose halves are back at one level is whole
+/// again (Photoshop joins them when they touch).
+fn rejoined(flags: [bool; 2], q: &[u8; 4]) -> [bool; 2] {
+    [flags[0] && q[0] != q[1], flags[1] && q[2] != q[3]]
 }
 
 fn parse_hex(s: &str) -> Color32 {
@@ -1711,6 +1752,24 @@ mod tests {
             assert_eq!(got.excluded_channels, 0b1);
             assert_eq!(got.blend_if.get(gray)[0], BlendRange { black: [10, 30], white: [255, 255] }, "{mode}");
         }
+    }
+
+    /// Photoshop's split handles: Alt splits a whole handle; a split one moves half by half
+    /// without Alt; a whole one without Alt moves as one.
+    /// An Alt-clicked handle shows split at one level; halves released together join again.
+    #[test]
+    fn split_handles_rejoin_when_their_halves_meet() {
+        assert_eq!(rejoined([true, true], &[30, 30, 200, 240]), [false, true]);
+        assert_eq!(rejoined([false, true], &[10, 40, 255, 255]), [false, false]);
+        assert_eq!(rejoined([true, false], &[10, 40, 255, 255]), [true, false]);
+    }
+
+    #[test]
+    fn blend_if_drags_split_only_when_photoshop_does() {
+        assert!(!drag_splits(false, 0, 0), "a whole handle moves as one");
+        assert!(drag_splits(true, 0, 0), "Alt splits it");
+        assert!(drag_splits(false, 20, 60), "a split handle moves half by half, no Alt needed");
+        assert!(drag_splits(true, 20, 60));
     }
 
     #[test]

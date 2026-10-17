@@ -1,6 +1,7 @@
 //! Frozen scalar rasterizer used only as a pixel oracle for the computed-tip fast path.
 use super::*;
 use crate::tile::GrayTile;
+use crate::{dab_coverage, tip_falloff};
 use photocraft_geom::Point;
 
 impl BrushContext {
@@ -129,6 +130,21 @@ impl BrushContext {
 }
 
 fn compare(ctx: &BrushContext, dab: &Dab, dual: bool, rect: Rect, with_depth: bool) {
+    compare_within(ctx, dab, dual, rect, with_depth, 0.0);
+}
+
+/// Does `rasterize_into` take its plain sampled-tip loop for this dab? That loop multiplies where
+/// the scalar one divides, so it agrees to float rounding, not bit for bit.
+fn sampled_loop(ctx: &BrushContext, dual: bool, with_depth: bool) -> bool {
+    let b = &ctx.brush;
+    let tip = if dual { ctx.dual_tip.is_some() } else { ctx.tip.is_some() };
+    let tex_tip = !dual && b.texture.enabled && b.texture.each_tip && ctx.texture.is_some();
+    let feature = !dual && (b.aliased || b.noise || b.wet_edges || tex_tip);
+    tip && !with_depth && !feature
+}
+
+/// [`compare`] allowing `tol` of difference per value (0: the same bits).
+fn compare_within(ctx: &BrushContext, dab: &Dab, dual: bool, rect: Rect, with_depth: bool, tol: f32) {
     // Reused, dirty buffers also check clearing and resizing.
     let (mut actual, mut expected) = (vec![0.75; 19], vec![0.75; 19]);
     let (mut actual_depth, mut expected_depth) = (vec![0.25; 23], vec![0.25; 23]);
@@ -136,7 +152,7 @@ fn compare(ctx: &BrushContext, dab: &Dab, dual: bool, rect: Rect, with_depth: bo
     ctx.rasterize_reference(dab, dual, rect, &mut expected, with_depth.then_some(&mut expected_depth));
     for (label, a, b) in [("coverage", actual, expected), ("depth", actual_depth, expected_depth)] {
         assert_eq!(a.len(), b.len());
-        let mismatch = a.iter().zip(&b).enumerate().find(|(_, (a, b))| a.to_bits() != b.to_bits());
+        let mismatch = a.iter().zip(&b).enumerate().find(|(_, (a, b))| if tol > 0.0 { (*a - *b).abs() > tol || a.is_nan() != b.is_nan() } else { a.to_bits() != b.to_bits() });
         assert!(mismatch.is_none(), "{label} mismatch {mismatch:?}; {dab:?}; dual={dual}, rect={rect:?}");
     }
 }
@@ -206,7 +222,8 @@ fn feature_and_exceptional_dabs_match_scalar_bits() {
                     d.angle = angle;
                     d.roundness = 0.4;
                     d.proj_scale = proj_scale;
-                    compare(&ctx, &d, dual, ctx.dab_rect(&d, dual), with_depth);
+                    let tol = if sampled_loop(&ctx, dual, with_depth) { 2e-4 } else { 0.0 };
+                    compare_within(&ctx, &d, dual, ctx.dab_rect(&d, dual), with_depth, tol);
                 }
             }
         }
@@ -240,6 +257,191 @@ fn computed_tips_match_at_pixel_and_float_boundaries() {
                     compare(&ctx, &d, false, ctx.dab_rect(&d, false), false);
                 }
             }
+        }
+    }
+}
+
+/// A soft blob with an empty border, `w × h`, with some texture inside.
+fn blob(w: u32, h: u32) -> GrayTile {
+    GrayTile::from_fn(w, h, |x, y| {
+        let (u, v) = ((x as f32 + 0.5) / w as f32 * 2.0 - 1.0, (y as f32 + 0.5) / h as f32 * 2.0 - 1.0);
+        let r = (u * u + v * v).sqrt();
+        ((1.0 - r) * 1.6).clamp(0.0, 1.0) * (0.55 + 0.45 * ((x * 7 + y * 13) % 11) as f32 / 10.0)
+    })
+}
+
+/// Every pixel a dab paints over its full rectangle lies inside its tight one.
+fn assert_inside_paint_rect(ctx: &BrushContext, d: &Dab, dual: bool) {
+    let (full, tight) = (ctx.dab_rect(d, dual), ctx.paint_rect(d, dual));
+    let mut out = Vec::new();
+    ctx.rasterize(d, dual, full, &mut out);
+    let w = full.width().max(1) as usize;
+    for (i, v) in out.iter().enumerate() {
+        let (x, y) = (full.x0 + (i % w) as i32, full.y0 + (i / w) as i32);
+        assert!(*v == 0.0 || tight.contains(x, y), "({x}, {y}) = {v} is outside {tight:?}; {d:?}");
+    }
+}
+
+#[test]
+fn large_rotated_tips_match_scalar_and_stay_in_their_rects() {
+    let tips = [blob(338, 294), blob(40, 12), blob(7, 300), blob(1, 1), GrayTile::from_fn(8, 5, |x, y| ((x + y) % 7) as f32 / 6.0)];
+    for (t, tip) in tips.iter().enumerate() {
+        for sampled in [true, false] {
+            let b = if sampled {
+                BrushSettings { tip: TipShape::Sampled(tip.clone()), ..Default::default() }
+            } else {
+                BrushSettings { hardness: 0.3 * t as f32, ..Default::default() }
+            };
+            let ctx = BrushContext::new(&b);
+            // The edge-heavy tile only upscaled: a downscaled tip's edge texels can make a pixel
+            // on the bitmap's border differ by more than rounding.
+            let radii: &[f32] = if t == 4 { &[3.5, 40.0] } else { &[2.0, 40.0, 250.0, 700.0] };
+            for &radius in radii {
+                for angle in [0.0, 0.3, 1.2, 3.0, -2.0] {
+                    for roundness in [1.0, 0.6, 0.25] {
+                        for (proj_scale, flip) in [(1.0, false), (0.5, true)] {
+                            let mut d = Dab::round(Point::new(-123.37, 4567.81), radius, 0.8);
+                            (d.angle, d.roundness, d.proj_scale, d.proj_angle, d.flip_x, d.flip_y) = (angle, roundness, proj_scale, 0.9, flip, !flip);
+                            let tol = if sampled_loop(&ctx, false, false) { 2e-4 } else { 0.0 };
+                            compare_within(&ctx, &d, false, ctx.dab_rect(&d, false), false, tol);
+                            assert_inside_paint_rect(&ctx, &d, false);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// The stroke renderer's coverage, built tile by tile (in parallel for large dabs), is exactly
+/// what rasterising and accumulating its dabs one at a time gives.
+#[test]
+fn tile_parallel_strokes_match_dab_by_dab_accumulation() {
+    use crate::{StrokePoint, dynamics::DabGenerator};
+    let tip = TipShape::Sampled(blob(120, 90));
+    let mut brushes = Vec::new();
+    let mut b = BrushSettings { size: 300.0, spacing: 0.05, tip: tip.clone(), seed: 3, ..Default::default() };
+    b.shape_dynamics.enabled = true;
+    b.shape_dynamics.angle.control = crate::Control::Direction;
+    b.shape_dynamics.size.jitter = 0.5;
+    b.transfer.enabled = true;
+    b.transfer.opacity.jitter = 0.6;
+    brushes.push(b.clone());
+    let mut dual = b.clone();
+    dual.dual_brush = crate::DualBrush { enabled: true, tip: TipShape::Sampled(blob(40, 30)), size: 120.0, spacing: 0.1, scatter: 1.0, count: 3, ..Default::default() };
+    brushes.push(dual);
+    let mut wet = BrushSettings { size: 260.0, hardness: 0.2, spacing: 0.08, wet_edges: true, ..Default::default() };
+    wet.shape_dynamics.enabled = true;
+    wet.shape_dynamics.roundness.jitter = 0.7;
+    wet.shape_dynamics.angle.jitter = 1.0;
+    brushes.push(wet);
+    let mut colour = BrushSettings { size: 220.0, spacing: 0.1, tip, ..Default::default() };
+    colour.color_dynamics.enabled = true;
+    colour.color_dynamics.hue_jitter = 0.5;
+    brushes.push(colour);
+    let points: Vec<StrokePoint> =
+        (0..40).map(|i| StrokePoint::new(100.0 + 23.0 * i as f64, 300.0 + 120.0 * (i as f64 / 6.0).sin(), 0.4 + 0.015 * i as f32)).collect();
+    for brush in brushes {
+        let fmt = photocraft_color::PixelFormat::RGBA8;
+        let mut r = StrokeRenderer::new(&brush, Some(fmt), 1.0);
+        for chunk in points.chunks(3) {
+            r.push(chunk);
+        }
+        r.finish();
+        // The same dabs, one at a time.
+        let mut g = DabGenerator::new(&r.ctx.brush, 1.0);
+        let (mut dabs, mut duals) = (Vec::new(), Vec::new());
+        g.push(&points, &mut dabs, &mut duals);
+        g.finish(&mut dabs, &mut duals);
+        let ctx = &r.ctx;
+        let wet = ctx.brush.wet_edges;
+        let mut cov = CoverageMap::new(r.cov.nc);
+        let (mut vals, mut depths) = (Vec::new(), Vec::new());
+        for d in &dabs {
+            let rect = ctx.dab_rect(d, false);
+            ctx.rasterize_into(d, false, rect, &mut vals, wet.then_some(&mut depths));
+            let mut native = [0.0f32; 8];
+            let col = if r.per_dab_color {
+                photocraft_raster::from_rgba_into(&fmt, d.color, &mut native);
+                Some(&native[..fmt.mode.color_channels()])
+            } else {
+                None
+            };
+            cov.accumulate(rect, &vals, d.opacity, col, wet.then_some(&depths[..]));
+        }
+        let mut dual_cov = CoverageMap::new(0);
+        for d in &duals {
+            let rect = ctx.dab_rect(d, true);
+            ctx.rasterize(d, true, rect, &mut vals);
+            dual_cov.accumulate(rect, &vals, 1.0, None, None);
+        }
+        let same = |a: &CoverageMap, b: &CoverageMap, what: &str| {
+            let mut ka: Vec<_> = a.tiles.keys().collect();
+            let mut kb: Vec<_> = b.tiles.keys().collect();
+            ka.sort();
+            kb.sort();
+            assert_eq!(ka, kb, "{what}: tiles");
+            let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+            for (k, ta) in &a.tiles {
+                let tb = &b.tiles[k];
+                assert_eq!(bits(&ta.cov), bits(&tb.cov), "{what}: coverage of tile {k:?}");
+                assert_eq!(bits(&ta.depth), bits(&tb.depth), "{what}: depth of tile {k:?}");
+                assert_eq!(bits(&ta.col), bits(&tb.col), "{what}: colour of tile {k:?}");
+            }
+            // The tight bounds hold all the paint and are never wider than the full ones.
+            assert_eq!(a.bounds.union(&b.bounds), b.bounds, "{what}: bounds {:?} vs {:?}", a.bounds, b.bounds);
+            for (k, t) in &a.tiles {
+                for (i, c) in t.cov.iter().enumerate() {
+                    let (x, y) = (k.0 * COV_TILE + (i as i32 % COV_TILE), k.1 * COV_TILE + (i as i32 / COV_TILE));
+                    assert!(*c == 0.0 || a.bounds.contains(x, y), "{what}: paint at ({x}, {y}) outside {:?}", a.bounds);
+                }
+            }
+        };
+        same(&r.cov, &cov, "stroke");
+        if let Some(d) = &r.dual {
+            same(d, &dual_cov, "dual");
+        }
+    }
+}
+
+#[test]
+fn parallel_composite_matches_single_threaded() {
+    use crate::StrokePoint;
+    let mut b = BrushSettings {
+        size: 400.0,
+        spacing: 0.04,
+        tip: TipShape::Sampled(blob(200, 150)),
+        mode: photocraft_color::BlendMode::Multiply,
+        opacity: 0.8,
+        seed: 9,
+        ..Default::default()
+    };
+    b.dual_brush = crate::DualBrush { enabled: true, size: 90.0, spacing: 0.2, scatter: 0.5, count: 2, ..Default::default() };
+    b.texture.enabled = true;
+    b.texture.mode = crate::MaskMode::Height;
+    b.texture.depth = 0.3;
+    b.color_dynamics.enabled = true;
+    b.color_dynamics.brightness_jitter = 0.4;
+    for fmt in [photocraft_color::PixelFormat::RGBA8, photocraft_color::PixelFormat::RGBA16, photocraft_color::PixelFormat::CMYKA8] {
+        let mut base = Surface::new(fmt);
+        base.fill_rect(Rect::new(0, 0, 900, 700), &photocraft_raster::from_rgba(&fmt, [0.9, 0.6, 0.3, 1.0]));
+        base.fill_rect(Rect::new(200, 0, 300, 700), &photocraft_raster::from_rgba(&fmt, [0.2, 0.4, 0.8, 0.0]));
+        let mut sel = Surface::new(photocraft_color::PixelFormat::GRAY8);
+        sel.fill_rect(Rect::new(0, 0, 640, 700), &[0.7]);
+        let mut r = StrokeRenderer::new(&b, Some(fmt), 1.0);
+        let points: Vec<StrokePoint> = (0..20).map(|i| StrokePoint::new(80.0 + 40.0 * i as f64, 350.0 + 90.0 * (i as f64 / 3.0).cos(), 1.0)).collect();
+        for chunk in points.chunks(4) {
+            r.push(chunk);
+            for lock in [false, true] {
+                let (mut one, mut many) = (r.clone(), r.clone());
+                let (mut t1, mut t2) = (base.clone(), base.clone());
+                let d1 = one.composite_tiles(&base, &mut t1, Some(&sel), lock, false, false);
+                let d2 = many.composite_tiles(&base, &mut t2, Some(&sel), lock, false, true);
+                assert_eq!(d1, d2, "{fmt:?}: damage");
+                let area = Rect::new(-200, -200, 1200, 1000);
+                assert_eq!(t1.read_region(area), t2.read_region(area), "{fmt:?}: pixels (lock {lock})");
+            }
+            r.composite(&base, &mut base.clone(), None, false, false);
         }
     }
 }

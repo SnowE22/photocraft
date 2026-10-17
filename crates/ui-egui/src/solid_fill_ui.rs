@@ -124,7 +124,24 @@ pub(crate) fn paint_thumbnail(ui: &egui::Ui, color: Color, rect: Rect) {
 pub(crate) fn thumbnail_frame(ui: &egui::Ui, rect: Rect, contents: impl FnOnce(Rect)) {
     let t = Tokens::get(ui.ctx());
     let p = ui.painter();
-    p.rect_filled(rect, if t.pro { 0.0 } else { t.radius_sm }, t.field);
+    if t.pro {
+        // Photoshop's fill thumbnail uses the whole tile: the fill on top and, under a dark line, a
+        // light slider bar with a notch in the middle.
+        let bar_h = (rect.height() * 0.25).round().max(3.0);
+        let swatch = Rect::from_min_max(rect.min, pos2(rect.right(), rect.bottom() - bar_h));
+        contents(swatch);
+        p.rect_filled(Rect::from_min_max(swatch.left_bottom(), pos2(rect.right(), swatch.bottom() + 1.0)), 0.0, Color32::from_gray(20));
+        let bar = Rect::from_min_max(pos2(rect.left(), swatch.bottom() + 1.0), rect.max);
+        p.rect_filled(bar, 0.0, Color32::from_gray(178));
+        let (x, k) = (bar.center().x.round(), (bar.height() * 0.5).round().max(2.0));
+        p.add(egui::Shape::convex_polygon(
+            vec![pos2(x, bar.bottom() - k - 1.0), pos2(x + k, bar.bottom() - 1.0), pos2(x - k, bar.bottom() - 1.0)],
+            Color32::from_gray(40),
+            Stroke::NONE,
+        ));
+        return;
+    }
+    p.rect_filled(rect, t.radius_sm, t.field);
     let size = rect.size() * 0.7;
     let sample = Rect::from_center_size(rect.center() - vec2(0.0, size.y * 0.08), size);
     let bar_height = (size.y * 0.17).max(2.0);

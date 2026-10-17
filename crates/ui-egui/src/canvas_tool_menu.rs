@@ -208,13 +208,25 @@ pub const SELECTION_MENU: &[Row] = &[
     Some(("Fade…", "edit.fade")),
 ];
 
-/// The selection tools' context menu with nothing selected: making a selection.
+/// The selection tools' context menu with nothing selected: making a selection, then the layer
+/// rows that need no selection (Photoshop keeps Free Transform, New Layer, Fill and the filter
+/// rows there, acting on the whole layer).
 pub const NO_SELECTION_MENU: &[Row] = &[
     Some(("Select All", "select.all")),
     Some(("Reselect", "select.reselect")),
     Some(("Color Range…", "select.colorRange")),
     None,
     Some(("Load Selection…", "select.loadSelection")),
+    None,
+    Some(("New Layer…", "layer.new.layer")),
+    None,
+    Some(("Free Transform", "edit.freeTransform")),
+    None,
+    Some(("Fill…", "edit.fill")),
+    None,
+    Some(("Last Filter", "filter.lastFilter")),
+    None,
+    Some(("Fade…", "edit.fade")),
 ];
 
 /// Photoshop's Pen context menu order. Rows whose operation is not applicable to the current
@@ -1144,7 +1156,26 @@ mod tests {
                 Some("Fade…"),
             ]
         );
-        assert_eq!(labels(NO_SELECTION_MENU), vec![Some("Select All"), Some("Reselect"), Some("Color Range…"), None, Some("Load Selection…")]);
+        assert_eq!(
+            labels(NO_SELECTION_MENU),
+            vec![
+                Some("Select All"),
+                Some("Reselect"),
+                Some("Color Range…"),
+                None,
+                Some("Load Selection…"),
+                None,
+                Some("New Layer…"),
+                None,
+                Some("Free Transform"),
+                None,
+                Some("Fill…"),
+                None,
+                Some("Last Filter"),
+                None,
+                Some("Fade…"),
+            ]
+        );
         // Every row runs a real command: one the menu bar has, or an engine command.
         let app = app();
         let items = crate::menus::menu_items(&app);
@@ -1179,6 +1210,21 @@ mod tests {
         assert!(open(&mut app, &Context::default(), Tool::Lasso, [10.0, 10.0]));
         choose(&mut app, &Context::default(), "select.all");
         assert!(app.session.active().unwrap().doc.selection.is_some());
+    }
+
+    #[test]
+    fn no_selection_menu_still_free_transforms_the_layer() {
+        let mut app = app();
+        app.ui.tool = Tool::RectMarquee;
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("edit.fill", json!({"color": "#ff0000"})).unwrap();
+        assert!(app.session.active().unwrap().doc.selection.is_none());
+        assert!(open(&mut app, &Context::default(), Tool::RectMarquee, [10.0, 10.0]));
+        let menu = app.ui.canvas_tool_menu.clone().unwrap();
+        assert_eq!(rows(&menu), NO_SELECTION_MENU);
+        assert!(entry_enabled(&app, &menu, "edit.freeTransform"));
+        choose(&mut app, &Context::default(), "edit.freeTransform");
+        assert!(app.ui.transform.is_some(), "the whole layer gets a transform box");
     }
 
     #[test]

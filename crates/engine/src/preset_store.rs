@@ -928,9 +928,12 @@ impl PresetStore {
         // Index: group order and deleted built-ins.
         let hidden: Vec<String> = builtin_names().iter().filter(|n| !presets.iter().any(|p| p.name.eq_ignore_ascii_case(n))).map(|n| n.to_string()).collect();
         let groups: Vec<String> = files.into_iter().filter(|f| self.groups.contains_key(f)).collect();
-        // The full order is only saved once it differs from the default (built-ins, then the rest).
+        // The full order is only saved when loading wouldn't rebuild it. Loading reads the
+        // built-ins, then each group file in turn (groups in first-appearance order), so loose
+        // presets on both sides of a group, or a group split by another, need the list.
+        let by_file: Vec<String> = order.iter().flat_map(|(_, idx)| idx.iter().filter_map(|&i| presets.get(i)).map(|p| p.name.clone())).collect();
         let order: Vec<String> = presets.iter().map(|p| p.name.clone()).collect();
-        let default_order: Vec<String> = presets.iter().filter(|p| p.builtin).chain(presets.iter().filter(|p| !p.builtin)).map(|p| p.name.clone()).collect();
+        let default_order: Vec<String> = presets.iter().filter(|p| p.builtin).map(|p| p.name.clone()).chain(by_file).collect();
         let builtins_in_order = {
             let names = builtin_names();
             let mut it = presets.iter().filter(|p| p.builtin).map(|p| names.iter().position(|n| *n == p.name));

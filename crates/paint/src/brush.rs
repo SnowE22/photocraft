@@ -602,6 +602,21 @@ impl BrushSettings {
         brush
     }
 
+    /// After the diameter changed from `old` to `self.size`: scale the Dual Brush tip by as much.
+    /// Photoshop keeps the dual tip in proportion to the brush (its Size field follows `[` / `]`),
+    /// so a resized preset keeps its pattern; Texture is in document pixels and stays.
+    pub fn scale_dual_with_size(&mut self, old: f32) {
+        let k = self.size / old;
+        if !(old > 0.0 && k.is_finite() && k > 0.0) || k == 1.0 {
+            return;
+        }
+        let d = self.dual_brush.size * k;
+        // No floor at a pixel: a brush shrunk to 1 px and grown back gets its dual tip back.
+        if d.is_finite() {
+            self.dual_brush.size = d.clamp(0.01, MAX_BRUSH_SIZE);
+        }
+    }
+
     /// This brush (a preset) picked while `current` is the tool's brush: Smoothing is a tool
     /// option, so it stays the tool's (Photoshop), a protected texture stays too, and so does every
     /// section `current` has locked (the locks themselves are tool state and carry over).
@@ -714,7 +729,12 @@ impl BrushPreset {
     pub fn picked_over(&self, current: &BrushSettings) -> BrushSettings {
         let mut b = self.brush.clone().picked_over(current);
         if !self.captures.size {
+            let preset_size = b.size;
             b.size = current.size;
+            // The preset's dual tip at the tool's size (a locked one is the tool's already).
+            if !current.locks.dual_brush {
+                b.scale_dual_with_size(preset_size);
+            }
         }
         if !self.captures.tool_settings {
             b.mode = current.mode;

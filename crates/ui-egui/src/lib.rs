@@ -1841,18 +1841,23 @@ impl eframe::App for PhotocraftApp {
         if chrome && self.ui.panels.options_bar {
             panels::options_bar(self, ui);
         }
-        if chrome && self.ui.panels.status_bar {
-            panels::status_bar(self, ui);
-        }
         if chrome && self.ui.panels.toolbar {
             panels::toolbar(self, ui);
         }
         if chrome && self.ui.panels.dock {
             panels::right_dock(self, ui);
+        } else if chrome && self.ui.panels.toolbar {
+            // With the dock hidden, a Tools panel docked at that side still shows.
+            panels::toolbar_end(self, ui);
         }
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
+            // Photoshop's status bar belongs to the document window: it spans the canvas, and the
+            // Tools panel and the docks reach the bottom of the window beside it.
+            if chrome && self.ui.panels.status_bar {
+                panels::status_bar(self, ui);
+            }
             canvas::document_area(self, ui);
         });
         panels::properties_window(self, &ctx);
@@ -2027,6 +2032,7 @@ impl PhotocraftApp {
             let mut pending: Vec<_> = documents.iter().flat_map(|st| &st.doc.layers).collect();
             while let Some(layer) = pending.pop() {
                 live.insert((layer.id, mask_thumbs_ui::THUMB_LAYER));
+                live.insert((layer.id, mask_thumbs_ui::THUMB_LAYER_BOUNDS));
                 if layer.mask.is_some() {
                     live.insert((layer.id, mask_thumbs_ui::THUMB_MASK));
                 }
@@ -2109,6 +2115,32 @@ impl PhotocraftApp {
         id
     }
 
+    /// Cached Layers panel thumbnail of a pixel-ish layer, as Photoshop's default (Layers Panel
+    /// Options › Layer Bounds) shows it: just the layer's content bounds on the canvas, at their
+    /// own aspect ratio, so a wide strip gets a wide thumbnail and a tall one a tall thumbnail. An
+    /// empty layer shows the whole canvas. Returns the texture and its size in pixels (its aspect
+    /// is the bounds').
+    pub fn layer_bounds_thumb(&mut self, ctx: &egui::Context, doc: &Document, layer: &photocraft_doc::Layer) -> (egui::TextureId, [usize; 2]) {
+        let rev = layer.surface().map_or(0, surface_fingerprint) ^ (doc.size.width as u64) << 40 ^ (doc.size.height as u64) << 20;
+        let key = (layer.id, mask_thumbs_ui::THUMB_LAYER_BOUNDS);
+        if let Some((r, tex)) = self.thumbs.get(&key)
+            && *r == rev
+        {
+            return (tex.id(), tex.size());
+        }
+        let canvas = photocraft_geom::Rect::from_size(doc.size);
+        let bounds = layer.surface().map(|s| s.content_bounds().intersect(&canvas)).filter(|r| !r.is_empty()).unwrap_or(canvas);
+        let mut px = [0.0f32; 8];
+        let img = bounds_thumb_image(bounds, 64, |x, y| {
+            let Some(s) = layer.surface() else { return [0.0; 4] };
+            let n = s.channels();
+            s.read_pixel(x, y, &mut px[..n]);
+            photocraft_raster::to_rgba(&s.format(), &px[..n])
+        });
+        let size = img.size;
+        (self.store_thumb(ctx, key, rev, img), size)
+    }
+
     pub fn mask_thumb(&mut self, ctx: &egui::Context, doc: &Document, id: photocraft_doc::LayerId, mask: &photocraft_doc::LayerMask) -> egui::TextureId {
         let rev = surface_fingerprint(&mask.surface) ^ (doc.size.width as u64) << 40;
         let key = (id, mask_thumbs_ui::THUMB_MASK);
@@ -2155,6 +2187,27 @@ pub fn surface_fingerprint(s: &photocraft_raster::Surface) -> u64 {
         h = (h ^ p ^ ((c.tx as u64) << 32 | c.ty as u32 as u64)).wrapping_mul(0x100_0000_01b3);
     }
     h
+}
+
+/// Thumbnail of document area `r` at its own aspect ratio, `side` pixels along its longer edge
+/// (at least one pixel along the other), sampling `f(x, y)` in document space.
+fn bounds_thumb_image(r: photocraft_geom::Rect, side: usize, mut f: impl FnMut(i32, i32) -> [f32; 4]) -> egui::ColorImage {
+    let (w, h) = (r.width().max(1) as f32, r.height().max(1) as f32);
+    let scale = w.max(h) / side.max(1) as f32;
+    let (tw, th) = (((w / scale).round() as usize).clamp(1, side.max(1)), ((h / scale).round() as usize).clamp(1, side.max(1)));
+    let mut px = vec![egui::Color32::TRANSPARENT; tw * th];
+    let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    for ty in 0..th {
+        for tx in 0..tw {
+            let dx = (r.x0 as f32 + (tx as f32 + 0.5) * scale).min(r.x1 as f32 - 1.0);
+            let dy = (r.y0 as f32 + (ty as f32 + 0.5) * scale).min(r.y1 as f32 - 1.0);
+            let c = f(dx as i32, dy as i32);
+            if let Some(p) = px.get_mut(ty * tw + tx) {
+                *p = egui::Color32::from_rgba_unmultiplied(q(c[0]), q(c[1]), q(c[2]), q(c[3]));
+            }
+        }
+    }
+    egui::ColorImage::new([tw, th], px)
 }
 
 /// Square thumbnail of the canvas area, letterboxed, sampling `f(x, y)` in document space.

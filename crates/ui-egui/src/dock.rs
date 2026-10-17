@@ -32,6 +32,9 @@ pub enum Group {
     Properties,
     /// Character | Paragraph (not in the default workspace; Window › Character opens it, #150).
     Character,
+    /// Brushes (not in the default workspace; Window › Brushes opens it). Brush Settings is a
+    /// floating panel of its own, as in Photoshop.
+    Brushes,
     /// Navigator | Histogram | Info.
     Navigator,
     /// History | Actions | Layer Comps.
@@ -42,13 +45,14 @@ pub enum Group {
 
 impl Group {
     /// Photoshop Essentials order, top to bottom.
-    pub const ALL: [Group; 6] = [Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History, Group::Layers];
+    pub const ALL: [Group; 7] = [Group::Color, Group::Properties, Group::Character, Group::Brushes, Group::Navigator, Group::History, Group::Layers];
 
     pub fn key(self) -> &'static str {
         match self {
             Group::Color => "color",
             Group::Properties => "properties",
             Group::Character => "character",
+            Group::Brushes => "brushes",
             Group::Navigator => "navigator",
             Group::History => "history",
             Group::Layers => "layers",
@@ -62,6 +66,7 @@ impl Group {
             Group::Color => 190.0,
             Group::Properties => 250.0,
             Group::Character => 270.0,
+            Group::Brushes => 360.0,
             Group::Navigator => 210.0,
             Group::History => 200.0,
             Group::Layers => 320.0,
@@ -75,6 +80,7 @@ impl Group {
             Group::Color => 130.0,
             Group::Properties => 160.0,
             Group::Character => 160.0,
+            Group::Brushes => 200.0,
             Group::Navigator => 140.0,
             Group::History => 130.0,
             Group::Layers => 200.0,
@@ -105,6 +111,7 @@ impl Group {
             Group::Color => &["Swatches", "Color", "Gradients", "Patterns"],
             Group::Properties => &["Properties", "Adjustments"],
             Group::Character => &["Character", "Paragraph"],
+            Group::Brushes => &["Brushes"],
             Group::Navigator => &["Navigator", "Histogram", "Info"],
             Group::History => &["History", "Actions", "Layer Comps"],
             Group::Layers => &["Layers", "Channels", "Paths"],
@@ -114,7 +121,7 @@ impl Group {
     /// Tabs that lay out their own scrolling list and footer, or size themselves to the group
     /// (the Navigator's preview grows with it, as in Photoshop: #2726).
     pub fn scrolls_itself(self, tab: usize) -> bool {
-        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::History, 1) | (Group::Navigator, 0))
+        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::History, 1) | (Group::Navigator, 0) | (Group::Brushes, _))
     }
 
     pub(crate) fn tab_mut(self, tabs: &mut DockTabs) -> &mut usize {
@@ -122,6 +129,7 @@ impl Group {
             Group::Color => &mut tabs.color,
             Group::Properties => &mut tabs.properties,
             Group::Character => &mut tabs.character,
+            Group::Brushes => &mut tabs.brushes,
             Group::Navigator => &mut tabs.navigator,
             Group::History => &mut tabs.history,
             Group::Layers => &mut tabs.layers,
@@ -138,6 +146,7 @@ impl Group {
             Group::Color => panels.color,
             Group::Properties => panels.properties,
             Group::Character => panels.character,
+            Group::Brushes => panels.brushes,
             Group::Navigator => panels.navigator,
             Group::History => panels.history,
             Group::Layers => panels.layers,
@@ -149,6 +158,7 @@ impl Group {
             Group::Color => &mut panels.color,
             Group::Properties => &mut panels.properties,
             Group::Character => &mut panels.character,
+            Group::Brushes => &mut panels.brushes,
             Group::Navigator => &mut panels.navigator,
             Group::History => &mut panels.history,
             Group::Layers => &mut panels.layers,
@@ -603,6 +613,10 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
             }
             if tabs.get(sel) == Some(&"Brush Settings") {
                 crate::brush_panel::panel_menu(app, ui);
+                ui.separator();
+            }
+            if tabs.get(sel) == Some(&"Brushes") {
+                crate::brushes_tab::panel_menu(app, ui);
                 ui.separator();
             }
             if tabs.get(sel) == Some(&"Actions") {

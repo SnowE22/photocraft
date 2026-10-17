@@ -2754,3 +2754,11 @@ curves	Smooth	平滑
 	Sent to {printer}	已发送到 {printer}
 	set in Print Settings…	在打印设置中设置…
 	ICO is limited to 256 × 256 pixels	ICO 最大为 256 × 256 像素
+	Panel Icons	面板图标
+	Move Tools panel	移动工具面板
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	拖动以移动工具面板；放到画布边缘即可停靠
+	New Document…	新建文档…
+	Open Document…	打开文档…
+	Delete Brushes	删除画笔
+	Thumbnail size	缩略图大小
+	New Group	新建组

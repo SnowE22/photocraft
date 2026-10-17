@@ -57,8 +57,9 @@ pub enum Grab {
 
 #[derive(Clone, Debug)]
 enum Drag {
-    /// Drawing a new gradient, or redrawing the selected one.
-    Draw { from: [f32; 2], to: [f32; 2], redraw: Option<LayerId> },
+    /// Drawing a new gradient, or redrawing the selected one. `last` is the pointer at the last
+    /// move: with Space held the whole line follows it (Photoshop's reposition).
+    Draw { from: [f32; 2], to: [f32; 2], redraw: Option<LayerId>, last: [f32; 2] },
     /// Editing the selected gradient: the command (and params) to commit on release.
     Edit { layer: LayerId, grab: Grab, down: [f32; 2], moved: bool, commit: Option<(&'static str, Value)> },
 }
@@ -75,6 +76,19 @@ pub struct LiveGradient {
     preset_stop: Option<Value>,
     /// Cached preview document by key.
     preview: Option<(u64, Arc<Document>)>,
+    /// The reposition key (Space) is down this frame.
+    space: bool,
+}
+
+/// Space held this frame (the canvas sets it each frame, as for the Crop tool): a gradient being
+/// drawn moves as a whole instead of stretching.
+pub fn set_space(app: &mut PhotocraftApp, down: bool) {
+    app.gradient.space = down;
+}
+
+/// Is a gradient being drawn (Space then repositions it rather than taking the Hand tool)?
+pub fn drawing(app: &PhotocraftApp) -> bool {
+    matches!(app.gradient.drag, Some(Drag::Draw { .. }))
 }
 
 /// Whether the Gradient tool is in its live (Gradient Fill layer) mode.
@@ -227,7 +241,7 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
             let grab = active.as_ref().and_then(|(l, frame, _)| Widget::new(fill_of(l)?, *frame)?.hit(p, GRAB / zoom));
             app.gradient.drag = Some(match (grab, active) {
                 (Some(grab), Some((l, ..))) => Drag::Edit { layer: l.id, grab, down: p, moved: false, commit: None },
-                (_, active) => Drag::Draw { from: p, to: p, redraw: active.map(|a| a.0.id) },
+                (_, active) => Drag::Draw { from: p, to: p, redraw: active.map(|a| a.0.id), last: p },
             });
         }
         ToolEvent::Move { x, y, .. } => drag_to(app, [x as f32, y as f32], mods),
@@ -242,6 +256,7 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
 fn drag_to(app: &mut PhotocraftApp, p: [f32; 2], mods: egui::Modifiers) {
     let zoom = app.point_zoom().max(0.01);
     let active = active_gradient(app);
+    let space = app.gradient.space;
     let Some(drag) = app.gradient.drag.as_mut() else { return };
     // ⇧: 45° gradient angles, the same snap as the classic drag (stroke_constraint.rs).
     let snap = |from: [f32; 2], to: [f32; 2]| -> [f32; 2] {
@@ -252,7 +267,19 @@ fn drag_to(app: &mut PhotocraftApp, p: [f32; 2], mods: egui::Modifiers) {
         [c[0] as f32, c[1] as f32]
     };
     match drag {
-        Drag::Draw { from, to, .. } => *to = snap(*from, p),
+        Drag::Draw { from, to, last, .. } => {
+            if space {
+                // Space: the line moves with the pointer, start point included.
+                let (dx, dy) = (p[0] - last[0], p[1] - last[1]);
+                if dx.is_finite() && dy.is_finite() {
+                    *from = [from[0] + dx, from[1] + dy];
+                    *to = [to[0] + dx, to[1] + dy];
+                }
+            } else {
+                *to = snap(*from, p);
+            }
+            *last = p;
+        }
         Drag::Edit { layer, grab, down, moved, commit } => {
             if dist(*down, p) * zoom >= 2.0 {
                 *moved = true;
@@ -295,7 +322,7 @@ fn finish(app: &mut PhotocraftApp) {
     let Some(drag) = app.gradient.drag.take() else { return };
     let zoom = app.point_zoom().max(0.01);
     match drag {
-        Drag::Draw { from, to, redraw } => {
+        Drag::Draw { from, to, redraw, .. } => {
             if dist(from, to) * zoom < 2.0 {
                 return;
             }
@@ -368,7 +395,7 @@ pub fn display_doc(app: &mut PhotocraftApp, idx: usize) -> Option<(Arc<Document>
     let st = app.session.active()?;
     let (doc, revision) = (st.doc.clone(), st.revision);
     let edit: Option<(LayerId, &'static str, Value)> = match &app.gradient.drag {
-        Some(Drag::Draw { from, to, redraw }) if live_mode(app) && dist(*from, *to) >= 1.0 => match redraw {
+        Some(Drag::Draw { from, to, redraw, .. }) if live_mode(app) && dist(*from, *to) >= 1.0 => match redraw {
             Some(id) => Some((*id, cmds::SET, json!({"from": from, "to": to}))),
             None => Some((PREVIEW_LAYER, cmds::CREATE, create_params(app, *from, *to))),
         },
@@ -406,12 +433,12 @@ fn shown_fill(app: &PhotocraftApp) -> Option<(Fill, Rect32, Option<Grab>)> {
     let st = app.session.active()?;
     let canvas = st.doc.bounds();
     match &app.gradient.drag {
-        Some(Drag::Draw { from, to, redraw: None }) => {
+        Some(Drag::Draw { from, to, redraw: None, .. }) => {
             let l = cmds::new_layer(&app.session, &st.doc, &create_params(app, *from, *to)).ok()?;
             let f = fill_of(&l)?.clone();
             Some((f, photocraft_compose::fill_frame(&l, canvas), Some(Grab::End)))
         }
-        Some(Drag::Draw { from, to, redraw: Some(id) }) => {
+        Some(Drag::Draw { from, to, redraw: Some(id), .. }) => {
             let l = st.doc.layer(*id)?;
             let f = edited_fill(app, l, canvas, cmds::SET, &json!({"from": from, "to": to}))?;
             Some((f, photocraft_compose::fill_frame(l, canvas), Some(Grab::End)))
@@ -1136,6 +1163,27 @@ mod tests {
         drag(&mut app, [100.0, 10.0], [100.0, 110.0]);
         assert_eq!(app.session.active().unwrap().doc.layers.len(), 2);
         assert!((get(&mut app)["from"][1].as_f64().unwrap() - 10.0).abs() < 1e-3);
+    }
+
+    /// A short drag draws a thin gradient where it was made (the start point doesn't jump away),
+    /// and Space held while drawing moves the whole line, start point included, as in Photoshop.
+    #[test]
+    fn short_drags_draw_thin_gradients_and_space_moves_the_line() {
+        let mut app = app_with_gradient("linear");
+        drag(&mut app, [100.0, 60.0], [104.0, 60.0]);
+        let g = get(&mut app);
+        let pt = |g: &Value, k: &str| [g[k][0].as_f64().unwrap(), g[k][1].as_f64().unwrap()];
+        let near = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 1e-2 && (a[1] - b[1]).abs() < 1e-2;
+        assert!(near(pt(&g, "from"), [100.0, 60.0]) && near(pt(&g, "to"), [104.0, 60.0]), "{g}");
+        let ev = |app: &mut PhotocraftApp, e: ToolEvent| crate::canvas::tool_event(app, e, mods());
+        ev(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 });
+        ev(&mut app, ToolEvent::Move { x: 60.0, y: 20.0, pressure: 1.0 });
+        set_space(&mut app, true);
+        ev(&mut app, ToolEvent::Move { x: 60.0, y: 50.0, pressure: 1.0 });
+        set_space(&mut app, false);
+        ev(&mut app, ToolEvent::Up { x: 80.0, y: 50.0 });
+        let g = get(&mut app);
+        assert!(near(pt(&g, "from"), [20.0, 50.0]) && near(pt(&g, "to"), [80.0, 50.0]), "{g}");
     }
 
     #[test]

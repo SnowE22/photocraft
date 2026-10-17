@@ -1959,7 +1959,11 @@ pub(crate) fn retain_gpu_documents(app: &mut PhotocraftApp) {
 /// Tabs + canvas for the active document, or the start screen; then drops layers dragged onto
 /// another document (`layer_transfer`).
 pub fn document_area(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let area = ui.available_rect_before_wrap();
     documents(app, ui);
+    // Status messages show over the bottom of the document area for a few seconds: the status
+    // bar's free space holds the horizontal scrollbar, as in Photoshop.
+    crate::chrome_ui::status_toast(app, ui.ctx(), area);
     crate::layer_transfer::finish(app, ui.ctx());
     // Once a frame, not per document view: the right-click or options-bar Brush Preset picker.
     crate::paint_mouse::show_picker(app, ui.ctx());
@@ -2034,7 +2038,24 @@ fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         return;
     }
     let view = app.ui.views[idx].clone();
+    // Photoshop's document window: the vertical bar in a strip of its own right of the canvas, the
+    // horizontal one in the status bar's free space, so neither hides the image's edge when it is
+    // scrolled (or auto-scrolled) all the way there.
+    let rect = if app.ui.view.shows_scrollbars() {
+        let o = crate::scrollbars::outside(rect, crate::scrollbars::status_track(ui.ctx()));
+        ui.ctx().data_mut(|d| d.insert_temp(outside_bars_id(idx), o));
+        o.canvas
+    } else {
+        rect
+    };
+    app.last_canvas_rect = rect;
     canvas_view(app, ui, idx, rect, view, true);
+}
+
+/// Where `documents` put view `idx`'s scrollbars this frame, outside its canvas
+/// (`scrollbars::Outside`); tiled views and other windows keep theirs over the canvas edges.
+fn outside_bars_id(idx: usize) -> egui::Id {
+    egui::Id::new(("pc-outside-bars", idx))
 }
 
 /// The tab strip; returns where its document tabs are.
@@ -2086,7 +2107,10 @@ fn tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
         .and_then(|job| opening.iter().position(|(open, _, _)| *open == job))
         .map_or_else(|| app.session.active_index().unwrap_or(0), |p| tab_count + p);
     let frame = egui::Frame::NONE.fill(t.canvas).inner_margin(egui::Margin { left: 8, right: 8, top: 6, bottom: 4 }).show(ui, |ui| {
-        let (row, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), tab_h), Sense::hover());
+        let (row, row_resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), tab_h), Sense::click());
+        row_resp.context_menu(|ui| {
+            tab_action = tab_context_menu(ui, None, tab_count, false);
+        });
         let f = crate::tab_strip::fit(&natural, selected, row.width(), DOC_TAB_MIN_W, crate::tab_strip::CHEVRON_W);
         let mut x = row.left();
         let mut placed: Vec<(usize, Rect)> = Vec::with_capacity(f.shown.len());
@@ -2147,7 +2171,7 @@ fn tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
             }
             let has_path = st.path.is_some();
             resp.context_menu(|ui| {
-                tab_action = tab_context_menu(ui, i, tab_count, has_path);
+                tab_action = tab_context_menu(ui, Some(i), tab_count, has_path);
             });
         }
         // Files opening in the background: a tab with a progress underline; × cancels.
@@ -2224,21 +2248,43 @@ fn tab_close_clicked(resp: &egui::Response, xresp: &egui::Response) -> bool {
     xresp.clicked() || xresp.middle_clicked() || resp.middle_clicked()
 }
 
-/// All tab actions go through the same guarded File commands as the menu bar, including the
-/// unsaved-changes prompt. The clicked tab is explicit even when another document is active.
-fn tab_context_items(index: usize, count: usize, has_path: bool) -> [(&'static str, &'static str, serde_json::Value, bool); 4] {
-    [
-        ("Close", "file.close", json!({"document": index}), true),
-        ("Close Others", "file.closeOthers", json!({"document": index}), count > 1),
-        ("Close All", "file.closeAll", json!({}), true),
-        (crate::menus::reveal_label(), "file.revealInFinder", json!({"document": index}), has_path),
-    ]
+/// One row of the document tab menu: label, command, params and whether it is enabled. `None` is
+/// a separator.
+type TabMenuRow = Option<(&'static str, &'static str, serde_json::Value, bool)>;
+
+/// The document tab menu, in Photoshop's order. `index` is the right-clicked tab (`None` for the
+/// empty strip beside the tabs, which offers only New and Open, plus Close All). All tab actions
+/// go through the same guarded File commands as the menu bar, including the unsaved-changes
+/// prompt. The clicked tab is explicit even when another document is active.
+fn tab_context_items(index: Option<usize>, count: usize, has_path: bool) -> Vec<TabMenuRow> {
+    let mut rows = Vec::with_capacity(8);
+    if let Some(index) = index {
+        rows.push(Some(("Close", "file.close", json!({"document": index}), true)));
+    }
+    rows.push(Some(("Close All", "file.closeAll", json!({}), count > 0)));
+    if let Some(index) = index {
+        rows.push(Some(("Close Others", "file.closeOthers", json!({"document": index}), count > 1)));
+    }
+    rows.push(None);
+    // Empty params: run like the File menu items, so New opens its dialog and Open the file picker.
+    rows.push(Some(("New Document…", "file.new", json!({}), true)));
+    rows.push(Some(("Open Document…", "file.open", json!({}), true)));
+    if let Some(index) = index {
+        rows.push(None);
+        rows.push(Some((crate::menus::reveal_label(), "file.revealInFinder", json!({"document": index}), has_path)));
+    }
+    rows
 }
 
-fn tab_context_menu(ui: &mut egui::Ui, index: usize, count: usize, has_path: bool) -> Option<(&'static str, serde_json::Value)> {
+fn tab_context_menu(ui: &mut egui::Ui, index: Option<usize>, count: usize, has_path: bool) -> Option<(&'static str, serde_json::Value)> {
+    crate::widgets::style_spectrum_popup_menu(ui);
     crate::widgets::menu_scroll(ui, |ui| {
         ui.set_min_width(170.0);
-        for (label, id, params, enabled) in tab_context_items(index, count, has_path) {
+        for row in tab_context_items(index, count, has_path) {
+            let Some((label, id, params, enabled)) = row else {
+                ui.separator();
+                continue;
+            };
             if ui.add_enabled(enabled, egui::Button::new(tl!(label))).clicked() {
                 ui.close();
                 return Some((id, params));
@@ -2405,8 +2451,13 @@ fn pro_tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
     let large_tabs = app.session.prefs().workspace.large_tabs;
     let font = egui::FontId::proportional(if large_tabs { 13.0 } else { 11.5 });
     let tab_h = if large_tabs { 34.0 } else { 26.0 };
-    let (strip, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), tab_h), Sense::hover());
+    // The strip's empty part has its own menu (New, Open, Close All); the tabs, drawn over it,
+    // keep theirs.
+    let (strip, strip_resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), tab_h), Sense::click());
     ui.painter().rect_filled(strip, 0.0, t.tab_strip);
+    strip_resp.context_menu(|ui| {
+        tab_action = tab_context_menu(ui, None, tab_count, false);
+    });
     // Files opening in the background (#210) are tabs too ("name (Opening… 45%)" with a progress
     // underline); they share the fit's index space, after the documents.
     let opening = crate::jobs_ui::open_tabs(app);
@@ -2465,7 +2516,7 @@ fn pro_tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
         }
         let has_path = app.session.documents().get(i).is_some_and(|d| d.path.is_some());
         resp.context_menu(|ui| {
-            tab_action = tab_context_menu(ui, i, tab_count, has_path);
+            tab_action = tab_context_menu(ui, Some(i), tab_count, has_path);
         });
         doc_tabs.push((i, r));
     }
@@ -3172,12 +3223,13 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     // drawn; otherwise Space is the Hand and ⌘Space / ⌥Space the Zoom tool while held.
     let reposition = crate::hold_keys::reposition_held(app, &ctx);
     crate::crop_ui::set_space(app, reposition);
+    crate::gradient_ui::set_space(app, reposition);
     // ⌘ (Ctrl) held: a temporary Straighten with the Crop tool.
     crate::crop_straighten::set_held(app, !ctx.text_edit_focused() && ui.input(|i| i.modifiers.command));
     // A tab switched this frame drops the other document's pending crop (#1918).
     crate::crop_ui::cancel_stale(app);
     crate::crop_ui::ensure_frame(app);
-    let mut drawing = crate::crop_ui::active(app);
+    let mut drawing = crate::crop_ui::active(app) || crate::gradient_ui::drawing(app);
     if let Some(d) = app.drag.as_mut().filter(|d| crate::hold_keys::repositions(d.tool)) {
         d.reposition = reposition;
         drawing = true;
@@ -3939,11 +3991,22 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             ctx.request_repaint();
         }
     }
-    // Scrollbars (scrollbars.rs): drawn over the canvas edges, they take the pointer there.
+    // Scrollbars (scrollbars.rs): outside the canvas for the document window's view (`documents`),
+    // over the canvas edges for tiled views; they take the pointer there.
     let t0 = crate::gpu_canvas::now_ms();
     let before = view.center;
+    let outside = ctx.data_mut(|d| {
+        let o = d.get_temp::<crate::scrollbars::Outside>(outside_bars_id(idx));
+        d.remove::<crate::scrollbars::Outside>(outside_bars_id(idx));
+        o
+    });
+    let overscroll = app.session.prefs().tools.overscroll;
+    let bars_key = egui::Id::new(("pc-canvas", idx));
     let over_bars = app.ui.view.shows_scrollbars()
-        && crate::scrollbars::show(ui, rect, &mut view, flip, aspect, app.session.prefs().tools.overscroll, egui::Id::new(("pc-canvas", idx)));
+        && match outside {
+            Some(o) => crate::scrollbars::show_outside(ui, o, &mut view, flip, aspect, overscroll, bars_key),
+            None => crate::scrollbars::show(ui, rect, &mut view, flip, aspect, overscroll, bars_key),
+        };
     ctx.data_mut(|d| d.insert_temp(bars_id, over_bars));
     if view.center != before {
         ctx.request_repaint();
@@ -4993,8 +5056,10 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                 return;
             }
             // Auto-Select (or ⌘-click while it is off) picks the layer under the pointer first
-            // (not when the selected pixels move: those are the active layer's).
-            if !crate::move_ui::moves_selected_pixels_with(app, tool) && app.ui.tool_options.move_auto_select != mods.command {
+            // (not when the selected pixels move: those are the active layer's). ⌘ held with
+            // another tool is the Move tool for the click, and that click picks the layer under
+            // the pointer whatever Auto-Select says, as in Photoshop.
+            if !crate::move_ui::moves_selected_pixels_with(app, tool) && move_press_picks(app, mods) {
                 let target = app.ui.tool_options.move_target.clone();
                 let mode = if mods.shift { "add" } else { "replace" };
                 let before = app.session.active().map(|st| st.selected_layers());
@@ -5319,6 +5384,16 @@ pub(crate) fn event_tool(app: &PhotocraftApp, mods: egui::Modifiers) -> Tool {
         }
         t => t,
     }
+}
+
+/// Does a Move tool press with `mods` pick the layer under the pointer first? With the Move tool
+/// itself, Auto-Select does and ⌘ turns it around for the press; ⌘ held with another tool (the
+/// temporary Move tool) always picks: ⌘-click on the canvas selects the layer clicked.
+pub(crate) fn move_press_picks(app: &PhotocraftApp, mods: egui::Modifiers) -> bool {
+    if mods.command && app.ui.tool != Tool::Move {
+        return true;
+    }
+    app.ui.tool_options.move_auto_select != mods.command
 }
 
 /// Does a ⌘ (⌘⌥) press with selection tool `tool` at `p` move the whole layer (a duplicate with
@@ -6160,21 +6235,34 @@ mod tests {
 
     #[test]
     fn tab_context_uses_clicked_document_and_existing_close_commands() {
-        let items = tab_context_items(2, 3, true);
-        assert_eq!(items.iter().map(|(_, id, _, _)| *id).collect::<Vec<_>>(), ["file.close", "file.closeOthers", "file.closeAll", "file.revealInFinder"]);
+        let rows = |index, count, has_path| tab_context_items(index, count, has_path).into_iter().flatten().collect::<Vec<_>>();
+        let items = rows(Some(2), 3, true);
+        assert_eq!(
+            items.iter().map(|(_, id, _, _)| *id).collect::<Vec<_>>(),
+            ["file.close", "file.closeAll", "file.closeOthers", "file.new", "file.open", "file.revealInFinder"]
+        );
         assert_eq!(items[0].2, json!({"document": 2}));
-        assert_eq!(items[1].2, json!({"document": 2}));
-        assert_eq!(items[2].2, json!({}));
-        assert_eq!(items[3].2, json!({"document": 2}));
-        assert!(items[3].3, "a saved document can be revealed in the file manager");
-        assert!(!tab_context_items(2, 3, false)[3].3, "an unsaved document cannot");
-        assert!(!tab_context_items(0, 1, false)[1].3);
-        assert!(items.iter().all(|(_, id, _, _)| photocraft_engine::commands::find(id).is_some()));
+        assert_eq!(items[1].2, json!({}));
+        assert_eq!(items[2].2, json!({"document": 2}));
+        assert_eq!(items[3].2, json!({}), "New runs like the menu item: its dialog opens");
+        assert_eq!(items[5].2, json!({"document": 2}));
+        assert!(items[5].3, "a saved document can be revealed in the file manager");
+        assert!(!rows(Some(2), 3, false)[5].3, "an unsaved document cannot");
+        assert!(!rows(Some(0), 1, false)[2].3, "Close Others needs another document");
+        assert!(
+            items
+                .iter()
+                .all(|(_, id, _, _)| { photocraft_engine::commands::find(id).is_some() || crate::menus::UI_COMMANDS.iter().any(|(ui_id, ..)| ui_id == id) })
+        );
+        // The empty part of the strip: New and Open, and Close All.
+        let strip = rows(None, 2, false);
+        assert_eq!(strip.iter().map(|(_, id, _, _)| *id).collect::<Vec<_>>(), ["file.closeAll", "file.new", "file.open"]);
     }
 
     #[test]
     fn tab_context_reveal_names_the_platform_file_manager() {
-        let (label, id, _, _) = &tab_context_items(0, 1, true)[3];
+        let rows: Vec<_> = tab_context_items(Some(0), 1, true).into_iter().flatten().collect();
+        let (label, id, _, _) = rows.last().unwrap();
         assert_eq!((*label, *id), (crate::menus::reveal_label(), "file.revealInFinder"));
     }
 
@@ -6325,7 +6413,7 @@ mod tests {
         app.run("file.new", json!({"width": 8, "height": 8, "name": "Edited"})).unwrap();
         app.run("edit.fill", json!({"color": "#ff0000"})).unwrap();
         assert_eq!(app.session.active_index(), Some(1));
-        let (_, id, params, _) = tab_context_items(0, 2, false)[1].clone();
+        let (_, id, params, _) = tab_context_items(Some(0), 2, false).into_iter().flatten().find(|r| r.1 == "file.closeOthers").unwrap();
         crate::menus::invoke(&mut app, &egui::Context::default(), id, params).unwrap();
         assert!(app.discard.is_some(), "close others must ask before discarding the edited tab");
         assert_eq!(app.session.documents().len(), 2);

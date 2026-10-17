@@ -10,7 +10,8 @@
 use std::collections::BTreeSet;
 
 use photocraft_paint::{
-    BrushPreset, BrushSettings, Control, DualBrush, Dynamic, GrayTile, MaskMode, MixerSettings, Pattern, PatternStyle, Pose, ShapeDynamics, TipShape, Transfer,
+    BrushPreset, BrushSettings, Control, DualBrush, Dynamic, GrayTile, MaskMode, MixerSettings, Pattern, PatternStyle, Pose, PresetCaptures, ShapeDynamics,
+    TipShape, Transfer,
 };
 use photocraft_psd::abr::{self, AbrFile, AbrSample, LegacyTip};
 use photocraft_psd::descriptor::{Descriptor, Value};
@@ -112,7 +113,7 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 // named after the imported file.
                 Some(brush) => {
                     let folder = f.folders.get(i).cloned().unwrap_or_default();
-                    out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder, captures: Default::default() });
+                    out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder, captures: captures(d) });
                 }
                 None => {
                     m.warnings.insert(format!("\"{name}\": its sampled tip is missing from the file; skipped"));
@@ -249,7 +250,18 @@ const KNOWN: &[&str] = &[
     "brushPoseTiltY",
     "brushPoseAngle",
     "toolOptions",
+    "useBrushSize",
+    // The preset's unique id: nothing to map.
+    "zuid",
 ];
+
+/// What picking a preset brings besides its tip and sections, as Photoshop saved it: Capture Brush
+/// Size in Preset (`useBrushSize`; off, picking the preset keeps the tool's size) and Include Tool
+/// Settings (a `toolOptions` object; without one, the tool keeps its mode, opacity, flow and
+/// pressure buttons). Most downloaded brushes leave both off.
+fn captures(d: &Descriptor) -> PresetCaptures {
+    PresetCaptures { size: boolean(d, "useBrushSize") != Some(false), tool_settings: obj(d, "toolOptions").is_some(), color: false }
+}
 
 struct Mapper<'a> {
     file: &'a AbrFile,
@@ -507,8 +519,13 @@ impl Mapper<'_> {
                 b.smoothing.adjust_for_zoom = v;
             }
             self.mixer_options(to, &mut b.mixer);
-            if mask_blend_is_set(to) {
-                self.warnings.insert("tool blend modes stored with presets are not applied".into());
+            // The tool's blend mode (Multiply, Dissolve…), applied with the tool settings.
+            match enum_value(to, "Md  ").and_then(|v| crate::effects_map::blend_from_id(v.as_bytes())) {
+                Some(mode) => b.mode = mode,
+                None if mask_blend_is_set(to) => {
+                    self.warnings.insert("a tool blend mode stored with a preset (Behind or Clear) has no brush equivalent; Normal stands in".into());
+                }
+                None => {}
             }
         }
         Some(b)

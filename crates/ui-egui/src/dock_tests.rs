@@ -48,7 +48,7 @@ fn short_columns_squeeze_groups_down_to_their_minimum_and_never_go_negative() {
 #[test]
 fn bad_stored_values_are_sanitised() {
     let mut l = DockLayout { order: vec![Group::Layers, Group::Layers, Group::Color], ..Default::default() };
-    assert_eq!(l.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(l.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Brushes, Group::Navigator, Group::History]);
     for bad in [f32::NAN, -10.0, f32::INFINITY, 1e12] {
         l.heights.insert(Group::Color, bad);
         let h = l.height(Group::Color);
@@ -56,7 +56,7 @@ fn bad_stored_values_are_sanitised() {
     }
     // Unknown fields, wrong types and old UI state all load.
     let back: DockLayout = serde_json::from_value(json!({"order": ["layers"], "bogus": 1})).unwrap();
-    assert_eq!(back.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(back.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Brushes, Group::Navigator, Group::History]);
     let mut ui = serde_json::to_value(crate::state::UiState::default()).unwrap();
     ui.as_object_mut().unwrap().remove("dock");
     let ui: crate::state::UiState = serde_json::from_value(ui).unwrap();
@@ -728,11 +728,11 @@ fn rows_in_view(h: &Harness<'static, PhotocraftApp>, n: usize) -> usize {
         .count()
 }
 
-/// #147: the default workspace gives Layers the column's spare height: at least ten rows on a
-/// 900 pt window, and a usable list on a 720 pt one.
+/// #147: the default workspace gives Layers the column's spare height: at least eight of
+/// Photoshop's 41 pt rows on a 900 pt window, and a usable list on a 720 pt one.
 #[test]
 fn default_layout_shows_ten_layer_rows_at_900pt() {
-    for (size, want) in [(vec2(1440.0, 900.0), 10), (vec2(1280.0, 720.0), 4)] {
+    for (size, want) in [(vec2(1440.0, 900.0), 8), (vec2(1280.0, 720.0), 4)] {
         let h = app_harness_rows(size, ThemeKind::ProMedium, 40);
         let rows = rows_in_view(&h, 40);
         let groups = last_rects(&h.ctx);
@@ -802,7 +802,7 @@ fn window_character_opens_its_own_group_and_keeps_properties() {
     let old = DockLayout { order: vec![Group::Color, Group::Properties, Group::Navigator, Group::History, Group::Layers], ..Default::default() };
     assert_eq!(old.order(), Group::ALL.to_vec());
     let moved = DockLayout { order: vec![Group::Layers, Group::Color], ..Default::default() };
-    assert_eq!(moved.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Navigator, Group::History]);
+    assert_eq!(moved.order(), vec![Group::Layers, Group::Color, Group::Properties, Group::Character, Group::Brushes, Group::Navigator, Group::History]);
 }
 
 type StripProbe = Option<(Vec<(usize, Rect)>, Rect, Option<Rect>, Rect)>;

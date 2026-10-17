@@ -255,7 +255,9 @@ mod tests {
             assert_eq!(history(&app), h0, "{tool:?}");
             let new: Vec<&str> = app.session.journal[j0..].iter().map(|(id, _)| id.as_str()).collect();
             assert_eq!(new, ["tools.setBrush"], "{tool:?}");
-            assert_eq!(app.session.journal.last().unwrap().1["brush"], json!({"size": 80.0f32, "hardness": 0.6f32}));
+            // The Dual Brush tip followed the size; the journal names it, so a replay is exact.
+            let dual = app.session.tools.brush.dual_brush.size;
+            assert_eq!(app.session.journal.last().unwrap().1["brush"], json!({"size": 80.0f32, "hardness": 0.6f32, "dualBrush": {"size": dual}}));
         }
     }
 

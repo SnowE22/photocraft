@@ -210,3 +210,18 @@ fn every_theme_shows_the_gradient_options() {
         assert!(combos.iter().any(|c| c.contains("Normal")), "{theme:?}: the blend mode picker shows; combo boxes: {combos:?}");
     }
 }
+
+/// ⌘-click with another tool (the temporary Move tool) selects the layer under the pointer, even
+/// with Auto-Select on, where ⌘ would turn it off for the Move tool itself.
+#[test]
+fn command_click_with_another_tool_picks_the_layer_clicked() {
+    for auto in [true, false] {
+        let (mut app, a, b) = app();
+        app.ui.tool_options.move_auto_select = auto;
+        app.ui.tool = crate::state::Tool::Brush;
+        assert_eq!(active(&app), Some(b));
+        drag(&mut app, [16.0, 16.0], [0.0, 0.0], egui::Modifiers::COMMAND);
+        assert_eq!(active(&app), Some(a), "auto-select {auto}: ⌘-click picked A");
+        assert_eq!(bounds(&app, a), Rect::new(8, 8, 24, 24), "a click moves nothing");
+    }
+}

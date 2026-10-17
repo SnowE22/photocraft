@@ -173,6 +173,40 @@ pub fn indicators(
     (name_right, rects, clicked)
 }
 
+/// The visibility eye of Photoshop's themes: a plain almond outline with a round pupil, about
+/// 13 × 8 pt, centred on `c`.
+pub fn paint_eye(painter: &Painter, c: Pos2, color: egui::Color32) {
+    let (hw, hh) = (6.5, 4.0);
+    let stroke = Stroke::new(1.4, color);
+    // A cubic whose inner control points sit `k` above its ends peaks at 0.75 k.
+    let k = hh / 0.75;
+    for dir in [-1.0, 1.0] {
+        let lid = [pos2(c.x - hw, c.y), pos2(c.x - hw * 0.45, c.y + dir * k), pos2(c.x + hw * 0.45, c.y + dir * k), pos2(c.x + hw, c.y)];
+        painter.add(egui::epaint::CubicBezierShape::from_points_stroke(lid, false, egui::Color32::TRANSPARENT, stroke));
+    }
+    painter.circle_filled(c, 2.2, color);
+}
+
+/// A group row's folder glyph in Photoshop's themes, filling `r` (about 15 × 11 pt): the back
+/// outlined with its tab, the front flap solid.
+pub fn paint_folder(painter: &Painter, r: Rect, color: egui::Color32) {
+    let stroke = Stroke::new(1.0, color);
+    // Half-pixel insets keep the 1 pt outline crisp.
+    let o = r.shrink(0.5);
+    let tab_w = (r.width() * 0.42).round();
+    let pts = vec![
+        o.left_bottom(),
+        o.left_top(),
+        pos2(o.left() + tab_w, o.top()),
+        pos2(o.left() + tab_w, o.top() + 2.0),
+        pos2(o.right(), o.top() + 2.0),
+        o.right_bottom(),
+    ];
+    painter.add(Shape::closed_line(pts, stroke));
+    let front = Rect::from_min_max(pos2(r.left(), (r.top() + r.height() * 0.45).round()), r.max);
+    painter.rect_filled(front, 0.0, color);
+}
+
 /// A small disclosure triangle: pointing down when open, right when closed.
 pub fn paint_triangle(painter: &Painter, c: Pos2, open: bool, color: egui::Color32) {
     let s = 3.0;

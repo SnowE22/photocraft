@@ -1330,10 +1330,27 @@ pub fn delete_selected(s: &mut Session) -> Result<Value> {
     Ok(json!({"deleted": sel.len()}))
 }
 
-/// Duplicate Layer with several layers selected: each copy goes above its original and the
-/// copies become the selection. Artboard copies go beside their boards unless `in_place`
-/// ([`crate::artboard_cmds::place_copy`]). `label` names the history step (Layer via Copy reuses
-/// this path, #2777).
+/// `ids` in Layers panel order, topmost row first: a group's row comes before its contents.
+fn panel_order(doc: &Document, ids: &[LayerId]) -> Vec<LayerId> {
+    fn rec(layers: &[Layer], ids: &[LayerId], out: &mut Vec<LayerId>) {
+        for l in layers.iter().rev() {
+            if ids.contains(&l.id) {
+                out.push(l.id);
+            }
+            if let LayerContent::Group(g) = &l.content {
+                rec(&g.children, ids, out);
+            }
+        }
+    }
+    let mut out = Vec::with_capacity(ids.len());
+    rec(&doc.layers, ids, &mut out);
+    out
+}
+
+/// Duplicate Layer with several layers selected: like Photoshop, the copies go together, in their
+/// original order, directly above the topmost selected layer, and become the selection. Artboard
+/// copies go beside their boards unless `in_place` ([`crate::artboard_cmds::place_copy`]).
+/// `label` names the history step (Layer via Copy reuses this path, #2777).
 pub fn duplicate_selected(s: &mut Session, in_place: bool, label: &str) -> Result<Value> {
     let sel = selected(s);
     let before = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
@@ -1341,11 +1358,16 @@ pub fn duplicate_selected(s: &mut Session, in_place: bool, label: &str) -> Resul
     let (copies, active) = s.edit(label, |doc, active| {
         let mut copies = Vec::new();
         let mut new_active = None;
-        for id in top_level(doc, &sel) {
+        let order = panel_order(doc, &top_level(doc, &sel));
+        // Each copy lands above the previous one, starting above the topmost original, so the
+        // bottom-most original's copy ends up lowest in the block.
+        let mut anchor = order.first().copied();
+        for &id in order.iter().rev() {
             // Match the single-layer duplicate path: Background copies become
             // ordinary layers, while normal copies retain their original locks.
             let dup = crate::commands::layer_copy(doc, id)?;
-            let nid = doc.insert_above(Some(id), dup);
+            let nid = doc.insert_above(anchor.or(Some(id)), dup);
+            anchor = Some(nid);
             if !in_place {
                 crate::artboard_cmds::place_copy(doc, nid)?;
             }
@@ -1455,6 +1477,37 @@ pub fn specs() -> Vec<CommandSpec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Root layer names, top of the stack first.
+    fn root_names(s: &Session) -> Vec<String> {
+        s.active().unwrap().doc.layers.iter().rev().map(|l| l.name.clone()).collect()
+    }
+
+    #[test]
+    fn duplicating_several_layers_puts_the_copies_above_the_topmost_one() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+        let mut ids = Vec::new();
+        for name in ["A", "B", "C", "D"] {
+            ids.push(s.execute("layer.new.layer", json!({"name": name})).unwrap()["layer"].as_u64().unwrap());
+        }
+        // A, B and D selected, C not: Photoshop stacks D, B, A copies right above D.
+        s.execute("layer.select", json!({"layer": ids[0]})).unwrap();
+        s.execute("layer.select", json!({"layer": ids[1], "mode": "toggle"})).unwrap();
+        s.execute("layer.select", json!({"layer": ids[3], "mode": "toggle"})).unwrap();
+        let out = s.execute("layer.duplicate", json!({})).unwrap();
+        assert_eq!(out["layers"].as_array().unwrap().len(), 3);
+        assert_eq!(root_names(&s), ["D copy", "B copy", "A copy", "D", "C", "B", "A", "Background"]);
+        // Layer via Copy (⌘J with no pixel selection) takes the same path.
+        let mut s2 = Session::new();
+        s2.execute("file.new", json!({"width": 20, "height": 20})).unwrap();
+        let a = s2.execute("layer.new.layer", json!({"name": "A"})).unwrap()["layer"].as_u64().unwrap();
+        let b = s2.execute("layer.new.layer", json!({"name": "B"})).unwrap()["layer"].as_u64().unwrap();
+        s2.execute("layer.select", json!({"layer": a})).unwrap();
+        s2.execute("layer.select", json!({"layer": b, "mode": "toggle"})).unwrap();
+        s2.execute("layer.new.layerViaCopy", json!({})).unwrap();
+        assert_eq!(root_names(&s2), ["B copy", "A copy", "B", "A", "Background"]);
+    }
 
     #[test]
     fn duplicates_are_numbered_not_stacked() {

@@ -155,7 +155,9 @@ fn move_preset(s: &mut Session, p: &Value) -> Result<Value> {
         (None, None) => moving.group.clone(),
     };
     // The folder: as given, else `before`'s, else its own when it stays in its group.
+    // A loose preset (no group) sits at the panel's top level, in no folder.
     let target_folder = match (folder, before_pr) {
+        _ if target.is_empty() => Vec::new(),
         (Some(f), _) => f,
         (None, Some(b)) => b.folder.clone(),
         (None, None) if moving.group == target => moving.folder.clone(),

@@ -22,6 +22,8 @@ pub const CHAIN_W: f32 = 12.0;
 pub const THUMB_LAYER: u8 = 0;
 pub const THUMB_MASK: u8 = 1;
 pub const THUMB_VECTOR: u8 = 2;
+/// The Layers panel's own layer thumbnail: the layer's content bounds ([`PhotocraftApp::layer_bounds_thumb`]).
+pub const THUMB_LAYER_BOUNDS: u8 = 3;
 
 /// Which of a layer's masks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,14 +135,22 @@ pub fn paint(
         }
         out.chains.push((kind, chain));
         *x += CHAIN_W - 2.0;
-        let r = Rect::from_min_size(pos2(*x, cy - ts / 2.0), vec2(ts, ts));
+        let cell = Rect::from_min_size(pos2(*x, cy - ts / 2.0), vec2(ts, ts));
+        // The textures are letterboxed squares of the canvas. Photoshop's themes draw just the
+        // canvas-shaped part, left-aligned like the layer thumbnail; the others the whole square.
+        let (r, uv) = if t.pro {
+            let (fitted, uv) = crate::channels_panel::fit_thumb(cell, doc.size.width, doc.size.height);
+            (fitted.translate(vec2(cell.left() - fitted.left(), 0.0)), uv)
+        } else {
+            (cell, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)))
+        };
         if ui.is_rect_visible(r) {
             let tex = match kind {
                 MaskKind::Pixel => l.mask.as_ref().map(|m| app.mask_thumb(ctx, doc, l.id, m)),
                 MaskKind::Vector => l.vector_mask.as_ref().map(|m| app.vector_mask_thumb(ctx, doc, l.id, m)),
             };
             if let Some(tex) = tex {
-                painter.image(tex, r, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
+                painter.image(tex, r, uv, Color32::WHITE);
             }
             if !enabled {
                 // Photoshop's red X over a disabled mask.
@@ -153,11 +163,11 @@ pub fn paint(
         painter.rect_stroke(
             r,
             if t.pro { 0.0 } else { 4.0 },
-            Stroke::new(1.0, if t.pro { Color32::from_gray(20) } else { t.field_border }),
+            Stroke::new(1.0, if t.pro { crate::panels::pro_thumb_border(&t) } else { t.field_border }),
             StrokeKind::Outside,
         );
         out.thumbs.push((kind, r));
-        *x += ts + 6.0 + 2.0;
+        *x += if t.pro { r.width() + 9.0 } else { ts + 6.0 + 2.0 };
     }
     let rects = (out.thumbs.clone(), out.chains.clone());
     ctx.data_mut(|d| d.get_temp_mut_or_default::<std::collections::HashMap<u64, Rects>>(rects_id()).insert(l.id.0, rects));

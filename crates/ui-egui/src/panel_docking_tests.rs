@@ -506,12 +506,13 @@ fn legacy_control_updates_authoritative_custom_visibility_and_selection_atomical
 }
 
 #[test]
-fn legacy_dock_width_is_consumed_by_custom_renderer_and_clamped_to_existing_range() {
+fn legacy_dock_width_is_consumed_by_custom_renderer_and_clamped_to_the_window() {
     let mut app = app();
     app.run("window.panel.float", json!({"panel":"properties"})).unwrap();
     let mut h = harness(app, vec2(1280.0, 800.0));
     let ctx = h.ctx.clone();
-    for (requested, expected) in [(410.0, 410.0), (900.0, 520.0), (20.0, 250.0)] {
+    // No fixed upper bound (Photoshop): only the window, less room for the canvas, limits it.
+    for (requested, expected) in [(410.0, 410.0), (900.0, 900.0), (5000.0, 1040.0), (20.0, 250.0)] {
         assert_eq!(control_set(h.state_mut(), &ctx, json!({"dockWidth":requested}))["ok"], true);
         h.run_steps(2);
         let state = egui::containers::panel::PanelState::load(&h.ctx, egui::Id::new("shared-panel-dock")).unwrap();
@@ -700,4 +701,33 @@ fn native_tab_reorder_stays_native_until_drag_crosses_the_strip() {
     let layers = tabs.iter().position(|(_, label)| *label == "Layers").unwrap();
     let channels = tabs.iter().position(|(_, label)| *label == "Channels").unwrap();
     assert!(channels < layers, "upstream native reorder remains effective");
+}
+
+/// Photoshop docks the Tools panel among the panels: between two dock columns here, at the
+/// toolbar's own width, drawn by the dock; taking it out leaves the layout as it was.
+#[test]
+fn the_tools_panel_docks_between_two_dock_columns() {
+    let mut app = app();
+    app.run("window.panel.move", json!({"panel": "swatches", "anchor": "layers", "zone": "left"})).unwrap();
+    let before = app.ui.docking.clone().unwrap();
+    dock_tools(&mut app, "layers", Zone::Left).unwrap();
+    assert!(tools_docked(&app));
+    assert!(valid(app.ui.docking.as_ref().unwrap()));
+    assert!(dock_tools(&mut app, "nope", Zone::Left).is_err(), "an unknown anchor is refused");
+    assert!(tools_docked(&app), "and changes nothing");
+    let mut h = harness(app, vec2(1400.0, 800.0));
+    h.run_steps(4);
+    let grip = h.get_by_label("Move Tools panel").rect();
+    // Each panel's tab in the dock (the icon rail has buttons with the same names).
+    let tab = |id: &str| h.ctx.read_response(egui::Id::new("photocraft-panel-docking").with(("tab", &id.to_string()))).unwrap().rect;
+    let swatches = tab("swatches");
+    let layers = tab("layers");
+    assert!(swatches.right() <= grip.left() + 1.0 && grip.right() <= layers.left() + 1.0, "between: {swatches:?} {grip:?} {layers:?}");
+    // The Tools column keeps the toolbar's width (the split beside it is fixed to it).
+    let w = crate::panels::toolbar_width(true, false);
+    assert!(grip.width() <= w, "the toolbar's width: {grip:?}");
+    assert!(layers.left() - swatches.right() >= w - 1.0, "the column is as wide as the toolbar: {swatches:?} {layers:?}");
+    undock_tools(h.state_mut());
+    assert!(!tools_docked(h.state()));
+    assert_eq!(h.state().ui.docking.as_ref().unwrap().panels(), before.panels());
 }

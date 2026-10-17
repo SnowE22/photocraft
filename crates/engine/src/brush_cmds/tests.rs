@@ -1017,3 +1017,33 @@ fn brush_and_pencil_paint_a_cmyk_pick_with_the_picked_inks() {
         assert!(got.iter().zip(cyan).all(|(a, b)| (a - b).abs() < 0.02), "{cmd}: {got:?}");
     }
 }
+
+/// Photoshop keeps the Dual Brush tip in proportion to the brush: `[` / `]`, the size slider and
+/// a stroke's `size` scale it with the diameter, unless the call sets the tip's own size.
+#[test]
+fn resizing_the_brush_scales_its_dual_tip() {
+    let mut s = Session::new();
+    s.execute("tools.setBrush", json!({"brush": {"size": 500.0, "dualBrush": {"enabled": true, "size": 250.0}}})).unwrap();
+    s.execute("tools.setBrush", json!({"brush": {"size": 100.0}})).unwrap();
+    assert!((s.tools.brush.dual_brush.size - 50.0).abs() < 1e-3, "{}", s.tools.brush.dual_brush.size);
+    s.execute("tools.increaseBrushSize", json!({})).unwrap();
+    assert!((s.tools.brush.dual_brush.size - s.tools.brush.size / 2.0).abs() < 1e-3);
+    // Down to a pixel and back: the tip comes back at its proportion (no floor at 1 px).
+    s.execute("tools.setBrush", json!({"brush": {"size": 1.0}})).unwrap();
+    s.execute("tools.setBrush", json!({"brush": {"size": 500.0}})).unwrap();
+    assert!((s.tools.brush.dual_brush.size - 250.0).abs() < 1e-2, "{}", s.tools.brush.dual_brush.size);
+    // A call that sets the tip's size keeps it.
+    s.execute("tools.setBrush", json!({"brush": {"size": 300.0, "dualBrush": {"size": 20.0}}})).unwrap();
+    assert_eq!(s.tools.brush.dual_brush.size, 20.0);
+    // A stroke's `size` param scales it too.
+    let b = resolve_brush(&s, &json!({"points": [[1, 1]], "size": 600.0}), "paint.stroke").unwrap();
+    assert!((b.dual_brush.size - 40.0).abs() < 1e-3);
+    // A preset that doesn't capture its size: its dual tip at the tool's size.
+    let mut preset = BrushPreset { name: "p".into(), brush: s.tools.brush.clone(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default() };
+    preset.brush.size = 1000.0;
+    preset.brush.dual_brush.size = 400.0;
+    preset.captures.size = false;
+    let picked = preset.picked_over(&BrushSettings { size: 100.0, ..Default::default() });
+    assert_eq!(picked.size, 100.0);
+    assert!((picked.dual_brush.size - 40.0).abs() < 1e-3);
+}

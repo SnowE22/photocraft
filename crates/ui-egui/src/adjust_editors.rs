@@ -395,30 +395,53 @@ fn set_pencil(v: &mut Value, pencil: bool, gray: bool) -> bool {
     true
 }
 
-/// Mode buttons above the graph: points, pencil, and Smooth for the shown channel's drawing.
-fn curves_mode_row(ui: &mut egui::Ui, v: &mut Value, key: &str, gray: bool) -> Edit {
+/// The Curves graph's fixed size (graph plus its gradient bars), as in Photoshop: it keeps this
+/// size whatever the panel's height, and shrinks only to fit a panel too narrow for it (not
+/// below [`CURVES_MIN_SIDE`]).
+pub const CURVES_SIDE: f32 = 236.0;
+pub const CURVES_MIN_SIDE: f32 = 150.0;
+/// The tool column left of the graph: its buttons' size and the gap between them.
+pub const CURVES_TOOL: f32 = 28.0;
+pub const CURVES_TOOL_GAP: f32 = 4.0;
+/// The room the Properties panel's three eyedroppers take at the top of the tool column
+/// (`layer_picker::controls_in`); the modal dialog shows them in a row of its own.
+pub const CURVES_PICKER_SLOTS_H: f32 = CURVES_TOOL * 3.0 + CURVES_TOOL_GAP * 2.0;
+
+/// Where the Properties panel's eyedroppers go in the Curves tool column this frame.
+pub fn curves_picker_slots_id(mem: egui::Id) -> egui::Id {
+    mem.with("curves-picker-slots")
+}
+
+/// The point and pencil buttons, one above the other in the tool column (Photoshop's curve
+/// buttons).
+fn curves_mode_buttons(ui: &mut egui::Ui, v: &mut Value, gray: bool) -> Edit {
     let pencil = v.get("pencil").and_then(Value::as_bool).unwrap_or(false);
     let mut e = Edit::default();
-    ui.horizontal(|ui| {
-        if crate::icons::button(ui, "spline", 24.0, !pencil, tl!("Edit points to modify the curve")).clicked() && pencil {
-            e.add(Edit::discrete(set_pencil(v, false, gray)));
-        }
-        if crate::icons::button(ui, "pencil", 24.0, pencil, tl!("Draw to modify the curve")).clicked() && !pencil {
-            e.add(Edit::discrete(set_pencil(v, true, gray)));
-        }
-        let label = crate::i18n::tr_ctx(crate::i18n::current(), "curves", "Smooth");
-        let smooth = ui
-            .add_enabled_ui(pencil, |ui| widgets::secondary_button(ui, label, 0.0))
-            .inner
-            .on_hover_text(tl!("Smooth the curve values"))
-            .on_disabled_hover_text(tl!("Smooth the curve values"));
-        if smooth.clicked() {
-            let mut map = read_map(v, key);
-            adjust_params::smooth_curve_map(&mut map);
-            write_map(v, key, &map);
-            e.add(Edit::discrete(true));
-        }
-    });
+    if crate::icons::button(ui, "spline", CURVES_TOOL, !pencil, tl!("Edit points to modify the curve")).clicked() && pencil {
+        e.add(Edit::discrete(set_pencil(v, false, gray)));
+    }
+    if crate::icons::button(ui, "pencil", CURVES_TOOL, pencil, tl!("Draw to modify the curve")).clicked() && !pencil {
+        e.add(Edit::discrete(set_pencil(v, true, gray)));
+    }
+    e
+}
+
+/// Smooth, under the graph: smooths the shown channel's drawing (pencil mode only).
+fn curves_smooth(ui: &mut egui::Ui, v: &mut Value, key: &str) -> Edit {
+    let pencil = v.get("pencil").and_then(Value::as_bool).unwrap_or(false);
+    let mut e = Edit::default();
+    let label = crate::i18n::tr_ctx(crate::i18n::current(), "curves", "Smooth");
+    let smooth = ui
+        .add_enabled_ui(pencil, |ui| widgets::secondary_button(ui, label, 0.0))
+        .inner
+        .on_hover_text(tl!("Smooth the curve values"))
+        .on_disabled_hover_text(tl!("Smooth the curve values"));
+    if smooth.clicked() {
+        let mut map = read_map(v, key);
+        adjust_params::smooth_curve_map(&mut map);
+        write_map(v, key, &map);
+        e.add(Edit::discrete(true));
+    }
     e
 }
 
@@ -434,13 +457,30 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
     }
     let chan = chans.get(ch).copied().unwrap_or(ToneChannel { key: "", label: "" });
     let key = curve_key(&chan);
-    let mut e = curves_mode_row(ui, v, key, cx.gray);
+    let mut e = Edit::default();
+    // Photoshop's layout: a tool column (the eyedroppers, then the point and pencil buttons) left
+    // of a fixed-size graph, Smooth under it.
+    let room = ui.available_width() - CURVES_TOOL - ui.spacing().item_spacing.x;
+    let side = CURVES_SIDE.min(room).max(CURVES_MIN_SIDE);
+    ui.add_space(4.0);
+    let (full, resp) = ui
+        .horizontal_top(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(CURVES_TOOL);
+                ui.spacing_mut().item_spacing.y = CURVES_TOOL_GAP;
+                if !cx.dialog {
+                    let (slots, _) = ui.allocate_exact_size(vec2(CURVES_TOOL, CURVES_PICKER_SLOTS_H), Sense::hover());
+                    ui.data_mut(|d| d.insert_temp(curves_picker_slots_id(cx.mem), slots));
+                    ui.add_space(6.0);
+                }
+                e.add(curves_mode_buttons(ui, v, cx.gray));
+            });
+            ui.allocate_exact_size(vec2(side, side + 14.0), Sense::click_and_drag())
+        })
+        .inner;
     let pencil = v.get("pencil").and_then(Value::as_bool).unwrap_or(false);
     let mut pts = read_curve(v, key);
     let mut map = read_map(v, key);
-    let side = ui.available_width().clamp(120.0, 300.0);
-    ui.add_space(4.0);
-    let (full, resp) = ui.allocate_exact_size(vec2(side, side + 14.0), Sense::click_and_drag());
     let graph = curve_graph(full, side);
     ui.data_mut(|d| d.insert_temp(cx.mem.with("curves-graph"), graph));
     let to_scr = |q: [f32; 2]| pos2(graph.left() + q[0] / 255.0 * graph.width(), graph.bottom() - q[1] / 255.0 * graph.height());
@@ -543,6 +583,12 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         }
     }
 
+    // Smooth, under the graph.
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add_space((graph.left() - ui.cursor().left()).max(0.0));
+        e.add(curves_smooth(ui, v, key));
+    });
     // Input / Output of the selected point.
     ui.add_space(6.0);
     ui.horizontal(|ui| {
@@ -1624,10 +1670,16 @@ pub fn layer_editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj
         dialog: false,
         dynamic_color_sliders: app.session.prefs().interface.dynamic_color_sliders,
     };
-    if matches!(kind, "levels" | "curves") {
+    if kind == "levels" {
         crate::layer_picker::controls(app, ui, id);
     }
     let e = editor(ui, kind, &mut values, &cx);
+    if kind == "curves"
+        && let Some(slots) = ui.data(|d| d.get_temp::<Rect>(curves_picker_slots_id(cx.mem)))
+    {
+        // Curves: the eyedroppers stand at the top of the graph's tool column.
+        crate::layer_picker::controls_in(app, ui, id, slots);
+    }
     if e.import_gradients {
         crate::preset_files_ui::import_gradients_dialog(app);
     }

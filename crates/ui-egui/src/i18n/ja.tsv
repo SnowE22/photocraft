@@ -3821,3 +3821,10 @@ curves	Smooth	スムーズ
 	Reset All Locked Settings	ロックされた設定をすべて初期化
 	Copy Texture to Other Tools	テクスチャを他のツールにコピー
 	ICO is limited to 256 × 256 pixels	ICO は 256 × 256 ピクセルまでです
+	Panel Icons	パネルアイコン
+	Move Tools panel	ツールパネルを移動
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	ドラッグしてツールパネルを移動。カンバスの端にドロップするとドッキングします
+	New Document…	新規ドキュメント…
+	Open Document…	ドキュメントを開く…
+	Delete Brushes	ブラシを削除
+	Thumbnail size	サムネールのサイズ

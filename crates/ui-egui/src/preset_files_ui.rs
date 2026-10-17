@@ -93,9 +93,8 @@ pub fn open(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Option<Result<
             None => imported,
         };
         if what == "brushes" {
-            // Show them: Brush Settings › Brushes tab.
-            app.ui.panels.brush_settings = true;
-            app.ui.brush_tab = 1;
+            // Show them in the Brushes panel.
+            crate::brush_panel::show_brushes_panel(app);
         }
     }))
 }

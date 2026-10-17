@@ -188,7 +188,13 @@ pub fn resolve_brush(s: &Session, p: &Value, cmd: &str) -> Result<BrushSettings>
     // A library preset's tips stay on disk until a stroke uses them (#1843).
     s.load_brush_tips(&mut b).map_err(|e| bad(cmd, e))?;
     if let Some(v) = num(p, "size") {
+        let before = b.size;
         b.size = v.max(0.5);
+        // The Dual Brush tip keeps its proportion (see `scale_dual_with_size`), unless the
+        // `brush` patch sets its size.
+        if p.get("brush").and_then(|i| i.get("dualBrush")).and_then(|d| d.get("size")).is_none() {
+            b.scale_dual_with_size(before);
+        }
     }
     if let Some(v) = num(p, "hardness") {
         b.hardness = v.clamp(0.0, 1.0);
@@ -915,6 +921,9 @@ pub(crate) fn set_brush(s: &mut Session, p: &Value) -> Result<Value> {
     if reset {
         b = BrushSettings::default();
     }
+    // A new diameter takes the Dual Brush tip with it, unless the call sets the tip's own size.
+    let size_before = b.size;
+    let sets_dual_size = [p.get("dualBrush"), p.get("brush").and_then(|i| i.get("dualBrush"))].into_iter().flatten().any(|d| d.get("size").is_some());
     let mut patch = p.clone();
     if let Some(o) = patch.as_object_mut() {
         for k in ["preset", "reset", "coalesce"] {
@@ -929,6 +938,9 @@ pub(crate) fn set_brush(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     b = merge_brush(&b, &patch, cmd)?;
+    if !sets_dual_size {
+        b.scale_dual_with_size(size_before);
+    }
     validate_brush(&b, cmd)?;
     // The picked preset stays "the current brush" across later edits, so `brush.presets.update`
     // knows what to overwrite. Only once the brush is accepted: a failed call leaves no state

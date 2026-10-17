@@ -107,16 +107,24 @@ fn clicking_a_triangle_toggles_its_group_at_every_ui_scale() {
     }
 }
 
+/// Photoshop's modifier clicks: ⌥ toggles the group and every group inside it; ⌘ the groups
+/// beside it in its folder, never the folder itself.
 #[test]
-fn alt_click_toggles_every_group() {
+fn alt_click_toggles_the_group_tree_and_ctrl_click_its_siblings() {
     let mut h = harness_with(layered(), 1.0);
     let p = triangle(&mut h, "outer").unwrap();
     click(&mut h, p, Modifiers::ALT);
-    assert!(!group(&h, "outer").1 && !group(&h, "inner").1, "⌥-click closes all groups");
+    assert!(!group(&h, "outer").1 && !group(&h, "inner").1, "⌥-click closes the group and the groups inside it");
     let p = triangle(&mut h, "outer").unwrap();
     click(&mut h, p, Modifiers::ALT);
-    assert!(group(&h, "outer").1 && group(&h, "inner").1, "⌥-click opens all groups");
+    assert!(group(&h, "outer").1 && group(&h, "inner").1, "⌥-click opens them all again");
     assert!(triangle(&mut h, "inner").is_some());
+    let p = triangle(&mut h, "inner").unwrap();
+    click(&mut h, p, Modifiers::COMMAND);
+    assert!(!group(&h, "inner").1 && group(&h, "outer").1, "⌘-click stays inside inner's folder");
+    for (m, want) in [(Modifiers::NONE, "group"), (Modifiers::COMMAND, "siblings"), (Modifiers::ALT, "tree"), (Modifiers::COMMAND | Modifiers::ALT, "siblingsTree")] {
+        assert_eq!(super::expand_scope(m), want);
+    }
 }
 
 #[test]

@@ -179,6 +179,13 @@ fn soft_exp(u: f32) -> f32 {
 #[inline]
 pub fn tip_falloff(d: f32, radius: f32, hardness: f32) -> f32 {
     let (r0, s) = tip_shape(radius, hardness);
+    falloff_shaped(d, r0, s)
+}
+
+/// [`tip_falloff`] with the tip's core radius and shoulder width already worked out
+/// ([`tip_shape`]), for loops over a dab's pixels: the same value, bit for bit.
+#[inline]
+pub(crate) fn falloff_shaped(d: f32, r0: f32, s: f32) -> f32 {
     if d <= r0 {
         return 1.0;
     }

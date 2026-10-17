@@ -1619,7 +1619,8 @@ mod tests {
     }
 
     /// #2777: with several layers selected and no pixel selection, Layer via Copy (Cmd+J) copies
-    /// every selected layer in one step, each copy above its original and the copies selected.
+    /// every selected layer in one step, the copies stacked above the topmost original in their
+    /// order (Photoshop) and selected.
     /// With a pixel selection it still copies the active layer's selected pixels only.
     #[test]
     fn layer_via_copy_duplicates_every_selected_layer() {
@@ -1632,11 +1633,14 @@ mod tests {
         s.execute("layer.new.layerViaCopy", json!({})).unwrap();
         let st = s.active().unwrap();
         let ids: Vec<LayerId> = st.doc.layers.iter().map(|l| l.id).collect();
-        assert_eq!(ids.len(), 5, "background, a, a copy, b, b copy");
-        assert_eq!((ids[1], ids[3]), (a, b), "each copy sits above its original");
+        assert_eq!(ids.len(), 5, "background, a, b, a copy, b copy");
+        assert_eq!((ids[1], ids[2]), (a, b), "the copies go above the topmost original, together");
+        let names: Vec<&str> = st.doc.layers.iter().map(|l| l.name.as_str()).collect();
+        let (na, nb) = (st.doc.layer(a).unwrap().name.clone(), st.doc.layer(b).unwrap().name.clone());
+        assert_eq!((names[3], names[4]), (format!("{na} copy").as_str(), format!("{nb} copy").as_str()), "in their originals' order");
         let mut selected = st.selected_layers();
         selected.sort_by_key(|l| l.0);
-        assert_eq!(selected, vec![ids[2], ids[4]], "the copies become the selection");
+        assert_eq!(selected, vec![ids[3], ids[4]], "the copies become the selection");
         assert_eq!(st.history.past_len(), steps + 1, "one undo step");
         assert!(s.undo());
         s.execute("layer.select", json!({"layer": b.0})).unwrap();

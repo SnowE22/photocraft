@@ -30,23 +30,78 @@ fn opt_bool(p: &Value, key: &str) -> Result<Option<bool>> {
     }
 }
 
+/// Deepest nesting the toggles walk (deeper groups are left as they are).
+const MAX_DEPTH: usize = 256;
+
 fn set_all(layers: &mut [Layer], expanded: bool) -> usize {
+    set_below(layers, expanded, MAX_DEPTH)
+}
+
+/// Set every group in `layers` and, `depth` levels down, the groups inside them.
+fn set_below(layers: &mut [Layer], expanded: bool, depth: usize) -> usize {
     let mut n = 0;
     for l in layers {
         if let LayerContent::Group(g) = &mut l.content {
             g.expanded = expanded;
-            n += 1 + set_all(&mut g.children, expanded);
+            n += 1;
+            if depth > 0 {
+                n += set_below(&mut g.children, expanded, depth - 1);
+            }
         }
     }
     n
 }
 
-/// `{"layer":id?,"expanded":bool?,"all":bool?}`: open or close a group (no `expanded`: toggle).
-/// With `all`, every group in the document takes the new state (Photoshop's ⌥-click on a
-/// disclosure triangle); without a layer, `all` toggles from "any group open".
+/// The list holding layer `id` (the document's top level or a group's children).
+fn siblings_of(layers: &mut Vec<Layer>, id: LayerId, depth: usize) -> Option<&mut Vec<Layer>> {
+    if layers.iter().any(|l| l.id == id) {
+        return Some(layers);
+    }
+    if depth == 0 {
+        return None;
+    }
+    layers.iter_mut().find_map(|l| match &mut l.content {
+        LayerContent::Group(g) => siblings_of(&mut g.children, id, depth - 1),
+        _ => None,
+    })
+}
+
+/// Which groups a click on one group's disclosure triangle sets, as in Photoshop's Layers panel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Scope {
+    /// Just that group.
+    Group,
+    /// Every group beside it, in the same folder (⌘-click); not the groups inside them.
+    Siblings,
+    /// That group and every group inside it (⌥-click).
+    Tree,
+    /// Every group beside it and every group inside those (⌘⌥-click).
+    SiblingsTree,
+}
+
+fn scope_param(p: &Value) -> Result<Scope> {
+    Ok(match p.get("scope") {
+        None | Some(Value::Null) => Scope::Group,
+        Some(Value::String(s)) => match s.as_str() {
+            "group" => Scope::Group,
+            "siblings" => Scope::Siblings,
+            "tree" => Scope::Tree,
+            "siblingsTree" => Scope::SiblingsTree,
+            other => return Err(bad(format!("unknown scope `{other}` (group, siblings, tree, siblingsTree)"))),
+        },
+        Some(_) => return Err(bad("`scope` must be group, siblings, tree or siblingsTree")),
+    })
+}
+
+/// `{"layer":id?,"expanded":bool?,"all":bool?,"scope":..?}`: open or close a group (no
+/// `expanded`: toggle). `scope` widens it within the group's folder, as Photoshop's modifier
+/// clicks do: `siblings` (every group beside it, ⌘-click), `tree` (it and every group inside it,
+/// ⌥-click) or `siblingsTree` (both, ⌘⌥-click). With `all`, every group in the document takes the
+/// new state; without a layer, `all` toggles from "any group open".
 fn set_expanded(s: &mut Session, p: &Value) -> Result<Value> {
     let want = opt_bool(p, "expanded")?;
     let all = opt_bool(p, "all")?.unwrap_or(false);
+    let scope = scope_param(p)?;
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let layer = match p.get("layer") {
         None | Some(Value::Null) if all => None,
@@ -68,12 +123,22 @@ fn set_expanded(s: &mut Session, p: &Value) -> Result<Value> {
         set_all(&mut doc.layers, expanded)
     } else {
         let id = layer.ok_or_else(|| bad("no layer"))?;
-        match doc.layer_mut(id).map(|l| &mut l.content) {
-            Some(LayerContent::Group(g)) => {
-                g.expanded = expanded;
-                1
+        match scope {
+            Scope::Group | Scope::Tree => match doc.layer_mut(id).map(|l| &mut l.content) {
+                Some(LayerContent::Group(g)) => {
+                    g.expanded = expanded;
+                    1 + if scope == Scope::Tree { set_below(&mut g.children, expanded, MAX_DEPTH) } else { 0 }
+                }
+                _ => return Err(EngineError::NoLayer(id)),
+            },
+            Scope::Siblings | Scope::SiblingsTree => {
+                let list = siblings_of(&mut doc.layers, id, MAX_DEPTH).ok_or(EngineError::NoLayer(id))?;
+                if scope == Scope::Siblings {
+                    set_below(list, expanded, 0)
+                } else {
+                    set_below(list, expanded, MAX_DEPTH)
+                }
             }
-            _ => return Err(EngineError::NoLayer(id)),
         }
     };
     Ok(json!({"expanded": expanded, "groups": changed}))
@@ -85,7 +150,7 @@ pub fn specs() -> Vec<CommandSpec> {
         label: "Expand/Collapse Group",
         menu: &[],
         shortcut: None,
-        params: r##"{"layer":id?,"expanded":bool?,"all":bool?} (no expanded: toggle; all: every group; not an undo step)"##,
+        params: r##"{"layer":id?,"expanded":bool?,"all":bool?,"scope":"group"|"siblings"|"tree"|"siblingsTree"?} (no expanded: toggle; scope widens it within the group's folder: siblings = every group beside it, tree = it and every group inside it, siblingsTree = both; all: every group; not an undo step)"##,
         enabled: has_group,
         run: set_expanded,
         journal: false,
@@ -134,6 +199,43 @@ mod tests {
         assert!(!expanded(&s, inner) && !expanded(&s, outer));
         assert_eq!(s.execute(ID, json!({"all": true})).unwrap()["groups"], 2);
         assert!(expanded(&s, inner) && expanded(&s, outer));
+    }
+
+    /// Photoshop's modifier clicks on a disclosure triangle: ⌘ sets the groups beside it, ⌥ it and
+    /// the groups inside it, ⌘⌥ both, never reaching outside its folder.
+    #[test]
+    fn scopes_follow_photoshops_modifier_clicks() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 32, "height": 32})).unwrap();
+        let group = |s: &mut Session, p: Value| s.execute("layer.groupLayers", p).unwrap()["layer"].as_u64().unwrap();
+        // Outer holds A (holding a1, holding a2) and B (holding b1); D sits beside Outer.
+        s.execute("layer.new.layer", json!({"name": "pa"})).unwrap();
+        let a2 = group(&mut s, json!({"name": "a2"}));
+        let a1 = group(&mut s, json!({"layer": a2, "name": "a1"}));
+        let a = group(&mut s, json!({"layer": a1, "name": "A"}));
+        s.execute("layer.new.layer", json!({"name": "pb"})).unwrap();
+        let b1 = group(&mut s, json!({"name": "b1"}));
+        let b = group(&mut s, json!({"layer": b1, "name": "B"}));
+        s.execute("layer.select", json!({"layer": a})).unwrap();
+        s.execute("layer.select", json!({"layer": b, "mode": "add"})).unwrap();
+        let outer = group(&mut s, json!({"name": "Outer"}));
+        s.execute("layer.new.layer", json!({"name": "pd"})).unwrap();
+        let d = group(&mut s, json!({"name": "D"}));
+        let all = [a2, a1, a, b1, b, outer, d];
+        let open = |s: &Session| all.iter().map(|id| expanded(s, *id)).collect::<Vec<_>>();
+        assert!(open(&s).iter().all(|o| *o), "{:?}", open(&s));
+        // ⌘: A and B (beside each other in Outer) close; a1, b1, Outer and D stay open.
+        s.execute(ID, json!({"layer": a, "expanded": false, "scope": "siblings"})).unwrap();
+        assert_eq!(open(&s), [true, true, false, true, false, true, true]);
+        // ⌥: A and everything inside it.
+        s.execute(ID, json!({"layer": a, "expanded": false, "scope": "tree"})).unwrap();
+        assert_eq!(open(&s), [false, false, false, true, false, true, true]);
+        // ⌘⌥ on B opens A, B and everything inside them, and not D beside Outer.
+        s.execute(ID, json!({"layer": d, "expanded": false})).unwrap();
+        s.execute(ID, json!({"layer": b, "expanded": true, "scope": "siblingsTree"})).unwrap();
+        assert_eq!(open(&s), [true, true, true, true, true, true, false]);
+        assert!(s.execute(ID, json!({"layer": a, "scope": "everything"})).is_err());
+        assert!(s.execute(ID, json!({"layer": a, "scope": 2})).is_err());
     }
 
     #[test]

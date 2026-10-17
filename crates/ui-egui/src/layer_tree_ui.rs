@@ -59,25 +59,49 @@ pub fn disclosure(ui: &mut egui::Ui, row: Rect, x: &mut f32, l: &Layer, actions:
     let resp = ui.interact(hit, ui.id().with(("disclosure", l.id.0)), Sense::click());
     let t = Tokens::get(ui.ctx());
     let c = pos2(*x + TRIANGLE_W / 2.0 - 1.0, row.center().y);
-    let s = 3.5;
-    let pts = if g.expanded {
-        vec![pos2(c.x - s, c.y - s * 0.6), pos2(c.x + s, c.y - s * 0.6), pos2(c.x, c.y + s * 0.6)]
+    if t.pro {
+        // Photoshop's thin chevron: ˅ open, › closed.
+        let s = 3.5;
+        let pts = if g.expanded {
+            vec![pos2(c.x - s, c.y - s * 0.5), pos2(c.x, c.y + s * 0.5), pos2(c.x + s, c.y - s * 0.5)]
+        } else {
+            vec![pos2(c.x - s * 0.5, c.y - s), pos2(c.x + s * 0.5, c.y), pos2(c.x - s * 0.5, c.y + s)]
+        };
+        let color = if resp.hovered() { t.text } else { t.text_faint };
+        ui.painter().add(Shape::line(pts, Stroke::new(1.2, color)));
     } else {
-        vec![pos2(c.x - s * 0.6, c.y - s), pos2(c.x + s * 0.6, c.y), pos2(c.x - s * 0.6, c.y + s)]
-    };
-    let color = if resp.hovered() { t.text } else { t.icon };
-    ui.painter().add(Shape::convex_polygon(pts, color, Stroke::NONE));
+        let s = 3.5;
+        let pts = if g.expanded {
+            vec![pos2(c.x - s, c.y - s * 0.6), pos2(c.x + s, c.y - s * 0.6), pos2(c.x, c.y + s * 0.6)]
+        } else {
+            vec![pos2(c.x - s * 0.6, c.y - s), pos2(c.x + s * 0.6, c.y), pos2(c.x - s * 0.6, c.y + s)]
+        };
+        let color = if resp.hovered() { t.text } else { t.icon };
+        ui.painter().add(Shape::convex_polygon(pts, color, Stroke::NONE));
+    }
     *x += TRIANGLE_W;
     let clicked = resp.clicked();
     if clicked {
-        let all = ui.input(|i| i.modifiers.alt);
-        actions.push(("layer.setExpanded".into(), json!({"layer": l.id.0, "expanded": !g.expanded, "all": all})));
+        let m = ui.input(|i| i.modifiers);
+        actions.push(("layer.setExpanded".into(), json!({"layer": l.id.0, "expanded": !g.expanded, "scope": expand_scope(m)})));
     }
     let (verb, name) = (if g.expanded { tl!("Collapse") } else { tl!("Expand") }, l.name.clone());
     let tip = if g.expanded { tl!("Collapse group  ({key}-click: all groups)") } else { tl!("Expand group  ({key}-click: all groups)") };
-    let resp = resp.on_hover_text(crate::i18n::fmt(tip, &[("key", &crate::shortcuts::pretty("Alt"))]));
+    let resp = resp.on_hover_text(crate::i18n::fmt(tip, &[("key", &crate::shortcuts::pretty("Ctrl"))]));
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("{verb} group {name}")));
     clicked
+}
+
+/// Which groups a modifier click on a disclosure triangle opens or closes, as in Photoshop: ⌘
+/// every group beside it (not the groups inside them), ⌥ it and every group inside it, ⌘⌥ both;
+/// all within its own folder.
+pub fn expand_scope(m: egui::Modifiers) -> &'static str {
+    match (m.command, m.alt) {
+        (false, false) => "group",
+        (true, false) => "siblings",
+        (false, true) => "tree",
+        (true, true) => "siblingsTree",
+    }
 }
 
 #[cfg(test)]

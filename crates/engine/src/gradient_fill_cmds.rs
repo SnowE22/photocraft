@@ -28,9 +28,14 @@ pub const GET: &str = "gradient.fill.get";
 
 /// Largest coordinate accepted for a start/end point (pixels).
 const MAX_COORD: f32 = 1.0e7;
-/// Scale range of a gradient fill (a fraction): Photoshop allows 10–150 % (the PSD stores a
-/// percentage). A handle drag past it clamps, so the far handle stops where the scale does.
+/// Scale range of a typed gradient fill scale (a fraction): Photoshop's Scale field allows
+/// 10–150 % (the PSD stores a percentage).
 const SCALE_RANGE: (f32, f32) = (0.1, 1.5);
+/// Scale range of a gradient drawn or edited with its on-canvas handles. Photoshop's live
+/// gradient goes well past the Scale field's range, so a thin gradient can be drawn: a short drag
+/// is a short gradient, not one stretched to 10 % of the canvas around its middle. Past this the
+/// dragged handle stops and the other stays where it is.
+const HANDLE_SCALE_RANGE: (f32, f32) = (0.0005, 100.0);
 
 fn bad(cmd: &str, msg: impl Into<String>) -> EngineError {
     EngineError::BadParams { cmd: cmd.into(), msg: msg.into() }
@@ -153,6 +158,10 @@ fn clamp_scale(v: f32) -> f32 {
     v.clamp(SCALE_RANGE.0, SCALE_RANGE.1)
 }
 
+fn clamp_handle_scale(v: f32) -> f32 {
+    v.clamp(HANDLE_SCALE_RANGE.0, HANDLE_SCALE_RANGE.1)
+}
+
 /// The frame a gradient fill of `layer` (with `align`) is laid out in.
 fn frame_with_align(layer: &Layer, f: &Fill, canvas: Rect) -> Rect {
     let mut l = layer.clone();
@@ -224,7 +233,7 @@ pub fn apply_set(layer: &Layer, f: &Fill, canvas: Rect, p: &Value, fg: [f32; 4],
         let cur = if from.is_some() || to.is_some() { gf::handles(*style, *angle, *scale, *offset, frame) } else { old_handles };
         let (f0, t0) = (from.unwrap_or(cur.0), to.unwrap_or(cur.1));
         let (a, s, o) = gf::from_handles(*style, f0, t0, frame, *angle);
-        (*angle, *scale, *offset) = (a, clamp_scale(s), o);
+        (*angle, *scale, *offset) = (a, clamp_handle_scale(s), o);
         // Past the scale range the dragged handle stops; the other one stays where it is (#1243).
         // (Linear centres on the midpoint, so a clamped scale would otherwise move both ends.)
         let anchor = match (from, to) {
@@ -303,7 +312,7 @@ pub fn new_layer(s: &Session, doc: &Document, p: &Value) -> Result<Layer> {
         return Err(bad(CMD, "the document is empty"));
     }
     let (angle, scale, offset) = gf::from_handles(style, from, to, canvas, 0.0);
-    let fill = Fill::Gradient { stops, angle, scale: clamp_scale(scale), style, reverse, opacity_stops, midpoints: Vec::new(), offset, dither, align: false }
+    let fill = Fill::Gradient { stops, angle, scale: clamp_handle_scale(scale), style, reverse, opacity_stops, midpoints: Vec::new(), offset, dither, align: false }
         .in_mode(doc.mode);
     let mut l = Layer::new(doc.next_layer_name("Gradient Fill"), LayerContent::Fill(fill));
     l.opacity = opacity;

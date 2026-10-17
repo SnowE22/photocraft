@@ -744,10 +744,11 @@ fn a_new_adjustment_or_fill_layer_shows_its_settings_until_the_mask_thumbnail_is
         if let Some(label) = settings {
             assert!(h.query_all_by_label(label).next().is_some(), "{command}: its settings show");
         }
-        // Clicking the row (not a thumbnail) keeps the settings.
+        // Clicking the row (not a thumbnail) selects the adjustment or fill layer itself: its
+        // settings stay, and the mask is no longer the target.
         let row = h.get_by_label(&layer(&h, id).name).rect().center();
         click_with(&mut h, row, Modifiers::NONE);
-        assert!(h.state().ui.mask_target);
+        assert!(!h.state().ui.mask_target, "{command}: a row click targets the layer, not its mask");
         assert!(h.query_all_by_label("Density").next().is_none(), "{command}: a row click keeps the settings");
         // The mask thumbnail switches Properties to the mask.
         let r = mask_rect(&h, id, MaskKind::Pixel);

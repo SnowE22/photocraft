@@ -747,9 +747,19 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                 }
                 if let Some(i) = brush_tab {
                     app.ui.brush_tab = (i as usize).min(1);
+                    // The presets are the separate Brushes panel now: 1 shows it.
+                    if i == 1 {
+                        crate::brush_panel::show_brushes_panel(app);
+                    }
                 }
                 if let Some(v) = brushes_view {
-                    app.ui.brushes_panel.view = v;
+                    // Photoshop's panel has one view: `grid` shows the tips alone, `list` the
+                    // strokes with their names.
+                    let st = &mut app.ui.brushes_panel;
+                    (st.show_name, st.show_stroke, st.show_tip) = match v {
+                        crate::brush_panel::BrushesView::Grid => (false, false, true),
+                        crate::brush_panel::BrushesView::List => (true, true, false),
+                    };
                 }
                 if let Some(v) = brush_picker_name {
                     app.ui.brush_picker_list.show_name = v;

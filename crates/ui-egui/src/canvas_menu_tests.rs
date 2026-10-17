@@ -70,8 +70,10 @@ fn is_open(h: &Harness<'_, PhotocraftApp>, popup: Popup) -> bool {
 }
 
 fn dismiss_outside(h: &mut Harness<'_, PhotocraftApp>, popup: Popup) {
-    // The status-bar corner is outside every popup and does not edit the document.
-    let at = pos2(1190.0, 790.0);
+    // The status bar's document info, under the canvas, is outside every popup and does not edit
+    // the document.
+    let canvas = h.state().last_canvas_rect;
+    let at = pos2(canvas.left() + 120.0, canvas.bottom() + 10.0);
     h.event(Event::PointerMoved(at));
     h.run_steps(2);
     press(h, at, PointerButton::Primary, true, Modifiers::NONE);

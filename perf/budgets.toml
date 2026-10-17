@@ -384,6 +384,15 @@ budget_ms = 16
 enforce = false  # measurable since the release commits the live stroke's pixels; awaiting a baseline run
 
 [[scenario]]
+id = "P60"
+title = "Large imported brush, one stroke frame (dab to screen)"
+target = "≤ 16 ms (the stroke keeps up with the pointer)"
+bench = "perf_scenarios"
+row = "brush live frame: 500 px sampled 3 %, dual + texture (push + refresh)"
+budget_ms = 16
+enforce = false  # new 2026-10-17; awaiting a baseline run
+
+[[scenario]]
 id = "P33"
 title = "Brush dab on A4 300 ppi CMYK (dab to screen)"
 issue = 211
