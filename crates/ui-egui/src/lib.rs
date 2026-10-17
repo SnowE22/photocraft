@@ -651,6 +651,8 @@ pub struct PhotocraftApp {
     pub(crate) automation_input: bool,
     /// Levels/Curves histogram cache: (document, adjustment layer, revision it is valid for).
     pub(crate) tone_hist: Option<(DocId, photocraft_doc::LayerId, u64, std::sync::Arc<tone::Histograms>)>,
+    /// The Levels/Curves histogram being computed on a worker thread (`tone::histograms`).
+    pub(crate) tone_job: Option<tone::ToneJob>,
     /// Histogram panel cache: (document, revision, computed at ms, histograms).
     pub(crate) doc_hist: Option<(DocId, u64, f64, std::sync::Arc<tone::Histograms>)>,
     /// The document histogram being computed on a worker thread: (document, revision, receiver).
@@ -873,6 +875,7 @@ impl PhotocraftApp {
             dialog_edits: Default::default(),
             pending_after_prompt: None,
             tone_hist: None,
+            tone_job: None,
             doc_hist: None,
             hist_job: None,
             gpu: None,

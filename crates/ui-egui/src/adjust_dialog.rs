@@ -196,7 +196,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, fields: &mut Map<String,
     let active = app.session.active().and_then(|s| s.active_layer);
     let gray = app.session.active().is_some_and(|s| adjust_editors::is_gray(s.doc.mode));
     let hist = match active {
-        Some(id) if adjust_editors::needs_histogram(&kind) => Some(tone::histograms(app, HistSource::Layer(id), adjust_editors::space_of(&values))),
+        Some(id) if adjust_editors::needs_histogram(&kind) => Some(tone::histograms(app, ui.ctx(), HistSource::Layer(id), adjust_editors::space_of(&values))),
         _ => None,
     };
     let cx = EditorCx {

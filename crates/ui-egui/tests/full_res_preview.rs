@@ -1,5 +1,7 @@
 //! Preferences › Performance › Low Resolution Previews: on (the default) live previews of a large
-//! document render on a reduced copy, off they render at full resolution.
+//! document render on a reduced copy, off they render at full resolution. An adjustment layer's
+//! live preview that the GPU composites is drawn at full resolution either way (the GPU draws it
+//! faster than the CPU draws the reduced copy); the preference applies when the CPU composites.
 //!
 //! A 3000 × 2000 document of 1 px black and white columns: the reduced copy (every 2nd pixel at
 //! this size) is all black, so its preview shows a flat colour where the full-size one shows the
@@ -7,7 +9,7 @@
 //! skips when no GPU adapter exists (like `drag_preview_canvas.rs`).
 
 use photocraft_color::{Color, ColorMode, SampleType};
-use photocraft_doc::{Document, Size};
+use photocraft_doc::{Document, Layer, Size};
 use photocraft_geom::Rect;
 use photocraft_ui_egui::PhotocraftApp;
 use photocraft_ui_egui::control::{ControlRequest, handle};
@@ -54,10 +56,24 @@ fn columns_document() -> Document {
     doc
 }
 
+/// [`columns_document`] with an empty layer the wgpu compositor can't draw (Knockout), so the CPU
+/// composites it; it changes no pixel.
+fn cpu_columns_document() -> Document {
+    let mut doc = columns_document();
+    let mut l = Layer::raster("knockout", doc.pixel_format());
+    l.advanced.knockout = photocraft_doc::Knockout::Shallow;
+    doc.layers.push(l);
+    doc
+}
+
 fn setup(h: &mut Harness, zoom: f32) {
+    setup_with(h, zoom, columns_document());
+}
+
+fn setup_with(h: &mut Harness, zoom: f32, doc: Document) {
     {
         let app = h.state_mut();
-        app.session.add_document(columns_document(), None);
+        app.session.add_document(doc, None);
         app.sync_views();
         app.ui.extras.rulers = false;
     }
@@ -109,23 +125,40 @@ fn mean(r: &[i32]) -> f32 {
     r.iter().sum::<i32>() as f32 / r.len() as f32
 }
 
+/// Add an Invert adjustment layer and start its live preview, as a Properties drag does.
+fn invert_drag(h: &mut Harness) -> photocraft_doc::LayerId {
+    let app = h.state_mut();
+    app.run("layer.newAdjustmentLayer.invert", json!({})).expect("adjustment layer");
+    let id = app.session.active().and_then(|d| d.active_layer).expect("active layer");
+    // What the Properties panel sets while a slider drags.
+    app.live_adjust = Some((id, json!({})));
+    id
+}
+
 #[test]
-fn adjustment_layer_drag_previews_at_full_resolution_when_low_res_is_off() {
+fn adjustment_layer_drag_on_the_gpu_previews_at_full_resolution() {
     let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
     setup(&mut h, 1.0);
     if !on_gpu(&mut h) {
         return;
     }
+    invert_drag(&mut h);
+    let shown = row(&mut h);
+    assert!(columns(&shown) > 0.9, "low-res previews on (the default): the GPU still shows every column ({})", columns(&shown));
+    assert!(h.state().perf.last_refresh.starts_with("gpu"), "{}", h.state().perf.last_refresh);
+}
+
+#[test]
+fn adjustment_layer_drag_previews_at_full_resolution_when_low_res_is_off() {
+    let _gpu = photocraft_testkit::gpu_lock();
+    let Some(mut h) = harness() else { return };
+    setup_with(&mut h, 1.0, cpu_columns_document());
+    if !on_gpu(&mut h) {
+        return;
+    }
     assert!(columns(&row(&mut h)) > 0.9, "the canvas shows the 1 px columns at 100 %");
-    let layer = {
-        let app = h.state_mut();
-        app.run("layer.newAdjustmentLayer.invert", json!({})).expect("adjustment layer");
-        let id = app.session.active().and_then(|d| d.active_layer).expect("active layer");
-        // What the Properties panel sets while a slider drags.
-        app.live_adjust = Some((id, json!({})));
-        id
-    };
+    let layer = invert_drag(&mut h);
     let reduced = row(&mut h);
     assert!(columns(&reduced) < 0.1, "default: the reduced copy loses the columns ({})", columns(&reduced));
     low_res(&mut h, false);

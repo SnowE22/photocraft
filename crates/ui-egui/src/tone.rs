@@ -79,7 +79,7 @@ pub fn compute_histograms(doc: &Document, source: HistSource, space: ToneSpace) 
             isolate(&mut d.layers, id);
         }
     }
-    let img = photocraft_compose::thumbnail(&d, 384);
+    let img = reduced(&d);
     let n = match space {
         ToneSpace::Rgb => 4,
         ToneSpace::Cmyk => 5,
@@ -118,9 +118,42 @@ pub fn compute_histograms(doc: &Document, source: HistSource, space: ToneSpace) 
     Histograms { tag: tag(source, space), ch: h }
 }
 
+/// Longest side of the image the tone histograms count.
+const SIDE: u32 = 384;
+
+/// The image a tone histogram counts: the composite reduced to [`SIDE`]. Unlike
+/// [`photocraft_compose::thumbnail`], it composites a proxy (every surface downsampled first)
+/// whenever that is a faithful reduction, whatever the document's size: the full-resolution
+/// composite of a 2400 × 3000 document with 31 layers cost 560 ms, for 384 × 480 pixels.
+fn reduced(doc: &Document) -> photocraft_raster::Rgba8Image {
+    let b = doc.bounds();
+    let k = b.width().max(b.height()) / SIDE.saturating_mul(2);
+    if k >= 2 && photocraft_compose::proxy::proxy_faithful(doc) {
+        let (w, h) = photocraft_compose::thumbnail_size(doc, SIDE);
+        photocraft_compose::render_reduced(&photocraft_compose::proxy::proxy_document(doc, k), w, h).to_rgba8()
+    } else {
+        photocraft_compose::thumbnail(doc, SIDE)
+    }
+}
+
+/// A tone editor's histograms being computed on a worker thread: the document, layer, revision
+/// and [`tag`] they are for, and the receiver of (compute ms, histograms).
+pub(crate) struct ToneJob {
+    doc: photocraft_doc::DocId,
+    layer: LayerId,
+    rev: u64,
+    tag: u64,
+    rx: std::sync::mpsc::Receiver<(f64, Arc<Histograms>)>,
+}
+
 /// Cached histograms for a tone editor; recomputed only when something other than the editor's
 /// own commits changed the document (see [`keep_after_commit`]).
-pub fn histograms(app: &mut PhotocraftApp, source: HistSource, space: ToneSpace) -> Arc<Histograms> {
+///
+/// With background jobs (the desktop app) they are computed on a worker thread: the editor keeps
+/// drawing the previous histograms of the same layer (or none at first) until the new ones land,
+/// so toggling or moving layers while an adjustment layer is selected doesn't wait for a CPU
+/// composite of the document. Without (tests, the web) they are computed inline.
+pub fn histograms(app: &mut PhotocraftApp, ctx: &egui::Context, source: HistSource, space: ToneSpace) -> Arc<Histograms> {
     let Some(st) = app.session.active() else { return Arc::new(Histograms::default()) };
     let (doc_id, rev) = (st.doc.id, st.revision);
     let want = tag(source, space);
@@ -128,20 +161,78 @@ pub fn histograms(app: &mut PhotocraftApp, source: HistSource, space: ToneSpace)
         HistSource::BelowLayer(l) | HistSource::Layer(l) => l,
     };
     let pixels_kept = view_only(st);
+    land_job(app);
+    let mut shown = None;
     if let Some((d, l, r, h)) = app.tone_hist.as_mut()
         && *d == doc_id
         && *l == layer
-        && (*r == rev || (*r + 1 == rev && pixels_kept))
         && h.tag == want
     {
-        *r = rev;
-        return h.clone();
+        if *r == rev || (*r + 1 == rev && pixels_kept) {
+            *r = rev;
+            return h.clone();
+        }
+        shown = Some(h.clone());
+    }
+    let Some(st) = app.session.active() else { return Arc::new(Histograms::default()) };
+    if app.background_jobs {
+        // One worker at a time: one still counting an older revision of the same histograms
+        // lands first (closer than nothing), then the next frame asks for this revision.
+        let same = |j: &ToneJob| j.doc == doc_id && j.layer == layer && j.tag == want;
+        if app.tone_job.as_ref().is_some_and(same) {
+            return shown.unwrap_or_default();
+        }
+        if let Some(rx) = spawn(&st.doc, source, space, ctx) {
+            app.tone_job = Some(ToneJob { doc: doc_id, layer, rev, tag: want, rx });
+            return shown.unwrap_or_default();
+        }
     }
     let t0 = crate::gpu_canvas::now_ms();
     let h = Arc::new(compute_histograms(&st.doc, source, space));
     app.perf.span("histogram", crate::gpu_canvas::now_ms() - t0);
     app.tone_hist = Some((doc_id, layer, rev, h.clone()));
     h
+}
+
+/// Start counting `doc`'s histograms on a worker thread; `None` where there are no threads
+/// (the web) or the spawn failed (the caller then counts inline).
+fn spawn(doc: &Arc<Document>, source: HistSource, space: ToneSpace, ctx: &egui::Context) -> Option<std::sync::mpsc::Receiver<(f64, Arc<Histograms>)>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let (doc, ctx) = (doc.clone(), ctx.clone());
+        std::thread::Builder::new()
+            .name("tone-histogram".into())
+            .spawn(move || {
+                let t0 = crate::gpu_canvas::now_ms();
+                let h = Arc::new(compute_histograms(&doc, source, space));
+                // The editor may have closed meanwhile: nobody listens then.
+                let _ = tx.send((crate::gpu_canvas::now_ms() - t0, h));
+                ctx.request_repaint();
+            })
+            .ok()?;
+        Some(rx)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (doc, source, space, ctx);
+        None
+    }
+}
+
+/// Move a finished worker's histograms into the cache (for the revision it counted). A worker
+/// that died without sending clears the job, so the next frame starts another.
+fn land_job(app: &mut PhotocraftApp) {
+    let Some(job) = &app.tone_job else { return };
+    match job.rx.try_recv() {
+        Ok((ms, h)) => {
+            app.perf.span("histogram", ms);
+            app.tone_hist = Some((job.doc, job.layer, job.rev, h));
+            app.tone_job = None;
+        }
+        Err(std::sync::mpsc::TryRecvError::Disconnected) => app.tone_job = None,
+        Err(std::sync::mpsc::TryRecvError::Empty) => {}
+    }
 }
 
 /// Whether the latest revision changed no pixels (selecting a layer, say): cached histograms of
@@ -154,11 +245,19 @@ fn view_only(st: &photocraft_engine::DocState) -> bool {
 /// cached histogram valid for the new revision. Call with the revision seen before the commit.
 pub fn keep_after_commit(app: &mut PhotocraftApp, layer: LayerId, before: Option<u64>) {
     let now = app.session.active().map(|s| s.revision);
-    if let (Some((_, l, r, _)), Some(before), Some(now)) = (app.tone_hist.as_mut(), before, now)
+    let (Some(before), Some(now)) = (before, now) else { return };
+    if let Some((_, l, r, _)) = app.tone_hist.as_mut()
         && *l == layer
         && *r == before
     {
         *r = now;
+    }
+    // …and so does what a worker is counting for the revision before the commit.
+    if let Some(job) = app.tone_job.as_mut()
+        && job.layer == layer
+        && job.rev == before
+    {
+        job.rev = now;
     }
 }
 
@@ -435,5 +534,58 @@ mod hist_async_tests {
         histogram_panel(&mut app, &mut ui);
         assert!(app.hist_job.is_none(), "a disconnected job is dropped");
         assert!(app.doc_hist.is_none(), "nothing landed from the dead worker");
+    }
+
+    /// Calls `histograms` until a worker's result lands (or fails after a few seconds).
+    fn until_landed(app: &mut PhotocraftApp, ctx: &egui::Context, source: HistSource) -> Arc<Histograms> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            let h = histograms(app, ctx, source, ToneSpace::Rgb);
+            if app.tone_job.is_none() {
+                return h;
+            }
+            assert!(std::time::Instant::now() < deadline, "the histogram worker didn't deliver");
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    }
+
+    /// With background jobs (the desktop app), a Curves layer's histogram is counted on a worker:
+    /// a frame never waits for the CPU composite (560 ms on a 2400 × 3000 file with 31 layers,
+    /// paid on every visibility toggle or move while the layer was selected). Until the new
+    /// histogram lands the editor keeps the previous one, and the editor's own commit keeps the
+    /// one being counted valid.
+    #[test]
+    fn tone_histograms_are_counted_off_the_ui_thread() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.background_jobs = true;
+        let ctx = egui::Context::default();
+        app.run("file.new", json!({"width": 64, "height": 48})).unwrap(); // white
+        let id = LayerId(app.run("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap());
+        let source = HistSource::BelowLayer(id);
+        let first = histograms(&mut app, &ctx, source, ToneSpace::Rgb);
+        assert!(first.ch.is_empty(), "the first frame draws no histogram rather than wait for one");
+        assert!(app.tone_job.is_some(), "a worker counts it");
+        let white = until_landed(&mut app, &ctx, source);
+        assert!(white[0][255] > 0 && white[0][0] == 0, "the white image below the layer");
+        assert!(Arc::ptr_eq(&white, &histograms(&mut app, &ctx, source, ToneSpace::Rgb)), "cached for this revision");
+        // An edit below: the previous histogram shows while the worker counts the new image.
+        app.run("layer.select", json!({"layer": app.session.active().unwrap().doc.layers[0].id.0})).unwrap();
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("edit.fill", json!({"color": "#000000"})).unwrap();
+        app.run("layer.select", json!({"layer": id.0})).unwrap();
+        let stale = histograms(&mut app, &ctx, source, ToneSpace::Rgb);
+        assert!(Arc::ptr_eq(&stale, &white), "the previous histogram, not a wait");
+        let black = until_landed(&mut app, &ctx, source);
+        assert!(black[0][0] > 0 && black[0][255] == 0, "the black layer now below the adjustment");
+        // The editor's own commit doesn't change the image below it: the count in flight holds.
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("layer.select", json!({"layer": id.0})).unwrap();
+        histograms(&mut app, &ctx, source, ToneSpace::Rgb);
+        let before = app.session.active().map(|s| s.revision);
+        app.run("layer.setAdjustment", json!({"layer": id.0, "points": [[0, 0], [128, 160], [255, 255]]})).unwrap();
+        keep_after_commit(&mut app, id, before);
+        let landed = until_landed(&mut app, &ctx, source);
+        assert!(Arc::ptr_eq(&landed, &histograms(&mut app, &ctx, source, ToneSpace::Rgb)), "valid for the committed revision");
+        assert!(app.tone_job.is_none(), "no recount after the editor's own commit");
     }
 }

@@ -1895,6 +1895,12 @@ fn ensure_proxy_preview(app: &mut PhotocraftApp, idx: usize) -> Option<(u32, u64
     if k <= 1 {
         return None;
     }
+    // The proxy is for documents the CPU composites. The wgpu compositor draws the full-size
+    // preview faster than the CPU draws the proxy (2400 × 3000, 31 layers: 5 ms against 200 ms
+    // a frame), and at full detail; `ensure_gpu` shows it.
+    if app.gpu.as_ref().is_some_and(|g| g.composites_full(&doc)) {
+        return None;
+    }
     let fresh = matches!(&app.proxy, Some((d, r, kk, _)) if *d == doc_id && *r == revision && *kk == k);
     if !fresh {
         app.proxy = Some((doc_id, revision, k, std::sync::Arc::new(crate::proxy::proxy_document(&doc, k))));
@@ -5860,6 +5866,9 @@ mod tap_pressure_tests {
 
 #[cfg(test)]
 mod tabs_tests;
+
+#[cfg(test)]
+mod live_adjust_tests;
 
 #[cfg(test)]
 mod tests {

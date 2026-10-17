@@ -25,8 +25,13 @@ pub(crate) struct Chunk {
 
 pub(crate) struct Prefix {
     context: Option<Document>,
+    /// The root layers of the last prepared render (all of them, not only those below the
+    /// checkpoint: where the next render's change lies decides whether to move the checkpoint).
     layers: Vec<Layer>,
     checkpoint: Option<Checkpoint>,
+    /// The first root layer the last prepared render edited in place (`None`: it edited none,
+    /// or it added or removed layers).
+    last_changed: Option<usize>,
     chunks: HashMap<Rect, Chunk>,
     bytes: u64,
     budget: u64,
@@ -35,7 +40,16 @@ pub(crate) struct Prefix {
 
 impl Default for Prefix {
     fn default() -> Self {
-        Self { context: None, layers: Vec::new(), checkpoint: None, chunks: HashMap::new(), bytes: 0, budget: MAX_BYTES, step: 512 }
+        Self {
+            context: None,
+            layers: Vec::new(),
+            checkpoint: None,
+            last_changed: None,
+            chunks: HashMap::new(),
+            bytes: 0,
+            budget: MAX_BYTES,
+            step: 512,
+        }
     }
 }
 
@@ -51,6 +65,7 @@ impl Prefix {
         self.context = None;
         self.layers.clear();
         self.checkpoint = None;
+        self.last_changed = None;
         self.chunks.clear();
         self.bytes = 0;
     }
@@ -90,41 +105,58 @@ impl Prefix {
         self.context.as_ref().map(|d| d.id)
     }
 
-    pub(crate) fn prepare(&mut self, doc: &Document, plan: &Plan<'_>) -> Option<Checkpoint> {
+    /// The checkpoint this render reuses or captures, if any. `whole`: the render covers the
+    /// whole document, so a checkpoint it moves to is populated everywhere by that render.
+    pub(crate) fn prepare(&mut self, doc: &Document, plan: &Plan<'_>, whole: bool) -> Option<Checkpoint> {
         if self.budget == 0 {
             return None;
         }
         // Keeping every non-layer field makes new document inputs invalidate automatically.
         // Tile data is Arc-shared; shared Tile equality does not scan its pixel bytes.
         let mut context = doc.clone();
-        let mut layers = std::mem::take(&mut context.layers);
+        let layers = std::mem::take(&mut context.layers);
         let same_context = self.context.as_ref() == Some(&context);
-        let changed = self.layers.iter().zip(&layers).position(|(a, b)| a != b).or_else(|| (layers.len() < self.layers.len()).then_some(layers.len()));
-        let old = self.checkpoint.filter(|c| same_context && changed.is_none() && plan.checkpoints.contains(c));
-        let checkpoint = old.or_else(|| {
+        // The first root layer that differs from the last render, or where the stacks part.
+        let changed = self
+            .layers
+            .iter()
+            .zip(&layers)
+            .position(|(a, b)| a != b)
+            .or_else(|| (layers.len() != self.layers.len()).then_some(layers.len().min(self.layers.len())));
+        let below = |end: usize| plan.checkpoints.iter().rev().find(|c| c.layer_end <= end && c.pass_end > 1).copied();
+        let old = self.checkpoint.filter(|c| same_context && changed.is_none_or(|i| i >= c.layer_end) && plan.checkpoints.contains(c));
+        // Edits that moved up the stack (a lower layer toggled, then an adjustment above it
+        // dragged) keep the old checkpoint valid, but leave every pass between it and the edited
+        // layer to render each frame (90 of 99 passes for a Curves drag over 31 layers). Once two
+        // renders in a row edited layers in place above a higher checkpoint, move up to it: that
+        // render has no hits, the following ones skip the whole stack below the edit. A lone
+        // edit up there (also right after adding or removing a layer, a one-off) and edits
+        // alternating between two layers keep the old checkpoint.
+        let promote = old.filter(|_| whole).and_then(|o| {
+            let up = below(changed?.min(self.last_changed?))?;
+            (up.layer_end > o.layer_end).then_some(up)
+        });
+        let old = old.filter(|_| promote.is_none());
+        let checkpoint = old.or(promote).or_else(|| {
             if same_context && let Some(changed) = changed {
-                plan.checkpoints.iter().rev().find(|c| c.layer_end <= changed && c.pass_end > 1).copied()
+                below(changed)
             } else {
                 let mut useful = plan.checkpoints.iter().rev().filter(|c| c.pass_end > 1);
                 let last = useful.next().copied();
                 useful.next().copied().or(last)
             }
         });
+        let in_place = changed.filter(|_| layers.len() == self.layers.len());
         if old.is_none() {
             self.clear();
         }
-        let Some(checkpoint) = checkpoint else {
-            // Remember bottom-layer edits even when no useful prefix survives: otherwise
-            // every other edit would populate and immediately discard the default checkpoint.
-            self.context = Some(context);
-            self.layers = layers;
-            return None;
-        };
-        layers.truncate(checkpoint.layer_end);
         self.context = Some(context);
         self.layers = layers;
-        self.checkpoint = Some(checkpoint);
-        Some(checkpoint)
+        self.last_changed = in_place;
+        // Remember bottom-layer edits even when no useful prefix survives: otherwise every other
+        // edit would populate and immediately discard the default checkpoint.
+        self.checkpoint = checkpoint;
+        checkpoint
     }
 
     /// Whether every pixel of `rect` is already cached in its whole grid chunk.

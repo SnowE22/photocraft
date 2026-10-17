@@ -259,6 +259,43 @@ fn stack_prefix_reuse_matches_uncached_gpu_and_cpu_at_every_depth() {
     }
 }
 
+/// The lower-stack checkpoint follows edits up the stack: after a lower layer's edit pinned it
+/// low, repeated whole renders that change only a higher layer (a Curves drag after a visibility
+/// toggle) move it up to just below that layer, instead of re-rendering every pass in between
+/// each frame. Partial renders never move it.
+#[test]
+fn repeated_edits_above_move_the_checkpoint_up() {
+    let Some(mut g) = gpu() else { return };
+    let mut doc = base_doc(300, 70);
+    for seed in 2..=6 {
+        doc.layers.push(noise_layer("layer", PixelFormat::RGBA8, doc.bounds(), seed, 0.2));
+    }
+    let top = doc.layers.len() - 1;
+    check(&mut g, &doc, "populate");
+    for opacity in [0.5, 0.6] {
+        doc.layers[2].opacity = opacity;
+        check(&mut g, &doc, "lower edit pins the checkpoint");
+    }
+    doc.layers[top].opacity = 0.7;
+    let low = diff_rect(&mut g, &doc, doc.bounds(), "first edit above").unwrap();
+    assert!(low.prefix_hits > 0, "{low:?}");
+    doc.layers[top].opacity = 0.4;
+    let moving = diff_rect(&mut g, &doc, doc.bounds(), "second edit above moves the checkpoint").unwrap();
+    assert_eq!(moving.prefix_hits, 0, "{moving:?}");
+    doc.layers[top].opacity = 0.8;
+    let high = diff_rect(&mut g, &doc, doc.bounds(), "third edit above").unwrap();
+    assert!(high.prefix_hits > 0 && high.prefix_passes_skipped > low.prefix_passes_skipped, "{low:?} {high:?}");
+    // Back to the lower layer: the moved checkpoint no longer holds, and the result stays exact.
+    doc.layers[2].opacity = 0.3;
+    check(&mut g, &doc, "edit below the moved checkpoint");
+    let part = Rect::new(20, 10, 120, 50);
+    for opacity in [0.5, 0.6, 0.7] {
+        doc.layers[top].opacity = opacity;
+        let stats = diff_rect(&mut g, &doc, part, "partial edits above").unwrap();
+        assert!(stats.prefix_hits > 0, "a partial render keeps the populated checkpoint: {stats:?}");
+    }
+}
+
 #[test]
 fn root_checkpoints_keep_clipping_groups_and_adjustments_whole() {
     let Some(mut g) = gpu() else { return };

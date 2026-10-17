@@ -299,6 +299,20 @@ impl GpuCanvas {
         }
     }
 
+    /// Whether a full refresh of `doc` would stay on the wgpu compositor: it [`supports`] the
+    /// document, the display textures fit, and the layer pages fit the memory budget (else
+    /// `composite` refuses with [`OVER_BUDGET`] and the CPU draws it).
+    ///
+    /// [`supports`]: GpuCanvas::supports
+    pub fn composites_full(&self, doc: &photocraft_doc::Document) -> bool {
+        if !self.fits_canvas(doc) || !self.supports(doc) {
+            return false;
+        }
+        let r = self.rs.renderer.read();
+        let Some(res) = r.callback_resources.get::<Resources>() else { return false };
+        res.compositor.as_ref().is_none_or(|c| c.fits_budget(doc, doc.bounds()))
+    }
+
     /// Replace the whole document image with an `Rgba8Unorm` texture. `rgba` is premultiplied
     /// RGBA8, `size[0] * size[1] * 4` bytes (anything else is ignored).
     pub fn upload_full(&self, doc: u64, size: [u32; 2], rgba: &[u8]) {

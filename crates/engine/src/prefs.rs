@@ -596,7 +596,8 @@ pub struct Performance {
     pub gpu_backend: GpuBackend,
     /// Live previews of large documents (adjustment and filter dialogs, an adjustment layer's
     /// sliders while they drag) render on a reduced copy: fast, but blocky when zoomed in. Off:
-    /// they render at full resolution.
+    /// they render at full resolution. Adjustment previews the GPU canvas composites are drawn at
+    /// full resolution either way (faster than the CPU draws the reduced copy).
     pub low_resolution_previews: bool,
     /// Linux display server (applies at next launch; see [`LinuxDisplayServer`]).
     pub linux_display_server: LinuxDisplayServer,
