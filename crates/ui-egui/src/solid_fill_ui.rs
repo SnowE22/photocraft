@@ -30,18 +30,67 @@ pub(crate) fn open(app: &mut PhotocraftApp) -> Option<u64> {
     Some(color_picker_ui::open_for_command(app, "Color Picker (Solid Color)", color.to_rgb(), cmds::SET, params))
 }
 
-/// Creating a Solid Color fill is transactional: the document is unchanged until OK.
-/// The picker is seeded with the foreground colour, matching the engine's default.
-pub(crate) fn open_new(app: &mut PhotocraftApp) -> Option<u64> {
-    let document = app.session.active()?.doc.id.0;
-    let foreground = app.session.tools.foreground;
-    Some(color_picker_ui::open_for_command(
-        app,
-        "Color Picker (Solid Color)",
-        [foreground[0], foreground[1], foreground[2]],
-        "layer.newFillLayer.solidColor",
-        json!({"document": document}),
-    ))
+/// Marks the picker Layer › New Fill Layer › Solid Color… opened on the layer it just made: the
+/// document's revision right after making it.
+const MADE_AT: &str = "__madeAt";
+
+/// Layer › New Fill Layer › Solid Color…, as in Photoshop (user report): the layer is made at once
+/// with the foreground colour and the Color Picker opens on it, changing it live; OK keeps it (one
+/// history step, with the picked colour) and Cancel takes it away again. Returns the picker and
+/// the new layer.
+pub(crate) fn open_new(app: &mut PhotocraftApp) -> Option<(u64, LayerId)> {
+    let made = app.run("layer.newFillLayer.solidColor", json!({})).ok()?;
+    let layer = LayerId(made.get("layer")?.as_u64()?);
+    let revision = app.session.active()?.revision;
+    let dialog = open(app)?;
+    if let Some(d) = app.ui.dialog_mut(dialog) {
+        d.fields.insert(MADE_AT.into(), json!(revision));
+    }
+    Some((dialog, layer))
+}
+
+/// OK on the picker [`open_new`] opened: the layer stays, with the picked colour. When nothing
+/// else changed the document meanwhile, the layer is made again with that colour, so History
+/// keeps one "New Color Fill Layer" step as Photoshop's does; otherwise the colour is an edit.
+fn confirm_made(app: &mut PhotocraftApp, f: &Map<String, Value>, made_at: u64) -> Result<Value, String> {
+    let params = f.get("__params").ok_or("missing Solid Color target")?;
+    let layer = params.get("layer").and_then(Value::as_u64).ok_or("missing Solid Color layer")?;
+    let st = app.session.active().ok_or("no document open")?;
+    if params.get("document").and_then(Value::as_u64) != Some(st.doc.id.0) {
+        return Err("the target document is no longer active".into());
+    }
+    if f.get("color") == f.get("__orig") {
+        return Ok(json!({"layer": layer}));
+    }
+    if st.revision == made_at && st.doc.layer(LayerId(layer)).is_some() {
+        let color = f.get("color").and_then(Value::as_str).ok_or("missing Solid Color colour")?.to_string();
+        app.run("edit.undo", json!({}))?;
+        return app.run("layer.newFillLayer.solidColor", json!({"color": color}));
+    }
+    let mut f = f.clone();
+    f.remove(MADE_AT);
+    confirm(app, &f)
+}
+
+/// Cancel on the picker [`open_new`] opened takes the new layer away again, as in Photoshop:
+/// undone when nothing else changed the document since, else deleted.
+pub(crate) fn cancelled(app: &mut PhotocraftApp, f: &Map<String, Value>) {
+    let Some(made_at) = f.get(MADE_AT).and_then(Value::as_u64) else { return };
+    let Some(params) = f.get("__params") else { return };
+    let (Some(document), Some(layer)) = (params.get("document").and_then(Value::as_u64), params.get("layer").and_then(Value::as_u64)) else { return };
+    let Some(st) = app.session.active().filter(|st| st.doc.id.0 == document && st.doc.layer(LayerId(layer)).is_some()) else { return };
+    let r = if st.revision == made_at {
+        app.run("edit.undo", json!({}))
+    } else {
+        // Not through `app.run`: that would ask "Delete layer?" first.
+        let r = app.session.execute("layer.delete", json!({"layer": layer})).map_err(|e| e.to_string());
+        app.sync_views();
+        r
+    };
+    if let Err(e) = r {
+        app.ui.status = e;
+        app.ui.status_error = true;
+    }
 }
 
 /// A creation picker is distinct from the editor opened by a fill layer's thumbnail.
@@ -83,6 +132,9 @@ pub(crate) fn thumbnail_color(app: &PhotocraftApp, document: DocId, layer: Layer
 /// No-op OK preserves imported high-precision / non-RGB colour values rather than quantising
 /// them to the picker's display hex. A stale document must never receive the edit.
 pub(crate) fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
+    if let Some(made_at) = f.get(MADE_AT).and_then(Value::as_u64) {
+        return confirm_made(app, f, made_at);
+    }
     let mut params = f.get("__params").cloned().ok_or("missing Solid Color target")?;
     let st = app.session.active().ok_or("no document open")?;
     if params.get("document").and_then(Value::as_u64) != Some(st.doc.id.0) {

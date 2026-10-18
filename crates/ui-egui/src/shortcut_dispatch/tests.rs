@@ -701,6 +701,26 @@ fn named_action_function_key_replays_and_survives_preferences_roundtrip() {
     assert!(bindings(h.state()).iter().any(|(_, sc)| *sc == parse("F6").unwrap()));
 }
 
+/// Photoshop's Action Options keys with Control and Shift (user report: Ctrl+F2 and
+/// Ctrl+Shift+F2 actions): F6, Ctrl+F6 and Ctrl+Shift+F6 each play their own action.
+#[test]
+fn action_keys_with_control_and_shift_play_their_own_action() {
+    let mut h = harness();
+    for (name, layer, key) in [("plain", "plain layer", "F6"), ("ctrl", "ctrl layer", "Cmd+F6"), ("ctrl shift", "ctrl shift layer", "Cmd+Shift+F6")] {
+        h.state_mut().session.actions.list.push(photocraft_engine::actions_cmds::Action {
+            name: name.into(),
+            steps: vec![("layer.new.layer".into(), json!({"name": layer}))],
+            ..Default::default()
+        });
+        crate::actions::assign_shortcut(h.state_mut(), name, key).unwrap();
+    }
+    h.state_mut().ui.actions.selected = None;
+    for (key, layer) in [("Cmd+Shift+F6", "ctrl shift layer"), ("Cmd+F6", "ctrl layer"), ("F6", "plain layer")] {
+        press(&mut h, key);
+        assert_eq!(active_name(&h), layer, "{key}");
+    }
+}
+
 #[test]
 fn assigning_action_function_key_moves_it_and_reports_failed_steps() {
     let mut h = harness();

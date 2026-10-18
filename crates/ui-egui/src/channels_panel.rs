@@ -533,6 +533,40 @@ mod tests {
         assert_eq!(after, first, "into the same textures");
     }
 
+    /// A big document builds its thumbnails on a background thread (user report: switching to
+    /// Channels after an edit froze for the composite): the first look shows none yet, an edit
+    /// keeps the old ones up, and the new ones replace them in the same textures when ready.
+    #[test]
+    fn big_documents_build_channel_thumbs_in_the_background() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 1200, "height": 1000})).unwrap();
+        let ctx = egui::Context::default();
+        let pass = |app: &mut PhotocraftApp| {
+            ctx.begin_pass(Default::default());
+            let ids = app.channel_thumbs(&ctx);
+            let mut delta = ctx.end_pass().textures_delta;
+            let n = delta.set.len();
+            delta.clear();
+            (ids, n)
+        };
+        let ready = |app: &mut PhotocraftApp| {
+            for _ in 0..1000 {
+                let (ids, uploads) = pass(app);
+                if uploads > 0 {
+                    return ids;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            panic!("the thumbnails never came");
+        };
+        assert!(pass(&mut app).0.is_empty(), "nothing to show before the first build");
+        let first = ready(&mut app);
+        assert_eq!(first.len(), 4, "composite, red, green and blue");
+        app.run("edit.fill", json!({"color": "#336699"})).unwrap();
+        assert_eq!(pass(&mut app).0, first, "the old thumbnails stay up while new ones build");
+        assert_eq!(ready(&mut app), first, "rebuilt into the same textures");
+    }
+
     /// The Channels tab (the Layers card's second tab) of a 64×48 white document with a layer
     /// mask on "Masked" and one alpha channel.
     fn channels_harness() -> (egui_kittest::Harness<'static, PhotocraftApp>, u64) {

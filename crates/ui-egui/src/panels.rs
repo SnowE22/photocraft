@@ -2664,11 +2664,13 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             // Whether the group at each depth above the current row is hidden (rows list a group
             // before its contents).
             let mut hidden_groups: Vec<bool> = Vec::new();
-            for &(depth, l) in &rows {
+            let inherited = inherited_labels(&rows);
+            for (i, &(depth, l)) in rows.iter().enumerate() {
                 hidden_groups.truncate(depth);
                 let parent_hidden = hidden_groups.iter().any(|h| *h);
                 hidden_groups.resize(depth, false);
                 hidden_groups.push(!l.visible);
+                let inherited_label = inherited.get(i).copied().unwrap_or_default();
                 // Select › Isolate Layers.
                 if !photocraft_engine::select_extra_cmds::isolation_shows(&doc, &isolated, l.id) {
                     continue;
@@ -2676,7 +2678,8 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 if !filter.shows(l) {
                     continue;
                 }
-                let row = RowSel { selected: selection.contains(&l.id), primary: active == Some(l.id), multi: selection.len() > 1, parent_hidden };
+                let row =
+                    RowSel { selected: selection.contains(&l.id), primary: active == Some(l.id), multi: selection.len() > 1, parent_hidden, inherited_label };
                 let top = ui.cursor().top();
                 drawn.push((l.id, layer_row(app, &ctx, ui, &doc, l, depth, row, &mut actions)));
                 if reveal == Some(l.id) {
@@ -3003,6 +3006,30 @@ struct RowSel {
     multi: bool,
     /// A group holding the layer is hidden: its own eye shows greyed out (Photoshop).
     parent_hidden: bool,
+    /// The colour of the nearest group holding the layer that has one: a layer or group with no
+    /// colour of its own shows it, as in Photoshop (user report: a coloured Photoshop group's
+    /// groups came in uncoloured).
+    inherited_label: photocraft_doc::LabelColor,
+}
+
+/// The colour label a row shows: its own, else its nearest coloured group's.
+fn shown_label(own: photocraft_doc::LabelColor, inherited: photocraft_doc::LabelColor) -> photocraft_doc::LabelColor {
+    if own == photocraft_doc::LabelColor::None { inherited } else { own }
+}
+
+/// For each Layers panel row (`(depth, layer)`, a group listed before its contents), the colour
+/// of the nearest group above it that shows one ([`RowSel::inherited_label`]).
+fn inherited_labels(rows: &[(usize, &Layer)]) -> Vec<photocraft_doc::LabelColor> {
+    let mut groups: Vec<photocraft_doc::LabelColor> = Vec::new();
+    rows.iter()
+        .map(|&(depth, l)| {
+            groups.truncate(depth);
+            let inherited = groups.last().copied().unwrap_or_default();
+            groups.resize(depth, photocraft_doc::LabelColor::None);
+            groups.push(shown_label(l.label, inherited));
+            inherited
+        })
+        .collect()
 }
 
 /// `layer.select` mode for a click with these modifiers (Photoshop: ⌘-click toggles, ⇧-click
@@ -3157,7 +3184,7 @@ fn layer_row(
         painter.rect_filled(rect, t.radius, t.accent.gamma_multiply(0.12));
     }
     let eye_cell = Rect::from_min_max(rect.left_top(), pos2((rect.left() + EYE_COL_W).min(rect.right()), rect.bottom()));
-    let label = t.layer_label_colors(l.label);
+    let label = t.layer_label_colors(shown_label(l.label, row.inherited_label));
     if let Some((_, background)) = label {
         painter.rect_filled(eye_cell, 0.0, background);
     }
@@ -6440,6 +6467,33 @@ mod group_drag_selection_tests {
         assert_eq!(scrub_pct(90.0, 0.0, 40.0), (100.0, Some((100.0, 40.0))));
         assert_eq!(scrub_pct(50.0, 0.0, 10.0), (55.0, None));
         assert_eq!(scrub_pct(50.0, 0.0, f32::NAN).0, 50.0);
+    }
+
+    /// A layer or group with no colour shows its nearest coloured group's, as in Photoshop (user
+    /// report: "main" was red in Photoshop, and its group "dfhf", stored with no colour, came in
+    /// uncoloured); its own colour wins, and the colour doesn't leak to the rows after the group.
+    #[test]
+    fn rows_without_a_colour_show_their_groups() {
+        use photocraft_doc::LabelColor::{Blue, None as Plain, Red};
+        let fmt = photocraft_color::PixelFormat::RGBA8;
+        let layer = |name: &str, label| {
+            let mut l = Layer::raster(name, fmt);
+            l.label = label;
+            l
+        };
+        let group = |name: &str, label| {
+            let mut g = Layer::group(name, vec![]);
+            g.label = label;
+            g
+        };
+        // Rows as the panel lists them: (depth, layer), each group before its contents.
+        let (main, dfhf, inner, blue, own, after) =
+            (group("main", Red), group("dfhf", Plain), layer("main copy", Plain), group("Group 25", Blue), layer("own", Plain), layer("after", Plain));
+        let rows = [(0, &main), (1, &dfhf), (2, &inner), (1, &blue), (2, &own), (0, &after)];
+        let inherited = inherited_labels(&rows);
+        assert_eq!(inherited, [Plain, Red, Red, Red, Blue, Plain]);
+        let shown: Vec<_> = rows.iter().zip(&inherited).map(|((_, l), i)| shown_label(l.label, *i)).collect();
+        assert_eq!(shown, [Red, Red, Red, Blue, Blue, Plain], "main, dfhf, main copy, Group 25 (its own), own, after");
     }
 
     /// Group rows are much shorter than layer rows in Photoshop's themes.

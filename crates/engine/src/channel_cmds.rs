@@ -16,7 +16,8 @@ use photocraft_algo::selection::{self as sel, SelectionMode};
 use photocraft_color::{BlendMode, Color, ColorMode, PixelFormat, blend::blend_channel};
 use photocraft_doc::{AlphaChannel, ColorIndicates, Document, Layer, LayerContent, LayerId};
 use photocraft_geom::{Rect, TileCoord};
-use photocraft_raster::{Surface, from_rgba, to_rgba};
+use photocraft_raster::{Surface, from_rgba, from_rgba_into, to_rgba};
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -399,10 +400,38 @@ fn native_pixels(doc: &Document, layer: Option<LayerId>) -> Result<(Vec<f32>, us
             Ok((raw.chunks_exact(sf.channels()).flat_map(|p| from_rgba(&fmt, to_rgba(&sf, p))).collect(), n))
         }
         None => {
+            // Converted in place, in parallel: a value list per pixel (`from_rgba`) cost most of
+            // a second on a 7 MP document.
             let buf = photocraft_compose::render(doc, r);
-            Ok((buf.px.iter().flat_map(|p| from_rgba(&fmt, *p)).collect(), n))
+            let mut out = vec![0.0f32; buf.px.len().saturating_mul(n)];
+            out.par_chunks_mut(n.max(1)).zip(buf.px.par_iter()).for_each(|(o, p)| {
+                from_rgba_into(&fmt, *p, o);
+            });
+            Ok((out, n))
         }
     }
+}
+
+/// Most channels a pixel has (CMYK and alpha).
+const MAX_CHANNELS: usize = 8;
+
+/// The merged image over the canvas, one value per pixel: `f` gets each pixel's native values
+/// (colour channels, then alpha when the document has it). In parallel, with no per-pixel
+/// allocation, and without the colour planes a [`native_pixels`] split makes.
+fn composite_values(doc: &Document, f: impl Fn(&mut [f32]) -> f32 + Sync + Send) -> Vec<f32> {
+    let fmt = doc.pixel_format();
+    let n = fmt.channels().min(MAX_CHANNELS);
+    let buf = photocraft_compose::render(doc, doc.bounds());
+    buf.px
+        .par_iter()
+        .map_init(
+            || [0.0f32; MAX_CHANNELS],
+            |tmp, p| {
+                from_rgba_into(&fmt, *p, tmp);
+                tmp.get_mut(..n).map_or(0.0, &f)
+            },
+        )
+        .collect()
 }
 
 /// `"layer"` param of a source: a layer id, a layer name (the topmost of that name, as a loaded
@@ -481,6 +510,27 @@ fn ref_planes(doc: &Document, layer: Option<LayerId>, active: Option<LayerId>, r
 
 /// One grayscale plane (composites reduce to luminosity, as in Calculations).
 fn gray_plane(doc: &Document, layer: Option<LayerId>, active: Option<LayerId>, r: ChanRef) -> Result<Vec<f32>> {
+    // The merged image or one of its colour channels (⌘-click on the Channels panel): straight
+    // from the composite in one parallel pass, with the same values as the planes below give.
+    if layer.is_none() {
+        let fmt = doc.pixel_format();
+        let colors = color_count(doc);
+        match r {
+            ChanRef::Color(k) if k < colors => return Ok(composite_values(doc, |px| px.get(k).copied().unwrap_or(0.0))),
+            ChanRef::Composite if colors == 1 => return Ok(composite_values(doc, |px| px.first().copied().unwrap_or(0.0))),
+            ChanRef::Composite => {
+                return Ok(composite_values(doc, |px| {
+                    if fmt.alpha
+                        && let Some(a) = px.get_mut(colors)
+                    {
+                        *a = 1.0;
+                    }
+                    luminosity(to_rgba(&fmt, px))
+                }));
+            }
+            _ => {}
+        }
+    }
     let mut planes = ref_planes(doc, layer, active, r)?;
     if planes.len() == 1
         && let Some(only) = planes.pop()

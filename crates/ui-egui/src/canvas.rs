@@ -2095,6 +2095,14 @@ pub(crate) fn arranged_cells(app: &PhotocraftApp, rect: Rect) -> Option<Vec<(usi
 fn documents(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     app.drop_canvas_rect = None;
     app.tab_strip = None;
+    // The Paths panel's selection belongs to its document (Photoshop's target path): switching to
+    // another document, or opening one, starts with no path selected, so none is drawn.
+    let doc_now = app.session.active().map(|st| st.doc.id);
+    let path_doc = egui::Id::new("pc-selected-path-doc");
+    if ui.ctx().data(|d| d.get_temp::<Option<photocraft_doc::DocId>>(path_doc)).is_some_and(|before| before != doc_now) {
+        app.ui.selected_path = None;
+    }
+    ui.ctx().data_mut(|d| d.insert_temp(path_doc, doc_now));
     retain_gpu_documents(app);
     crate::transform_tool::track_steps(app, ui.ctx());
     crate::cas_transform::tick(app, ui.ctx());

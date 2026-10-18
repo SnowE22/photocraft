@@ -3152,8 +3152,9 @@ fn import_set(file: &AtnFile) -> Imported {
     let mut out = Imported { set: set.clone(), warnings: file.warnings.clone(), ..Default::default() };
     for a in &file.actions {
         let action = convert_action(a, &set, &mut out.unsupported);
-        if a.function_key > 0 && !a.shift && !a.command {
-            out.function_keys.push((action.name.clone(), format!("F{}", a.function_key)));
+        // With its Shift and Control (⌘) modifiers, as Photoshop's Action Options set them.
+        if let Some(key) = crate::actions_cmds::action_key(a.function_key, a.shift, a.command) {
+            out.function_keys.push((action.name.clone(), key));
         }
         out.actions.push(action);
     }
@@ -3193,7 +3194,8 @@ fn export_item(id: &str, params: &Value, set: &str) -> Option<AtnItem> {
 }
 
 /// The `.atn` bytes of `actions` as the set `set`. `function_keys` gives each action's key
-/// (`F1`…`F15`). Steps with no Photoshop equivalent are an error unless `skip_unsupported`.
+/// (`F1`…`F15`, with `Shift+` and/or `Cmd+`: [`crate::actions_cmds::action_key`]). Steps with no
+/// Photoshop equivalent are an error unless `skip_unsupported`.
 pub fn export(
     set: &str,
     actions: &[&Action],
@@ -3205,10 +3207,11 @@ pub fn export(
     for a in actions {
         let mut out = AtnAction { name: UnicodeString::new_nul(&a.name), expanded: false, ..Default::default() };
         if let Some((_, key)) = function_keys.iter().find(|(n, _)| n == &a.name)
-            && let Some(n) = key.strip_prefix('F').and_then(|n| n.parse::<u16>().ok())
-            && (1..=15).contains(&n)
+            && let Some((n, shift, command)) = crate::actions_cmds::parse_action_key(key)
         {
             out.function_key = n;
+            out.shift = shift;
+            out.command = command;
         }
         for (i, (id, params)) in a.steps.iter().enumerate() {
             let Some(mut item) = export_item(id, params, set) else {

@@ -130,6 +130,25 @@ fn load_maps_events_keeps_flags_and_plays() {
     assert_eq!(s.actions.list[2].set.as_deref(), Some("Other"));
 }
 
+/// Keys with Shift and Control (user report: Photoshop's Ctrl+F2 and Ctrl+Shift+F2 actions came in
+/// with no key): they load as those shortcuts and save back with the same flags.
+#[test]
+fn function_keys_with_shift_and_control_load_and_save() {
+    let mut file = sample();
+    (file.actions[0].shift, file.actions[0].command) = (true, true);
+    (file.actions[1].function_key, file.actions[1].command) = (2, true);
+    let mut s = Session::new();
+    s.execute("actions.load", json!({"data": b64(&atn::write(&file).unwrap())})).unwrap();
+    let key = |s: &Session, name: &str| s.prefs().shortcuts.get(&format!("{}{name}", crate::actions_cmds::PLAY_SHORTCUT_PREFIX)).cloned();
+    assert_eq!(key(&s, "Soften").as_deref(), Some("Cmd+Shift+F3"));
+    assert_eq!(key(&s, "Finish").as_deref(), Some("Cmd+F2"));
+    let r = s.execute("actions.save", json!({"set": "Test Set"})).unwrap();
+    let saved = atn::parse(&photocraft_paint::tile::b64_decode(r["data"].as_str().unwrap()).unwrap()).unwrap();
+    let flags = |a: &AtnAction| (a.function_key, a.shift, a.command);
+    assert_eq!(flags(&saved.actions[0]), (3, true, true));
+    assert_eq!(flags(&saved.actions[1]), (2, false, true));
+}
+
 #[test]
 fn save_round_trips_through_photoshop_events() {
     let mut s = Session::new();

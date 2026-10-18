@@ -831,7 +831,10 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         .get(&shortcut_id(name))
                         .filter(|s| !s.is_empty())
                         // The step count, then the shortcut at the right edge.
-                        .map_or_else(|| step_count(nsteps, disabled.len()), |key| format!("{} · {key}", step_count(nsteps, disabled.len()))),
+                        .map_or_else(
+                            || step_count(nsteps, disabled.len()),
+                            |key| format!("{} · {}", step_count(nsteps, disabled.len()), crate::shortcuts::pretty(key)),
+                        ),
                     egui::FontId::proportional(11.0),
                     t.text_faint,
                 );
@@ -855,10 +858,32 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
             resp.context_menu(|ui| {
                 ui.label(tl!("Keyboard Shortcuts"));
+                // Photoshop's Action Options: a function key, with Shift and/or Control (⌘).
                 let current = app.session.prefs().shortcuts.get(&shortcut_id(name)).cloned().unwrap_or_default();
-                for key in std::iter::once(String::new()).chain((1..=12).map(|n| format!("F{n}"))) {
-                    let label = if key.is_empty() { tl!("None").to_string() } else { key.clone() };
-                    if ui.selectable_label(current == key, label).clicked() {
+                let assigned = actions_cmds::parse_action_key(&current);
+                // Modifiers picked before a key are kept for the key picked next.
+                let mods_id = egui::Id::new(("action-key-modifiers", name.as_str()));
+                let (mut shift, mut command) =
+                    assigned.map_or_else(|| ui.ctx().data(|d| d.get_temp::<(bool, bool)>(mods_id)).unwrap_or_default(), |(_, s, c)| (s, c));
+                let key_now = assigned.map(|(n, _, _)| n);
+                ui.horizontal(|ui| {
+                    let toggled = ui.checkbox(&mut shift, crate::shortcuts::pretty("Shift")).changed()
+                        | ui.checkbox(&mut command, crate::shortcuts::pretty("Cmd")).changed();
+                    if toggled {
+                        match key_now.and_then(|n| actions_cmds::action_key(n, shift, command)) {
+                            Some(key) => {
+                                let _ = assign_shortcut(app, name, &key);
+                            }
+                            None => {
+                                ui.ctx().data_mut(|d| d.insert_temp(mods_id, (shift, command)));
+                            }
+                        }
+                    }
+                });
+                for n in std::iter::once(None).chain((1..=12).map(Some)) {
+                    let label = n.map_or_else(|| tl!("None").to_string(), |n| format!("F{n}"));
+                    if ui.selectable_label(key_now == n, label).clicked() {
+                        let key = n.and_then(|n| actions_cmds::action_key(n, shift, command)).unwrap_or_default();
                         let _ = assign_shortcut(app, name, &key);
                         ui.close();
                     }

@@ -519,6 +519,29 @@ fn toggle(s: &mut Session, p: &Value) -> Result<Value> {
 /// Prefix of the persisted shortcut override that plays a named action (`actions.play:<name>`).
 pub const PLAY_SHORTCUT_PREFIX: &str = "actions.play:";
 
+/// An action's key as Photoshop's Action Options set it: F1–F15 with Shift and/or Control (⌘ on
+/// the Mac), in shortcut notation (`F2`, `Shift+F2`, `Cmd+F2`, `Cmd+Shift+F2`). None for a key
+/// number outside 1–15 (0 is "no key").
+pub fn action_key(function_key: u16, shift: bool, command: bool) -> Option<String> {
+    (1..=15).contains(&function_key).then(|| format!("{}{}F{function_key}", if command { "Cmd+" } else { "" }, if shift { "Shift+" } else { "" }))
+}
+
+/// [`action_key`] read back: the function key and its Shift and Control (⌘) flags. None for
+/// anything else (another key, Alt, a malformed string).
+pub fn parse_action_key(key: &str) -> Option<(u16, bool, bool)> {
+    let mut parts: Vec<&str> = key.split('+').collect();
+    let n = parts.pop()?.strip_prefix('F')?.parse::<u16>().ok().filter(|n| (1..=15).contains(n))?;
+    let (mut shift, mut command) = (false, false);
+    for p in parts {
+        match p {
+            "Shift" if !shift => shift = true,
+            "Cmd" if !command => command = true,
+            _ => return None,
+        }
+    }
+    Some((n, shift, command))
+}
+
 /// Rename an action in place. Nested `actions.play` steps that call it by name, and its
 /// function-key binding, follow the new name so nothing silently stops working.
 fn rename(s: &mut Session, p: &Value) -> Result<Value> {
@@ -733,6 +756,21 @@ mod tests {
             assert!(s.execute("actions.toggle", bad.clone()).is_err(), "{bad}");
         }
         assert_eq!(s.actions.list[0].disabled.iter().copied().collect::<Vec<_>>(), [1], "rejected toggles change nothing");
+    }
+
+    /// Photoshop's Action Options keys: F1–F15 with Shift and/or Control (⌘), both ways.
+    #[test]
+    fn action_keys_read_back_and_reject_other_keys() {
+        for (n, shift, command, key) in [(2, false, false, "F2"), (2, true, false, "Shift+F2"), (12, false, true, "Cmd+F12"), (15, true, true, "Cmd+Shift+F15")]
+        {
+            assert_eq!(super::action_key(n, shift, command).as_deref(), Some(key));
+            assert_eq!(super::parse_action_key(key), Some((n, shift, command)), "{key}");
+        }
+        assert_eq!(super::action_key(0, true, true), None, "0 is no key");
+        assert_eq!(super::action_key(16, false, false), None);
+        for bad in ["", "F", "F0", "F16", "Fx", "Alt+F2", "Cmd+Cmd+F2", "Ctrl+F2", "Shift+A", "F2+Shift", "+F2"] {
+            assert_eq!(super::parse_action_key(bad), None, "{bad}");
+        }
     }
 
     #[test]

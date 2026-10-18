@@ -1079,9 +1079,21 @@ impl PhotocraftApp {
         if gate.is_some() {
             self.session.authorize = gate;
         }
+        let work_before = self.session.active().map(|st| (st.doc.id, st.doc.work_path.clone()));
         let result = self.run_command(id, params);
         if gate.is_some() {
             self.session.authorize = None;
+        }
+        // A command that makes or changes the work path selects it in the Paths panel, as in
+        // Photoshop, so the canvas shows it (only the selected path is drawn).
+        // Opening a file that has one leaves it unselected (another document), as Photoshop does.
+        if result.is_ok()
+            && let (Some((doc, before)), Some(st)) = (&work_before, self.session.active())
+            && *doc == st.doc.id
+            && st.doc.work_path.is_some()
+            && *before != st.doc.work_path
+        {
+            self.ui.selected_path = Some("work".into());
         }
         // An explicit channel target (⌘2, ⌘\, ⌘3…) decides what the Layers panel targets too:
         // ⌘2 after the mask was targeted goes back to the layer's pixels.
@@ -2594,53 +2606,21 @@ impl PhotocraftApp {
             _ => false,
         };
         if !current {
-            let comp = photocraft_compose::thumbnail(&doc, 56);
-            let (w, h) = (comp.width as usize, comp.height as usize);
-            let side = w.max(h);
-            let make = |f: &dyn Fn(&[u8]) -> egui::Color32, name: &str| {
-                let mut px = vec![egui::Color32::TRANSPARENT; side * side];
-                let (ox, oy) = ((side - w) / 2, (side - h) / 2);
-                for y in 0..h {
-                    for x in 0..w {
-                        let o = (y * w + x) * 4;
-                        px[(y + oy) * side + x + ox] = f(&comp.pixels[o..o + 4]);
-                    }
-                }
-                (format!("chan-{name}"), egui::ColorImage::new([side, side], px))
+            // A big document builds them on a background thread (user report: switching to the
+            // Channels panel after an edit froze for its composite); until they are ready the
+            // panel keeps showing the document's previous thumbnails.
+            let built = if cfg!(target_arch = "wasm32") || doc.size.area() <= ASYNC_CHANNEL_THUMB_PIXELS {
+                Some(channel_images(&doc, show_color))
+            } else {
+                channel_thumb_job(ctx, id, &doc, show_color)
             };
-            let fmt = doc.pixel_format();
-            let colors = fmt.mode.color_channels();
-            let mut texs = vec![make(&|p| egui::Color32::from_rgb(p[0], p[1], p[2]), "composite")];
-            if colors > 1 {
-                for k in 0..colors {
-                    let cmyk = fmt.mode == photocraft_doc::ColorMode::Cmyk;
-                    texs.push(make(
-                        &|p| {
-                            let rgba = [p[0], p[1], p[2], 255].map(|v| f32::from(v) / 255.0);
-                            let x = photocraft_raster::from_rgba(&fmt, rgba)[k];
-                            let g = if cmyk { 1.0 - x } else { x };
-                            let byte = (g.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-                            channel_tint(fmt.mode, k, byte, show_color)
-                        },
-                        &format!("c{k}"),
-                    ));
-                }
-            }
-            // Alpha channels and the Quick Mask, sampled at thumbnail resolution.
-            let (dw, dh) = (doc.size.width.max(1) as f32, doc.size.height.max(1) as f32);
-            for (i, ch) in doc.channels.iter().chain(doc.quick_mask.as_ref()).enumerate() {
-                let mut px = vec![egui::Color32::TRANSPARENT; side * side];
-                let (ox, oy) = ((side - w) / 2, (side - h) / 2);
-                for y in 0..h {
-                    for x in 0..w {
-                        let sx = ((x as f32 + 0.5) * dw / w as f32) as i32;
-                        let sy = ((y as f32 + 0.5) * dh / h as f32) as i32;
-                        let v = ch.surface.sample_channel(sx, sy, 0);
-                        px[(y + oy) * side + x + ox] = egui::Color32::from_gray((v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
-                    }
-                }
-                texs.push((format!("chan-a{i}"), egui::ColorImage::new([side, side], px)));
-            }
+            let Some(texs) = built else {
+                ctx.request_repaint_after(std::time::Duration::from_millis(30));
+                return match &self.channel_thumbs {
+                    Some((d, _, _, handles)) if *d == id => handles.iter().map(|t| t.id()).collect(),
+                    _ => Vec::new(),
+                };
+            };
             // Update the textures already uploaded rather than allocating new ones.
             let mut handles = match self.channel_thumbs.take() {
                 Some((d, _, _, h)) if d == id => h,
@@ -2668,6 +2648,119 @@ fn same_but_selection(old: &Document, new: &Document) -> bool {
     let mut o = old.clone();
     o.selection = new.selection.clone();
     o == *new
+}
+
+/// Documents larger than this (pixels) build their Channels thumbnails on a background thread.
+const ASYNC_CHANNEL_THUMB_PIXELS: u64 = 1 << 20;
+
+/// Channels thumbnail images with their texture names.
+type ChannelImages = Vec<(String, egui::ColorImage)>;
+
+/// The Channels panel's thumbnail images of `doc`, named for their textures: the composite, each
+/// colour channel (when there is more than one), each alpha channel, then the Quick Mask.
+fn channel_images(doc: &Document, show_color: bool) -> ChannelImages {
+    let comp = photocraft_compose::thumbnail(doc, 56);
+    let (w, h) = (comp.width as usize, comp.height as usize);
+    let side = w.max(h);
+    let (ox, oy) = ((side - w) / 2, (side - h) / 2);
+    let make = |f: &dyn Fn(&[u8]) -> egui::Color32, name: &str| {
+        let mut px = vec![egui::Color32::TRANSPARENT; side * side];
+        for y in 0..h {
+            for x in 0..w {
+                let o = (y * w + x) * 4;
+                if let (Some(p), Some(d)) = (comp.pixels.get(o..o + 4), px.get_mut((y + oy) * side + x + ox)) {
+                    *d = f(p);
+                }
+            }
+        }
+        (format!("chan-{name}"), egui::ColorImage::new([side, side], px))
+    };
+    let fmt = doc.pixel_format();
+    let colors = fmt.mode.color_channels();
+    let mut texs = vec![make(&|p| egui::Color32::from_rgb(p[0], p[1], p[2]), "composite")];
+    if colors > 1 {
+        let cmyk = fmt.mode == photocraft_doc::ColorMode::Cmyk;
+        for k in 0..colors {
+            texs.push(make(
+                &|p| {
+                    let rgba = [p[0], p[1], p[2], 255].map(|v| f32::from(v) / 255.0);
+                    let mut native = [0.0f32; 8];
+                    photocraft_raster::from_rgba_into(&fmt, rgba, &mut native);
+                    let x = native.get(k).copied().unwrap_or(0.0);
+                    let g = if cmyk { 1.0 - x } else { x };
+                    let byte = (g.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+                    channel_tint(fmt.mode, k, byte, show_color)
+                },
+                &format!("c{k}"),
+            ));
+        }
+    }
+    // Alpha channels and the Quick Mask, sampled at thumbnail resolution.
+    let (dw, dh) = (doc.size.width.max(1) as f32, doc.size.height.max(1) as f32);
+    for (i, ch) in doc.channels.iter().chain(doc.quick_mask.as_ref()).enumerate() {
+        let mut px = vec![egui::Color32::TRANSPARENT; side * side];
+        for y in 0..h {
+            for x in 0..w {
+                let sx = ((x as f32 + 0.5) * dw / w as f32) as i32;
+                let sy = ((y as f32 + 0.5) * dh / h as f32) as i32;
+                let v = ch.surface.sample_channel(sx, sy, 0);
+                if let Some(d) = px.get_mut((y + oy) * side + x + ox) {
+                    *d = egui::Color32::from_gray((v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
+                }
+            }
+        }
+        texs.push((format!("chan-a{i}"), egui::ColorImage::new([side, side], px)));
+    }
+    texs
+}
+
+/// Channels thumbnails being built on a background thread, for document `doc` as it was in
+/// `snapshot`.
+#[derive(Clone)]
+struct ChannelThumbJob {
+    doc: DocId,
+    snapshot: std::sync::Weak<Document>,
+    show_color: bool,
+    /// Filled by the thread when it is done (empty if building them panicked).
+    result: std::sync::Arc<std::sync::Mutex<Option<ChannelImages>>>,
+}
+
+fn channel_thumb_job_id() -> egui::Id {
+    egui::Id::new("pc-channel-thumbs-job")
+}
+
+/// The thumbnails of `doc` from the background thread once they are ready (`None` while it
+/// runs). One thread at a time: a document changed under a running build waits for it, then
+/// gets a build of its own.
+fn channel_thumb_job(ctx: &egui::Context, id: DocId, doc: &std::sync::Arc<Document>, show_color: bool) -> Option<ChannelImages> {
+    use std::sync::{Arc, Mutex, PoisonError};
+    let key = channel_thumb_job_id();
+    if let Some(job) = ctx.data(|d| d.get_temp::<ChannelThumbJob>(key)) {
+        let same_doc = job.doc == id && job.show_color == show_color;
+        let matches = same_doc && (job.snapshot.ptr_eq(&Arc::downgrade(doc)) || job.snapshot.upgrade().is_some_and(|prev| same_but_selection(&prev, doc)));
+        let done = job.result.lock().unwrap_or_else(PoisonError::into_inner).take();
+        match (matches, done) {
+            (true, Some(images)) => {
+                ctx.data_mut(|d| d.remove::<ChannelThumbJob>(key));
+                return Some(images);
+            }
+            // Still running (for this document as it is now, or as it was): wait for it.
+            (_, None) if same_doc => return None,
+            // Done for an older state, or another document: build again below.
+            _ => {}
+        }
+    }
+    let result = Arc::new(Mutex::new(None));
+    let (out, snap) = (result.clone(), doc.clone());
+    let spawned = std::thread::Builder::new().name("channel-thumbs".into()).spawn(move || {
+        let images = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel_images(&snap, show_color))).unwrap_or_default();
+        *out.lock().unwrap_or_else(PoisonError::into_inner) = Some(images);
+    });
+    if spawned.is_err() {
+        return Some(channel_images(doc, show_color));
+    }
+    ctx.data_mut(|d| d.insert_temp(key, ChannelThumbJob { doc: id, snapshot: Arc::downgrade(doc), show_color, result }));
+    None
 }
 
 /// Layer › Layer Mask commands that add a layer mask: Photoshop targets the new mask (#2166).

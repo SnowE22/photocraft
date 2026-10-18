@@ -41,8 +41,11 @@ fn row(h: &Harness<'_, PhotocraftApp>, id: LayerId) -> crate::layer_row_ui::RowR
     crate::layer_row_ui::recorded(&h.ctx).into_iter().find(|r| r.layer == id.0).unwrap()
 }
 
+/// As in Photoshop (user report), Layer › New Fill Layer › Solid Color… makes the layer at once and
+/// the picker changes it live on the canvas; Cancel takes the layer away again, leaving the
+/// document and History as they were.
 #[test]
-fn new_solid_color_from_menu_cancel_keeps_document_and_history_unchanged() {
+fn new_solid_color_is_made_at_once_and_cancel_takes_it_away() {
     let (mut h, _) = harness(1.0);
     let ctx = h.ctx.clone();
     let app = h.state_mut();
@@ -51,21 +54,30 @@ fn new_solid_color_from_menu_cancel_keeps_document_and_history_unchanged() {
     let steps = app.session.active().unwrap().history.entries().len();
 
     let opened = crate::menus::invoke(app, &ctx, "layer.newFillLayer.solidColor", json!({})).unwrap();
-    assert!(opened.get("layer").is_none(), "no layer exists until OK");
+    let layer = LayerId(opened["layer"].as_u64().expect("the layer is made at once"));
     let dialog = opened["dialog"].as_u64().unwrap();
+    let st = app.session.active().unwrap();
+    assert!(matches!(st.doc.layer(layer).unwrap().content, LayerContent::Fill(Fill::Solid(_))));
+    assert_eq!(st.active_layer, Some(layer));
+    assert_eq!(st.history.entries().len(), steps + 1);
     let picker = app.ui.dialogs.last().unwrap();
     assert_eq!(picker.id, dialog);
-    assert!(owns_new(&picker.fields), "new Solid Color fill opens the shared Color Picker");
-    assert_eq!(picker.fields["__params"]["document"], before.id.0);
-    assert!(Arc::ptr_eq(&before, &app.session.active().unwrap().doc));
-    assert_eq!(app.session.active().unwrap().history.entries().len(), steps);
+    assert!(owns(&picker.fields), "the picker edits the new layer");
+    assert_eq!(picker.fields["__params"]["layer"], layer.0);
 
+    // Picking a colour shows on the canvas at once.
     app.ui.dialog_mut(dialog).unwrap().fields.insert("color".into(), json!("#ff8800"));
+    let (shown, _) = display_doc(app, 0).expect("a live preview");
+    let LayerContent::Fill(Fill::Solid(previewed)) = shown.layer(layer).unwrap().content else { panic!("the fill layer") };
+    assert_eq!(previewed.to_rgba8()[..3], [255, 136, 0]);
+
     crate::dialogs::cancel(app, dialog).unwrap();
     assert!(app.ui.dialogs.iter().all(|d| d.id != dialog));
-    assert!(Arc::ptr_eq(&before, &app.session.active().unwrap().doc), "Cancel must not create or delete a layer");
-    assert_eq!(app.session.active().unwrap().active_layer, active);
-    assert_eq!(app.session.active().unwrap().history.entries().len(), steps, "Cancel must not record a history entry");
+    let st = app.session.active().unwrap();
+    assert!(st.doc.layer(layer).is_none(), "Cancel takes the layer away");
+    assert_eq!(*st.doc, *before);
+    assert_eq!(st.active_layer, active);
+    assert_eq!(st.history.entries().len(), steps, "and its history step");
 }
 
 #[test]
@@ -75,10 +87,12 @@ fn new_solid_color_from_menu_ok_creates_one_layer_with_chosen_or_default_color()
     let app = h.state_mut();
     let steps = app.session.active().unwrap().history.entries().len();
 
-    // OK with the initial foreground colour still creates the fill layer.
+    // OK with the initial foreground colour keeps the layer made when the picker opened; with a
+    // picked colour the layer is made again with it, still one history step each.
     let first = crate::menus::invoke(app, &ctx, "layer.newFillLayer.solidColor", json!({})).unwrap();
     let created = crate::dialogs::confirm(app, first["dialog"].as_u64().unwrap()).unwrap();
     let id = LayerId(created["layer"].as_u64().unwrap());
+    assert_eq!(first["layer"], id.0);
     assert!(matches!(app.session.active().unwrap().doc.layer(id).unwrap().content, LayerContent::Fill(Fill::Solid(_))));
     assert_eq!(app.session.active().unwrap().history.entries().len(), steps + 1);
 
