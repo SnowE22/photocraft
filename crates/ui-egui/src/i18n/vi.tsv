@@ -3638,3 +3638,14 @@ curves	Smooth	Làm mượt
 	Open Document…	Mở tài liệu…
 	Delete Brushes	Xóa các cọ
 	Thumbnail size	Cỡ hình thu nhỏ
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Nhập hành động Photoshop
+	No Photoshop Actions palette was found on this computer	Không tìm thấy bảng hành động Photoshop trên máy tính này
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Đã mở trong Topaz Gigapixel AI: hãy xuất ảnh ở đó để đưa ảnh trở lại
+	Stopped waiting for Topaz Gigapixel AI	Đã ngừng chờ Topaz Gigapixel AI
+	Topaz Gigapixel AI's image could not be applied: {error}	Không thể áp dụng ảnh từ Topaz Gigapixel AI: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: đã phóng to {scale}× lên {w} × {h} px (lớp mới)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Đang chờ Topaz Gigapixel AI: hãy xuất ảnh đã phóng to ở đó để đưa ảnh trở lại.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Đã nạp {n} hành động trong {sets} bộ từ {file}

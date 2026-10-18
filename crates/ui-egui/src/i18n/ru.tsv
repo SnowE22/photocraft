@@ -3117,3 +3117,14 @@ curves	Smooth	Сгладить
 	Open Document…	Открыть документ…
 	Delete Brushes	Удалить кисти
 	Thumbnail size	Размер миниатюр
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Импорт операций Photoshop
+	No Photoshop Actions palette was found on this computer	Палитра операций Photoshop на этом компьютере не найдена
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Открыто в Topaz Gigapixel AI: экспортируйте там изображение, чтобы вернуть его сюда
+	Stopped waiting for Topaz Gigapixel AI	Ожидание Topaz Gigapixel AI остановлено
+	Topaz Gigapixel AI's image could not be applied: {error}	Не удалось применить изображение из Topaz Gigapixel AI: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: увеличено в {scale}× до {w} × {h} пикс. (новый слой)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Ожидание Topaz Gigapixel AI: экспортируйте там увеличенное изображение, чтобы вернуть его сюда.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Загружена {n} операция в наборах ({sets}) из {file}|Загружены {n} операции в наборах ({sets}) из {file}|Загружено {n} операций в наборах ({sets}) из {file}

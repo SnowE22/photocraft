@@ -1,5 +1,7 @@
 //! Photoshop's live keyboard shortcut set on this machine, for the one-time offer to import it
-//! at first launch (`photocraft_ui_egui::kys_import::offer_import`).
+//! at first launch (`photocraft_ui_egui::kys_import::offer_import`), and its Actions palette
+//! (`Actions Palette.psp`: every set of its Actions panel), for the Actions panel menu's Import
+//! Photoshop Actions.
 //!
 //! Photoshop keeps the set in use as `Keyboard Shortcuts.psp` in its per-version settings
 //! folder; it is the same XML a saved `.kys` holds, named after the set the user chose.
@@ -73,6 +75,30 @@ fn version_key(dir: &Path) -> (u64, std::time::SystemTime) {
     let number = name.split(|c: char| !c.is_ascii_digit()).filter(|s| !s.is_empty()).filter_map(|s| s.parse::<u64>().ok()).max().unwrap_or(0);
     let modified = std::fs::metadata(dir.join(FILE)).and_then(|m| m.modified()).unwrap_or(std::time::SystemTime::UNIX_EPOCH);
     (number, modified)
+}
+
+/// The Actions palette's file name inside a settings folder.
+pub const ACTIONS_FILE: &str = "Actions Palette.psp";
+
+/// A palette is a few megabytes at most (the user's: 5 MB, nine sets); far larger is not one.
+const MAX_ACTIONS_BYTES: u64 = 256 << 20;
+
+/// The newest install's Actions palette as (path, bytes), `None` without a readable one.
+pub fn actions_palette_on(os: Platform, env: &impl Fn(&str) -> Option<OsString>) -> Option<(String, Vec<u8>)> {
+    settings_dirs(os, env).into_iter().map(|d| d.join(ACTIONS_FILE)).find_map(|path| {
+        let len = std::fs::metadata(&path).ok()?.len();
+        if len > MAX_ACTIONS_BYTES {
+            return None;
+        }
+        let bytes = std::fs::read(&path).ok()?;
+        // Version 16, then the set count.
+        bytes.starts_with(&[0, 0, 0, 16]).then(|| (path.to_string_lossy().into_owned(), bytes))
+    })
+}
+
+/// [`actions_palette_on`] for this platform.
+pub fn actions_palette(env: &impl Fn(&str) -> Option<OsString>) -> Option<(String, Vec<u8>)> {
+    actions_palette_on(this_platform(), env)
 }
 
 /// The live set's file name inside a settings folder.
@@ -152,5 +178,26 @@ mod tests {
         assert!(path.replace('\\', "/").ends_with("Adobe Photoshop 2025/Adobe Photoshop 2025 Settings/Keyboard Shortcuts.psp"), "{path}");
         assert!(live_keyboard_shortcuts_on(Platform::Other, &env).is_none());
         assert!(live_keyboard_shortcuts_on(Platform::Mac, &|_| None).is_none(), "no HOME, no set");
+    }
+
+    /// The newest install's `Actions Palette.psp` (version 16, then the set count); a file that
+    /// is not a palette is skipped for the next install's.
+    #[test]
+    fn the_newest_actions_palette_is_found() {
+        let root = temp_root("actions");
+        let adobe = root.join("appdata/Adobe");
+        let put = |dir: &Path, bytes: &[u8]| {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(dir.join(ACTIONS_FILE), bytes).unwrap();
+        };
+        put(&adobe.join("Adobe Photoshop 2025/Adobe Photoshop 2025 Settings"), &[0, 0, 0, 16, 0, 0, 0, 1]);
+        put(&adobe.join("Adobe Photoshop 2024/Adobe Photoshop 2024 Settings"), &[0, 0, 0, 16, 0, 0, 0, 2]);
+        put(&adobe.join("Adobe Photoshop 2026/Adobe Photoshop 2026 Settings"), b"not a palette");
+        let env = env_for(&root);
+        let (path, bytes) = actions_palette_on(Platform::Windows, &env).unwrap();
+        assert!(path.replace('\\', "/").ends_with("Adobe Photoshop 2025/Adobe Photoshop 2025 Settings/Actions Palette.psp"), "{path}");
+        assert_eq!(bytes, [0, 0, 0, 16, 0, 0, 0, 1]);
+        assert!(actions_palette_on(Platform::Other, &env).is_none());
+        assert!(actions_palette_on(Platform::Windows, &|_| None).is_none(), "no APPDATA, no palette");
     }
 }

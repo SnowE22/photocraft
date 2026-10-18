@@ -939,3 +939,340 @@ fn remove_white_clears_the_targeted_layer_not_the_converted_background() {
     assert!(!st.doc.is_background(bottom.id), "the Background became a normal layer");
     assert!(bottom.surface().unwrap().sample_channel(2, 2, 1) > 0.99, "and kept its pixels");
 }
+
+/// Photoshop's `Actions Palette.psp` holds every set of its Actions panel; Load Actions takes it
+/// whole (the user's palette: nine sets), replacing sets of the same names on a reload.
+#[test]
+fn an_actions_palette_loads_every_set() {
+    let mut s = Session::new();
+    let mut second = AtnFile { name: UnicodeString::new_nul("Second"), expanded: false, actions: Vec::new(), warnings: Vec::new() };
+    second.actions.push(AtnAction { name: UnicodeString::new_nul("Finish"), items: vec![item("Fltn", "Flatten Image", None)], ..Default::default() });
+    let palette = atn::write_palette(&[sample(), second]).unwrap();
+    let r = s.execute("actions.load", json!({"data": b64(&palette)})).unwrap();
+    assert_eq!(r["sets"], json!(["Test Set", "Second"]));
+    // The second set's Finish clashes with the first's and gets a new name.
+    assert_eq!(r["actions"], json!(["Soften", "Finish", "Finish 2"]));
+    assert_eq!(r["steps"], 11);
+    assert_eq!(r["bySet"][1]["actions"], json!(["Finish 2"]));
+    assert!(r["unsupported"].as_array().unwrap().iter().all(|u| u["set"] == "Test Set"), "{}", r["unsupported"]);
+    let sets: Vec<Option<&str>> = s.actions.list.iter().map(|a| a.set.as_deref()).collect();
+    assert_eq!(sets, [Some("Test Set"), Some("Test Set"), Some("Second")]);
+    // Importing again replaces both sets instead of adding copies.
+    s.execute("actions.load", json!({"data": b64(&palette)})).unwrap();
+    assert_eq!(s.actions.list.len(), 3);
+    // A palette keeps its sets' names; a single .atn file can still be renamed.
+    assert!(s.execute("actions.load", json!({"data": b64(&palette), "set": "Mine"})).is_err());
+    assert_eq!(s.actions.list.len(), 3, "a refused load changes nothing");
+    let one = atn::write(&sample()).unwrap();
+    assert_eq!(s.execute("actions.load", json!({"data": b64(&one), "set": "Mine"})).unwrap()["set"], "Mine");
+    // A one-set palette loads like the set.
+    let single = atn::write_palette(&[sample()]).unwrap();
+    let mut t = Session::new();
+    assert_eq!(t.execute("actions.load", json!({"data": b64(&single)})).unwrap()["set"], "Test Set");
+}
+
+/// The step shapes of a Photoshop 2026 user's own sets that the first table didn't read (their
+/// Actions palette, 2026-10-18), rebuilt as Photoshop records them: string-id blend modes, HSB
+/// colours, Blend If, masks as selections, Create/Release Clipping Mask, layer masks from the
+/// selection, named adjustment layers, Color Range, the Camera Raw filter, Color Overlay, work
+/// paths. Each imports to the commands that do the same, and plays.
+#[test]
+fn photoshop_2026_shapes_import_and_play() {
+    let ord = |cls: &str, ty: &str, v: &str| D::Reference(vec![ReferenceItem::Enumerated { class: class(cls), type_id: Id::new(ty), value: code(v) }]);
+    let rgb = |r: f64, g: f64, b: f64| D::Descriptor(desc("RGBC").with("Rd  ", D::Double(r)).with("Grn ", D::Double(g)).with("Bl  ", D::Double(b)));
+    let hsb =
+        D::Descriptor(desc("HSBC").with("H   ", D::UnitFloat { unit: *b"#Ang", value: 120.0 }).with("Strt", D::Double(100.0)).with("Brgh", D::Double(100.0)));
+    let fg = desc("null").with("null", D::Reference(vec![ReferenceItem::Property { class: class("Clr "), key: Id::new("FrgC") }])).with("T   ", hsb);
+    let blend_if = desc("null").with("null", target_ref("Lyr ")).with(
+        "T   ",
+        D::Descriptor(desc("Lyr ").with(
+            "Blnd",
+            D::List(vec![D::Descriptor(
+                desc("Blnd")
+                    .with("Chnl", ord("Chnl", "Chnl", "Gry"))
+                    .with("SrcB", long(0.0))
+                    .with("Srcl", long(0.0))
+                    .with("SrcW", long(255.0))
+                    .with("Srcm", long(255.0))
+                    .with("DstB", long(0.0))
+                    .with("Dstl", long(0.0))
+                    .with("DstW", long(210.0))
+                    .with("Dstt", long(222.0)),
+            )]),
+        )),
+    );
+    let multiply = desc("null").with("null", target_ref("Lyr ")).with("T   ", D::Descriptor(desc("Lyr ").with("Md  ", enm("BlnM", "multiply"))));
+    let mask_sel = fsel(ord("Chnl", "Chnl", "Msk"));
+    let reveal_sel = desc("null").with("Nw  ", D::Class(class("Chnl"))).with("At  ", ord("Chnl", "Chnl", "Msk")).with("Usng", enm("UsrM", "RvlS"));
+    let clip = desc("null").with("null", target_ref("Lyr "));
+    let named_lookup = desc("null")
+        .with("null", class_ref("AdjL"))
+        .with("Usng", D::Descriptor(desc("AdjL").with("Nm  ", text("Color Lookup")).with("Opct", pct(25.0)).with("Type", D::Class(class("colorLookup")))));
+    let empty_curves = desc("null").with("null", class_ref("AdjL")).with("Usng", D::Descriptor(desc("AdjL").with("Type", D::Descriptor(desc("Crvs")))));
+    let lab = D::Descriptor(desc("LbCl").with("Lmnc", D::Double(87.84)).with("A   ", D::Double(-78.98)).with("B   ", D::Double(78.89)));
+    let range = desc("null").with("Fzns", long(200.0)).with("Mnm ", lab.clone()).with("Mxm ", lab).with("colorModel", long(0.0));
+    let raw = desc("null")
+        .with("CrVe", text("15.4.1"))
+        .with("PrVN", long(6.0))
+        .with("PrVe", long(251_920_384.0))
+        .with("CrTx", long(-27.0))
+        .with("Shrp", long(19.0))
+        .with("ShpR", D::Double(1.0))
+        .with("ShpD", long(25.0))
+        .with("ShpM", long(0.0))
+        .with("LNR ", long(100.0))
+        .with("LNRD", long(50.0))
+        .with("LNRC", long(0.0));
+    let raw_unknown = desc("null").with("CrVe", text("16.4")).with("Ex12", D::Double(0.5));
+    let overlay = desc("null")
+        .with(
+            "null",
+            D::Reference(vec![
+                ReferenceItem::Property { class: class("Prpr"), key: Id::new("Lefx") },
+                ReferenceItem::Enumerated { class: class("Lyr "), type_id: Id::new("Ordn"), value: Id::new("Trgt") },
+            ]),
+        )
+        .with(
+            "T   ",
+            D::Descriptor(desc("Lefx").with("Scl ", pct(100.0)).with(
+                "SoFi",
+                D::Descriptor(
+                    desc("SoFi").with("enab", D::Boolean(true)).with("Md  ", enm("BlnM", "normal")).with("Opct", pct(100.0)).with("Clr ", rgb(0.0, 0.0, 0.0)),
+                ),
+            )),
+        );
+    let fill_bg = desc("null").with("Usng", enm("FlCn", "BckC")).with("Opct", pct(100.0)).with("Md  ", enm("BlnM", "normal"));
+    let work_path = desc("null")
+        .with("null", class_ref("Path"))
+        .with("From", D::Reference(vec![ReferenceItem::Property { class: class("csel"), key: Id::new("fsel") }]))
+        .with("Tlrn", px(1.0));
+    let intersect = desc("null")
+        .with("null", ord("Chnl", "Chnl", "Trsp"))
+        .with("With", D::Reference(vec![ReferenceItem::Property { class: class("Chnl"), key: Id::new("fsel") }]));
+    let add_rect = fsel(D::Descriptor(desc("Rctn").with("Top ", px(0.0)).with("Left", px(0.0)).with("Btom", px(10.0)).with("Rght", px(20.0))));
+    let diffuse = desc("null").with("Md  ", enm("DfsM", "anisotropic")).with("FlRs", long(77_244_718.0));
+    let set = set_of(
+        "Mine",
+        vec![(
+            "everything",
+            vec![
+                item("set", "Set", Some(fg)),
+                item("set", "Set", Some(blend_if)),
+                item("set", "Set", Some(multiply)),
+                item("set", "Set", Some(mask_sel)),
+                item("make", "Make", Some(reveal_sel)),
+                item("groupEvent", "Create Clipping Mask", Some(clip.clone())),
+                item("ungroup", "Release Clipping Mask", Some(desc("null").with("null", name_ref("Lyr ", "A")))),
+                item("make", "Make", Some(named_lookup)),
+                item("make", "Make", Some(empty_curves)),
+                item("colorRange", "Color Range", Some(range)),
+                item("Adobe Camera Raw Filter", "Camera Raw Filter", Some(raw)),
+                item("Adobe Camera Raw Filter", "Camera Raw Filter", Some(raw_unknown)),
+                item("set", "Set", Some(overlay)),
+                item("fill", "Fill", Some(fill_bg)),
+                item("make", "Make", Some(work_path)),
+                item("interfaceIconFrameDimmed", "Intersect", Some(intersect)),
+                item("addTo", "Add To", Some(add_rect)),
+                item("diffuse", "Diffuse", Some(diffuse)),
+                item("ungroupLayersEvent", "Ungroup Layers", Some(clip)),
+            ],
+        )],
+    );
+    let mut s = Session::new();
+    let r = s.execute("actions.load", json!({"data": set})).unwrap();
+    let unsupported: Vec<usize> = r["unsupported"].as_array().unwrap().iter().map(|u| u["step"].as_u64().unwrap() as usize).collect();
+    assert_eq!(unsupported, [11], "only the Camera Raw step with an unread key stays a Photoshop step");
+    let steps = s.actions.list[0].steps.clone();
+    let ids: Vec<&str> = steps.iter().map(|(id, _)| id.as_str()).collect();
+    assert_eq!(
+        ids,
+        [
+            "tools.setColors",
+            "layer.layerStyle.blendingOptions",
+            "layer.setProps",
+            "select.loadSelection",
+            "layer.layerMask.revealSelection",
+            "layer.createClippingMask",
+            "layer.releaseClippingMask",
+            "layer.newAdjustmentLayer.colorLookup",
+            "layer.setProps",
+            "layer.newAdjustmentLayer.curves",
+            "select.colorRange",
+            "filter.cameraRaw",
+            PHOTOSHOP_STEP,
+            "layer.layerStyle.colorOverlay",
+            "edit.fill",
+            "select.toWorkPath",
+            "select.loadSelection",
+            "select.rect",
+            "filter.stylize.diffuse",
+            "layer.ungroupLayers",
+        ]
+    );
+    assert_eq!(steps[0].1, json!({"foreground": "#00ff00"}));
+    assert_eq!(steps[1].1, json!({"blendIf": [{"channel": "gray", "thisLayer": [0, 0, 255, 255], "underlying": [0, 0, 210, 222]}]}));
+    assert_eq!(steps[2].1, json!({"blend": "Multiply"}));
+    assert_eq!(steps[3].1, json!({"channel": "mask"}));
+    assert_eq!(steps[6].1, json!({"layer": "A"}));
+    assert_eq!(steps[8].1, json!({"name": "Color Lookup", "opacity": 0.25}));
+    assert_eq!(steps[10].1["fuzziness"], 200);
+    assert_eq!(steps[10].1["color"].as_str().map(str::len), Some(7));
+    assert_eq!(
+        steps[11].1,
+        json!({"texture": -27, "sharpenAmount": 19, "sharpenRadius": 1, "sharpenDetail": 25, "sharpenMasking": 0, "noiseLuminance": 100, "noiseLuminanceDetail": 50})
+    );
+    assert_eq!(steps[13].1, json!({"color": "#000000", "opacity": 100, "blend": "Normal"}));
+    assert_eq!(steps[14].1, json!({"contents": "background", "opacity": 100, "mode": "Normal"}));
+    assert_eq!(steps[15].1, json!({"tolerance": 1}));
+    assert_eq!(steps[16].1, json!({"channel": "transparency", "operation": "intersect"}));
+    assert_eq!(steps[17].1, json!({"x": 0, "y": 0, "width": 20, "height": 10, "mode": "add"}));
+    assert_eq!(steps[18].1, json!({"mode": "anisotropic", "seed": 77_244_718}));
+
+    // They play: on a layer with a mask, under a selection.
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    s.execute("layer.new.layer", json!({"name": "A"})).unwrap();
+    s.execute("edit.fillForeground", json!({})).unwrap();
+    s.execute("layer.new.layer", json!({"name": "B"})).unwrap();
+    s.execute("edit.fillForeground", json!({})).unwrap();
+    s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+    s.execute("select.rect", json!({"x": 4, "y": 4, "width": 30, "height": 20})).unwrap();
+    s.execute("layer.select", json!({"layer": "A"})).unwrap();
+    for (i, (id, p)) in steps.iter().enumerate().take(5) {
+        if id == "select.loadSelection" {
+            // The mask is layer B's: load it from there, as the action does after selecting it.
+            s.execute("layer.select", json!({"layer": "B"})).unwrap();
+        }
+        s.execute(id, p.clone()).unwrap_or_else(|e| panic!("step {} {id}: {e}", i + 1));
+    }
+    assert_eq!(s.tools.foreground, [0.0, 1.0, 0.0, 1.0], "the foreground colour");
+    for (i, (id, p)) in steps.iter().enumerate().skip(5) {
+        if id == PHOTOSHOP_STEP || id == "layer.ungroupLayers" {
+            continue;
+        }
+        if id.starts_with("filter.") || id == "edit.fill" || id == "layer.layerStyle.colorOverlay" {
+            // Filters and fills need a pixel layer: the adjustment layers made above are active.
+            s.execute("layer.select", json!({"layer": "A"})).unwrap();
+        }
+        if id == "select.toWorkPath" {
+            // Color Range found no green in this document: make a selection to trace.
+            s.execute("select.rect", json!({"x": 4, "y": 4, "width": 30, "height": 20})).unwrap();
+        }
+        s.execute(id, p.clone()).unwrap_or_else(|e| panic!("step {} {id}: {e}", i + 1));
+    }
+}
+
+/// Photoshop's own sets name themselves and their actions with a localisation key and the
+/// English text; the panel shows the text.
+#[test]
+fn localisation_keys_in_names_show_as_text() {
+    assert_eq!(display_name("$$$/Presets/Actions/DefaultActions_atn/DefaultActions=Default Actions"), "Default Actions");
+    assert_eq!(display_name("Plain"), "Plain");
+    assert_eq!(display_name("$$$/NoText="), "$$$/NoText=");
+    let set = set_of("$$$/Presets/Actions/X=Mine", vec![("$$$/Presets/Actions/X/Y=Soften", vec![item("Fltn", "Flatten Image", None)])]);
+    let mut s = Session::new();
+    let r = s.execute("actions.load", json!({"data": set})).unwrap();
+    assert_eq!(r["set"], "Mine");
+    assert_eq!(r["actions"], json!(["Soften"]));
+}
+
+/// Shapes that would lose part of the step stay Photoshop steps: a Color Range over a sampled
+/// range (a Lab box), a Color Overlay with other effects, a mask copied from another layer.
+#[test]
+fn partial_new_shapes_stay_photoshop_steps() {
+    let ord = |cls: &str, ty: &str, v: &str| D::Reference(vec![ReferenceItem::Enumerated { class: class(cls), type_id: Id::new(ty), value: code(v) }]);
+    let lab = |l: f64| D::Descriptor(desc("LbCl").with("Lmnc", D::Double(l)).with("A   ", D::Double(0.0)).with("B   ", D::Double(0.0)));
+    let range = desc("null").with("Fzns", long(40.0)).with("Mnm ", lab(10.0)).with("Mxm ", lab(90.0));
+    let lefx = desc("null")
+        .with(
+            "null",
+            D::Reference(vec![
+                ReferenceItem::Property { class: class("Prpr"), key: Id::new("Lefx") },
+                ReferenceItem::Enumerated { class: class("Lyr "), type_id: Id::new("Ordn"), value: Id::new("Trgt") },
+            ]),
+        )
+        .with("T   ", D::Descriptor(desc("Lefx").with("SoFi", D::Descriptor(desc("SoFi"))).with("DrSh", D::Descriptor(desc("DrSh")))));
+    let copied_mask = desc("null")
+        .with("Nw  ", D::Class(class("Chnl")))
+        .with(
+            "At  ",
+            D::Reference(vec![
+                ReferenceItem::Enumerated { class: class("Chnl"), type_id: Id::new("Chnl"), value: code("Msk") },
+                ReferenceItem::Name { class: class("Lyr "), name: UnicodeString::new_nul("A") },
+            ]),
+        )
+        .with("Usng", ord("Chnl", "Chnl", "Msk"))
+        .with("Dplc", D::Boolean(true));
+    let set =
+        set_of("S", vec![("a", vec![item("colorRange", "Color Range", Some(range)), item("set", "Set", Some(lefx)), item("make", "Make", Some(copied_mask))])]);
+    let mut s = Session::new();
+    let r = s.execute("actions.load", json!({"data": set})).unwrap();
+    assert_eq!(r["unsupported"].as_array().map(Vec::len), Some(3), "{}", r["unsupported"]);
+}
+
+/// The new events that export write back the same steps.
+#[test]
+fn new_exportable_events_round_trip() {
+    let cases = [
+        ("layer.createClippingMask", json!({})),
+        ("layer.releaseClippingMask", json!({"layer": "A"})),
+        ("layer.ungroupLayers", json!({})),
+        ("select.colorRange", json!({"color": "#00ff00", "fuzziness": 120})),
+        ("select.colorRange", json!({"select": "reds", "fuzziness": 40, "invert": true})),
+        ("filter.cameraRaw", json!({"texture": -27, "sharpenAmount": 19, "noiseLuminance": 100})),
+        ("filter.stylize.diffuse", json!({"mode": "darkenOnly", "seed": 9})),
+        ("file.automate.fitImage", json!({"width": 722, "height": 536})),
+        ("filter.video.ntscColors", json!({})),
+        ("edit.autoAlignLayers", json!({"projection": "auto"})),
+    ];
+    for (id, params) in cases {
+        let mut s = Session::new();
+        s.actions.list.push(Action::new("a", vec![(id.to_string(), params.clone())]));
+        let saved = s.execute("actions.save", json!({})).unwrap();
+        assert_eq!(saved["skipped"], json!([]), "{id} exports");
+        let mut t = Session::new();
+        t.execute("actions.load", json!({"data": saved["data"]})).unwrap();
+        let (back_id, back) = &t.actions.list[0].steps[0];
+        assert_eq!(back_id, id);
+        if id == "select.colorRange" && params.get("color").is_some() {
+            // Through Lab and back: within a step of 8 bits.
+            assert_eq!(back["fuzziness"], params["fuzziness"]);
+            continue;
+        }
+        assert_eq!(back, &params, "{id}");
+    }
+}
+
+/// Curves loaded from a `.acv` preset import with the file's curves: from the recorded path, or
+/// by name from this computer's Photoshop presets when the action names another computer's.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn curves_from_a_preset_file_import_with_the_curves() {
+    let root = std::env::temp_dir().join(format!("photocraft-acv-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let presets = root.join("Adobe Photoshop 2026").join("Presets").join("Curves");
+    std::fs::create_dir_all(&presets).unwrap();
+    let acv = photocraft_psd::acv::write(&[vec![(0, 0), (50, 66), (255, 255)], vec![(0, 0), (255, 255)], vec![(0, 10), (255, 255)], vec![(0, 0), (255, 255)]])
+        .unwrap();
+    let here = presets.join("grey fix.acv");
+    std::fs::write(&here, &acv).unwrap();
+    // Recorded where the file is.
+    let curves = |path: &str| desc("Crvs").with("presetKind", enm("presetKindType", "presetKindUserDefined")).with("Usng", path_value(path));
+    let set_curves = |path: &str| desc("null").with("null", target_ref("AdjL")).with("T   ", D::Descriptor(curves(path)));
+    let set = set_of("S", vec![("a", vec![item("set", "Set", Some(set_curves(&here.to_string_lossy())))])]);
+    let mut s = Session::new();
+    s.execute("actions.load", json!({"data": set})).unwrap();
+    let (id, p) = &s.actions.list[0].steps[0];
+    assert_eq!(id, "layer.setAdjustment");
+    assert_eq!(p, &json!({"points": [[0, 0], [50, 66], [255, 255]], "green": [[0, 10], [255, 255]]}));
+    // Recorded on another computer: found by name among the given Photoshop folders.
+    let elsewhere = r"C:\Users\someone\AppData\Roaming\Adobe\Adobe Photoshop 2022\Presets\Curves\grey fix.acv";
+    assert_eq!(extra::preset_file_in(elsewhere, "Curves", std::slice::from_ref(&root)), Some(acv.clone()));
+    assert_eq!(extra::preset_file_in(r"C:\nowhere\other.acv", "Curves", std::slice::from_ref(&root)), None);
+    assert_eq!(extra::preset_file_in(r"C:\nowhere\..", "Curves", std::slice::from_ref(&root)), None);
+    // A file that isn't found leaves the step a Photoshop step.
+    let gone = set_of("S", vec![("a", vec![item("set", "Set", Some(set_curves(r"C:\nowhere\missing curve.acv")))])]);
+    let mut t = Session::new();
+    let r = t.execute("actions.load", json!({"data": gone})).unwrap();
+    assert_eq!(r["unsupported"].as_array().map(Vec::len), Some(1));
+    let _ = std::fs::remove_dir_all(&root);
+}

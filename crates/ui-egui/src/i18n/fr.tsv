@@ -3153,3 +3153,14 @@ curves	Smooth	Lisser
 	Open Document…	Ouvrir un document…
 	Delete Brushes	Supprimer les pinceaux
 	Thumbnail size	Taille des vignettes
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Importer les actions de Photoshop
+	No Photoshop Actions palette was found on this computer	Aucune palette d'actions Photoshop trouvée sur cet ordinateur
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Ouverte dans Topaz Gigapixel AI : exportez-y l'image pour la récupérer ici
+	Stopped waiting for Topaz Gigapixel AI	Attente de Topaz Gigapixel AI arrêtée
+	Topaz Gigapixel AI's image could not be applied: {error}	Impossible d'appliquer l'image de Topaz Gigapixel AI : {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI : agrandie {scale}× à {w} × {h} px (nouveau calque)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	En attente de Topaz Gigapixel AI : exportez-y l'image agrandie pour la récupérer ici.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} action chargée dans {sets} ensembles depuis {file}|{n} actions chargées dans {sets} ensembles depuis {file}

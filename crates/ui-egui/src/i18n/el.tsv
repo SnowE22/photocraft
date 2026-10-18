@@ -3849,3 +3849,14 @@ curves	Smooth	Εξομάλυνση
 	Open Document…	Άνοιγμα εγγράφου…
 	Delete Brushes	Διαγραφή πινέλων
 	Thumbnail size	Μέγεθος μικρογραφιών
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Εισαγωγή ενεργειών Photoshop
+	No Photoshop Actions palette was found on this computer	Δεν βρέθηκε παλέτα ενεργειών Photoshop σε αυτόν τον υπολογιστή
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Άνοιξε στο Topaz Gigapixel AI: εξαγάγετε εκεί την εικόνα για να επιστρέψει εδώ
+	Stopped waiting for Topaz Gigapixel AI	Η αναμονή για το Topaz Gigapixel AI σταμάτησε
+	Topaz Gigapixel AI's image could not be applied: {error}	Δεν ήταν δυνατή η εφαρμογή της εικόνας του Topaz Gigapixel AI: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: μεγέθυνση {scale}× σε {w} × {h} px (νέο επίπεδο)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Αναμονή για το Topaz Gigapixel AI: εξαγάγετε εκεί τη μεγεθυμένη εικόνα για να επιστρέψει εδώ.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Φορτώθηκε {n} ενέργεια σε {sets} σύνολα από το {file}|Φορτώθηκαν {n} ενέργειες σε {sets} σύνολα από το {file}

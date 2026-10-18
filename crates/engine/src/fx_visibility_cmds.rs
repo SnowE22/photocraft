@@ -19,9 +19,11 @@ fn has_effects(s: &Session) -> std::result::Result<(), String> {
     if d.doc.walk().iter().any(|(_, _, l)| !l.effects.items.is_empty()) { Ok(()) } else { Err("no layer has effects".into()) }
 }
 
-/// `{"layer":id?,"index":n?,"visible":bool?}`: show or hide a layer's effects (no `visible`:
-/// toggle). Without `index` it is the whole list (the "Effects" row); with it, the effect at that
-/// position in the layer's list.
+/// `{"layer":id?,"index":n?,"effect":name?,"visible":bool?}`: show or hide a layer's effects (no
+/// `visible`: toggle). Without `index` or `effect` it is the whole list (the "Effects" row); with
+/// `index`, the effect at that position in the layer's list; with `effect`, the first effect of
+/// that kind ("Color Overlay", `colorOverlay`: what a Photoshop action's Hide of one effect
+/// names).
 fn set_visible(s: &mut Session, p: &Value) -> Result<Value> {
     let want = match p.get("visible") {
         None | Some(Value::Null) => None,
@@ -30,6 +32,12 @@ fn set_visible(s: &mut Session, p: &Value) -> Result<Value> {
     let index = match p.get("index") {
         None | Some(Value::Null) => None,
         Some(v) => Some(v.as_u64().and_then(|i| usize::try_from(i).ok()).ok_or_else(|| bad("`index` must be an effect position (0, 1, …)"))?),
+    };
+    let kind = match p.get("effect") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(k)) if index.is_none() => Some(k.to_ascii_lowercase().replace([' ', '&'], "")),
+        Some(Value::String(_)) => return Err(bad("give `index` or `effect`, not both")),
+        Some(_) => return Err(bad("`effect` must be an effect name such as \"Color Overlay\"")),
     };
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let id = match p.get("layer") {
@@ -40,6 +48,16 @@ fn set_visible(s: &mut Session, p: &Value) -> Result<Value> {
     if l.effects.items.is_empty() {
         return Err(bad(format!("layer {} has no effects", id.0)));
     }
+    let index = match &kind {
+        Some(k) => Some(
+            l.effects
+                .items
+                .iter()
+                .position(|e| e.label().to_ascii_lowercase().replace([' ', '&'], "") == *k)
+                .ok_or_else(|| bad(format!("layer {} has no {} effect", id.0, p["effect"].as_str().unwrap_or("such"))))?,
+        ),
+        None => index,
+    };
     let (current, name) = match index {
         Some(i) => {
             let e = l.effects.items.get(i).ok_or_else(|| bad(format!("layer {} has no effect at index {i}", id.0)))?;
@@ -68,7 +86,7 @@ pub fn specs() -> Vec<CommandSpec> {
         label: "Show/Hide Effects",
         menu: &[],
         shortcut: None,
-        params: r##"{"layer":id?,"index":n?,"visible":bool?} (no index: all of the layer's effects, the "Effects" row; index: the effect at that position in the layer's list; no visible: toggle)"##,
+        params: r##"{"layer":id?,"index":n?,"effect":name?,"visible":bool?} (no index or effect: all of the layer's effects, the "Effects" row; index: the effect at that position in the layer's list; effect: the first of that kind, "Color Overlay" or colorOverlay; no visible: toggle)"##,
         enabled: has_effects,
         run: set_visible,
         journal: true,
@@ -132,6 +150,18 @@ mod tests {
         assert_eq!(state(&s, a), (true, vec![true, false]));
         s.execute(ID, json!({"layer": a, "index": 1, "visible": true})).unwrap();
         assert_eq!(state(&s, a), (true, vec![true, true]));
+    }
+
+    /// A Photoshop action hides one effect by its kind, not its position.
+    #[test]
+    fn an_effect_can_be_named_by_its_kind() {
+        let (mut s, a, _) = session();
+        assert_eq!(s.execute(ID, json!({"layer": a, "effect": "colorOverlay", "visible": false})).unwrap()["index"], 1);
+        assert_eq!(state(&s, a), (true, vec![true, false]));
+        assert_eq!(s.execute(ID, json!({"layer": a, "effect": "Drop Shadow", "visible": false})).unwrap()["index"], 0);
+        assert!(s.execute(ID, json!({"layer": a, "effect": "Satin"})).is_err(), "no such effect");
+        assert!(s.execute(ID, json!({"layer": a, "effect": 3})).is_err());
+        assert!(s.execute(ID, json!({"layer": a, "effect": "Satin", "index": 0})).is_err(), "one or the other");
     }
 
     #[test]

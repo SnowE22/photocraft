@@ -4072,3 +4072,14 @@ cameraRaw	Yellow	Sárga
 	Open Document…	Dokumentum megnyitása…
 	Delete Brushes	Ecsetek törlése
 	Thumbnail size	Bélyegképméret
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop-műveletek importálása
+	No Photoshop Actions palette was found on this computer	Ezen a számítógépen nem található Photoshop-műveletpaletta
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Megnyitva a Topaz Gigapixel AI-ban: exportálja ott a képet, hogy visszakerüljön ide
+	Stopped waiting for Topaz Gigapixel AI	A Topaz Gigapixel AI-ra való várakozás leállítva
+	Topaz Gigapixel AI's image could not be applied: {error}	A Topaz Gigapixel AI képét nem sikerült alkalmazni: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× nagyítás {w} × {h} képpontra (új réteg)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Várakozás a Topaz Gigapixel AI-ra: exportálja ott a nagyított képet, hogy visszakerüljön ide.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} művelet betöltve {sets} készletben. Forrás: {file}

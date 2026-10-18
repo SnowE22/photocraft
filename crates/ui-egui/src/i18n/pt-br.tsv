@@ -3941,3 +3941,14 @@ layerLabel	No Color	Sem cor
 	Open Document…	Abrir documento…
 	Delete Brushes	Excluir pincéis
 	Thumbnail size	Tamanho da miniatura
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Importar ações do Photoshop
+	No Photoshop Actions palette was found on this computer	Nenhuma paleta de ações do Photoshop foi encontrada neste computador
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Aberta no Topaz Gigapixel AI: exporte a imagem lá para trazê-la de volta
+	Stopped waiting for Topaz Gigapixel AI	Parou de aguardar o Topaz Gigapixel AI
+	Topaz Gigapixel AI's image could not be applied: {error}	Não foi possível aplicar a imagem do Topaz Gigapixel AI: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: ampliada {scale}× para {w} × {h} px (nova camada)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Aguardando o Topaz Gigapixel AI: exporte lá a imagem ampliada para trazê-la de volta.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} ação carregada em {sets} conjuntos de {file}|{n} ações carregadas em {sets} conjuntos de {file}

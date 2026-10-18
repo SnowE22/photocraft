@@ -2762,3 +2762,14 @@ curves	Smooth	平滑
 	Delete Brushes	删除画笔
 	Thumbnail size	缩略图大小
 	New Group	新建组
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	导入 Photoshop 动作
+	No Photoshop Actions palette was found on this computer	在此电脑上未找到 Photoshop 动作面板文件
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	已在 Topaz Gigapixel AI 中打开：在那里导出图像即可将其带回
+	Stopped waiting for Topaz Gigapixel AI	已停止等待 Topaz Gigapixel AI
+	Topaz Gigapixel AI's image could not be applied: {error}	无法应用 Topaz Gigapixel AI 的图像：{error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新图层）
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	正在等待 Topaz Gigapixel AI：在那里导出放大后的图像即可将其带回。
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	已从 {file} 载入 {sets} 个组中的 {n} 个动作

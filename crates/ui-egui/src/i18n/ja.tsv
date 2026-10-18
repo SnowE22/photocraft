@@ -3828,3 +3828,14 @@ curves	Smooth	スムーズ
 	Open Document…	ドキュメントを開く…
 	Delete Brushes	ブラシを削除
 	Thumbnail size	サムネールのサイズ
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop のアクションを読み込み
+	No Photoshop Actions palette was found on this computer	このコンピューターに Photoshop のアクションパレットが見つかりません
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Topaz Gigapixel AI で開きました：そこで画像を書き出すとここに戻ります
+	Stopped waiting for Topaz Gigapixel AI	Topaz Gigapixel AI の待機を停止しました
+	Topaz Gigapixel AI's image could not be applied: {error}	Topaz Gigapixel AI の画像を適用できませんでした：{error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI：{scale}× で {w} × {h} px に拡大しました（新規レイヤー）
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI を待っています：拡大した画像をそこで書き出すとここに戻ります。
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file} から {sets} 個のセットのアクション {n} 個を読み込みました

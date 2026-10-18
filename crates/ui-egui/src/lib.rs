@@ -96,6 +96,7 @@ pub mod flick_pan;
 mod font_preview;
 pub mod frame_tool;
 pub mod gallery_ui;
+pub mod gigapixel_ui;
 pub mod gpu_canvas;
 pub mod gpu_status;
 pub mod gradient_ui;
@@ -363,6 +364,9 @@ pub type RecoverFn = Box<dyn FnMut() -> Vec<Recoverable>>;
 /// Photoshop's own keyboard shortcut set on this machine, as (source path, `.kys` XML text):
 /// the newest install's live `Keyboard Shortcuts.psp` on the desktop, `None` without one.
 pub type PhotoshopShortcutsFn = Box<dyn FnMut() -> Option<(String, String)>>;
+/// Photoshop's Actions palette on this machine (`Actions Palette.psp`, every set of its Actions
+/// panel) as (path, bytes), or `None` without one (`actions::import_photoshop`).
+pub type PhotoshopActionsFn = Box<dyn FnMut() -> Option<(String, Vec<u8>)>>;
 /// A recovered document (by `DocId` value, once open) takes over its recovery entry (by key):
 /// its autosaves replace the entry, and saving or closing it drops the entry.
 pub type AdoptAutosaveFn = Box<dyn FnMut(u64, &str)>;
@@ -441,6 +445,8 @@ pub struct Services {
     pub save_prefs: Option<SaveTextFn>,
     /// Photoshop's live keyboard shortcut set, imported once at first launch (`kys_import`).
     pub photoshop_shortcuts: Option<PhotoshopShortcutsFn>,
+    /// Photoshop's Actions palette, for the Actions panel menu's Import Photoshop Actions.
+    pub photoshop_actions: Option<PhotoshopActionsFn>,
     pub system_theme: Option<SystemThemeFn>,
     /// The native window is connected directly to a Wayland compositor.
     pub is_wayland: bool,
@@ -737,6 +743,8 @@ pub struct PhotocraftApp {
     pub stroke_trace: stroke_trace::StrokeTrace,
     /// Preferences, autosave and snapping runtime state (see `prefs_ui`, `snap_ui`).
     pub(crate) prefs_rt: prefs_ui::Runtime,
+    /// File › Automate › Topaz Gigapixel AI… waiting for Gigapixel's export (see `gigapixel_ui`).
+    pub(crate) gigapixel: Option<gigapixel_ui::Waiting>,
     /// Close, Revert or Exit parked behind the unsaved-changes prompt (see `discard_ui`).
     pub(crate) discard: Option<discard_ui::Prompt>,
     /// The Open or Save dialog in progress, and the action waiting on it (see `file_dialog`).
@@ -883,6 +891,7 @@ impl PhotocraftApp {
             perf: Default::default(),
             stroke_trace: stroke_trace::StrokeTrace::from_env(),
             prefs_rt: Default::default(),
+            gigapixel: None,
             discard: None,
             file_dialog: None,
             tiff_options: None,
@@ -1055,6 +1064,12 @@ impl PhotocraftApp {
         } else {
             jobs_ui::run(self, id, params)
         };
+        if let Ok(v) = &r
+            && id == photocraft_engine::gigapixel_cmds::ID
+        {
+            // The image went to Gigapixel's app: watch for its export.
+            gigapixel_ui::started(self, v);
+        }
         let creates_adjustment_or_fill = id.starts_with("layer.newAdjustmentLayer.") || id.starts_with("layer.newFillLayer.");
         if r.is_ok() && (ADDS_LAYER_MASK.contains(&id) || creates_adjustment_or_fill) {
             // Adding a layer mask targets it, as in Photoshop (#2166).
@@ -1908,6 +1923,8 @@ impl eframe::App for PhotocraftApp {
         // picker's view, in the frame loop, so the control channel can set it with the panels
         // closed; the engine's revision counter keeps an unchanged brush free.
         last_brush::persist(self, &ctx);
+        // Topaz Gigapixel AI's export, once it is there (and the strip while waiting).
+        gigapixel_ui::frame(self, &ctx);
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
         // So are View › Extras, Show and Snap To (#3762).

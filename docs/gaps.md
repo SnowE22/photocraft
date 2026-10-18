@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-18 · **Change:** minor (G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -89,6 +89,21 @@ what an agent can't finish alone.
 - **Estimate:** 120–200 h.
 
 ### G11. Actions and scripting
+- **2026-10-18 evidence:** A Photoshop 2026 user's whole Actions palette (`Actions Palette.psp`,
+  nine sets, 1,457 steps) loads at once (Actions panel menu › Import Photoshop Actions, or Load
+  Actions… on the `.psp`): 1,392 steps (96 %) map, up from 74 %. The user's own sets keep only
+  their JavaScript steps (Scripts) and one mask copied from another layer as Photoshop steps.
+  New: string-id enumerations (`multiply`), HSB/Lab/CMYK colours, foreground/background colour,
+  Blend If, layer masks from the selection, masks/composite/vector masks as selections and
+  targets, Create/Release Clipping Mask, Ungroup Layers, named and dimmed adjustment layers,
+  Color Lookup with its embedded table, Curves loaded from a `.acv` (found by name among the
+  computer's Photoshop presets when recorded elsewhere), Color Range, the Camera Raw filter's
+  sharpening/noise/texture, Color Overlay, hiding one effect, the Magic Wand, Add To / Subtract
+  From / Intersect, work paths, vector mask from path, snapshots, Diffuse, Photocopy, Fit Image,
+  NTSC Colors, Auto-Align, and Move to a layer index (measured in Photoshop 2026: positions from
+  the bottom, a group's end counting as one; `layer.moveTo {"index"}`). Still kept: percent Canvas
+  Size, Magic Wand clicks in points, copied masks and vector masks, Duplicate selection to a
+  channel, Merge Layers (old event), Pixel Aspect Ratio, Link, ExtendScript.
 - **2026-10-13 evidence:** Batch supports [output naming templates](batch-naming.md) using
   `{name}`, `{serial}` and a captured UTC `{date}`, with a starting serial number. Colliding
   names remain errors; custom output names cannot replace inputs. AUTO-219-5 stays partial.
@@ -139,6 +154,12 @@ what an agent can't finish alone.
 - **Estimate:** 300–600 h. **Human:** owner decision #41 (model licences, local vs remote).
 
 ### G16. Plug-in compatibility
+- **2026-10-18 evidence:** File › Automate › Topaz Gigapixel AI… does what Topaz's Automate
+  plug-in does without hosting it: the flattened image opens in the installed Gigapixel app
+  (its external-editor mode), and when Gigapixel's "Export to External Editor" saves over the
+  TIFF (or exports next to it) the result comes back as "Topaz Gigapixel layer" over the
+  document resized to it (`gigapixel_cmds`, `gigapixel_ui`); with a model or scale the command
+  uses Gigapixel's command-line tool instead (actions, batch). Checked with Gigapixel Pro 8.4.4.
 - **Missing:** hosting Photoshop .8BF filters (#2647), UXP panels, CEP. PhotoCraft has its own
   sandboxed WebAssembly plug-in ABI v1 (`docs/plugins.md`), but ABI v2 (panels, progress, other
   layers) is missing (AUTO-219-6).
@@ -266,6 +287,8 @@ what an agent can't finish alone.
 | 2026-10-13 | minor | G4: Hue Jitter amount-track appearance (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-13 | minor | G4: minimum inputs in Shape Dynamics and Transfer follow their Control (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
+| 2026-10-18 | minor | G16: Topaz Gigapixel AI round trip in File › Automate (app or command-line tool), no plug-in hosting needed |
+| 2026-10-18 | minor | G11: Photoshop's Actions palette loads whole; 96 % of a Photoshop 2026 user's 1,457 steps map (string ids, HSB colours, Blend If, masks, clipping, Color Range, Camera Raw, Curves files, Move to index, …) |
 | 2026-10-12 | minor | G11: `.atn` import maps 112 events (Select and Mask, Spatter, Ripple, Crystallize, Pattern Fill, mask targeting, Step Backward, points, Bitmap) |
 | 2026-10-12 | minor | G9: toolbar tool shortcut editing (#4086); the remaining workspace gaps stay open |
 | 2026-10-12 | minor | G1: #2465 (CS2 `PlLd`-only smart objects) marked fixed |

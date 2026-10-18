@@ -3911,3 +3911,14 @@ curves	Smooth	Vloeiend maken
 	Open Document…	Document openen…
 	Delete Brushes	Penselen verwijderen
 	Thumbnail size	Miniatuurgrootte
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop-handelingen importeren
+	No Photoshop Actions palette was found on this computer	Op deze computer is geen Photoshop-handelingenpalet gevonden
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Geopend in Topaz Gigapixel AI: exporteer de afbeelding daar om hem terug te halen
+	Stopped waiting for Topaz Gigapixel AI	Wachten op Topaz Gigapixel AI gestopt
+	Topaz Gigapixel AI's image could not be applied: {error}	De afbeelding van Topaz Gigapixel AI kan niet worden toegepast: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× vergroot tot {w} × {h} px (nieuwe laag)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Wachten op Topaz Gigapixel AI: exporteer daar de vergrote afbeelding om hem terug te halen.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} handeling in {sets} sets geladen uit {file}|{n} handelingen in {sets} sets geladen uit {file}

@@ -20,6 +20,14 @@
 //! carry them. Photoshop 5-era files (version 12) use a different, undocumented layout and are
 //! rejected as unsupported.
 //!
+//! Photoshop keeps the whole Actions panel in `Actions Palette.psp` in its settings folder, which
+//! [`parse_palette`] reads: the same set bodies one after another, behind a set count (observed
+//! in Photoshop 2026's file; it is not in the specification):
+//!
+//! ```text
+//! palette := version u32 (16), count u32, count × (set name, expanded u8, count u32, actions)
+//! ```
+//!
 //! [`parse`] never panics: every count is bounds-checked against the bytes left, descriptor
 //! nesting is bounded, and allocations are capped. [`write`] produces the same layout, so
 //! `parse(write(f)) == f`, and `write(parse(b)) == b` for files Photoshop wrote.
@@ -183,14 +191,55 @@ fn read_action(r: &mut Reader<'_>) -> Result<AtnAction> {
     Ok(AtnAction { function_key, shift, command, color, name, expanded, items })
 }
 
-/// Parses an `.atn` file.
-pub fn parse(data: &[u8]) -> Result<AtnFile> {
-    let mut r = Reader::new(data);
+/// Most sets read from one Actions palette.
+pub const MAX_SETS: usize = 1_000;
+
+fn read_version(r: &mut Reader<'_>) -> Result<()> {
     let version = r.u32()?;
     if version != VERSION {
         return Err(PsdError::Unsupported(format!("actions file version {version} (only version 16, Photoshop 6 and later, is supported)")));
     }
-    let name = UnicodeString::read(&mut r)?;
+    Ok(())
+}
+
+/// Parses an `.atn` file.
+pub fn parse(data: &[u8]) -> Result<AtnFile> {
+    let mut r = Reader::new(data);
+    read_version(&mut r)?;
+    let mut set = read_set(&mut r)?;
+    if !r.is_empty() {
+        set.warnings.push(format!("{} trailing bytes ignored", r.remaining()));
+    }
+    Ok(set)
+}
+
+/// Parses Photoshop's Actions palette (`Actions Palette.psp`): every set of the Actions panel,
+/// in panel order.
+pub fn parse_palette(data: &[u8]) -> Result<Vec<AtnFile>> {
+    let mut r = Reader::new(data);
+    read_version(&mut r)?;
+    let n = r.u32()?;
+    // Each set needs at least an empty name, its flag and an action count.
+    r.check_count(u64::from(n), 9)?;
+    if n as usize > MAX_SETS {
+        return Err(PsdError::LimitExceeded("too many sets in one actions palette"));
+    }
+    let mut sets = Vec::with_capacity((n as usize).min(64));
+    for _ in 0..n {
+        sets.push(read_set(&mut r)?);
+    }
+    if !r.is_empty() {
+        let note = format!("{} trailing bytes ignored", r.remaining());
+        if let Some(last) = sets.last_mut() {
+            last.warnings.push(note);
+        }
+    }
+    Ok(sets)
+}
+
+/// One set body: its name, expanded flag and actions.
+fn read_set(r: &mut Reader<'_>) -> Result<AtnFile> {
+    let name = UnicodeString::read(r)?;
     let expanded = r.u8()? != 0;
     let n = r.u32()?;
     // Each action needs at least its key, modifiers, colour, an empty name, the flag and a count.
@@ -200,13 +249,9 @@ pub fn parse(data: &[u8]) -> Result<AtnFile> {
     }
     let mut actions = Vec::with_capacity((n as usize).min(256));
     for _ in 0..n {
-        actions.push(read_action(&mut r)?);
+        actions.push(read_action(r)?);
     }
-    let mut warnings = Vec::new();
-    if !r.is_empty() {
-        warnings.push(format!("{} trailing bytes ignored", r.remaining()));
-    }
-    Ok(AtnFile { name, expanded, actions, warnings })
+    Ok(AtnFile { name, expanded, actions, warnings: Vec::new() })
 }
 
 fn write_item(out: &mut Vec<u8>, item: &AtnItem) -> Result<()> {
@@ -243,7 +288,23 @@ fn count(n: usize, what: &'static str) -> Result<u32> {
 pub fn write(f: &AtnFile) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     out.put_u32(VERSION);
-    f.name.write(&mut out);
+    write_set(&mut out, f)?;
+    Ok(out)
+}
+
+/// Writes an Actions palette ([`parse_palette`]'s layout) holding `sets`.
+pub fn write_palette(sets: &[AtnFile]) -> Result<Vec<u8>> {
+    let mut out = Vec::new();
+    out.put_u32(VERSION);
+    out.put_u32(count(sets.len(), "too many sets")?);
+    for f in sets {
+        write_set(&mut out, f)?;
+    }
+    Ok(out)
+}
+
+fn write_set(out: &mut Vec<u8>, f: &AtnFile) -> Result<()> {
+    f.name.write(out);
     out.put_u8(u8::from(f.expanded));
     out.put_u32(count(f.actions.len(), "too many actions")?);
     for a in &f.actions {
@@ -251,14 +312,14 @@ pub fn write(f: &AtnFile) -> Result<Vec<u8>> {
         out.put_u8(u8::from(a.shift));
         out.put_u8(u8::from(a.command));
         out.put_u16(a.color);
-        a.name.write(&mut out);
+        a.name.write(out);
         out.put_u8(u8::from(a.expanded));
         out.put_u32(count(a.items.len(), "too many steps")?);
         for item in &a.items {
-            write_item(&mut out, item)?;
+            write_item(out, item)?;
         }
     }
-    Ok(out)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -405,6 +466,50 @@ mod tests {
         let at = bad_flag.windows(4).position(|w| w == [0xff; 4]).unwrap();
         bad_flag[at..at + 4].copy_from_slice(&[0, 0, 0, 7]);
         assert!(matches!(parse(&bad_flag), Err(PsdError::Invalid(_))));
+    }
+
+    /// Photoshop's `Actions Palette.psp`: every set behind a count, as in the user's Photoshop
+    /// 2026 file (`00 00 00 10`, `00 00 00 09`, then the first set's name).
+    #[test]
+    fn a_palette_holds_every_set() {
+        let mut second = set();
+        second.name = UnicodeString::new_nul("Second");
+        second.actions.truncate(1);
+        let sets = vec![set(), second];
+        let bytes = write_palette(&sets).unwrap();
+        assert_eq!(&bytes[..8], &[0, 0, 0, 16, 0, 0, 0, 2]);
+        assert_eq!(parse_palette(&bytes).unwrap(), sets);
+        assert_eq!(write_palette(&parse_palette(&bytes).unwrap()).unwrap(), bytes, "writing is stable");
+        // A set's body is an .atn file without its version.
+        let one = write(&set()).unwrap();
+        assert_eq!(&bytes[8..8 + one.len() - 4], &one[4..]);
+        // Neither reads as the other cleanly.
+        assert!(parse(&bytes).map_or(true, |f| !f.warnings.is_empty()));
+        assert!(parse_palette(&one).is_err());
+        assert!(parse_palette(&write_palette(&[]).unwrap()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_truncated_or_garbled_palette_never_panics() {
+        let bytes = write_palette(&[set(), set()]).unwrap();
+        for cut in 0..bytes.len() {
+            assert!(parse_palette(&bytes[..cut]).is_err(), "cut at {cut}/{}", bytes.len());
+        }
+        let mut huge = vec![0, 0, 0, 16];
+        huge.extend_from_slice(&u32::MAX.to_be_bytes());
+        assert!(parse_palette(&huge).is_err());
+        let mut x: u32 = 0x1234_5678;
+        for i in 0..2000 {
+            let mut b = bytes.clone();
+            for _ in 0..(i % 5 + 1) {
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                let at = (x as usize) % b.len();
+                b[at] = (x >> 8) as u8;
+            }
+            let _ = parse_palette(&b);
+        }
     }
 
     #[test]

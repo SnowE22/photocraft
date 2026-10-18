@@ -3883,3 +3883,14 @@ cameraData	Lens	Lens
 	Open Document…	Belge Aç…
 	Delete Brushes	Fırçaları Sil
 	Thumbnail size	Küçük resim boyutu
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop Eylemlerini İçe Aktar
+	No Photoshop Actions palette was found on this computer	Bu bilgisayarda Photoshop eylemler paleti bulunamadı
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Topaz Gigapixel AI'da açıldı: geri getirmek için görüntüyü orada dışa aktarın
+	Stopped waiting for Topaz Gigapixel AI	Topaz Gigapixel AI beklemesi durduruldu
+	Topaz Gigapixel AI's image could not be applied: {error}	Topaz Gigapixel AI görüntüsü uygulanamadı: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× büyütülerek {w} × {h} px oldu (yeni katman)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI bekleniyor: geri getirmek için büyütülmüş görüntüyü orada dışa aktarın.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file} dosyasından {sets} kümede {n} eylem yüklendi

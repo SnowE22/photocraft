@@ -3759,3 +3759,14 @@ navigator	Zoom	Zvětšení
 	Open Document…	Otevřít dokument…
 	Delete Brushes	Odstranit štětce
 	Thumbnail size	Velikost miniatur
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Importovat akce Photoshopu
+	No Photoshop Actions palette was found on this computer	V tomto počítači nebyla nalezena paleta akcí Photoshopu
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Otevřeno v aplikaci Topaz Gigapixel AI: obrázek tam exportujte a vrátí se sem
+	Stopped waiting for Topaz Gigapixel AI	Čekání na Topaz Gigapixel AI ukončeno
+	Topaz Gigapixel AI's image could not be applied: {error}	Obrázek z Topaz Gigapixel AI nelze použít: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: zvětšeno {scale}× na {w} × {h} px (nová vrstva)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Čeká se na Topaz Gigapixel AI: zvětšený obrázek tam exportujte a vrátí se sem.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Načtena {n} akce v sadách ({sets}) ze souboru {file}|Načteny {n} akce v sadách ({sets}) ze souboru {file}|Načteno {n} akcí v sadách ({sets}) ze souboru {file}

@@ -1010,6 +1010,76 @@ fn distribute(s: &mut Session, kind: &str) -> Result<Value> {
     Ok(json!({"moved": moved}))
 }
 
+/// One entry of Photoshop's flat layer list, bottom to top: a layer (a group's own entry sits
+/// above its children) or the end of a group (below its children).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum StackItem {
+    Layer(LayerId),
+    GroupEnd(LayerId),
+}
+
+/// Photoshop's flat list of `layers` (bottom to top) without `skip` and what it holds.
+fn stack_items(layers: &[Layer], skip: LayerId, out: &mut Vec<StackItem>, depth: usize) {
+    if depth > crate::layer_multi_cmds::MAX_STACK_DEPTH {
+        return;
+    }
+    for l in layers {
+        if l.id == skip {
+            continue;
+        }
+        if let Some(children) = l.children() {
+            out.push(StackItem::GroupEnd(l.id));
+            stack_items(children, skip, out, depth + 1);
+        }
+        out.push(StackItem::Layer(l.id));
+    }
+}
+
+/// How deep [`stack_items`] follows groups (documents can be deep; the cap bounds recursion).
+pub(crate) const MAX_STACK_DEPTH: usize = 256;
+
+/// `layer.moveTo` with `"index"`: Photoshop's Move to a layer index, what dragging a layer in the
+/// Layers panel records in an action. The index counts positions from the bottom of the stack
+/// from 0, a group's end counting as a position; the layer lands at that position of the stack
+/// without it. Measured in Photoshop 2026 (`log/photoshop-compare/ps_move_index.ps1`): with a
+/// Background, 0 is refused (nothing goes below it); one or two past the top is the top; further
+/// is refused; an index inside a group's span puts the layer in the group.
+fn move_to_index(s: &mut Session, p: &Value, index: &Value) -> Result<Value> {
+    const CMD: &str = "layer.moveTo";
+    if p.get("target").is_some() || p.get("layers").is_some() || p.get("copy").is_some_and(|c| c.as_bool() == Some(true)) {
+        return Err(bad(CMD, "`index` moves one layer: give it without `target`, `layers` or `copy`"));
+    }
+    let n = index.as_u64().and_then(|n| usize::try_from(n).ok()).ok_or_else(|| bad(CMD, "`index` must be a position from the bottom (0, 1, …)"))?;
+    let moved = crate::commands::layer_param(s, p)?;
+    let st = s.active().ok_or(EngineError::NoDocument)?;
+    let doc = &st.doc;
+    if doc.layer(moved).is_none() {
+        return Err(EngineError::NoLayer(moved));
+    }
+    let mut items = Vec::new();
+    stack_items(&doc.layers, moved, &mut items, 0);
+    let background = crate::background_cmds::background_id(doc);
+    if n == 0 && background.is_some() {
+        return Err(bad(CMD, "nothing goes below the Background (index 0)"));
+    }
+    if n > items.len().saturating_add(1) {
+        return Err(bad(CMD, format!("index {n} is past the top of the stack ({} positions)", items.len())));
+    }
+    let (target, position) = match items.get(n) {
+        // Past the top: above the top layer.
+        None => match doc.layers.iter().rev().find(|l| l.id != moved) {
+            Some(top) => (top.id, "above"),
+            None => return Ok(Value::Null),
+        },
+        // Under a group's own entry: inside it, on top.
+        Some(StackItem::Layer(id)) if doc.layer(*id).is_some_and(Layer::is_group) => (*id, "into"),
+        Some(StackItem::Layer(id)) => (*id, "below"),
+        // Under a group's end: below the group, beside it.
+        Some(StackItem::GroupEnd(g)) => (*g, "below"),
+    };
+    move_to(s, &json!({"layer": moved.0, "target": target.0, "position": position}))
+}
+
 /// Reorder one or multiple layers to a single destination in one undoable edit.
 ///
 /// Explicit `layers` are ordered according to the source document, not caller ordering.
@@ -1017,6 +1087,9 @@ fn distribute(s: &mut Session, kind: &str) -> Result<Value> {
 /// selected nodes are detached, and every reference is validated before editing.
 pub fn move_to(s: &mut Session, p: &Value) -> Result<Value> {
     const CMD: &str = "layer.moveTo";
+    if let Some(index) = p.get("index") {
+        return move_to_index(s, p, index);
+    }
     let target = LayerId(p.get("target").and_then(Value::as_u64).ok_or_else(|| bad(CMD, "missing `target`"))?);
     let pos = p.get("position").and_then(Value::as_str).unwrap_or("above");
     if !matches!(pos, "above" | "below" | "into") {
@@ -2688,5 +2761,110 @@ mod tests {
         let v = s.execute("document.inspect", json!({})).unwrap();
         assert_eq!(v["selectedLayers"], json!([a.0, b.0]));
         assert_eq!(v["layers"][0]["selected"], true);
+    }
+}
+
+/// `layer.moveTo` with Photoshop's layer index, checked against Photoshop 2026
+/// (`log/photoshop-compare/ps_move_index.ps1`, 2026-10-18): the top layer X moved to each index.
+#[cfg(test)]
+mod move_index_tests {
+    use super::*;
+
+    /// Names bottom to top, a group as `G[children]`.
+    fn stack(layers: &[Layer]) -> String {
+        layers
+            .iter()
+            .map(|l| match l.children() {
+                Some(c) => format!("{}[{}]", l.name, stack(c)),
+                None => l.name.clone(),
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn id(v: &Value) -> u64 {
+        v["layer"].as_u64().unwrap()
+    }
+
+    /// Background (or a plain L0), L1…L4, X on top; with `group`, L1 and L2 in a group G below X.
+    fn document(background: bool, group: bool) -> Session {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 16, "height": 16, "background": if background { "white" } else { "transparent" }})).unwrap();
+        if !background {
+            let bottom = s.active().unwrap().doc.layers[0].id.0;
+            s.execute("layer.setProps", json!({"layer": bottom, "name": "L0"})).unwrap();
+        }
+        let ids: Vec<u64> = (1..=4).map(|i| id(&s.execute("layer.new.layer", json!({"name": format!("L{i}")})).unwrap())).collect();
+        if group {
+            let g = id(&s.execute("layer.new.group", json!({"name": "G"})).unwrap());
+            s.execute("layer.moveTo", json!({"layer": ids[1], "target": g, "position": "into"})).unwrap();
+            s.execute("layer.moveTo", json!({"layer": ids[0], "target": g, "position": "into"})).unwrap();
+            s.execute("layer.select", json!({"layer": g})).unwrap();
+        }
+        let x = id(&s.execute("layer.new.layer", json!({"name": "X"})).unwrap());
+        let top = s.active().unwrap().doc.layers.last().unwrap().id.0;
+        if top != x {
+            s.execute("layer.moveTo", json!({"layer": x, "target": top, "position": "above"})).unwrap();
+        }
+        s
+    }
+
+    fn moved(background: bool, group: bool, index: u64) -> std::result::Result<String, String> {
+        let mut s = document(background, group);
+        s.execute("layer.moveTo", json!({"layer": "X", "index": index})).map_err(|e| e.to_string())?;
+        Ok(stack(&s.active().unwrap().doc.layers))
+    }
+
+    #[test]
+    fn with_a_background() {
+        assert_eq!(stack(&document(true, false).active().unwrap().doc.layers), "Background L1 L2 L3 L4 X");
+        assert!(moved(true, false, 0).is_err(), "nothing goes below the Background");
+        assert_eq!(moved(true, false, 1).unwrap(), "Background X L1 L2 L3 L4");
+        assert_eq!(moved(true, false, 2).unwrap(), "Background L1 X L2 L3 L4");
+        assert_eq!(moved(true, false, 4).unwrap(), "Background L1 L2 L3 X L4");
+        assert_eq!(moved(true, false, 5).unwrap(), "Background L1 L2 L3 L4 X");
+        assert_eq!(moved(true, false, 6).unwrap(), "Background L1 L2 L3 L4 X", "one past the top is the top");
+        assert!(moved(true, false, 7).is_err(), "further is refused");
+    }
+
+    #[test]
+    fn without_a_background() {
+        assert_eq!(moved(false, false, 0).unwrap(), "X L0 L1 L2 L3 L4");
+        assert_eq!(moved(false, false, 1).unwrap(), "L0 X L1 L2 L3 L4");
+        assert_eq!(moved(false, false, 4).unwrap(), "L0 L1 L2 L3 X L4");
+        assert_eq!(moved(false, false, 6).unwrap(), "L0 L1 L2 L3 L4 X");
+        assert!(moved(false, false, 7).is_err());
+    }
+
+    /// A group's end counts as a position: indexes inside its span put the layer in the group.
+    #[test]
+    fn a_group_takes_positions_for_its_end_and_itself() {
+        assert_eq!(stack(&document(true, true).active().unwrap().doc.layers), "Background L3 L4 G[L2 L1] X");
+        assert_eq!(moved(true, true, 1).unwrap(), "Background X L3 L4 G[L2 L1]");
+        assert_eq!(moved(true, true, 3).unwrap(), "Background L3 L4 X G[L2 L1]");
+        assert_eq!(moved(true, true, 4).unwrap(), "Background L3 L4 G[X L2 L1]");
+        assert_eq!(moved(true, true, 5).unwrap(), "Background L3 L4 G[L2 X L1]");
+        assert_eq!(moved(true, true, 6).unwrap(), "Background L3 L4 G[L2 L1 X]");
+        assert_eq!(moved(true, true, 7).unwrap(), "Background L3 L4 G[L2 L1] X");
+        assert_eq!(moved(true, true, 8).unwrap(), "Background L3 L4 G[L2 L1] X");
+    }
+
+    #[test]
+    fn bad_index_params_fail_gracefully() {
+        let mut s = document(false, false);
+        let before = stack(&s.active().unwrap().doc.layers);
+        for p in [
+            json!({"index": -1}),
+            json!({"index": 1.5}),
+            json!({"index": "2"}),
+            json!({"index": u64::MAX}),
+            json!({"index": 1, "target": 1}),
+            json!({"index": 1, "layers": [1]}),
+            json!({"index": 1, "copy": true}),
+            json!({"index": 1, "layer": "nope"}),
+        ] {
+            assert!(s.execute("layer.moveTo", p.clone()).is_err(), "{p}");
+        }
+        assert_eq!(stack(&s.active().unwrap().doc.layers), before, "a refused move changes nothing");
     }
 }

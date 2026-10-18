@@ -1,6 +1,6 @@
 # PhotoCraft vs Adobe Photoshop: target-app parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-13 · **Change:** minor (`.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment; stale missing-tool rows corrected: Color Replacement and Red Eye are live toolbar tools, Frame landed; percentages unchanged) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-18 · **Change:** minor (Photoshop's Actions palette loads whole, 96 % of a user's palette steps map; `.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment; stale missing-tool rows corrected: Color Replacement and Red Eye are live toolbar tools, Frame landed; percentages unchanged) · **Target:** Adobe Photoshop 2026
 
 The authoritative answer to "how close is PhotoCraft to Photoshop, and how much work is left". The
 one-page summary is [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [`gaps.md`](gaps.md);
@@ -83,7 +83,7 @@ Weights reflect what a working Photoshop user depends on (photographers, retouch
 | Hardware | 5% | 50% | 80–150 | GPU compositor (wgpu), pen pressure on all desktops but tilt/rotation not on Windows, Wayland pen broken (#2622), no HDR/EDR output, monitor profile auto-detected on macOS only | [hardware-parity.md](hardware-parity.md) |
 | Localization | 5% | 55% | 80–140 | 7 of the 12 key languages at 100% of measured UI keys; Hindi and Arabic absent, Vietnamese catalog added 2026-10-12 (#2636, coverage not re-measured); no RTL UI; engine messages English | [localization-parity.md](localization-parity.md) |
 | Platforms | 5% | 80% | 30–60 | macOS (notarized), Windows (unsigned), Linux (AppImage/deb/rpm/Flatpak), web, FreeBSD partial; Windows ARM64 is packaged and install-checked by `.github/workflows/windows-arm64.yml` (DIST-220-2); no in-app updates | [scorecard.md](scorecard.md#distribution) |
-| Ecosystem (plug-ins, scripting, presets, libraries) | 5% | 15% | 250–450 | No .8BF hosting (#2647), no UXP/ExtendScript; .atn load/save (2026-10-12, 112 events, the rest kept verbatim), .abr/.grd/.pat/.aco/.ase/.cube supported | [gaps.md](gaps.md) |
+| Ecosystem (plug-ins, scripting, presets, libraries) | 5% | 15% | 250–450 | No .8BF hosting (#2647), no UXP/ExtendScript; Topaz Gigapixel AI through its app or command-line tool instead of its plug-in (2026-10-18); .atn load/save (2026-10-12) and Photoshop's whole Actions palette (2026-10-18, 96 % of a user's steps map), .abr/.grd/.pat/.aco/.ase/.cube/.acv supported | [gaps.md](gaps.md) |
 | AI features | 5% | 10% | 300–600 | No ML runtime at all (scorecard AUTO-219-7); classical substitutes only. Needs an owner decision and openly licensed models (#41) | [gaps.md](gaps.md) |
 | **Weighted** | 100% | **~46%** | **2,340–4,100** | | |
 
@@ -177,7 +177,7 @@ parity for the area and are already contained in the dimension rows above.
 | Vector shapes and paths | 55% | 80–140 | Pen, Direct/Path Selection, shapes, shape strokes. Freeform and Curvature Pen (#1054). Add/Delete Anchor Point and Convert Point tools exist (`Tool` enum); missing on-canvas corner radius (TOOL-214-12), path-point nudge; shape parity tracking issue #2496 |
 | Colour management and modes | 70% | 60–100 | Own ICC engine, soft proof, CMYK/Lab/Indexed/Duotone/Multichannel; no Adobe CMYK profiles, no spot plates (FILE-215-17), monitor profile only at launch |
 | Camera Raw and computational photo (Photomerge, HDR, lens) | 45% | 120–200 | Raw for DNG/CR2/NEF/ARW/RW2/ORF/RAF(uncompressed)/PEF; no CR3; ACR dialog partial (no masking, calibration); generic lens profiles only |
-| Automation, actions, batch, scripting | 45% | 120–200 | CLI/MCP/control channel ahead of Photoshop; Actions panel and recording not document-independent (AUTO-219-1/2); `.atn` load/save since 2026-10-12 (112 events mapped, the rest kept verbatim); no ExtendScript/UXP |
+| Automation, actions, batch, scripting | 45% | 120–200 | CLI/MCP/control channel ahead of Photoshop; Actions panel and recording not document-independent (AUTO-219-1/2); `.atn` load/save since 2026-10-12, Photoshop's whole Actions palette since 2026-10-18 (96 % of a user's 1,457 palette steps map, the rest kept verbatim); no ExtendScript/UXP |
 | File I/O | 60% | 300–500 | See [file-format-parity.md](file-format-parity.md) |
 | Print, export, Save for Web | 50% | 60–100 | JPEG Options dialog missing (FILE-215-19), no Photoshop PDF, no separations, Save for Web settings not remembered |
 | Video / timeline, data-driven graphics | 30% | 100–200 | Menu items live; frame model persists in `.pcraft`; no PSD video-layer mapping |
@@ -567,6 +567,8 @@ See [method, raw measurements and reproduction](five-algorithm-performance.md).
 |---|---|---|
 | 2026-10-13 | minor | Stale "missing tool" rows corrected against main: Color Replacement (`paint.colorReplacement`), Red Eye (`paint.redEye`) and Add/Delete Anchor Point (the Pen flyout) are live toolbar tools and Frame landed, so Art History Brush is the only tool still missing; percentages unchanged |
 | 2026-10-12 | minor | Free Transform options bar H/V skew fields; percentages unchanged |
+| 2026-10-18 | minor | File › Automate › Topaz Gigapixel AI… round trip through the installed app; percentages unchanged |
+| 2026-10-18 | minor | Photoshop's Actions palette (`Actions Palette.psp`) loads whole; 96 % of a Photoshop 2026 user's palette steps map; percentages unchanged |
 | 2026-10-12 | minor | `.atn` import: 112 events mapped (TrueGrit Texture Supply sets play end to end); percentages unchanged |
 | 2026-10-12 | minor | Photoshop Actions `.atn` load and save (90 events mapped both ways); percentages unchanged |
 | 2026-10-12 | minor | Rows checked against `main` and the regenerated scorecard: menu count 631, Workspace checklist and preference count, transform context menu, Puppet Warp mesh, Select and Mask, anchor-point tools, Smart Object conversion, Stamp Visible, mask targeting, Free Transform commit/cancel, Vietnamese catalog, Windows ARM64; percentages, weights and hours not re-measured |

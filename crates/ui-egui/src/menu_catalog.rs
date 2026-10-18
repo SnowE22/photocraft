@@ -51,6 +51,9 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["File", "Automate"], "---", None, "---"),
     (&["File", "Automate"], "Merge to HDR Pro…", None, "file.automate.mergeToHdrPro"),
     (&["File", "Automate"], "Photomerge…", None, "file.automate.photomerge"),
+    // Where Photoshop lists Topaz's Automate plug-in once Gigapixel is installed.
+    (&["File", "Automate"], "---", None, "---"),
+    (&["File", "Automate"], "Topaz Gigapixel AI…", None, "file.automate.topazGigapixel"),
     (&["File", "Scripts"], "Image Processor…", None, "file.scripts.imageProcessor"),
     (&["File", "Scripts"], "---", None, "---"),
     (&["File", "Scripts"], "Delete All Empty Layers", None, "file.scripts.deleteAllEmptyLayers"),

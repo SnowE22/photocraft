@@ -944,7 +944,7 @@ fn build() -> Vec<CommandSpec> {
             "Reorder Layer",
             [],
             None,
-            r##"{"layer":id?| "layers":[id,…]?, "target":id,"position":"above|below|into"="above","copy":bool=false} (layers: one undoable move, document order preserved; copy: place duplicates there and leave the layers, as ⌥-dragging a Layers panel row)"##,
+            r##"{"layer":id?| "layers":[id,…]?, "target":id,"position":"above|below|into"="above","copy":bool=false} (layers: one undoable move, document order preserved; copy: place duplicates there and leave the layers, as ⌥-dragging a Layers panel row) | {"layer":id|name?,"index":n} (Photoshop's layer index, what an action's Move records: the position from the bottom from 0, a group's end counting as one; past the top is the top)"##,
             has_layer,
             crate::layer_multi_cmds::move_to
         ),
@@ -1298,6 +1298,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::extra_cmds::specs());
     v.extend(crate::background_cmds::specs());
     v.extend(crate::file_cmds::specs());
+    v.extend(crate::gigapixel_cmds::specs());
     v.extend(crate::exr_cmds::specs());
     v.extend(crate::type_extra_cmds::specs());
     v.extend(crate::type_styles_cmds::specs());

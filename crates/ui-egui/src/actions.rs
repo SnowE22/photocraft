@@ -277,14 +277,22 @@ fn source(name: &str, bytes: &[u8]) -> Value {
     json!({"data": photocraft_engine::paint::tile::b64_encode(bytes)})
 }
 
-/// Load a `.atn` file's bytes into the Actions panel (the panel menu's Load Actions…).
+/// Load a `.atn` file's bytes, or Photoshop's whole Actions palette, into the Actions panel (the
+/// panel menu's Load Actions… and Import Photoshop Actions).
 pub fn load_bytes(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Result<Value, String> {
     let r = app.run("actions.load", source(name, bytes))?;
     let n = r["actions"].as_array().map_or(0, Vec::len) as u64;
     let unsupported = r["unsupported"].as_array().map_or(0, Vec::len);
     let shown = crate::file_open::display_name(name);
-    let loaded =
-        crate::i18n::fmt(&crate::i18n::trn(crate::i18n::current(), n, "Loaded {n} action from {file}", "Loaded {n} actions from {file}"), &[("file", &shown)]);
+    let loaded = match r["sets"].as_array().map(Vec::len) {
+        Some(sets) => crate::i18n::fmt(
+            &crate::i18n::trn(crate::i18n::current(), n, "Loaded {n} action in {sets} sets from {file}", "Loaded {n} actions in {sets} sets from {file}"),
+            &[("sets", &sets.to_string()), ("file", &shown)],
+        ),
+        None => {
+            crate::i18n::fmt(&crate::i18n::trn(crate::i18n::current(), n, "Loaded {n} action from {file}", "Loaded {n} actions from {file}"), &[("file", &shown)])
+        }
+    };
     app.ui.status_error = false;
     app.ui.status = if unsupported > 0 {
         let note = crate::i18n::trn(
@@ -315,7 +323,18 @@ pub fn load_bytes(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Result<V
 }
 
 fn load_dialog(app: &mut PhotocraftApp) -> Result<Value, String> {
-    app.pick_file_bytes_filtered(&["atn"], |app, name, bytes| load_bytes(app, &name, &bytes))
+    // A `.psp` is Photoshop's Actions palette (`Actions Palette.psp`): every set at once.
+    app.pick_file_bytes_filtered(&["atn", "psp"], |app, name, bytes| load_bytes(app, &name, &bytes))
+}
+
+/// The panel menu's Import Photoshop Actions: every set of the Actions panel of the newest
+/// Photoshop on this computer (its `Actions Palette.psp`), replacing PhotoCraft's sets of the
+/// same names, so loading again after changing them in Photoshop updates them.
+pub fn import_photoshop(app: &mut PhotocraftApp) -> Result<Value, String> {
+    let Some((path, bytes)) = app.services.photoshop_actions.as_mut().and_then(|f| f()) else {
+        return Err(tl!("No Photoshop Actions palette was found on this computer").to_string());
+    };
+    load_bytes(app, &path, &bytes)
 }
 
 /// Save Actions…: the selected action's set (every action of it), or every action when none
@@ -439,6 +458,9 @@ pub fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if ui.button(tl!("Load Actions…")).clicked() {
         act = Some("load");
     }
+    if app.services.photoshop_actions.is_some() && ui.button(tl!("Import Photoshop Actions")).clicked() {
+        act = Some("photoshop");
+    }
     let any = !app.session.actions.list.is_empty();
     if ui.add_enabled(any, egui::Button::new(tl!("Save Actions…"))).clicked() {
         act = Some("save");
@@ -452,6 +474,7 @@ pub fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     ui.close();
     let r = match a {
         "load" => load_dialog(app),
+        "photoshop" => import_photoshop(app),
         "stop" => insert_stop_dialog(app),
         _ => save_dialog(app, None),
     };
@@ -910,6 +933,39 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Import Photoshop Actions loads every set of Photoshop's Actions palette at once, and says
+    /// so; without a Photoshop on the computer it says that instead.
+    #[test]
+    fn import_photoshop_actions_loads_the_whole_palette() {
+        use photocraft_psd::atn::{AtnAction, AtnEvent, AtnFile, AtnItem};
+        use photocraft_psd::descriptor::UnicodeString;
+        let set = |name: &str, actions: &[&str]| AtnFile {
+            name: UnicodeString::new_nul(name),
+            expanded: true,
+            actions: actions
+                .iter()
+                .map(|a| AtnAction {
+                    name: UnicodeString::new_nul(a),
+                    items: vec![AtnItem { event: AtnEvent::Code(*b"Fltn"), dictionary: "Flatten Image".into(), ..Default::default() }],
+                    ..Default::default()
+                })
+                .collect(),
+            warnings: vec![],
+        };
+        let palette = photocraft_psd::atn::write_palette(&[set("Mine", &["One", "Two"]), set("Theirs", &["Three"])]).unwrap();
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.services.photoshop_actions = Some(Box::new(move || Some(("C:/PS/Actions Palette.psp".into(), palette.clone()))));
+        import_photoshop(&mut app).unwrap();
+        let names: Vec<(&str, Option<&str>)> = app.session.actions.list.iter().map(|a| (a.name.as_str(), a.set.as_deref())).collect();
+        assert_eq!(names, [("One", Some("Mine")), ("Two", Some("Mine")), ("Three", Some("Theirs"))]);
+        assert!(app.ui.status.contains("3 actions in 2 sets"), "{}", app.ui.status);
+        // Again: the sets are replaced, not doubled.
+        import_photoshop(&mut app).unwrap();
+        assert_eq!(app.session.actions.list.len(), 3);
+        app.services.photoshop_actions = Some(Box::new(|| None));
+        assert!(import_photoshop(&mut app).is_err(), "no Photoshop, no palette");
+    }
 
     #[test]
     fn actions_list_grows_with_panel_and_keeps_footer_visible() {
