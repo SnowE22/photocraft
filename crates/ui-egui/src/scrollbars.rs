@@ -89,6 +89,35 @@ pub fn clamp_axis(center: f32, len: f32, size: f32, zoom: f32) -> f32 {
     center.clamp(a.min(b), a.max(b))
 }
 
+/// How far past the point where the image leaves the view the view may pan with Overscroll on
+/// (screen points).
+pub const OVERSCROLL_MARGIN: f32 = 48.0;
+
+/// Clamp one axis of the view centre with Overscroll on: the view may pan until the image has
+/// just left it (plus [`OVERSCROLL_MARGIN`]), never further, so the image can't be lost.
+pub fn overscroll_axis(center: f32, len: f32, size: f32, zoom: f32) -> f32 {
+    if !(zoom.is_finite() && zoom > 0.0 && len.is_finite() && len > 0.0 && size.is_finite() && size > 0.0) {
+        return center;
+    }
+    if !center.is_finite() {
+        return len / 2.0;
+    }
+    let reach = (size / 2.0 + OVERSCROLL_MARGIN) / zoom;
+    center.clamp(-reach, len + reach)
+}
+
+/// Apply Preferences › Tools › Overscroll (on) to `view`: [`overscroll_axis`] on both axes. True
+/// when the view moved.
+pub fn limit_overscroll_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32) -> bool {
+    clamp_view_by(view, size, ppp, aspect, overscroll_axis)
+}
+
+/// Apply Preferences › Tools › Overscroll to `view`: [`limit_overscroll_with_aspect`] when it is
+/// on, [`clamp_view_with_aspect`] when it is off.
+pub fn limit_view(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32, overscroll: bool) -> bool {
+    if overscroll { limit_overscroll_with_aspect(view, size, ppp, aspect) } else { clamp_view_with_aspect(view, size, ppp, aspect) }
+}
+
 /// Apply Preferences › Tools › Overscroll (off) to `view` for a canvas of `size` points on a
 /// display with `ppp` physical pixels per point. True when the view moved (then repaint).
 pub fn clamp_view(view: &mut View, size: egui::Vec2, ppp: f32) -> bool {
@@ -98,6 +127,12 @@ pub fn clamp_view(view: &mut View, size: egui::Vec2, ppp: f32) -> bool {
 /// Clamp against the displayed image bounds, so rotated tool auto-scroll is not undone by
 /// the next frame's Overscroll-off clamp. `size` is the unmodified screen-space canvas size.
 pub fn clamp_view_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32) -> bool {
+    clamp_view_by(view, size, ppp, aspect, clamp_axis)
+}
+
+/// Clamp `view`'s centre with `axis` (centre, image length, view size, zoom → centre) on each
+/// axis, in screen space when the view is rotated. True when the view moved.
+fn clamp_view_by(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32, axis: fn(f32, f32, f32, f32) -> f32) -> bool {
     let [w, h] = view.doc_size;
     if w == 0 || h == 0 {
         return false;
@@ -105,7 +140,7 @@ pub fn clamp_view_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspec
     let zoom = view.zoom / if ppp.is_finite() && ppp > 0.0 { ppp } else { 1.0 };
     let aspect = if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.0 };
     let c = if view.rotation.abs() < 1e-8 {
-        [clamp_axis(view.center[0], w as f32, size.x / aspect, zoom), clamp_axis(view.center[1], h as f32, size.y, zoom)]
+        [axis(view.center[0], w as f32, size.x / aspect, zoom), axis(view.center[1], h as f32, size.y, zoom)]
     } else {
         if !zoom.is_finite() || zoom <= 0.0 || !size.is_finite() || size.x <= 0.0 || size.y <= 0.0 {
             return false;
@@ -120,7 +155,7 @@ pub fn clamp_view_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspec
             return false;
         }
         let offset = xf.rect.center() - image.min;
-        let delta = vec2(clamp_axis(offset.x, image.width(), size.x, 1.0), clamp_axis(offset.y, image.height(), size.y, 1.0)) - offset;
+        let delta = vec2(axis(offset.x, image.width(), size.x, 1.0), axis(offset.y, image.height(), size.y, 1.0)) - offset;
         let d = xf.unmap_vec(delta) / zoom;
         [center[0] + d.x, center[1] + d.y]
     };
@@ -334,6 +369,23 @@ fn thumb_color(t: &crate::theme::Tokens) -> Color32 {
 
 #[cfg(test)]
 mod tests {
+
+    /// With Overscroll on the view may pan until the image has just left it, and no further.
+    #[test]
+    fn overscroll_stops_once_the_image_has_left_the_view() {
+        // A 1000 px image in a 500 pt view at 100 %: the centre may go 250 + 48 past either edge.
+        assert_eq!(overscroll_axis(500.0, 1000.0, 500.0, 1.0), 500.0);
+        assert_eq!(overscroll_axis(-10_000.0, 1000.0, 500.0, 1.0), -298.0);
+        assert_eq!(overscroll_axis(10_000.0, 1000.0, 500.0, 1.0), 1298.0);
+        // At 50 % the reach doubles in document pixels.
+        assert_eq!(overscroll_axis(1e9, 1000.0, 500.0, 0.5), 1000.0 + 596.0);
+        assert_eq!(overscroll_axis(f32::NAN, 1000.0, 500.0, 1.0), 500.0);
+        assert_eq!(overscroll_axis(7.0, 1000.0, 500.0, 0.0), 7.0, "nonsense zoom leaves it alone");
+        let mut v = View { doc_size: [1000, 800], zoom: 1.0, center: [99_999.0, -99_999.0], ..Default::default() };
+        assert!(limit_view(&mut v, egui::vec2(500.0, 400.0), 1.0, 1.0, true));
+        assert_eq!(v.center, [1298.0, -248.0]);
+        assert!(!limit_view(&mut v, egui::vec2(500.0, 400.0), 1.0, 1.0, true), "settled");
+    }
     use super::*;
 
     /// The bars sit outside the canvas: a strip on the right, and the status bar's free space (or
@@ -590,7 +642,9 @@ mod tests {
                 let x = view(&h).center[0];
                 let w = h.state().last_canvas_rect.width();
                 if overscroll {
-                    assert_eq!(x, -3000.0, "overscroll on: the view is free");
+                    // Free until the image has just left the view, then no further.
+                    let reach = w / 2.0 + OVERSCROLL_MARGIN;
+                    assert!((x + reach).abs() < 1e-3, "overscroll on: stops at the image's edge plus the margin: {x}");
                 } else {
                     assert!((x - w / 2.0).abs() < 1e-3, "clamped to the left edge: {x}");
                 }

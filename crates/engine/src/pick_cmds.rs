@@ -47,27 +47,54 @@ fn layers_hit(doc: &Document, x: i32, y: i32, type_bounds: bool) -> Vec<LayerId>
         if matches!(l.content, LayerContent::Group(_) | LayerContent::Adjustment(_)) {
             continue;
         }
-        let alpha = match &l.content {
-            // Fill layers cover the canvas (their mask limits them).
-            LayerContent::Fill(_) => 1.0,
-            // The text's pixel bounds (in document space, so they follow the layer's transform).
-            LayerContent::Text(t) if type_bounds && t.cache.as_ref().is_some_and(|c| c.content_bounds().contains(x, y)) => 1.0,
-            _ => match l.surface() {
-                Some(s) => {
-                    let mut px = [[0.0f32; 4]; 1];
-                    s.read_rgba_into(Rect::from_xywh(x, y, 1, 1), &mut px);
-                    px[0][3]
-                }
-                None => 0.0,
-            },
-        };
-        // As the compositor sees it: density applied, all ones when the mask is disabled.
-        let mask = l.mask.as_ref().map_or(1.0, |m| m.value(x, y));
-        if alpha * mask > 0.0 {
+        // What shows of the layer there: its pixels through its mask, the masks and opacities of
+        // the groups around it, and, clipped, its clipping base's pixels. A click lands on the
+        // layer the user sees, not on pixels a group mask or the base hides.
+        let mut alpha = coverage(l, x, y, type_bounds) * l.opacity;
+        for n in 1..path.len() {
+            if let Some(g) = doc.layer_at(&path[..n]) {
+                alpha *= g.opacity * g.mask.as_ref().map_or(1.0, |m| m.value(x, y));
+            }
+        }
+        if l.clipped
+            && let Some(base) = clip_base(doc, path).filter(|b| !b.is_group())
+        {
+            alpha *= coverage(base, x, y, false);
+        }
+        if alpha > 0.0 {
             out.push(l.id);
         }
     }
     out
+}
+
+/// The coverage of `l`'s own pixels at (x, y) through its mask (a type layer anywhere inside its
+/// text's bounds with `type_bounds`).
+fn coverage(l: &photocraft_doc::Layer, x: i32, y: i32, type_bounds: bool) -> f32 {
+    let alpha = match &l.content {
+        // Fill layers cover the canvas (their mask limits them).
+        LayerContent::Fill(_) => 1.0,
+        // The text's pixel bounds (in document space, so they follow the layer's transform).
+        LayerContent::Text(t) if type_bounds && t.cache.as_ref().is_some_and(|c| c.content_bounds().contains(x, y)) => 1.0,
+        _ => match l.surface() {
+            Some(s) => {
+                let mut px = [[0.0f32; 4]; 1];
+                s.read_rgba_into(Rect::from_xywh(x, y, 1, 1), &mut px);
+                px[0][3]
+            }
+            None => 0.0,
+        },
+    };
+    // As the compositor sees it: density applied, all ones when the mask is disabled.
+    alpha * l.mask.as_ref().map_or(1.0, |m| m.value(x, y))
+}
+
+/// The base of the clipping group the clipped layer at `path` belongs to: the nearest layer
+/// below it in its stack that isn't clipped.
+fn clip_base<'a>(doc: &'a Document, path: &[usize]) -> Option<&'a photocraft_doc::Layer> {
+    let (&i, parent) = path.split_last()?;
+    let siblings = if parent.is_empty() { &doc.layers[..] } else { doc.layer_at(parent)?.children()? };
+    siblings.get(..i)?.iter().rev().find(|l| !l.clipped)
 }
 
 /// The outermost group containing `id` (the layer itself when it isn't in a group). An artboard
@@ -465,5 +492,27 @@ mod tests {
         let list = s.execute("layer.pickAt", json!({"x": 5, "y": 5, "list": true})).unwrap();
         let ids: Vec<_> = list["layers"].as_array().unwrap().iter().map(|l| l["layer"].clone()).collect();
         assert_eq!(ids, vec![json!(red.0), json!(bg.0)]);
+    }
+
+    /// A click lands on the layer that shows there: not on a layer at 0 % opacity, one a group
+    /// mask hides, or a clipped layer's pixels outside its base.
+    #[test]
+    fn picks_only_what_shows() {
+        let (mut s, a, b) = two_squares();
+        // B is clipped to A: its square (20..30) lies outside A's (0..10), so nothing of it shows.
+        s.execute("layer.setProps", json!({"layer": b.0, "clipped": true})).unwrap();
+        let bg = s.active().unwrap().doc.layers[0].id;
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 25, "y": 25, "select": false})).unwrap()["layer"], bg.0);
+        s.execute("layer.setProps", json!({"layer": b.0, "clipped": false})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 25, "y": 25, "select": false})).unwrap()["layer"], b.0);
+        // At 0 % opacity B can't be seen.
+        s.execute("layer.setProps", json!({"layer": b.0, "opacity": 0.0})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 25, "y": 25, "select": false})).unwrap()["layer"], bg.0);
+        // A group whose mask hides everything hides A too.
+        s.execute("layer.select", json!({"layer": a.0})).unwrap();
+        s.execute("layer.new.groupFromLayers", json!({"name": "G"})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 5, "y": 5, "select": false})).unwrap()["layer"], a.0);
+        s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 5, "y": 5, "select": false})).unwrap()["layer"], bg.0);
     }
 }

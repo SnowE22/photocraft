@@ -336,6 +336,9 @@ struct StoredPreset {
     /// [`BrushPreset::captures`]; missing for presets saved without the New Brush Preset dialog.
     #[serde(default, skip_serializing_if = "PresetCaptures::is_default")]
     captures: PresetCaptures,
+    /// [`BrushPreset::tool`]; missing for presets of any painting tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    tool: Option<String>,
 }
 
 /// What a group file records about each tip it references, so loading needs only the preview.
@@ -679,6 +682,7 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
                         group: g.group.clone(),
                         folder: sanitize_folder(sp.folder),
                         captures: sp.captures,
+                        tool: sp.tool.filter(|t| photocraft_paint::brush::PRESET_TOOLS.contains(&t.as_str())),
                     });
                 }
                 None => missing += 1,
@@ -1025,6 +1029,7 @@ impl PresetStore {
                 tips,
                 folder: p.folder.clone(),
                 captures: p.captures.clone(),
+                tool: p.tool.clone(),
             });
             tiles.push(refs);
         }

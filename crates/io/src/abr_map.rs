@@ -87,7 +87,7 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 }
             };
             let name = if b.name.trim().is_empty() { default_name } else { b.name.trim().to_string() };
-            out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder: Vec::new(), captures: Default::default() });
+            out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder: Vec::new(), captures: Default::default(), tool: None });
         }
     } else if f.presets.is_empty() {
         // Tips without a settings section (early v6 files): one preset per tip.
@@ -102,6 +102,7 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 group: group.to_string(),
                 folder: Vec::new(),
                 captures: Default::default(),
+                tool: None,
             });
         }
     } else {
@@ -113,7 +114,7 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 // named after the imported file.
                 Some(brush) => {
                     let folder = f.folders.get(i).cloned().unwrap_or_default();
-                    out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder, captures: captures(d) });
+                    out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder, captures: captures(d), tool: preset_tool(d) });
                 }
                 None => {
                     m.warnings.insert(format!("\"{name}\": its sampled tip is missing from the file; skipped"));
@@ -258,12 +259,31 @@ const KNOWN: &[&str] = &[
     "zuid",
 ];
 
-/// What picking a preset brings besides its tip and sections, as Photoshop saved it: Capture Brush
-/// Size in Preset (`useBrushSize`; off, picking the preset keeps the tool's size) and Include Tool
-/// Settings (a `toolOptions` object; without one, the tool keeps its mode, opacity, flow and
-/// pressure buttons). Most downloaded brushes leave both off.
+/// What picking a preset brings besides its tip and sections, as Photoshop saved it: whether it
+/// sets its own size, and Include Tool Settings (a `toolOptions` object; without one, the tool
+/// keeps its mode, opacity, flow and pressure buttons).
+///
+/// `useBrushSize` means "use the brush size the tool already has": measured in Photoshop 2026
+/// (2026-10-18, `log/photoshop-compare/ps_pick.ps1`), a preset saved with `useBrushSize` true
+/// keeps the current size when picked, one with it false (most downloaded brushes) sets its own.
+/// A file without the key (older presets) sets its own size too.
 fn captures(d: &Descriptor) -> PresetCaptures {
-    PresetCaptures { size: boolean(d, "useBrushSize") != Some(false), tool_settings: obj(d, "toolOptions").is_some(), color: false }
+    PresetCaptures { size: boolean(d, "useBrushSize") != Some(true), tool_settings: obj(d, "toolOptions").is_some(), color: false }
+}
+
+/// The tool a preset saved with Include Tool Settings belongs to: the class of its `toolOptions`
+/// (Photoshop's Brush, Pencil, Eraser, Smudge and Mixer Brush tools). `None` without tool
+/// settings or for a tool PhotoCraft's presets don't switch to.
+fn preset_tool(d: &Descriptor) -> Option<String> {
+    let tool = match obj(d, "toolOptions")?.class_id.as_bytes() {
+        b"PbTl" => "brush",
+        b"PcTl" => "pencil",
+        b"ErTl" => "eraser",
+        b"SmTl" => "smudge",
+        b"MixB" => "mixerBrush",
+        _ => return None,
+    };
+    Some(tool.into())
 }
 
 struct Mapper<'a> {

@@ -706,7 +706,15 @@ pub struct BrushPreset {
     /// dialog's boxes.
     #[serde(default, skip_serializing_if = "PresetCaptures::is_default")]
     pub captures: PresetCaptures,
+    /// The tool the preset was saved with, when it includes that tool's settings (Photoshop's
+    /// Eraser, Smudge or Mixer Brush presets): picking it switches to that tool. One of
+    /// [`PRESET_TOOLS`]; `None` for a preset of any painting tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
 }
+
+/// The tools a preset can belong to ([`BrushPreset::tool`]).
+pub const PRESET_TOOLS: [&str; 5] = ["brush", "pencil", "eraser", "smudge", "mixerBrush"];
 
 /// The New Brush Preset dialog's boxes, kept with the preset. The default is a preset made
 /// without the dialog (a built-in, an import, an older save): picking it brings its size and tool

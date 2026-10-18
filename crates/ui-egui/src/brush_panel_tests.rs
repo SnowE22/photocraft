@@ -492,6 +492,7 @@ fn drop_actions_move_selections_and_actions_become_commands() {
             group: g.into(),
             folder: Vec::new(),
             captures: Default::default(),
+            tool: None,
         });
     }
     let pre = |n: &str| BrushItem::Preset(n.into());
@@ -843,6 +844,7 @@ fn kit(name: &str, folder: &[&str]) -> paint::BrushPreset {
         group: "Kit".into(),
         folder: folder.iter().map(|s| s.to_string()).collect(),
         captures: Default::default(),
+        tool: None,
     }
 }
 

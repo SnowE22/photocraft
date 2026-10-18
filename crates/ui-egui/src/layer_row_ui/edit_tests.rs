@@ -206,3 +206,46 @@ fn reentering_type_edit_keeps_the_session_and_cancel_restores_cached_pixels() {
     let LayerContent::Text(t) = &st.doc.layer(LayerId(id)).unwrap().content else { panic!("text") };
     assert_eq!(t.cache.as_ref().unwrap().content_bounds(), cached.content_bounds());
 }
+
+/// Double-clicking an adjustment layer's thumbnail opens Properties on its settings, expanding the
+/// panel when it is collapsed to an icon (Photoshop).
+#[test]
+fn double_clicking_an_adjustment_thumbnail_opens_properties() {
+    let mut s = session();
+    let id = s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.new.layer", json!({"name": "Other"})).unwrap();
+    let mut h = harness(s, 1.0);
+    assert!(h.state().ui.dock.collapsed.contains(&crate::dock::Group::Properties), "collapsed to start with");
+    let at = thumbnail(&h, id);
+    double_click(&mut h, at);
+    let app = h.state();
+    assert_eq!(app.session.active().unwrap().active_layer, Some(LayerId(id)));
+    assert!(app.ui.panels.properties, "Properties is shown");
+    assert!(!app.ui.dock.collapsed.contains(&crate::dock::Group::Properties), "and expanded");
+    assert!(!app.ui.mask_target, "on the adjustment's settings, not its mask");
+}
+
+/// The user's workspace: Color, Properties, Adjustments and Actions share one tab group, left on
+/// Color. Double-clicking an adjustment thumbnail brings the Properties tab to the front.
+#[test]
+fn double_clicking_an_adjustment_thumbnail_fronts_properties_in_a_shared_tab_group() {
+    let mut s = session();
+    let id = s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.new.layer", json!({"name": "Other"})).unwrap();
+    let mut h = harness(s, 1.0);
+    for panel in ["properties", "adjustments", "actions"] {
+        h.state_mut().run("window.panel.move", json!({"panel": panel, "anchor": "color"})).unwrap();
+    }
+    h.state_mut().run("window.panel.activate", json!({"panel": "color"})).unwrap();
+    h.run_steps(4);
+    let layout = h.state().ui.docking.clone().expect("a customized workspace");
+    assert!(crate::panel_docking::panel_active(&layout, "color"), "Color is the group's front tab");
+    let at = thumbnail(&h, id);
+    double_click(&mut h, at);
+    let app = h.state();
+    assert_eq!(app.session.active().unwrap().active_layer, Some(LayerId(id)));
+    let layout = app.ui.docking.as_ref().expect("still customized");
+    assert!(crate::panel_docking::panel_active(layout, "properties"), "Properties came to the front");
+    assert!(!crate::panel_docking::panel_active(layout, "color"));
+    assert!(!app.ui.mask_target, "on the adjustment's settings, not its mask");
+}

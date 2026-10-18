@@ -473,9 +473,9 @@ fn texture_and_dual_modes_read_long_and_short_ids() {
     }
 }
 
-/// Photoshop's Capture Brush Size in Preset (`useBrushSize`) and Include Tool Settings (a
-/// `toolOptions` object) decide what picking the preset changes; most downloaded brushes leave both
-/// off, so picking one keeps the tool's size, opacity, flow and mode.
+/// `useBrushSize` (use the tool's current size) and Include Tool Settings (a `toolOptions` object)
+/// decide what picking the preset changes, as measured in Photoshop 2026: `useBrushSize` false
+/// (most downloaded brushes) sets the preset's own size, true keeps the tool's.
 #[test]
 fn captured_size_and_tool_settings_follow_the_file() {
     let preset = |name: &str, use_size: Option<bool>, tool: Option<Descriptor>| {
@@ -499,16 +499,43 @@ fn captured_size_and_tool_settings_follow_the_file() {
     let bytes = write_v6(2, &[], &[], &presets, false).unwrap();
     let imported = read_abr(&bytes, "Test").unwrap();
     let p = &imported.presets;
-    assert_eq!((p[0].captures.size, p[0].captures.tool_settings), (false, false), "useBrushSize off, no tool options");
-    assert_eq!((p[1].captures.size, p[1].captures.tool_settings), (true, true));
+    assert_eq!((p[0].captures.size, p[0].captures.tool_settings), (true, false), "useBrushSize off: its own size; no tool options");
+    assert_eq!((p[1].captures.size, p[1].captures.tool_settings), (false, true), "useBrushSize on: the tool's size");
     assert_eq!(p[1].brush.mode, photocraft_color::BlendMode::Multiply, "the tool's blend mode comes with its settings");
     assert!((p[1].brush.opacity - 0.9).abs() < 1e-6);
     assert_eq!((p[2].captures.size, p[2].captures.tool_settings), (true, false), "a file without the key captured the size");
     assert_eq!(p[3].brush.mode, photocraft_color::BlendMode::Normal, "Behind has no brush mode");
     assert!(imported.warnings.iter().any(|w| w.contains("Behind or Clear")), "{:?}", imported.warnings);
     assert!(!imported.warnings.iter().any(|w| w.contains("useBrushSize")), "useBrushSize is mapped now: {:?}", imported.warnings);
-    // Picking the uncaptured preset keeps the tool's size, as Photoshop does.
+    // As Photoshop does: the useBrushSize-off preset brings its 1700 px, the on one keeps 40.
     let current = BrushSettings { size: 40.0, opacity: 0.5, ..Default::default() };
     let picked = p[0].picked_over(&current);
-    assert_eq!((picked.size, picked.opacity), (40.0, 0.5));
+    assert_eq!((picked.size, picked.opacity), (1700.0, 0.5));
+    assert_eq!(p[1].picked_over(&current).size, 40.0);
+}
+
+/// A preset saved with a tool's settings belongs to that tool (the class of its `toolOptions`):
+/// Photoshop's Eraser, Smudge and Mixer Brush presets switch to their tool when picked.
+#[test]
+fn tool_presets_remember_their_tool() {
+    let preset = |name: &str, class: Option<&str>| {
+        let mut d = Descriptor::new("brushPreset").with("Nm  ", t(name)).with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 30.0))));
+        if let Some(c) = class {
+            d = d.with("toolOptions", Value::Descriptor(Descriptor::new(c)));
+        }
+        d
+    };
+    let presets = [
+        preset("Paint", Some("PbTl")),
+        preset("Rub out", Some("ErTl")),
+        preset("Smear", Some("SmTl")),
+        preset("Mix", Some("MixB")),
+        preset("Line", Some("PcTl")),
+        preset("Any", None),
+        preset("Clone", Some("CnTl")),
+    ];
+    let bytes = write_v6(2, &[], &[], &presets, false).unwrap();
+    let tools: Vec<Option<String>> = read_abr(&bytes, "Test").unwrap().presets.into_iter().map(|p| p.tool).collect();
+    let want = [Some("brush"), Some("eraser"), Some("smudge"), Some("mixerBrush"), Some("pencil"), None, None];
+    assert_eq!(tools, want.map(|t| t.map(str::to_string)));
 }

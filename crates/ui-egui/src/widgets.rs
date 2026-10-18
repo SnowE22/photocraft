@@ -796,11 +796,30 @@ fn number_edit(
                 v
             }),
     );
+    // egui keeps the dragged value unclamped, so dragging past an end and back had to undo the
+    // overshoot first. Photoshop restarts from the end instead: 0 % dragged further left then
+    // right goes up at once.
+    clamp_drag_overshoot(ui, id, &resp, &range);
     if wrap_drag {
         crate::scrub_wrap::update(ui, &resp, value, before, range, speed, wrapping);
     }
     resp.flags.set(egui::response::Flags::CHANGED, *value != before);
     resp
+}
+
+/// Clamp the precise value egui's `DragValue` (id `id`) keeps while it is dragged to `range`.
+fn clamp_drag_overshoot(ui: &Ui, id: egui::Id, resp: &Response, range: &std::ops::RangeInclusive<f32>) {
+    let (lo, hi) = (f64::from(*range.start()), f64::from(*range.end()));
+    if !resp.dragged() || lo > hi {
+        return;
+    }
+    ui.data_mut(|d| {
+        if let Some(p) = d.get_temp::<f64>(id)
+            && (p < lo || p > hi)
+        {
+            d.insert_temp::<f64>(id, p.clamp(lo, hi));
+        }
+    });
 }
 
 /// Increments a numerical field with the up/down arrow keys. Increments by 1 by default, 10 with shift, and 0.1 with ctrl/cmd.
@@ -1299,6 +1318,48 @@ pub fn dropdown_hovered<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &m
     (!chosen.is_empty(), hovered)
 }
 
+/// Row height of a blend mode menu, and the height of the line between two of its sections:
+/// compact, so the whole menu shows without scrolling (Photoshop).
+const BLEND_ROW_H: f32 = 18.0;
+const BLEND_BREAK_H: f32 = 7.0;
+/// The tightest a blend mode menu's rows get to fit a short window.
+const BLEND_MIN_ROW_H: f32 = 14.0;
+
+/// The row height that fits a blend menu of `rows` options and `breaks` section lines in `room`
+/// points: [`BLEND_ROW_H`] when it fits, tighter down to [`BLEND_MIN_ROW_H`] when it doesn't.
+fn blend_row_height(room: f32, rows: usize, breaks: usize) -> f32 {
+    let fit = (room - breaks as f32 * BLEND_BREAK_H - 12.0) / rows.max(1) as f32;
+    if fit.is_finite() { fit.clamp(BLEND_MIN_ROW_H, BLEND_ROW_H) } else { BLEND_ROW_H }
+}
+
+/// The section of Photoshop's blend mode menus a mode's label falls in (Normal, darken, lighten,
+/// contrast, inversion, component), `None` for anything else.
+fn blend_section(label: &str) -> Option<u8> {
+    if matches!(label, "Pass Through" | "Behind" | "Clear") {
+        return Some(0);
+    }
+    let i = photocraft_color::BlendMode::LAYER_MODES.iter().position(|m| m.label() == label)?;
+    Some(match i {
+        0..2 => 0,
+        2..7 => 1,
+        7..12 => 2,
+        12..19 => 3,
+        19..23 => 4,
+        _ => 5,
+    })
+}
+
+/// The options a blend mode menu draws a section line above, or `None` when `labels` aren't
+/// blend modes (any other dropdown keeps its look). Options that aren't Photoshop modes (an
+/// imported Paint.NET mode) get a section of their own.
+pub(crate) fn blend_breaks(labels: &[&str]) -> Option<Vec<usize>> {
+    if labels.iter().filter(|l| blend_section(l).is_some()).count() < 12 {
+        return None;
+    }
+    let sections: Vec<Option<u8>> = labels.iter().map(|l| blend_section(l)).collect();
+    Some((1..labels.len()).filter(|&i| sections.get(i) != sections.get(i - 1)).collect())
+}
+
 /// [`dropdown_hovered`] whose value also steps with the wheel over its button or open list: down
 /// picks the next option, up the previous one, one per notch (Shift too), stopping at the ends
 /// (Photoshop's Layers panel blend modes, #1747). The wheel then scrolls neither the list, which
@@ -1322,8 +1383,33 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
     let mut reveal = wheel && ui.data_mut(|d| d.remove_temp::<bool>(reveal_id)).unwrap_or(false);
     // The list opens on the press: press, drag onto an option and release to choose it (#2735).
     let (press, close) = crate::press_menu::PressCombo::before(ui, id);
+    // A blend mode menu shows every mode at once, in Photoshop's sections.
+    let breaks = blend_breaks(&options.iter().map(|(_, l)| *l).collect::<Vec<_>>());
+    // The list opens below the button: when the window leaves too little room there, the rows
+    // tighten (to [`BLEND_MIN_ROW_H`]) so the whole menu still shows.
+    // Fixed while the list is open, so its rows never shift under the pointer.
+    let row_key = ui.make_persistent_id(id).with("blend-row-h");
+    let open = egui::ComboBox::is_open(ui.ctx(), ui.make_persistent_id(id));
+    let below = ui.ctx().content_rect().bottom() - ui.cursor().top() - ui.spacing().interact_size.y - 20.0;
+    let row_h = match (&breaks, open.then(|| ui.data(|d| d.get_temp::<f32>(row_key))).flatten()) {
+        (Some(_), Some(kept)) => kept,
+        // Never below the text's own height: every row stays the same size.
+        // Whole points: a fractional row height is rounded for the highlighted row only.
+        (Some(b), None) => blend_row_height(below, options.len(), b.len()).max(ui.text_style_height(&egui::TextStyle::Button) + 2.0).ceil(),
+        (None, _) => BLEND_ROW_H,
+    };
+    if breaks.is_some() {
+        ui.data_mut(|d| d.insert_temp(row_key, row_h));
+    }
+    let height = breaks.as_ref().map_or(420.0, |b| (options.len() as f32 * row_h + b.len() as f32 * BLEND_BREAK_H + 12.0).max(420.0));
     let response =
-        egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(420.0).icon(chevron_icon).close_behavior(close).show_ui(ui, |ui| {
+        egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(height).icon(chevron_icon).close_behavior(close).show_ui(ui, |ui| {
+            if breaks.is_some() {
+                let sp = ui.spacing_mut();
+                sp.item_spacing.y = 0.0;
+                sp.interact_size.y = row_h;
+                sp.button_padding.y = 1.0;
+            }
             fit_widest_option(ui, options.iter().map(|(_, l)| tl!(l)));
             // A typed letter jumps to the next option starting with it, ↩ closes the list (#1481).
             let labels: Vec<&str> = options.iter().map(|(_, l)| tl!(l)).collect();
@@ -1345,8 +1431,17 @@ fn dropdown_with<T: PartialEq + Clone>(ui: &mut Ui, id: &str, current: &mut T, o
             // The row nearest the pointer, by its distance to each row.
             let pointer = ui.ctx().pointer_hover_pos().filter(|_| ui.rect_contains_pointer(ui.clip_rect()));
             let mut nearest: Option<(f32, &T)> = None;
-            for (v, l) in options {
-                let item = ui.selectable_label(v == current, tl!(l));
+            for (i, (v, l)) in options.iter().enumerate() {
+                if breaks.as_ref().is_some_and(|b| b.contains(&i)) {
+                    ui.add(egui::Separator::default().spacing(BLEND_BREAK_H));
+                }
+                // Blend menus: every row exactly `row_h` tall, selected or not.
+                let item = if breaks.is_some() {
+                    let w = ui.available_width();
+                    ui.add_sized([w, row_h], egui::Button::selectable(v == current, tl!(l)))
+                } else {
+                    ui.selectable_label(v == current, tl!(l))
+                };
                 if reveal && v == current {
                     item.scroll_to_me(None);
                 }
@@ -2485,5 +2580,30 @@ mod screen_color_tests {
             h.run_steps(1);
             assert!(!h.state().2, "the pick commits once");
         }
+    }
+}
+
+#[cfg(test)]
+mod blend_menu_tests {
+    use photocraft_color::BlendMode;
+
+    /// Blend mode menus are drawn in Photoshop's six sections; other dropdowns aren't touched.
+    #[test]
+    fn blend_mode_menus_break_into_photoshops_sections() {
+        let labels: Vec<&str> = std::iter::once(BlendMode::PassThrough).chain(BlendMode::LAYER_MODES).map(|m| m.label()).collect();
+        let breaks = super::blend_breaks(&labels).expect("a blend mode menu");
+        let firsts: Vec<&str> = breaks.iter().map(|&i| labels[i]).collect();
+        assert_eq!(firsts, ["Darken", "Lighten", "Overlay", "Difference", "Hue"]);
+        let mut own = labels.clone();
+        own.push("Reflect");
+        assert_eq!(super::blend_breaks(&own).unwrap().last().copied(), Some(own.len() - 1), "a non-Photoshop mode stands apart");
+        assert!(super::blend_breaks(&["Pixels", "Inches", "Percent"]).is_none());
+        assert!(super::blend_breaks(&["Normal", "Multiply", "Screen"]).is_none(), "a few modes aren't the full menu");
+        // Rows tighten to fit a short window, within limits.
+        assert_eq!(super::blend_row_height(1000.0, 28, 5), super::BLEND_ROW_H);
+        let tight = super::blend_row_height(450.0, 28, 5);
+        assert!((super::BLEND_MIN_ROW_H..super::BLEND_ROW_H).contains(&tight), "{tight}");
+        assert_eq!(super::blend_row_height(10.0, 28, 5), super::BLEND_MIN_ROW_H);
+        assert_eq!(super::blend_row_height(f32::NAN, 28, 5), super::BLEND_ROW_H);
     }
 }

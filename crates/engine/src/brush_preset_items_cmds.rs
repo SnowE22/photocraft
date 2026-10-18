@@ -400,7 +400,7 @@ mod tests {
     use super::*;
 
     fn preset(name: &str, place: &[&str]) -> BrushPreset {
-        let mut p = BrushPreset { name: name.into(), brush: Default::default(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default() };
+        let mut p = BrushPreset { name: name.into(), brush: Default::default(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default(), tool: None };
         set_place(&mut p, &place.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         p
     }

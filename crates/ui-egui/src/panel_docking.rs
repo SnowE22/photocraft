@@ -1108,7 +1108,7 @@ pub(crate) fn sync_visibility(app: &mut PhotocraftApp) {
     }
 }
 
-fn panel_active(layout: &Layout<String>, panel: &str) -> bool {
+pub(crate) fn panel_active(layout: &Layout<String>, panel: &str) -> bool {
     let mut pending: Vec<_> = layout.root.iter().collect();
     while let Some(node) = pending.pop() {
         match node {

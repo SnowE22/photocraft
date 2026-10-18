@@ -969,6 +969,11 @@ impl PhotocraftApp {
         if let Some(result) = mask_trash_prompt::intercept(self, id, &params) {
             return result;
         }
+        // A preset saved with its tool's settings (Photoshop's Eraser or Smudge presets) belongs
+        // to that tool: picking it switches there first, so it becomes that tool's brush.
+        if id == "tools.setBrush" {
+            paint_mouse::switch_to_preset_tool(self, &params);
+        }
         // Automation input also gates every step a command runs on its behalf (`actions.play`).
         let gate = if self.automation_input && self.session.authorize.is_none() { self.services.automation_authorize } else { None };
         if gate.is_some() {

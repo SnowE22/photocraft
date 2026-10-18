@@ -474,8 +474,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 return Ok(json!({"dialog": dialog}));
             }
             let r = app.run(id, params)?;
-            app.ui.panels.properties = true;
-            app.ui.dock_tabs.properties = 0;
+            // Properties shows the layer's own settings (not its mask's), expanded if it was
+            // collapsed to an icon: double-clicking an adjustment thumbnail opens it (Photoshop).
+            app.ui.properties_layer = r.get("layer").and_then(Value::as_u64);
+            crate::panels::show_properties(app);
             Ok(r)
         }
         // Edit › Stroke…: open its full options dialog when called from menus/context

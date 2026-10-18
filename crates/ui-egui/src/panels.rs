@@ -1747,17 +1747,22 @@ fn scrub_pct_label(ui: &mut egui::Ui, text: &str, percent: &mut f32, max_w: f32)
     // instead of running over the fixed controls beside it (#3580).
     let resp = widgets::elided_label_sensed(ui, text, max_w, Sense::click_and_drag()).on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
     let key = resp.id.with("percent-label-drag");
-    if resp.drag_started() {
+    if resp.drag_started()
+        && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+    {
         let stamp = ui.ctx().cumulative_pass_nr();
-        ui.data_mut(|d| d.insert_temp(key, (*percent, stamp)));
+        ui.data_mut(|d| d.insert_temp(key, (*percent, origin.x, stamp)));
     }
     let mut out = widgets::PopupFieldResponse::default();
     if resp.dragged()
-        && let Some((start, stamp)) = ui.data(|d| d.get_temp::<(f32, u64)>(key))
-        && let (Some(origin), Some(pos)) = (ui.input(|i| i.pointer.press_origin()), resp.interact_pointer_pos())
+        && let Some((anchor, anchor_x, stamp)) = ui.data(|d| d.get_temp::<(f32, f32, u64)>(key))
+        && let Some(pos) = resp.interact_pointer_pos()
     {
         // Match DragValue's 0.5 percentage-point per screen point; do not jump on press.
-        let next = (start + (pos.x - origin.x) * 0.5).clamp(0.0, 100.0);
+        let (next, rebased) = scrub_pct(anchor, anchor_x, pos.x);
+        if let Some(a) = rebased {
+            ui.data_mut(|d| d.insert_temp(key, (a.0, a.1, stamp)));
+        }
         if next.is_finite() && next != *percent {
             *percent = next;
             out.changed = true;
@@ -1765,9 +1770,21 @@ fn scrub_pct_label(ui: &mut egui::Ui, text: &str, percent: &mut f32, max_w: f32)
         }
     }
     if resp.drag_stopped() {
-        ui.data_mut(|d| d.remove::<(f32, u64)>(key));
+        ui.data_mut(|d| d.remove::<(f32, f32, u64)>(key));
     }
     out
+}
+
+/// The percentage a scrub anchored at `anchor` % under pointer x `anchor_x` gives at `x` (half a
+/// point per screen point), and the new anchor when it runs past 0 or 100 %: as in Photoshop,
+/// dragging on past an end and back moves away from that end at once.
+fn scrub_pct(anchor: f32, anchor_x: f32, x: f32) -> (f32, Option<(f32, f32)>) {
+    let raw = anchor + (x - anchor_x) * 0.5;
+    if !raw.is_finite() {
+        return (anchor, None);
+    }
+    let v = raw.clamp(0.0, 100.0);
+    (v, (v != raw).then_some((v, x)))
 }
 
 /// Width of `s` as [`label`] draws it (body text).
@@ -2610,7 +2627,14 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             // The drawn rows, top to bottom (#1721): the space between them and below the last
             // one is a drop zone too.
             let mut drawn: Vec<(LayerId, Rect)> = Vec::new();
+            // Whether the group at each depth above the current row is hidden (rows list a group
+            // before its contents).
+            let mut hidden_groups: Vec<bool> = Vec::new();
             for &(depth, l) in &rows {
+                hidden_groups.truncate(depth);
+                let parent_hidden = hidden_groups.iter().any(|h| *h);
+                hidden_groups.resize(depth, false);
+                hidden_groups.push(!l.visible);
                 // Select › Isolate Layers.
                 if !photocraft_engine::select_extra_cmds::isolation_shows(&doc, &isolated, l.id) {
                     continue;
@@ -2628,7 +2652,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         continue;
                     }
                 }
-                let row = RowSel { selected: selection.contains(&l.id), primary: active == Some(l.id), multi: selection.len() > 1 };
+                let row = RowSel { selected: selection.contains(&l.id), primary: active == Some(l.id), multi: selection.len() > 1, parent_hidden };
                 let top = ui.cursor().top();
                 drawn.push((l.id, layer_row(app, &ctx, ui, &doc, l, depth, row, &mut actions)));
                 if reveal == Some(l.id) {
@@ -2833,9 +2857,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
         // Double-clicking a mask thumbnail opens its settings: show Properties.
         if id == "ui.properties" {
-            app.ui.panels.properties = true;
-            app.ui.dock_tabs.properties = 0;
-            app.ui.dock.collapsed.retain(|g| *g != crate::dock::Group::Properties);
+            show_properties(app);
             continue;
         }
         if p.is_null() {
@@ -2849,6 +2871,21 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
         let _ = app.run(&id, p);
     }
+}
+
+/// Open the Properties panel on its own tab, expanding it when it is collapsed to an icon. In a
+/// customized workspace its tab comes to the front of whichever group holds it, so a Color |
+/// Properties group left on Color switches to Properties, as in Photoshop.
+pub(crate) fn show_properties(app: &mut PhotocraftApp) {
+    if app.ui.docking.is_some() {
+        if let Some(Err(e)) = crate::panel_docking::command(app, "window.panel.activate", &json!({"panel": "properties"})) {
+            app.ui.status = e;
+        }
+        return;
+    }
+    app.ui.panels.properties = true;
+    app.ui.dock_tabs.properties = 0;
+    app.ui.dock.collapsed.retain(|g| *g != crate::dock::Group::Properties);
 }
 
 /// A layer row dragged onto a Layers panel footer button, as in Photoshop: onto Delete deletes it,
@@ -2933,6 +2970,8 @@ struct RowSel {
     selected: bool,
     primary: bool,
     multi: bool,
+    /// A group holding the layer is hidden: its own eye shows greyed out (Photoshop).
+    parent_hidden: bool,
 }
 
 /// `layer.select` mode for a click with these modifiers (Photoshop: ⌘-click toggles, ⇧-click
@@ -3006,9 +3045,11 @@ const PRO_THUMB_GAP: f32 = 9.0;
 /// The Layers panel's name size in Photoshop's themes (Photoshop's small UI font).
 const PRO_NAME_SIZE: f32 = 10.0;
 
-/// Height of `l`'s Layers panel row.
+/// Height of `l`'s Layers panel row. A group with a mask gets a full layer row, so its mask
+/// thumbnail shows at the same size as a layer's (Photoshop).
 fn layer_row_height(l: &Layer, pro: bool) -> f32 {
-    match (pro, l.is_group()) {
+    let masked = l.mask.is_some() || l.vector_mask.is_some();
+    match (pro, l.is_group() && !masked) {
         (true, true) => PRO_GROUP_ROW_H,
         (true, false) => PRO_ROW_H,
         (false, _) => 46.0,
@@ -3109,12 +3150,15 @@ fn layer_row(
     // The eye takes drags too (so a drag starting on it never reorders the row): dragging down
     // the eyes gives every row swept over the visibility the first eye toggled to.
     let eye_resp = ui.interact(eye, ui.id().with(("eye", l.id.0)), Sense::click_and_drag());
-    // A hidden layer's eye box is left empty (still clickable).
+    // A hidden layer's eye box is left empty (still clickable); inside a hidden group the eye
+    // is greyed out, as the layer doesn't show either way (Photoshop).
     if l.visible {
+        let color = t.layer_label_icon(l.label);
+        let color = if row.parent_hidden { color.gamma_multiply(0.35) } else { color };
         if t.pro {
-            crate::layer_row_ui::paint_eye(&painter, eye_cell.center() - vec2(0.5, 0.0), t.layer_label_icon(l.label));
+            crate::layer_row_ui::paint_eye(&painter, eye_cell.center() - vec2(0.5, 0.0), color);
         } else {
-            icons::paint(ui, eye_cell, "eye", 15.0, t.layer_label_icon(l.label));
+            icons::paint(ui, eye_cell, "eye", 15.0, color);
         }
     }
     eye_sweep(ctx, l, rect, &eye_resp, actions);
@@ -6058,6 +6102,19 @@ mod group_drag_selection_tests {
         }
     }
 
+    /// Dragging the Opacity label past 0 % and back raises it at once (Photoshop).
+    #[test]
+    fn a_scrub_past_an_end_restarts_from_it() {
+        let (v, a) = scrub_pct(20.0, 100.0, 40.0);
+        assert_eq!(v, 0.0);
+        let (ax, ay) = a.expect("re-anchored at 0 %");
+        assert_eq!((ax, ay), (0.0, 40.0));
+        assert_eq!(scrub_pct(ax, ay, 46.0), (3.0, None), "6 points back to the right: 3 %");
+        assert_eq!(scrub_pct(90.0, 0.0, 40.0), (100.0, Some((100.0, 40.0))));
+        assert_eq!(scrub_pct(50.0, 0.0, 10.0), (55.0, None));
+        assert_eq!(scrub_pct(50.0, 0.0, f32::NAN).0, 50.0);
+    }
+
     /// Group rows are much shorter than layer rows in Photoshop's themes.
     #[test]
     fn group_rows_are_shorter_than_layer_rows() {
@@ -6067,6 +6124,10 @@ mod group_drag_selection_tests {
         assert_eq!(layer_row_height(&group, true), PRO_GROUP_ROW_H);
         const { assert!(PRO_GROUP_ROW_H < PRO_ROW_H * 0.7) };
         assert_eq!(layer_row_height(&group, false), layer_row_height(&pixel, false));
+        // A group with a mask is as tall as a layer, so the mask thumbnail has room.
+        let mut masked = Layer::group("M", vec![]);
+        masked.mask = Some(photocraft_doc::LayerMask::reveal_all());
+        assert_eq!(layer_row_height(&masked, true), PRO_ROW_H);
     }
 }
 

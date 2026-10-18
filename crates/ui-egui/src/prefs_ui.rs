@@ -52,6 +52,11 @@ pub struct Runtime {
     show_rulers: Option<bool>,
     /// Tool options as last remembered in the preferences (see `tool_memory`).
     pub(crate) tool_options: Option<crate::state::ToolOptions>,
+    /// Bumped whenever a tool's saved brush or the tool owning the live brush changes
+    /// (`paint_mouse::tool_brushes_changed`), and the revision `Preferences::tool_brushes` holds
+    /// (see `last_brush`).
+    pub(crate) tool_brushes_rev: u64,
+    pub(crate) tool_brushes_saved_rev: u64,
 }
 
 /// The GPU canvas colours from Preferences › Transparency & Gamut.

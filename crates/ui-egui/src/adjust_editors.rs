@@ -412,6 +412,24 @@ pub fn curves_picker_slots_id(mem: egui::Id) -> egui::Id {
     mem.with("curves-picker-slots")
 }
 
+/// The Curves input sliders' triangles (under the gradient bar): width and height.
+const CURVES_SLIDER_W: f32 = 9.0;
+const CURVES_SLIDER_H: f32 = 7.0;
+
+/// The space left of the Curves tool column that centres it and a graph of `side` in `width`.
+fn curves_indent(width: f32, side: f32, gap: f32) -> f32 {
+    let w = CURVES_TOOL + gap + side;
+    if width.is_finite() && w.is_finite() { ((width - w) / 2.0).max(0.0) } else { 0.0 }
+}
+
+/// Moves the curve's black (or `white`) end point to `input` (0..255), keeping its output and
+/// staying clear of its neighbour: Photoshop's input sliders. True when it moved.
+fn curves_input_slider(pts: &mut [[f32; 2]], white: bool, input: f32) -> bool {
+    let i = if white { pts.len().saturating_sub(1) } else { 0 };
+    let Some(q) = pts.get(i).copied() else { return false };
+    input.is_finite() && curve_edit::move_to(pts, i, [input, q[1]])
+}
+
 /// The point and pencil buttons, one above the other in the tool column (Photoshop's curve
 /// buttons).
 fn curves_mode_buttons(ui: &mut egui::Ui, v: &mut Value, gray: bool) -> Edit {
@@ -462,9 +480,12 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
     // of a fixed-size graph, Smooth under it.
     let room = ui.available_width() - CURVES_TOOL - ui.spacing().item_spacing.x;
     let side = CURVES_SIDE.min(room).max(CURVES_MIN_SIDE);
+    // Centred in the panel, as Photoshop draws it, rather than against its left edge.
+    let indent = curves_indent(ui.available_width(), side, ui.spacing().item_spacing.x);
     ui.add_space(4.0);
     let (full, resp) = ui
         .horizontal_top(|ui| {
+            ui.add_space(indent);
             ui.vertical(|ui| {
                 ui.set_width(CURVES_TOOL);
                 ui.spacing_mut().item_spacing.y = CURVES_TOOL_GAP;
@@ -512,6 +533,30 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         changed = interaction.changed;
         e.commit |= interaction.commit;
     }
+    // Photoshop's black and white input sliders under the gradient bar: they move the curve's
+    // end points sideways (its darkest and brightest input levels).
+    let hbar = Rect::from_min_max(pos2(graph.left(), graph.bottom() + 4.0), pos2(graph.right(), graph.bottom() + 12.0));
+    let mut sliders = Vec::new();
+    if !pencil {
+        for (end, i) in [(0usize, 0usize), (1, pts.len().saturating_sub(1))] {
+            let Some(q) = pts.get(i).copied() else { continue };
+            let x = to_scr(q).x;
+            let r = Rect::from_min_max(pos2(x - CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0), pos2(x + CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0 + CURVES_SLIDER_H));
+            let id = cx.mem.with(("curves-input-slider", end));
+            let s = ui.interact(r.expand(3.0), id, Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+            if s.dragged()
+                && let Some(pos) = s.interact_pointer_pos()
+            {
+                let input = (pos.x - graph.left()) / graph.width().max(1.0) * 255.0;
+                if curves_input_slider(&mut pts, end == 1, input) {
+                    changed = true;
+                    st.gesture.selected = Some(i);
+                }
+            }
+            e.commit |= s.drag_stopped();
+            sliders.push((end == 1, i));
+        }
+    }
 
     // Draw: histogram, quarter grid, baseline, gradient bars, other channels, the curve, points.
     let p = ui.painter_at(full.expand(2.0));
@@ -532,10 +577,17 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         Stroke::new(if resp.has_focus() { 1.5 } else { 1.0 }, if resp.has_focus() { t.accent } else { t.field_border }),
         StrokeKind::Outside,
     );
-    let hbar = Rect::from_min_max(pos2(graph.left(), graph.bottom() + 4.0), pos2(graph.right(), graph.bottom() + 12.0));
     let vbar = Rect::from_min_max(pos2(full.left(), graph.top()), pos2(full.left() + 8.0, graph.bottom()));
     gradient_bar(&p, hbar, Color32::BLACK, bar_color(&chan, &t), false);
     gradient_bar(&p, vbar, Color32::BLACK, bar_color(&chan, &t), true);
+    for &(white, i) in &sliders {
+        let Some(q) = pts.get(i) else { continue };
+        let x = to_scr(*q).x;
+        let top = hbar.bottom() + 1.0;
+        let tri = vec![pos2(x, top), pos2(x + CURVES_SLIDER_W / 2.0, top + CURVES_SLIDER_H), pos2(x - CURVES_SLIDER_W / 2.0, top + CURVES_SLIDER_H)];
+        let (fill, edge) = if white { (Color32::WHITE, Color32::from_gray(90)) } else { (Color32::BLACK, Color32::from_gray(170)) };
+        p.add(egui::Shape::convex_polygon(tri, fill, Stroke::new(1.0, edge)));
+    }
     let draw_curve = |pts: &[[f32; 2]], color: Color32, width: f32| {
         let cp: Vec<photocraft_doc::adjust::CurvePoint> =
             pts.iter().map(|q| photocraft_doc::adjust::CurvePoint { input: q[0] / 255.0, output: q[1] / 255.0 }).collect();
@@ -1707,6 +1759,30 @@ pub fn layer_editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Photoshop's Curves input sliders move the end points sideways, keeping their outputs, and
+    /// never past the next point.
+    #[test]
+    fn curves_input_sliders_move_the_end_points() {
+        let mut pts = vec![[0.0, 0.0], [128.0, 140.0], [255.0, 255.0]];
+        assert!(curves_input_slider(&mut pts, false, 40.4));
+        assert_eq!(pts[0], [40.0, 0.0]);
+        assert!(curves_input_slider(&mut pts, true, 200.0));
+        assert_eq!(pts[2], [200.0, 255.0]);
+        assert!(curves_input_slider(&mut pts, false, 999.0), "stops before the middle point");
+        assert_eq!(pts[0], [127.0, 0.0]);
+        assert!(!curves_input_slider(&mut pts, true, f32::NAN));
+        assert!(!curves_input_slider(&mut [], false, 10.0));
+    }
+
+    /// The Curves graph is centred in a wide panel and flush left in a narrow one.
+    #[test]
+    fn curves_graph_is_centred() {
+        let w = CURVES_TOOL + 8.0 + CURVES_SIDE;
+        assert_eq!(curves_indent(w + 100.0, CURVES_SIDE, 8.0), 50.0);
+        assert_eq!(curves_indent(w - 20.0, CURVES_SIDE, 8.0), 0.0);
+        assert_eq!(curves_indent(f32::NAN, CURVES_SIDE, 8.0), 0.0);
+    }
 
     #[test]
     fn saturation_and_lightness_tracks_follow_the_hue() {

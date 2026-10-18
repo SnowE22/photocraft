@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-17 · **Last updated:** 2026-10-17 · **Change:** minor (Dual Brush, Texture, Wet Edges, spacing and scatter measured against Photoshop 2026 and matched; ABR import reads every Texture/Dual Brush mode spelling; no brush-feel estimate changed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-18 · **Change:** minor (each tool's brush survives a restart; tool presets switch to their tool; Dual Brush, Texture, Wet Edges, spacing and scatter measured against Photoshop 2026 and matched; ABR import reads every Texture/Dual Brush mode spelling; no brush-feel estimate changed) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -83,7 +83,7 @@ tablets against Photoshop side by side.
 | Clear painting mode in the Brush and Pencil Mode menus | done | `paint_mode_dropdown` in `panels.rs`, `"mode": "clear"`, #3439 |
 | Right-click opens the Brush Preset picker | done | [`context-menu-parity.md`](context-menu-parity.md); XP-Pen right-click not (#1980), macOS issue #2360 |
 | Precise / normal / full-size tip cursors, crosshair in the tip | partial | Caps Lock precise cursor not audited; round Pencil cursor requested (#2662, #1057) |
-| Brush choice kept per tool (Brush, Eraser, Blur each their own) | partial | #2542 |
+| Brush choice kept per tool (Brush, Eraser, Blur each their own), with the preset it was picked from, across restarts | done | #2542; `paint_mouse::sync_tool_brush`, `Preferences::tool_brushes`; `each_tool_keeps_its_own_brush`, `each_tool_gives_back_its_own_preset`, `every_tools_brush_survives_a_restart` |
 
 ## Symmetry
 
@@ -115,6 +115,7 @@ tablets against Photoshop side by side.
 |---|---|---|
 | .abr import (v1/v2/v6) and export, persistent presets, folders | done | `psd/src/abr.rs` |
 | .abr presets keep Capture Brush Size in Preset, Include Tool Settings and the tool blend mode (picking one leaves the tool's size, opacity, flow and mode alone when Photoshop would) | done | `abr_map::captures`; `captured_size_and_tool_settings_follow_the_file` |
+| Presets saved with a tool's settings belong to that tool (Brush, Pencil, Eraser, Smudge, Mixer Brush): picking one from another painting tool switches to its tool, which takes it as its own brush | done | `abr_map::preset_tool`, `paint_mouse::switch_to_preset_tool`; `tool_presets_remember_their_tool`, `a_tool_preset_switches_to_its_tool` |
 | Erodible, Airbrush and Bristle tips | missing | imported as round tips (their `dtips*` / bristle keys are reported) |
 | Brushes panel: drag a folder into a folder | done | #2014; `brush.presets.moveItems` |
 | Brushes panel: loose brushes at the top level, drops between groups | done | `brush.presets.moveItems` (`into: []`, `before`/`after`) |
@@ -129,6 +130,8 @@ tablets against Photoshop side by side.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-18 | minor | Each painting tool's brush and preset are remembered across restarts (`Preferences::tool_brushes`): before, the Brush started with whatever brush the app quit with, the Eraser's included (#2542) |
+| 2026-10-17 | minor | Tool presets: an `.abr` preset saved with the Eraser's (Smudge's, Mixer Brush's, …) settings remembers its tool, and picking it switches to that tool |
 | 2026-10-17 | minor | Brushes measured against Photoshop 2026 by scripting it (strokes of computed and real presets, compared pixel by pixel): Dual Brush modes (Hard Mix, Linear Height), Texture Hard Mix and Linear Burn, Color Dodge/Burn at 248/255 of the depth (Texture and Dual Brush), Wet Edges as a coverage curve, the mask order Texture → Dual Brush → Wet Edges → opacity, spacing by the tip's shorter side, Both Axes scatter in a disc, dual dabs at random angles. ABR import reads Photoshop CC's long mode ids and the older four-character codes (`colorBurn`, `hMix`, `lHgt`, …), which fell back to Multiply |
 | 2026-10-17 | minor | Large brushes: dabs and the stroke composite run tile by tile on every core over each tip's footprint only (bit-identical to the one-thread path), a dedicated loop for plain sampled tips; P60 measures one frame dab to screen (4.0 ms for a 500 px imported-style brush). The Dual Brush tip scales with the brush size, as in Photoshop. ABR import reads Capture Brush Size in Preset (`useBrushSize`), Include Tool Settings and the tool blend mode, so picking a downloaded brush keeps the tool's size and settings |
 | 2026-10-16 | minor | Brushes panel matches Photoshop's: brushes can sit outside groups and drop between groups, Shift/Ctrl multi-select (drag, delete, New Group), a click selects a group and its chevron opens it, stroke-and-name tiles fill each row with a thumbnail-size slider in the footer, Brush Name/Stroke/Tip in the panel menu, Photoshop's darker list well; new `brush.presets.moveItems` and `deleteItems` |

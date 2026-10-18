@@ -1039,7 +1039,7 @@ fn resizing_the_brush_scales_its_dual_tip() {
     let b = resolve_brush(&s, &json!({"points": [[1, 1]], "size": 600.0}), "paint.stroke").unwrap();
     assert!((b.dual_brush.size - 40.0).abs() < 1e-3);
     // A preset that doesn't capture its size: its dual tip at the tool's size.
-    let mut preset = BrushPreset { name: "p".into(), brush: s.tools.brush.clone(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default() };
+    let mut preset = BrushPreset { name: "p".into(), brush: s.tools.brush.clone(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default(), tool: None };
     preset.brush.size = 1000.0;
     preset.brush.dual_brush.size = 400.0;
     preset.captures.size = false;

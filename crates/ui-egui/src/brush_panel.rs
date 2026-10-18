@@ -474,6 +474,7 @@ pub fn copy_texture_to_other_tools(app: &mut PhotocraftApp) {
             brush.texture = texture.clone();
         }
     }
+    crate::paint_mouse::tool_brushes_changed(app);
 }
 
 /// The Brush Settings panel menu actions (hamburger menu).

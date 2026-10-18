@@ -2915,8 +2915,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     if view.fill_pending && rect.width() > 50.0 {
         fill_view(&mut view, &doc, rect.size(), ppp, aspect);
     }
-    // Preferences › Tools › Overscroll off: clamp before anything is drawn (scrollbars.rs).
-    if !app.session.prefs().tools.overscroll && crate::scrollbars::clamp_view_with_aspect(&mut view, rect.size(), ppp, aspect) {
+    // Preferences › Tools › Overscroll: clamp before anything is drawn (scrollbars.rs). Off, the
+    // image can't leave its edges; on, the view stops once the image has just left it.
+    if crate::scrollbars::limit_view(&mut view, rect.size(), ppp, aspect, app.session.prefs().tools.overscroll) {
         ctx.request_repaint();
     }
     let flip = app.ui.view.flip_horizontal;
@@ -3338,8 +3339,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             view.center[0] -= d.x;
             view.center[1] -= d.y;
         }
-        // Overscroll off: the glide stops at the pan limit, as the scrollbars do.
-        if !app.session.prefs().tools.overscroll && crate::scrollbars::clamp_view_with_aspect(&mut view, rect.size(), ppp, aspect) {
+        // The glide stops at the pan limit, as the scrollbars do.
+        if crate::scrollbars::limit_view(&mut view, rect.size(), ppp, aspect, app.session.prefs().tools.overscroll) {
             ctx.data_mut(|m| m.get_temp_mut_or_default::<crate::flick_pan::Flick>(flick_id).stop());
         }
     }
@@ -7255,9 +7256,13 @@ mod tests {
             });
             out.textures_delta.clear();
             // Control: a centre on the selection's corner still traces the outline (the selection
-            // spans several 64 px trace cells even zoomed out).
+            // spans several 64 px trace cells even zoomed out). A huge centre only has to draw
+            // without overflowing: the frame pulls it back to the pan limit (Overscroll stops
+            // once the image has left the view), where the padded trace may reach the selection.
             let segs = app.outline_cache.as_ref().map_or(0, |(_, _, s)| s.len());
-            assert_eq!(segs > 0, traced, "{centre:?} at zoom {zoom}");
+            if traced {
+                assert!(segs > 0, "{centre:?} at zoom {zoom}");
+            }
         }
     }
 

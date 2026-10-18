@@ -13,9 +13,10 @@ use crate::state::Tool;
 
 /// The brush is a tool option, kept per tool like Photoshop's options bar: switching from the
 /// Brush to the Eraser saves the session brush for the old tool and loads the new tool's, so each
-/// keeps its own size, hardness, mode, opacity, dynamics and smoothing. A tool seen for the
-/// first time takes what the brush already has, at Photoshop's 10 % smoothing. Other tools leave
-/// the brush alone.
+/// keeps its own size, hardness, mode, opacity, dynamics and smoothing, and the preset it was
+/// picked from. A tool seen for the first time takes what the brush already has, at Photoshop's
+/// 10 % smoothing. Other tools leave the brush alone. Every tool's brush is remembered across
+/// restarts (`Preferences::tool_brushes`, [`tool_brushes_json`]).
 ///
 /// The foreground and background colours, the erase flag and the stroke seed belong to the
 /// session rather than to the tool, so a swap never carries them between tools: picking a colour
@@ -28,24 +29,114 @@ pub fn sync_tool_brush(app: &mut PhotocraftApp) {
     // The live brush is the outgoing tool's, so save it there before the new one takes over: any
     // edit it made since it was last active is in it, so its copy never goes stale.
     let current = app.session.tools.brush.clone();
-    save_brush(app, app.ui.brush_tool, current.clone());
-    app.session.tools.brush = match app.ui.tool_brushes.iter().find(|(t, _)| *t == tool) {
-        Some((_, b)) => session_fields(&current, b),
+    let preset = app.session.tools.current_preset.clone();
+    save_brush(app, app.ui.brush_tool, current.clone(), preset);
+    let (mut brush, preset) = match app.ui.tool_brushes.iter().find(|(t, _)| *t == tool) {
+        Some((_, b)) => (session_fields(&current, b), app.ui.tool_presets.iter().find(|(t, _)| *t == tool).map(|(_, p)| p.clone())),
         // A tool seen for the first time takes what the brush has, at Photoshop's smoothing.
-        None => BrushSettings { smoothing: first_smoothing(), ..current },
+        None => (BrushSettings { smoothing: first_smoothing(), ..current }, None),
     };
-    // The picked preset was the outgoing tool's brush: forget it, so Update Brush can't overwrite
-    // that preset with this tool's brush.
-    app.session.tools.current_preset = None;
+    // A brush remembered from the last run holds tip references: load the full tips (a missing
+    // one keeps painting with its preview).
+    let _ = app.session.load_brush_tips(&mut brush);
+    app.session.tools.brush = brush;
+    // The tool's own preset, never the outgoing tool's, so Update Brush can't overwrite the
+    // Brush's preset with the Eraser's brush. One deleted since is forgotten.
+    app.session.tools.current_preset = preset.filter(|n| photocraft_paint::presets::find(&app.session.tools.presets, n).is_some());
     app.session.tools.brush_changed();
     app.ui.brush_tool = tool;
+    tool_brushes_changed(app);
 }
 
-/// The brush `tool` had when it was last active.
-fn save_brush(app: &mut PhotocraftApp, tool: Tool, brush: BrushSettings) {
+/// Note that a tool's saved brush, or the tool the live brush belongs to, changed: the next
+/// pointer-up remembers them (`last_brush::persist`).
+pub(crate) fn tool_brushes_changed(app: &mut PhotocraftApp) {
+    app.prefs_rt.tool_brushes_rev = app.prefs_rt.tool_brushes_rev.wrapping_add(1);
+}
+
+/// The shell's name for `tool` in `Preferences::tool_brushes`.
+fn tool_key(tool: Tool) -> String {
+    format!("{tool:?}")
+}
+
+/// Every tool's brush but the live one (that is `Preferences::last_brush`), for
+/// `Preferences::tool_brushes`: `{"active": <the live brush's tool>, "tools": {<tool>: <brush>}}`.
+/// A brush with a sampled bitmap too big to embed is left out (it stays the tool's this run).
+pub(crate) fn tool_brushes_json(app: &PhotocraftApp) -> serde_json::Value {
+    let mut tools = serde_json::Map::new();
+    for (tool, brush) in &app.ui.tool_brushes {
+        if *tool == app.ui.brush_tool {
+            continue;
+        }
+        let preset = app.ui.tool_presets.iter().find(|(t, _)| t == tool).map(|(_, p)| p.as_str());
+        if let Some(v) = photocraft_engine::brush_cmds::remembered(brush, preset) {
+            tools.insert(tool_key(*tool), v);
+        }
+    }
+    serde_json::json!({"active": tool_key(app.ui.brush_tool), "tools": tools})
+}
+
+/// Restore `Preferences::tool_brushes` at launch, after `last_brush` (whose brush is `active`'s):
+/// the tool owning the live brush and every other tool's own brush and preset. Anything
+/// unreadable (an unknown tool, a malformed brush) is skipped; that tool then starts from the
+/// live brush as if it was never used.
+pub(crate) fn restore_tool_brushes(app: &mut PhotocraftApp) {
+    let saved = app.session.prefs().tool_brushes.clone();
+    let active = saved.get("active").and_then(serde_json::Value::as_str).and_then(Tool::from_name).filter(|t| has_brush_picker(*t));
+    let Some(active) = active else { return };
+    app.ui.brush_tool = active;
+    app.ui.tool_brushes.clear();
+    app.ui.tool_presets.clear();
+    for (name, v) in saved.get("tools").and_then(serde_json::Value::as_object).into_iter().flatten() {
+        let Some(tool) = Tool::from_name(name).filter(|t| has_brush_picker(*t) && *t != active) else { continue };
+        let Some((brush, preset)) = photocraft_engine::brush_cmds::recalled(v) else {
+            log::warn!("Preferences: ignoring the remembered brush of the {name} tool");
+            continue;
+        };
+        if app.ui.tool_brushes.iter().all(|(t, _)| *t != tool) {
+            save_brush(app, tool, brush, preset);
+        }
+    }
+    // What was just restored is what the preferences hold.
+    app.prefs_rt.tool_brushes_saved_rev = app.prefs_rt.tool_brushes_rev;
+}
+
+/// The painting tool a preset's [`photocraft_paint::BrushPreset::tool`] names.
+fn preset_tool(tool: &str) -> Option<Tool> {
+    Some(match tool {
+        "brush" => Tool::Brush,
+        "pencil" => Tool::Pencil,
+        "eraser" => Tool::Eraser,
+        "smudge" => Tool::Smudge,
+        "mixerBrush" => Tool::MixerBrush,
+        _ => return None,
+    })
+}
+
+/// Before `tools.setBrush` picks a preset (`params.preset`) that belongs to a tool: switch a
+/// painting tool to that tool, so the preset becomes its brush (Photoshop: an Eraser preset
+/// picked with the Brush tool selects the Eraser, and the Brush keeps its own brush).
+pub fn switch_to_preset_tool(app: &mut PhotocraftApp, params: &serde_json::Value) {
+    let Some(name) = params.get("preset").and_then(serde_json::Value::as_str) else { return };
+    if !app.ui.tool.is_brushlike() {
+        return;
+    }
+    let tool = photocraft_paint::presets::find(&app.session.tools.presets, name).and_then(|p| p.tool.as_deref()).and_then(preset_tool);
+    if let Some(tool) = tool.filter(|t| *t != app.ui.tool) {
+        app.ui.tool = tool;
+        sync_tool_brush(app);
+    }
+}
+
+/// The brush `tool` had when it was last active, and the preset it was picked from.
+fn save_brush(app: &mut PhotocraftApp, tool: Tool, brush: BrushSettings, preset: Option<String>) {
     match app.ui.tool_brushes.iter_mut().find(|(t, _)| *t == tool) {
         Some(e) => e.1 = brush,
         None => app.ui.tool_brushes.push((tool, brush)),
+    }
+    app.ui.tool_presets.retain(|(t, _)| *t != tool);
+    if let Some(p) = preset {
+        app.ui.tool_presets.push((tool, p));
     }
 }
 
@@ -217,6 +308,42 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    /// Picking a preset saved with the Eraser's settings switches to the Eraser, which takes it
+    /// as its brush; the Brush keeps its own brush and size (Photoshop's tool presets).
+    #[test]
+    fn a_tool_preset_switches_to_its_tool() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.ui.tool = Tool::Brush;
+        sync_tool_brush(&mut app);
+        app.run("tools.setBrush", serde_json::json!({"size": 40})).unwrap();
+        let mut eraser = photocraft_paint::BrushPreset {
+            name: "Rub out".into(),
+            brush: BrushSettings { size: 100.0, ..Default::default() },
+            builtin: false,
+            group: String::new(),
+            folder: Vec::new(),
+            captures: Default::default(),
+            tool: Some("eraser".into()),
+        };
+        app.session.tools.presets.push(eraser.clone());
+        eraser.name = "Plain".into();
+        eraser.tool = None;
+        eraser.brush.size = 70.0;
+        app.session.tools.presets.push(eraser);
+        app.run("tools.setBrush", serde_json::json!({"preset": "Rub out"})).unwrap();
+        assert_eq!(app.ui.tool, Tool::Eraser);
+        assert_eq!(app.session.tools.brush.size, 100.0, "the Eraser took the preset");
+        let brush = app.ui.tool_brushes.iter().find(|(t, _)| *t == Tool::Brush).map(|(_, b)| b.size);
+        assert_eq!(brush, Some(40.0), "the Brush kept its own size");
+        // A preset of no particular tool stays with the current one.
+        app.run("tools.setBrush", serde_json::json!({"preset": "Plain"})).unwrap();
+        assert_eq!(app.ui.tool, Tool::Eraser);
+        // Outside the painting tools nothing switches.
+        app.ui.tool = Tool::Move;
+        app.run("tools.setBrush", serde_json::json!({"preset": "Rub out"})).unwrap();
+        assert_eq!(app.ui.tool, Tool::Move);
+    }
     use crate::canvas::{ToolEvent, tool_event};
 
     fn harness(prefs: Option<&str>) -> Harness<'static, PhotocraftApp> {
@@ -625,6 +752,84 @@ mod tests {
         app.ui.tool = Tool::Move;
         sync_tool_brush(&mut app);
         assert_eq!(brush(&app), before);
+    }
+
+    /// Switching tools gives each tool back the preset its brush was picked from: the Brush's
+    /// "hardbrush" and the Eraser's "Hard eraser" stay apart (user report, 2026-10-18).
+    #[test]
+    fn each_tool_gives_back_its_own_preset() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let names: Vec<String> = app.session.tools.presets.iter().take(2).map(|p| p.name.clone()).collect();
+        let [ours, theirs] = [names[0].clone(), names[1].clone()];
+        app.ui.tool = Tool::Brush;
+        sync_tool_brush(&mut app);
+        app.run("tools.setBrush", json!({"preset": ours})).unwrap();
+        app.ui.tool = Tool::Eraser;
+        sync_tool_brush(&mut app);
+        assert_eq!(app.session.tools.current_preset, None, "a tool seen for the first time has no preset");
+        app.run("tools.setBrush", json!({"preset": theirs})).unwrap();
+        app.ui.tool = Tool::Brush;
+        sync_tool_brush(&mut app);
+        assert_eq!(app.session.tools.current_preset.as_deref(), Some(ours.as_str()));
+        app.ui.tool = Tool::Eraser;
+        sync_tool_brush(&mut app);
+        assert_eq!(app.session.tools.current_preset.as_deref(), Some(theirs.as_str()));
+        // A preset deleted meanwhile is forgotten rather than pointing nowhere.
+        app.ui.tool = Tool::Brush;
+        sync_tool_brush(&mut app);
+        app.session.tools.presets.retain(|p| p.name != theirs);
+        app.ui.tool = Tool::Eraser;
+        sync_tool_brush(&mut app);
+        assert_eq!(app.session.tools.current_preset, None);
+    }
+
+    /// Every painting tool's brush survives a restart. Before, only the live brush did, so after
+    /// quitting on the Eraser the Brush started with the Eraser's brush (and the reverse): "a brush
+    /// can be an eraser and an eraser a brush" (user report, 2026-10-18).
+    #[test]
+    fn every_tools_brush_survives_a_restart() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        let preset = app.session.tools.presets.first().map(|p| p.name.clone()).unwrap();
+        app.ui.tool = Tool::Brush;
+        sync_tool_brush(&mut app);
+        app.run("tools.setBrush", json!({"preset": preset})).unwrap();
+        app.run("tools.setBrush", json!({"brush": {"size": 40, "hardness": 0.2}})).unwrap();
+        app.ui.tool = Tool::Eraser;
+        sync_tool_brush(&mut app);
+        app.run("tools.setBrush", json!({"brush": {"size": 100, "hardness": 1.0}})).unwrap();
+        let ctx = egui::Context::default();
+        crate::last_brush::persist(&mut app, &ctx);
+        let saved = app.session.prefs_value().to_string();
+        assert_eq!(app.session.prefs().tool_brushes["active"], json!("Eraser"));
+
+        // A new run, starting on the Brush as the user left the toolbar.
+        let mut s = photocraft_engine::Session::new();
+        s.load_prefs_json(&saved).unwrap();
+        let mut next = PhotocraftApp::new(s, crate::Services::default());
+        crate::last_brush::restore(&mut next);
+        assert_eq!(next.ui.brush_tool, Tool::Eraser, "the live brush is the Eraser's");
+        next.ui.tool = Tool::Brush;
+        sync_tool_brush(&mut next);
+        let b = &next.session.tools.brush;
+        assert_eq!((b.size, b.hardness), (40.0, 0.2), "the Brush gets its own brush back");
+        assert_eq!(next.session.tools.current_preset.as_deref(), Some(preset.as_str()));
+        next.ui.tool = Tool::Eraser;
+        sync_tool_brush(&mut next);
+        let b = &next.session.tools.brush;
+        assert_eq!((b.size, b.hardness), (100.0, 1.0), "and so does the Eraser");
+
+        // Unreadable entries are skipped, never fatal: that tool starts from the live brush.
+        let mut s = photocraft_engine::Session::new();
+        s.load_prefs_json(&saved).unwrap();
+        s.prefs.edit(|p| p.tool_brushes = json!({"active": "Eraser", "tools": {"Brush": {"brush": {"size": "huge"}}, "Nope": {}}}));
+        let mut bad = PhotocraftApp::new(s, crate::Services::default());
+        crate::last_brush::restore(&mut bad);
+        assert!(bad.ui.tool_brushes.is_empty());
+        let mut s = photocraft_engine::Session::new();
+        s.prefs.edit(|p| p.tool_brushes = json!("garbage"));
+        let mut garbage = PhotocraftApp::new(s, crate::Services::default());
+        crate::last_brush::restore(&mut garbage);
+        assert_eq!(garbage.ui.brush_tool, Tool::Brush, "the default");
     }
 
     #[test]

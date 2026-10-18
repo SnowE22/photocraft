@@ -779,7 +779,9 @@ fn presets_save(s: &mut Session, p: &Value) -> Result<Value> {
     if captures.color {
         brush.color = s.tools.foreground;
     }
-    upsert(s, BrushPreset { name: name.clone(), brush, builtin: false, group: String::new(), folder: Vec::new(), captures });
+    // Photoshop's tool presets: picking one switches to its tool (`brush`, `eraser`, …).
+    let tool = p.get("tool").and_then(Value::as_str).filter(|t| photocraft_paint::brush::PRESET_TOOLS.contains(t)).map(str::to_string);
+    upsert(s, BrushPreset { name: name.clone(), brush, builtin: false, group: String::new(), folder: Vec::new(), captures, tool });
     // The saved brush is the current brush now (Photoshop selects the brush it just saved).
     s.tools.current_preset = Some(name.clone());
     s.tools.brush_changed();
@@ -899,7 +901,7 @@ fn define_from_selection(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let tip = GrayTile::from_f32(tw, th, &data);
     let brush = BrushSettings { tip: TipShape::Sampled(tip), size: tw.max(th) as f32, spacing: 0.25, pressure_size: false, ..BrushSettings::default() };
-    upsert(s, BrushPreset { name: name.clone(), brush: brush.clone(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default() });
+    upsert(s, BrushPreset { name: name.clone(), brush: brush.clone(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default(), tool: None });
     s.tools.brush = brush;
     s.tools.current_preset = Some(name.clone());
     s.tools.brush_changed();
@@ -987,29 +989,40 @@ pub fn remember_brush(s: &mut Session) {
     s.tools.brush_saved_rev = s.tools.brush_rev;
 }
 
-/// The current brush as JSON for `Preferences::last_brush`: settings plus tip references, no full
-/// bitmap. `None` while a sampled bitmap too big to embed is current (only before the store
-/// externalizes it; see [`ref_tip`]), so the previous remembered brush stands.
+/// The current brush as JSON for `Preferences::last_brush` (see [`remembered`]).
 fn remembered_brush(s: &Session) -> Option<Value> {
-    let b = &s.tools.brush;
+    remembered(&s.tools.brush, s.tools.current_preset.as_deref())
+}
+
+/// A brush as remembered in the preferences (`Preferences::last_brush`, each tool's in
+/// `Preferences::tool_brushes`): its settings with tip references, no full bitmap, and the preset
+/// it was picked from. `None` while a sampled bitmap too big to embed is in it (only before the
+/// store externalizes it; see [`ref_tip`]), so the previous remembered brush stands.
+pub fn remembered(b: &BrushSettings, preset: Option<&str>) -> Option<Value> {
     let (tip, dual, pattern) = (ref_tip(&b.tip)?, ref_tip(&b.dual_brush.tip)?, ref_pattern(&b.texture.pattern)?);
     let mut c = b.clone();
     (c.tip, c.dual_brush.tip, c.texture.pattern) = (tip, dual, pattern);
-    Some(json!({ "preset": s.tools.current_preset.clone(), "brush": serde_json::to_value(&c).ok()? }))
+    Some(json!({ "preset": preset, "brush": serde_json::to_value(&c).ok()? }))
+}
+
+/// A brush [`remembered`] in the preferences, read back: the settings (over the defaults, so a
+/// field added since still gets its default) and the preset name. `None` for a missing,
+/// malformed or out-of-range value. Its stored tips are references until the preset store loads
+/// them ([`Session::load_brush_tips`]).
+pub fn recalled(v: &Value) -> Option<(BrushSettings, Option<String>)> {
+    let patch = v.get("brush").filter(|b| b.is_object())?;
+    let b = merge_brush(&BrushSettings::default(), patch, "brush.restore").ok()?;
+    validate_brush(&b, "brush.restore").ok()?;
+    Some((b, v.get("preset").and_then(Value::as_str).map(str::to_string)))
 }
 
 /// Restore `Preferences::last_brush` into the session at launch (a missing or malformed value
 /// keeps the default brush). Stored tips load when the preset store attaches.
 pub fn restore_brush(s: &mut Session) {
-    let v = s.prefs().last_brush.clone();
-    let Some(patch) = v.get("brush").filter(|b| b.is_object()) else { return };
-    let Ok(mut b) = merge_brush(&BrushSettings::default(), patch, "brush.restore") else { return };
-    if validate_brush(&b, "brush.restore").is_err() {
-        return;
-    }
+    let Some((mut b, preset)) = recalled(&s.prefs().last_brush) else { return };
     let _ = s.load_brush_tips(&mut b);
     s.tools.brush = b;
-    s.tools.current_preset = v.get("preset").and_then(Value::as_str).map(str::to_string);
+    s.tools.current_preset = preset;
     // What was just restored is exactly what the preferences hold: nothing new to write.
     s.tools.brush_saved_rev = s.tools.brush_rev;
 }
@@ -1137,7 +1150,7 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!(
             "brush.presets.save",
             "Save Brush Preset",
-            r##"{"name":string,"brush":{…BrushSettings}?=current brush,"captureSize":bool=true (false: picking it keeps the tool's size),"toolSettings":bool=true (false: picking it keeps the tool's mode, opacity, flow and pressure buttons),"color":bool=false (picking it sets the foreground to the current foreground)}"##,
+            r##"{"name":string,"brush":{…BrushSettings}?=current brush,"captureSize":bool=true (false: picking it keeps the tool's size),"toolSettings":bool=true (false: picking it keeps the tool's mode, opacity, flow and pressure buttons),"color":bool=false (picking it sets the foreground to the current foreground),"tool":"brush"|"pencil"|"eraser"|"smudge"|"mixerBrush"? (picking it switches to that tool)}"##,
             always,
             presets_save,
             true

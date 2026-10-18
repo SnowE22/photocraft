@@ -746,7 +746,7 @@ fn default_crop_resolution_unit() -> String {
 }
 
 fn default_move_target() -> String {
-    "group".into()
+    "layer".into()
 }
 
 fn default_curve_fit() -> f32 {
@@ -1161,6 +1161,10 @@ pub struct UiState {
     pub brush_tool: Tool,
     #[serde(default)]
     pub tool_brushes: Vec<(Tool, photocraft_engine::paint::BrushSettings)>,
+    /// The preset each tool's saved brush was last picked from, so switching back to the Eraser
+    /// gives back its own "Hard eraser" (highlighted, and what Update Brush overwrites).
+    #[serde(default)]
+    pub tool_presets: Vec<(Tool, String)>,
     /// Pen path under construction.
     #[serde(default)]
     pub pen: Option<crate::vector_ui::PenPath>,
@@ -1326,6 +1330,7 @@ impl Default for UiState {
             canvas_tool_menu: None,
             brush_tool: Tool::Brush,
             tool_brushes: Vec::new(),
+            tool_presets: Vec::new(),
             clone_source: None,
             clone_offset: None,
             pattern_stamp_phase: None,

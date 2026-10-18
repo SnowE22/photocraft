@@ -76,7 +76,9 @@ fn reset_tool(app: &mut PhotocraftApp, tool: Tool) {
         // The session brush is the options bar's tool's: make sure it is `tool`'s before resetting.
         crate::paint_mouse::sync_tool_brush(app);
         app.ui.tool_brushes.retain(|(t, _)| *t != tool);
+        app.ui.tool_presets.retain(|(t, _)| *t != tool);
         reset_session_brush(app);
+        crate::paint_mouse::tool_brushes_changed(app);
     }
 }
 
@@ -85,7 +87,9 @@ fn reset_all(app: &mut PhotocraftApp) {
     app.ui.tool_options = ToolOptions::default();
     app.ui.selection_mode = 0;
     app.ui.tool_brushes.clear();
+    app.ui.tool_presets.clear();
     reset_session_brush(app);
+    crate::paint_mouse::tool_brushes_changed(app);
 }
 
 fn reset_session_brush(app: &mut PhotocraftApp) {

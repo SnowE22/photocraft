@@ -1016,6 +1016,11 @@ pub struct Preferences {
     /// shaped by `brush_cmds::remembered_brush`), restored at launch so the tool starts where it
     /// was left. Written only when `ToolState::brush_rev` moves.
     pub last_brush: Value,
+    /// Each painting tool's own brush, as Photoshop keeps the Brush's and the Eraser's apart
+    /// across restarts: `{"active": <tool>, "tools": {<tool>: <brush>}}`, where `active` is the
+    /// tool whose brush `last_brush` holds and `tools` the others', each shaped like `last_brush`
+    /// (`brush_cmds::remembered`). Tools by the shell's names. JSON owned by the shell.
+    pub tool_brushes: Value,
     /// The tools' options-bar settings (Move › Auto-Select, marquee Feather, tolerance, …) that
     /// differ from their defaults, saved as the user changes them and restored at launch, as
     /// Photoshop remembers each tool's options between sessions. JSON owned by the shell.
