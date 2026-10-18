@@ -69,6 +69,18 @@ from it is committed here. Per-file authors, sources and licences:
 | Shippori Mincho Regular (FONTDASU) | Japanese serif Type fallback (desktop) | SIL OFL 1.1, shipped as `OFL-shippori-mincho.txt` |
 | BIZ UDMincho Regular (Morisawa) | Japanese serif Type fallback (desktop) | SIL OFL 1.1, shipped as `OFL-biz-ud-mincho.txt` |
 
+### Optional run-time downloads: the local AI model (not files in this repo)
+
+The Remove tool's Generative AI mode loads these when the user installs them next to the
+executable (`packaging/models/README.md`); none is committed or shipped, and the app works
+without them (the Remove tool then uses its patch fill).
+
+| File (installed by the user) | Use | Author | Source | License |
+|---|---|---|---|---|
+| `lama_fp32.onnx` | LaMa inpainting (Suvorov et al., WACV 2022), big-lama exported to ONNX | Samsung AI Center (LaMa); Carve (ONNX export) | <https://github.com/advimman/lama>, <https://huggingface.co/Carve/LaMa-ONNX> | Apache-2.0 |
+| `onnxruntime.dll`, `onnxruntime_providers_shared.dll` | ONNX Runtime, loaded at run time by the `ort` crate (`load-dynamic`) | Microsoft Corporation | <https://github.com/microsoft/onnxruntime> (`onnxruntime-directml` package) | MIT |
+| `DirectML.dll` | DirectML, ONNX Runtime's GPU provider on Windows | Microsoft Corporation | <https://github.com/microsoft/DirectML> (same package) | Microsoft DirectML License (redistributable) |
+
 The other built-in ICC profiles and the generated LUT looks are produced by code at runtime
 (`crates/cms/src/builtin.rs`, `crates/cms/src/lutfile.rs`) and dedicated to the public domain
 (CC0-1.0); they are not separate files.

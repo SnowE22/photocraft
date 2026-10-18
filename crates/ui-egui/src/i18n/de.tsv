@@ -3160,3 +3160,11 @@ curves	Smooth	Glätten
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× auf {w} × {h} px vergrößert (neue Ebene)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Warten auf Topaz Gigapixel AI: Exportieren Sie dort das vergrößerte Bild, um es zurückzuholen.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} Aktion in {sets} Sets aus {file} geladen|{n} Aktionen in {sets} Sets aus {file} geladen
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Generative KI ein
+	Generative AI Off	Generative KI aus
+	Loading the AI model…	KI-Modell wird geladen…
+	AI model not installed	KI-Modell nicht installiert
+	AI model failed to load	KI-Modell konnte nicht geladen werden
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Legen Sie lama_fp32.onnx und ONNX Runtime (onnxruntime.dll, DirectML.dll) in einen dieser Ordner: {folders}. Bis dahin verwendet „Automatisch“ die herkömmliche Füllung.

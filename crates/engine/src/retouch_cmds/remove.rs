@@ -13,11 +13,21 @@
 //! instead of sampling from an area the next stroke is about to remove. With `newLayer` the fill
 //! lands on a new layer above the target, only where the hole is, and the target stays as it was
 //! (Photoshop's *Create a new layer*; with Sample All Layers it fills from the composite).
+//!
+//! `generative` is Photoshop's *Mode*. The generative fill is LaMa (`photocraft_ml`), a local
+//! inpainting network that makes up new detail where the patch fill can only copy what is
+//! around: *Auto* uses it when it is installed and the stroke suits it (layer pixels of an RGB or
+//! Grayscale image with opaque surroundings) and the patch fill otherwise, *On* uses it or fails
+//! saying why, *Off* always uses the patch fill. Masks and channels always get the patch fill.
 
 use super::content_aware_move::{Target, replace};
 use super::patch::coverage;
 use super::*;
+use photocraft_color::ColorMode;
 use photocraft_doc::Layer;
+use photocraft_ml::inpaint::{Colours, Model, Request};
+use photocraft_ml::{Device, MlError};
+use photocraft_raster::Interrupt;
 
 const CMD: &str = "paint.remove";
 
@@ -35,6 +45,42 @@ const GROW: usize = 2;
 /// Seed of the completion, so a removal is reproducible.
 const SEED: u64 = 0x0052_e30e;
 
+/// Photoshop's Mode: whether the generative model fills the hole.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Generative {
+    /// The model when it is installed and suits the stroke, else the patch fill.
+    Auto,
+    /// The model, or an error saying why it can't.
+    On,
+    /// The patch fill.
+    Off,
+}
+
+/// `generative`: "auto" (the default), "on" or "off"; true and false mean on and off.
+fn generative(p: &Value) -> Result<Generative> {
+    let why = |v: &dyn std::fmt::Display| bad(CMD, format!("`generative` is \"auto\", \"on\" or \"off\", not {v}"));
+    match p.get("generative") {
+        None | Some(Value::Null) => Ok(Generative::Auto),
+        Some(Value::Bool(on)) => Ok(if *on { Generative::On } else { Generative::Off }),
+        Some(Value::String(v)) => match v.as_str() {
+            "auto" => Ok(Generative::Auto),
+            "on" => Ok(Generative::On),
+            "off" => Ok(Generative::Off),
+            _ => Err(why(&format!("\"{v}\""))),
+        },
+        Some(v) => Err(why(v)),
+    }
+}
+
+/// Which fill made the result.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Filled {
+    /// The patch fill; with Auto, `note` says why the model wasn't used when it is installed.
+    Patch { note: Option<String> },
+    /// The generative model, on this device.
+    Generative(Device),
+}
+
 /// The sampling margin around the stroke: three quarters of its larger side, at least 32 pixels
 /// (in u64, so a huge extent can't overflow; a margin beyond i32 saturates).
 fn sampling_margin(area: Rect) -> i32 {
@@ -43,16 +89,18 @@ fn sampling_margin(area: Rect) -> i32 {
 }
 
 /// What a removal does, checked before any work starts.
-struct Plan {
-    id: Option<LayerId>,
+pub(super) struct Plan {
+    pub(super) id: Option<LayerId>,
     /// One stroke (`points`), or several applied together (`strokes`).
     strokes: Vec<Stroke>,
     /// Where the fill samples from: the strokes plus a margin, on the canvas.
-    window: Rect,
+    pub(super) window: Rect,
     close_loops: bool,
     all_layers: bool,
     /// The fill goes to a new layer above the target instead of into it.
     new_layer: bool,
+    /// Whether the generative model fills the hole (Off for masks and channels).
+    pub(super) generative: Generative,
 }
 
 /// The stroke's bounding box (points ± the brush radius), before any coverage is rendered.
@@ -92,7 +140,8 @@ fn parse_strokes(s: &Session, p: &Value) -> Result<(Vec<Stroke>, Option<LayerId>
     Ok((strokes, id))
 }
 
-fn plan(s: &Session, p: &Value) -> Result<Plan> {
+pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
+    let mode = generative(p)?;
     let (strokes, id) = parse_strokes(s, p)?;
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
@@ -110,12 +159,19 @@ fn plan(s: &Session, p: &Value) -> Result<Plan> {
     let all_layers = flag(p, "sampleAllLayers", false) && targets_pixels(p);
     // A mask or channel has no "above": the fill goes where the stroke went.
     let new_layer = flag(p, "newLayer", false) && targets_pixels(p);
-    Ok(Plan { id, strokes, window, close_loops, all_layers, new_layer })
+    let generative = if targets_pixels(p) { mode } else { Generative::Off };
+    // On without a usable model fails now, before the job starts.
+    if generative == Generative::On
+        && let Err(e) = photocraft_ml::lama::availability()
+    {
+        return Err(bad(CMD, format!("Generative AI is on, but {e}")));
+    }
+    Ok(Plan { id, strokes, window, close_loops, all_layers, new_layer, generative })
 }
 
 /// The hole over the plan's window: the strokes' footprints, their enclosed areas and a margin,
 /// limited to the selection. Empty when nothing would change.
-fn hole(plan: &Plan, sel: Option<&Surface>) -> Vec<bool> {
+pub(super) fn hole(plan: &Plan, sel: Option<&Surface>) -> Vec<bool> {
     let win = plan.window;
     let (w, h) = (win.width() as usize, win.height() as usize);
     let mut m = vec![false; w * h];
@@ -144,9 +200,57 @@ fn hole(plan: &Plan, sel: Option<&Surface>) -> Vec<bool> {
     m
 }
 
-/// The filled window and the hole it fills, computed on `doc` (a snapshot). `None` when the
-/// layer's own window is fully transparent: nothing to remove and nothing to fill from.
-fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::JobCtx, label: &str) -> Result<Option<(Region, Vec<bool>)>> {
+/// The colours the model sees, for a document of `mode`: RGB or Grayscale (Indexed and Bitmap are
+/// edited as RGB and Gray); other models have no channels the model knows.
+fn model_colours(mode: ColorMode) -> std::result::Result<Colours, MlError> {
+    match mode {
+        ColorMode::Rgb | ColorMode::Indexed => Ok(Colours::Rgb),
+        ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone => Ok(Colours::Gray),
+        ColorMode::Cmyk | ColorMode::Lab | ColorMode::Multichannel => Err(MlError::Unsuitable("Generative AI works on RGB and Grayscale images".into())),
+    }
+}
+
+/// The generative fill of `hole` over the plan's window: `img` is the window as the patch fill
+/// sees it (the target, or with Sample All Layers the composite), and the model's crops around
+/// each part of the hole are read from the same source. `model` runs the network on the crops.
+pub(super) fn fill_generative(
+    doc: &mut Document,
+    plan: &Plan,
+    p: &Value,
+    img: &Region,
+    hole: &[bool],
+    ctl: &Interrupt,
+    model: &mut Model<'_>,
+) -> std::result::Result<Vec<f32>, MlError> {
+    let canvas = doc.bounds();
+    let (fmt, source) = {
+        let (surf, _) = crate::channel_cmds::target_surface(doc, plan.id, p).map_err(|e| MlError::BadInput(e.to_string()))?;
+        (surf.format(), (!plan.all_layers).then(|| surf.clone()))
+    };
+    let colours = model_colours(fmt.mode)?;
+    let req = Request {
+        canvas,
+        window: plan.window,
+        hole,
+        pixels: &img.data,
+        ch: img.ch,
+        colours,
+        alpha: alpha_index(&fmt),
+        // 32-bit documents hold linear light.
+        linear: fmt.sample == SampleType::F32,
+    };
+    let doc = &*doc;
+    let mut read = |r: Rect| match &source {
+        Some(surf) => surf.read_region(r),
+        None => composite_region(doc, None, SampleLayers::All, r, fmt).data,
+    };
+    photocraft_ml::inpaint::fill(&req, &mut read, model, ctl)
+}
+
+/// The filled window and the hole it fills, computed on `doc` (a snapshot), and which fill made
+/// it. `None` when the layer's own window is fully transparent: nothing to remove and nothing to
+/// fill from.
+fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::JobCtx, label: &str) -> Result<Option<(Region, Vec<bool>, Filled)>> {
     let hole = hole(plan, doc.selection.as_ref());
     if !hole.iter().any(|m| *m) {
         return Err(bad(CMD, "the stroke doesn't cover anything that can change (check the selection)"));
@@ -166,13 +270,67 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
     if !plan.all_layers && alpha_index(&fmt).is_some_and(|a| img.data.chunks_exact(img.ch).all(|px| px.get(a).is_none_or(|v| *v <= 0.0))) {
         return Ok(None);
     }
+    let mut note = None;
+    let use_model = match plan.generative {
+        Generative::Off => false,
+        Generative::On => true,
+        // Auto stays quiet when the model isn't installed, and says why when it is but failed.
+        Generative::Auto => match photocraft_ml::lama::availability() {
+            Ok(()) => true,
+            Err(MlError::ModelMissing { .. } | MlError::RuntimeMissing { .. } | MlError::Unsupported) => false,
+            Err(e) => {
+                note = Some(format!("Generative AI isn't available ({e}); used the patch fill"));
+                false
+            }
+        },
+    };
+    if use_model {
+        let ready = matches!(photocraft_ml::lama::state(), photocraft_ml::lama::State::Ready(_));
+        let message = if ready { "Remove (Generative AI)" } else { "Remove: loading the Generative AI model (the first time takes a few seconds)" };
+        let mut device = None;
+        let filled = ctx.stage(0.0, 1.0, message, |ctl| {
+            fill_generative(doc, plan, p, &img, &hole, ctl, &mut |rgb, mask| {
+                let (out, d) = photocraft_ml::lama::inpaint(rgb, mask)?;
+                device = Some(d);
+                ctx.progress(f32::NAN, "Remove (Generative AI)");
+                Ok(out)
+            })
+        });
+        match filled {
+            Ok(mut data) => {
+                clamp_samples(&fmt, &mut data);
+                let used = Filled::Generative(device.unwrap_or(Device::Cpu));
+                return Ok(Some((Region { rect: win, ch: img.ch, data }, hole, used)));
+            }
+            Err(MlError::Cancelled) => return Err(EngineError::Cancelled),
+            Err(e) if plan.generative == Generative::On => return Err(bad(CMD, format!("Generative AI couldn't fill the stroke: {e}"))),
+            Err(e) => note = Some(format!("{e}; used the patch fill")),
+        }
+    }
     let (w, h) = (win.width() as usize, win.height() as usize);
     let mut data = ctx
         .stage(0.0, 1.0, label, |ctl| photocraft_algo::remove::remove_with(w, h, img.ch, &img.data, &hole, SEED, ctl))
         .map_err(|_| EngineError::Cancelled)?;
     // The fill's seam blending can step slightly past the storable range.
     clamp_samples(&fmt, &mut data);
-    Ok(Some((Region { rect: win, ch: img.ch, data }, hole)))
+    Ok(Some((Region { rect: win, ch: img.ch, data }, hole, Filled::Patch { note })))
+}
+
+/// The result fields saying which fill was used.
+fn filled_json(v: &mut Value, filled: &Filled) {
+    let Some(o) = v.as_object_mut() else { return };
+    match filled {
+        Filled::Generative(d) => {
+            o.insert("fill".into(), json!("generative"));
+            o.insert("device".into(), json!(d.name()));
+        }
+        Filled::Patch { note } => {
+            o.insert("fill".into(), json!("patch"));
+            if let Some(n) = note {
+                o.insert("note".into(), json!(n));
+            }
+        }
+    }
 }
 
 /// The fill on a new layer above `id`: the hole's pixels (opaque where the source had no alpha),
@@ -224,7 +382,7 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
             }
         },
         move |s, filled| {
-            let Some((out, hole)) = filled else { return Ok(json!({"changed": false})) };
+            let Some((out, hole, used)) = filled else { return Ok(json!({"changed": false})) };
             if new_layer {
                 let (damage, nid) = s.edit(label, |doc, active| {
                     let r = fill_to_new_layer(doc, id, &out, &hole)?;
@@ -234,13 +392,17 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
                 if let Some(st) = s.active_mut() {
                     st.last_damage = Some(damage);
                 }
-                return Ok(json!({ "damage": damage_json(damage), "layer": nid.0 }));
+                let mut v = json!({ "damage": damage_json(damage), "layer": nid.0 });
+                filled_json(&mut v, &used);
+                return Ok(v);
             }
             let damage = s.edit(label, |doc, _| replace(doc, Target { id, all_layers: false }, &p, &out, &hole))?;
             if let Some(st) = s.active_mut() {
                 st.last_damage = Some(damage);
             }
-            Ok(json!({ "damage": damage_json(damage) }))
+            let mut v = json!({ "damage": damage_json(damage) });
+            filled_json(&mut v, &used);
+            Ok(v)
         },
     )
 }

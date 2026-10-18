@@ -1,0 +1,26 @@
+[package]
+name = "photocraft-ml"
+description = "Local machine-learning models (LaMa inpainting for the Remove tool) on ONNX Runtime, loaded at run time, on DirectML on Windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+photocraft-geom = { workspace = true }
+photocraft-raster = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+# ONNX Runtime (MIT OR Apache-2.0), loaded at run time (`load-dynamic`): nothing links at build
+# time, so a build or an install without the runtime works and reports the models as missing.
+# Without an `api-*` feature it asks for ONNX Runtime's API 17, which every runtime from 1.17 on
+# provides. A release candidate, so pinned exactly.
+[target.'cfg(windows)'.dependencies]
+ort = { version = "=2.0.0-rc.14", default-features = false, features = ["load-dynamic", "directml"] }
+
+[target.'cfg(all(not(windows), not(target_arch = "wasm32")))'.dependencies]
+ort = { version = "=2.0.0-rc.14", default-features = false, features = ["load-dynamic"] }

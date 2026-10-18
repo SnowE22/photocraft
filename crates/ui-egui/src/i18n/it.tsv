@@ -4125,3 +4125,11 @@ navigator	Zoom	Zoom
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: ingrandita {scale}× a {w} × {h} px (nuovo livello)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	In attesa di Topaz Gigapixel AI: esporta lì l'immagine ingrandita per riportarla qui.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Caricata {n} azione in {sets} set da {file}|Caricate {n} azioni in {sets} set da {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	IA generativa attiva
+	Generative AI Off	IA generativa disattivata
+	Loading the AI model…	Caricamento del modello IA…
+	AI model not installed	Modello IA non installato
+	AI model failed to load	Impossibile caricare il modello IA
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Metti lama_fp32.onnx e ONNX Runtime (onnxruntime.dll, DirectML.dll) in una di queste cartelle: {folders}. Fino ad allora "Automatico" usa il riempimento tradizionale.

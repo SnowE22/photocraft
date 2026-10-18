@@ -3952,3 +3952,11 @@ layerLabel	No Color	Sem cor
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: ampliada {scale}× para {w} × {h} px (nova camada)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Aguardando o Topaz Gigapixel AI: exporte lá a imagem ampliada para trazê-la de volta.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} ação carregada em {sets} conjuntos de {file}|{n} ações carregadas em {sets} conjuntos de {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	IA generativa ativada
+	Generative AI Off	IA generativa desativada
+	Loading the AI model…	Carregando o modelo de IA…
+	AI model not installed	Modelo de IA não instalado
+	AI model failed to load	Falha ao carregar o modelo de IA
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Coloque lama_fp32.onnx e o ONNX Runtime (onnxruntime.dll, DirectML.dll) em uma destas pastas: {folders}. Até lá, "Automático" usa o preenchimento comum.

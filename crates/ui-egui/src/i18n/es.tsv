@@ -2847,3 +2847,11 @@ curves	Smooth	Suavizar
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: ampliada {scale}× a {w} × {h} px (capa nueva)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Esperando a Topaz Gigapixel AI: exporta allí la imagen ampliada para traerla de vuelta.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Se cargó {n} acción en {sets} conjuntos de {file}|Se cargaron {n} acciones en {sets} conjuntos de {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	IA generativa activada
+	Generative AI Off	IA generativa desactivada
+	Loading the AI model…	Cargando el modelo de IA…
+	AI model not installed	Modelo de IA no instalado
+	AI model failed to load	No se pudo cargar el modelo de IA
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Coloque lama_fp32.onnx y ONNX Runtime (onnxruntime.dll, DirectML.dll) en una de estas carpetas: {folders}. Hasta entonces, «Automático» usa el relleno convencional.

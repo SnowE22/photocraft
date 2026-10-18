@@ -540,6 +540,9 @@ pub struct PhotocraftApp {
     pub(crate) remove_pending: Vec<Vec<[f64; 3]>>,
     pub(crate) remove_pending_doc: Option<photocraft_doc::DocId>,
     pub(crate) remove_trail: Option<stroke_trail::Trail>,
+    /// The Remove tool's generative model as its options bar last saw it, and when (egui time).
+    /// Looked up at most once a second: finding the model touches the disk (`retouch_ui`).
+    pub(crate) generative_probe: Option<(f64, photocraft_engine::generative::State)>,
     /// The open menus' items, reused between frames (`menus::ItemCache`).
     pub(crate) menu_cache: Option<menus::ItemCache>,
     /// Move tool drag shown live (`move_ui`).
@@ -795,6 +798,7 @@ impl PhotocraftApp {
             remove_pending: Vec::new(),
             remove_pending_doc: None,
             remove_trail: None,
+            generative_probe: None,
             menu_cache: None,
             move_preview: None,
             move_hover: None,

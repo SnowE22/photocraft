@@ -3151,3 +3151,11 @@ curves	Smooth	Haluskan
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: diperbesar {scale}× menjadi {w} × {h} px (lapisan baru)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Menunggu Topaz Gigapixel AI: ekspor gambar yang diperbesar di sana untuk membawanya kembali.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} tindakan dalam {sets} set dimuat dari {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	AI Generatif Aktif
+	Generative AI Off	AI Generatif Nonaktif
+	Loading the AI model…	Memuat model AI…
+	AI model not installed	Model AI belum terpasang
+	AI model failed to load	Model AI gagal dimuat
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Letakkan lama_fp32.onnx dan ONNX Runtime (onnxruntime.dll, DirectML.dll) di salah satu folder ini: {folders}. Sampai saat itu, "Otomatis" memakai isian biasa.

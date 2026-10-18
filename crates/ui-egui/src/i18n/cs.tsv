@@ -3770,3 +3770,11 @@ navigator	Zoom	Zvětšení
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: zvětšeno {scale}× na {w} × {h} px (nová vrstva)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Čeká se na Topaz Gigapixel AI: zvětšený obrázek tam exportujte a vrátí se sem.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Načtena {n} akce v sadách ({sets}) ze souboru {file}|Načteny {n} akce v sadách ({sets}) ze souboru {file}|Načteno {n} akcí v sadách ({sets}) ze souboru {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Generativní AI zapnuto
+	Generative AI Off	Generativní AI vypnuto
+	Loading the AI model…	Načítání modelu AI…
+	AI model not installed	Model AI není nainstalován
+	AI model failed to load	Model AI se nepodařilo načíst
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Umístěte lama_fp32.onnx a ONNX Runtime (onnxruntime.dll, DirectML.dll) do jedné ze složek: {folders}. Do té doby režim „Automaticky“ používá běžnou výplň.

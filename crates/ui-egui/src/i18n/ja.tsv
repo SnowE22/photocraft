@@ -3839,3 +3839,11 @@ curves	Smooth	スムーズ
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI：{scale}× で {w} × {h} px に拡大しました（新規レイヤー）
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI を待っています：拡大した画像をそこで書き出すとここに戻ります。
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file} から {sets} 個のセットのアクション {n} 個を読み込みました
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	生成 AI オン
+	Generative AI Off	生成 AI オフ
+	Loading the AI model…	AI モデルを読み込み中…
+	AI model not installed	AI モデルが未インストール
+	AI model failed to load	AI モデルの読み込みに失敗しました
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx と ONNX Runtime（onnxruntime.dll、DirectML.dll）を次のいずれかのフォルダーに置いてください：{folders}。それまでは「自動」で従来の塗りつぶしを使います。

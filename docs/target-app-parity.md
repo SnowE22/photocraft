@@ -1,6 +1,6 @@
 # PhotoCraft vs Adobe Photoshop: target-app parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-18 · **Change:** minor (Photoshop's Actions palette loads whole, 96 % of a user's palette steps map; `.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment; stale missing-tool rows corrected: Color Replacement and Red Eye are live toolbar tools, Frame landed; percentages unchanged) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-18 · **Change:** minor (the Remove tool's Generative AI mode on a local LaMa model, percentages unchanged; Photoshop's Actions palette loads whole, 96 % of a user's palette steps map; `.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment; stale missing-tool rows corrected: Color Replacement and Red Eye are live toolbar tools, Frame landed; percentages unchanged) · **Target:** Adobe Photoshop 2026
 
 The authoritative answer to "how close is PhotoCraft to Photoshop, and how much work is left". The
 one-page summary is [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [`gaps.md`](gaps.md);
@@ -65,7 +65,7 @@ architecture and the PSD writer are the serial parts.
 | Panels | 10% | 30 / 35 Window-menu panels | 86% | measured (`view_cmds.rs`, panel modules) |
 | Filters and adjustments | 10% | every Filter and Image › Adjustments item live; Filter Gallery 47 looks | 100% | measured (menu catalog) |
 | File formats (usage-weighted) | 15% | 13 of 31 Photoshop formats supported in Photoshop's directions, 4 partial; the common ones (PSD/PSB, TIFF, JPEG, PNG, WebP) all present | ~80% (48% by count) | measured list, estimated weights ([file-format-parity.md](file-format-parity.md)) |
-| AI / generative | 10% | classical Select Subject/Sky, Remove tool, Content-Aware; no Generative Fill/Expand, Neural Filters, Sky Replacement, Super Zoom | ~15% | estimated |
+| AI / generative | 10% | classical Select Subject/Sky, Remove tool (with a generative mode on a local LaMa model since 2026-10-18), Content-Aware; no Generative Fill/Expand, Neural Filters, Sky Replacement, Super Zoom | ~15% | estimated |
 | Ecosystem (plug-ins, scripting, libraries) | 10% | WebAssembly plug-ins, CLI, MCP, actions, `.atn` load/save (112 events); no .8BF, UXP/ExtendScript, Libraries | ~20% | estimated |
 | **Weighted** | 100% | | **~76%** | |
 
@@ -84,7 +84,7 @@ Weights reflect what a working Photoshop user depends on (photographers, retouch
 | Localization | 5% | 55% | 80–140 | 7 of the 12 key languages at 100% of measured UI keys; Hindi and Arabic absent, Vietnamese catalog added 2026-10-12 (#2636, coverage not re-measured); no RTL UI; engine messages English | [localization-parity.md](localization-parity.md) |
 | Platforms | 5% | 80% | 30–60 | macOS (notarized), Windows (unsigned), Linux (AppImage/deb/rpm/Flatpak), web, FreeBSD partial; Windows ARM64 is packaged and install-checked by `.github/workflows/windows-arm64.yml` (DIST-220-2); no in-app updates | [scorecard.md](scorecard.md#distribution) |
 | Ecosystem (plug-ins, scripting, presets, libraries) | 5% | 15% | 250–450 | No .8BF hosting (#2647), no UXP/ExtendScript; Topaz Gigapixel AI through its app or command-line tool instead of its plug-in (2026-10-18); .atn load/save (2026-10-12) and Photoshop's whole Actions palette (2026-10-18, 96 % of a user's steps map), .abr/.grd/.pat/.aco/.ase/.cube/.acv supported | [gaps.md](gaps.md) |
-| AI features | 5% | 10% | 300–600 | No ML runtime at all (scorecard AUTO-219-7); classical substitutes only. Needs an owner decision and openly licensed models (#41) | [gaps.md](gaps.md) |
+| AI features | 5% | 10% | 300–600 | One local model since 2026-10-18: LaMa for the Remove tool's Generative AI mode, on ONNX Runtime loaded at run time (`photocraft-ml`, DirectML on Windows; scorecard AUTO-219-7 partial). Nothing prompted (Generative Fill/Expand), no Neural Filters or ML selection. Needs an owner decision and openly licensed models (#41) | [gaps.md](gaps.md) |
 | **Weighted** | 100% | **~46%** | **2,340–4,100** | | |
 
 ## Mainstream practitioner: ~43%
@@ -170,7 +170,7 @@ parity for the area and are already contained in the dimension rows above.
 | Layers, groups, masks, blend modes, smart objects, layer styles | 65% | 150–250 | Broad and GPU-accelerated. Open: layer clipboard between documents (UI-217-23: `layer.copyToDocument` exists, no copy/paste), smart-object perspective (FILE-215-6), a user contour library (FILE-215-15). Multi-layer Smart Object conversion (#2052, #2651), Stamp Visible (UI-217-22) and mask targeting by command (#2458) are done |
 | Selections, Select and Mask, channels | 55% | 120–200 | All selection tools, single row/column marquee included (#2837). Select and Mask is a dialog with Photoshop's view modes, a Refine Edge Brush and six outputs, not a workspace (TOOL-214-1), no Refine Hair (#2671); Select Subject/Sky classical, 559 ms p50 on 24 MP vs a 100 ms budget |
 | Painting and brush engine | 55% | 150–250 | Every Brush Settings section exists; feel is the gap: lag on big brushes, pressure jumps, smoothing and edge quality reports ([brush-parity.md](brush-parity.md)) |
-| Retouching (healing, clone, patch, remove, content-aware) | 50% | 100–180 | Remove tool non-generative; Content-Aware Fill has no workspace (TOOL-214-15); live stroke preview only for Brush/Eraser (TOOL-213-7) |
+| Retouching (healing, clone, patch, remove, content-aware) | 50% | 100–180 | Remove tool's Generative AI mode needs the separately installed model; Content-Aware Fill has no workspace (TOOL-214-15); live stroke preview only for Brush/Eraser (TOOL-213-7) |
 | Transform, warp, puppet, perspective, liquify | 55% | 100–180 | Free Transform modifiers right, with a right-click transform menu (TOOL-214-5) and H/V skew fields; Puppet Warp mesh follows the object outline (TOOL-214-6); Liquify called "useless" by a user (#2606) |
 | Adjustments and filters | 70% | 120–200 | All present; smart-filter re-render matches Photoshop on 5 of 30 files; Filter Gallery looks approximate; no Neural Filters |
 | Type | 40% | 120–200 | Engine works; no type on a path, manual kerning, RTL paragraphs, OpenType panel UI, live Warp Text preview; Type tool freeze on macOS (#2518) |
@@ -451,7 +451,7 @@ filled bar. This extends UI reachability and does not claim Photoshop-authored s
 | Performance | 14k+ px on the GPU at ~⅓ the memory; adjustment preview 285 ms → 4–9 ms; font-size edits 297 ms → 4.6 ms; 2026-10-07: 30 MP TIFF open (banded, parallel strip/tile decode) Deflate 345 → 32 ms, LZW 428 → 43 ms, BigTIFF and every IFD readable; 2026-10-09: 4.2 MP Indexed Color, 256 colours, full-resolution CPU preview p50 3018 → 1061 ms (Ryzen AI 7 350, three measured runs; GPU upload excluded); 2026-10-10: Liquify 3500×2200, 800 px brush, visible 1:1 crop 3.20 → 3.63 ms p50 (5 runs) while refreshing ~9× as many pixels | medium-high on rasters | Complex layout documents still laggy (#125/#128); >16384 px GPU tiling in progress (#49). Liquify now displays source-resolution detail above 100% zoom; its ≤1 ms update target is not met (3.73 ms p95 on a Windows run; GPU upload excluded). Native Indexed Color previews run on one background worker with stale-result rejection; large palettes can still take about a second to compute. Web previews remain synchronous. |
 | Stability | Never-crash lint series, crash guard, `panic_hunt` fuzzing in the gate | medium-high | No field crash data yet. |
 | Camera RAW | DNG, CR2, Sony ARW (lossless + compressed), Nikon NEF (lossless + lossy compressed), RW2, uncompressed ORF; 2026-10-09: uncompressed Fujifilm RAF, Bayer and X-Trans (edge-directed X-Trans demosaic; 26 MP X-Trans develop 306 ms on 12 cores) | medium | CR3, compressed RAF and Nikon "lossy after split" still open (#50). Non-DNG cameras have no calibration: their colour (matrix + tone curve) is fitted per file to the camera's embedded JPEG, with the neutral sRGB-primaries fallback when the fit doesn't clearly help (2026-10-08: 8 D3200 NEFs, mean ΔE vs the camera JPEG 11.6–26.0 → 1.0–7.5); measured per-model calibration still open. |
-| AI / generative | none | ~0% | Deferred by decision (#41). |
+| AI / generative | Remove tool Generative AI mode on a local LaMa model (2026-10-18) | ~5% | The rest deferred by decision (#41). |
 | Ecosystem | Sandboxed WebAssembly plug-ins instead of .8BF; `.atn` actions load and save (2026-10-12); no ExtendScript/UXP; no Adobe Fonts/Libraries/cloud docs | low | By design for 8BF; scripting compatibility open. |
 | Platforms | macOS (notarized), Windows, Linux (AppImage/deb/rpm/Flatpak bundle), web | medium-high | Flathub later (#173); Windows signing material pending. |
 | Localisation | 2026-10-07: 10 UI languages; menu, `tl!`, blend mode, preference and brush-section coverage enforced by tests; live switching and scoped Preferences previews | medium | Engine errors/status messages still partly English; CJK web fonts, browser-locale detection, and RTL remain open. |
@@ -486,7 +486,10 @@ generative: large objects over complex structure fill less convincingly than Pho
 (#41). 2026-10-12: the options bar has Photoshop's three options: Sample All Layers, Create a new
 layer (the fill lands on a new layer above the target, `paint.remove` `newLayer`) and Remove after
 each stroke; off, the strokes collect as a tint and ↩ (or ✓) applies them together as one job and
-one undo step (`strokes`), Esc (or ⊘) drops them (#1750).
+one undo step (`strokes`), Esc (or ⊘) drops them (#1750). 2026-10-18: Photoshop's Mode (Auto,
+Generative AI On, Generative AI Off): the generative fill is LaMa on a local ONNX Runtime
+(DirectML on Windows), installed separately (`packaging/models/README.md`); Auto uses it for
+layer pixels of RGB and Grayscale images with opaque surroundings and the patch fill otherwise.
 
 2026-10-08: the tools update above is checked against the current toolbar groups in
 [`panels.rs`](../crates/ui-egui/src/panels.rs), the Pencil and tool-cycle tests in
@@ -568,6 +571,7 @@ See [method, raw measurements and reproduction](five-algorithm-performance.md).
 | 2026-10-13 | minor | Stale "missing tool" rows corrected against main: Color Replacement (`paint.colorReplacement`), Red Eye (`paint.redEye`) and Add/Delete Anchor Point (the Pen flyout) are live toolbar tools and Frame landed, so Art History Brush is the only tool still missing; percentages unchanged |
 | 2026-10-12 | minor | Free Transform options bar H/V skew fields; percentages unchanged |
 | 2026-10-18 | minor | File › Automate › Topaz Gigapixel AI… round trip through the installed app; percentages unchanged |
+| 2026-10-18 | minor | The Remove tool's Generative AI mode (LaMa on a local ONNX Runtime, DirectML on Windows); percentages unchanged |
 | 2026-10-18 | minor | Photoshop's Actions palette (`Actions Palette.psp`) loads whole; 96 % of a Photoshop 2026 user's palette steps map; percentages unchanged |
 | 2026-10-12 | minor | `.atn` import: 112 events mapped (TrueGrit Texture Supply sets play end to end); percentages unchanged |
 | 2026-10-12 | minor | Photoshop Actions `.atn` load and save (90 events mapped both ways); percentages unchanged |

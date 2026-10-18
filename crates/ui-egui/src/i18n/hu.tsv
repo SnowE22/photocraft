@@ -4083,3 +4083,11 @@ cameraRaw	Yellow	Sárga
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× nagyítás {w} × {h} képpontra (új réteg)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Várakozás a Topaz Gigapixel AI-ra: exportálja ott a nagyított képet, hogy visszakerüljön ide.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} művelet betöltve {sets} készletben. Forrás: {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Generatív MI be
+	Generative AI Off	Generatív MI ki
+	Loading the AI model…	MI-modell betöltése…
+	AI model not installed	Az MI-modell nincs telepítve
+	AI model failed to load	Az MI-modellt nem sikerült betölteni
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Tegye a lama_fp32.onnx fájlt és az ONNX Runtime-ot (onnxruntime.dll, DirectML.dll) az alábbi mappák egyikébe: {folders}. Addig az „Automatikus” mód a hagyományos kitöltést használja.

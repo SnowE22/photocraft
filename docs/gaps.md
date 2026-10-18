@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-18 · **Change:** minor (G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-18 · **Change:** minor (G15: the Remove tool's Generative AI mode, LaMa inpainting on a local ONNX Runtime (DirectML on Windows), PhotoCraft's first ML runtime; G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -146,9 +146,20 @@ what an agent can't finish alone.
 - **Estimate:** 120–200 h.
 
 ### G15. AI and generative features
-- **Missing:** Generative Fill and Expand, Generative Upscale, Neural Filters, Sky Replacement,
-  Super Zoom, ML Select Subject/Sky. There is no ML runtime (AUTO-219-7). Classical substitutes
-  exist (GrabCut/max-flow selection, Remove tool by non-local patch completion).
+- **2026-10-18 evidence:** the Remove tool has Photoshop's Mode (Auto / Generative AI On /
+  Generative AI Off, `paint.remove` `generative`). Its generative fill is LaMa (Apache-2.0) on
+  ONNX Runtime, loaded at run time from next to the executable (`crates/ml`, `photocraft-ml`):
+  on Windows on the GPU through DirectML, after rewriting LaMa's 5-D Fourier MatMuls in 4-D,
+  which DirectML needs; elsewhere on the CPU. Each part of the stroke is filled from a ≥ 512 px
+  square around it scaled to the model's 512 × 512, and only the stroke's pixels change. On an
+  RTX 5070: about 12 s to load (once, started when the tool is picked), 0.2 s per fill. A person
+  sitting in front of a round window comes out as sky, skyline and wall where the patch fill
+  smears wall over the window. The model and runtime are installed separately
+  (`packaging/models/README.md`); without them Auto uses the patch fill.
+- **Missing:** Generative Fill and Expand (prompted, a cloud or larger local model), Generative
+  Upscale, Neural Filters, Sky Replacement, Super Zoom, ML Select Subject/Sky, model management in
+  Preferences (AUTO-219-7, partial). Classical substitutes exist (GrabCut/max-flow selection,
+  the Remove tool's patch fill by non-local patch completion).
 - **Evidence:** Photoshop's `Required/UXP` ships the Neural Filters gallery and its `.kys` has
   a Neural Filters taskspace; users ask for local models (#2313, #1996, #2682).
 - **Estimate:** 300–600 h. **Human:** owner decision #41 (model licences, local vs remote).
@@ -288,6 +299,7 @@ what an agent can't finish alone.
 | 2026-10-13 | minor | G4: minimum inputs in Shape Dynamics and Transfer follow their Control (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
 | 2026-10-18 | minor | G16: Topaz Gigapixel AI round trip in File › Automate (app or command-line tool), no plug-in hosting needed |
+| 2026-10-18 | minor | G15: the Remove tool's Generative AI mode (Auto / On / Off): LaMa on a local ONNX Runtime, DirectML on Windows, model installed separately; estimate unchanged |
 | 2026-10-18 | minor | G11: Photoshop's Actions palette loads whole; 96 % of a Photoshop 2026 user's 1,457 steps map (string ids, HSB colours, Blend If, masks, clipping, Color Range, Camera Raw, Curves files, Move to index, …) |
 | 2026-10-12 | minor | G11: `.atn` import maps 112 events (Select and Mask, Spatter, Ripple, Crystallize, Pattern Fill, mask targeting, Step Backward, points, Bitmap) |
 | 2026-10-12 | minor | G9: toolbar tool shortcut editing (#4086); the remaining workspace gaps stay open |

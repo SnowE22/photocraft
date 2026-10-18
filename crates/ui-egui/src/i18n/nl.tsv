@@ -3922,3 +3922,11 @@ curves	Smooth	Vloeiend maken
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× vergroot tot {w} × {h} px (nieuwe laag)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Wachten op Topaz Gigapixel AI: exporteer daar de vergrote afbeelding om hem terug te halen.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} handeling in {sets} sets geladen uit {file}|{n} handelingen in {sets} sets geladen uit {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Generatieve AI aan
+	Generative AI Off	Generatieve AI uit
+	Loading the AI model…	AI-model laden…
+	AI model not installed	AI-model niet geïnstalleerd
+	AI model failed to load	AI-model kon niet worden geladen
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Zet lama_fp32.onnx en ONNX Runtime (onnxruntime.dll, DirectML.dll) in een van deze mappen: {folders}. Tot die tijd gebruikt 'Automatisch' de gewone vulling.

@@ -4237,3 +4237,11 @@ shape	Appearance	Izgled
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: uvećano {scale}× na {w} × {h} px (novi sloj)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Čeka se Topaz Gigapixel AI: izvezite tamo uvećanu sliku da biste je vratili ovde.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Učitana je {n} radnja u skupovima ({sets}) iz {file}|Učitane su {n} radnje u skupovima ({sets}) iz {file}|Učitano je {n} radnji u skupovima ({sets}) iz {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Generativna AI uključena
+	Generative AI Off	Generativna AI isključena
+	Loading the AI model…	Učitavanje AI modela…
+	AI model not installed	AI model nije instaliran
+	AI model failed to load	Učitavanje AI modela nije uspelo
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Stavite lama_fp32.onnx i ONNX Runtime (onnxruntime.dll, DirectML.dll) u jednu od fascikli: {folders}. Do tada „Automatski“ koristi uobičajenu popunu.

@@ -3894,3 +3894,11 @@ cameraData	Lens	Lens
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× büyütülerek {w} × {h} px oldu (yeni katman)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI bekleniyor: geri getirmek için büyütülmüş görüntüyü orada dışa aktarın.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file} dosyasından {sets} kümede {n} eylem yüklendi
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Üretken YZ Açık
+	Generative AI Off	Üretken YZ Kapalı
+	Loading the AI model…	YZ modeli yükleniyor…
+	AI model not installed	YZ modeli yüklü değil
+	AI model failed to load	YZ modeli yüklenemedi
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx dosyasını ve ONNX Runtime'ı (onnxruntime.dll, DirectML.dll) şu klasörlerden birine koyun: {folders}. O zamana kadar "Otomatik" normal dolguyu kullanır.

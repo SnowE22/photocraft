@@ -2773,3 +2773,11 @@ curves	Smooth	平滑
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新图层）
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	正在等待 Topaz Gigapixel AI：在那里导出放大后的图像即可将其带回。
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	已从 {file} 载入 {sets} 个组中的 {n} 个动作
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	生成式 AI 开启
+	Generative AI Off	生成式 AI 关闭
+	Loading the AI model…	正在加载 AI 模型…
+	AI model not installed	未安装 AI 模型
+	AI model failed to load	AI 模型加载失败
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	请将 lama_fp32.onnx 和 ONNX Runtime（onnxruntime.dll、DirectML.dll）放到以下任一文件夹：{folders}。在此之前，“自动”使用常规填充。

@@ -163,7 +163,64 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
 
 /// `paint.remove` params from the options bar (without the strokes).
 fn remove_params(o: &crate::state::ToolOptions) -> Value {
-    json!({"sampleAllLayers": o.sample_all_layers, "newLayer": o.remove_new_layer})
+    json!({"sampleAllLayers": o.sample_all_layers, "newLayer": o.remove_new_layer, "generative": o.remove_generative})
+}
+
+/// The Remove tool's Mode choices (`paint.remove` `generative`).
+fn generative_modes() -> [(String, &'static str); 3] {
+    [("auto".into(), tl!("Auto")), ("on".into(), tl!("Generative AI On")), ("off".into(), tl!("Generative AI Off"))]
+}
+
+/// The generative model's state, looked up at most once a second (finding the model touches the
+/// disk). Each lookup also starts loading the model in the background unless the Mode is Off, so
+/// it is ready by the first stroke.
+pub(crate) fn generative_state(app: &mut PhotocraftApp, now: f64) -> photocraft_engine::generative::State {
+    use photocraft_engine::generative;
+    if let Some((at, state)) = &app.generative_probe
+        && (0.0..1.0).contains(&(now - at))
+    {
+        return state.clone();
+    }
+    if app.ui.tool_options.remove_generative != "off" {
+        generative::preload();
+    }
+    let state = generative::state();
+    app.generative_probe = Some((now, state.clone()));
+    state
+}
+
+/// Beside the Mode: the model loading, not installed or failed (nothing once it is ready, or with
+/// the Mode Off). The web build has no local models.
+fn generative_status(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    use photocraft_engine::generative::State;
+    if cfg!(target_arch = "wasm32") {
+        return;
+    }
+    let state = generative_state(app, ui.ctx().input(|i| i.time));
+    if app.ui.tool_options.remove_generative == "off" {
+        return;
+    }
+    let t = Tokens::get(ui.ctx());
+    let (text, colour, tip) = match &state {
+        State::Idle | State::Ready(_) => return,
+        State::Loading => {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+            (tl!("Loading the AI model…"), t.text_dim, None)
+        }
+        State::Missing => {
+            let dirs: Vec<String> = photocraft_engine::generative::search_dirs().iter().map(|d| d.display().to_string()).collect();
+            let tip = crate::i18n::fmt(
+                tl!("Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill."),
+                &[("folders", &dirs.join(", "))],
+            );
+            (tl!("AI model not installed"), t.text_dim, Some(tip))
+        }
+        State::Failed(e) => (tl!("AI model failed to load"), t.danger, Some(e.clone())),
+    };
+    let label = ui.label(egui::RichText::new(text).color(colour).size(11.0));
+    if let Some(tip) = tip {
+        label.on_hover_text(tip);
+    }
 }
 
 /// Remove after each stroke off: a finished stroke waits with the others, tinted on the canvas,
@@ -459,8 +516,14 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             crate::widgets::checkbox(ui, &mut o.sample_all_layers, tl!("Sample All Layers"));
         }
         Tool::Remove => {
-            // Photoshop's options bar: Sample All Layers, Create a new layer, Remove after each
-            // stroke; with strokes waiting, ✓ applies them and ⊘ drops them.
+            // Photoshop's options bar: Mode (Auto, Generative AI On, Generative AI Off), Sample All
+            // Layers, Create a new layer, Remove after each stroke; with strokes waiting, ✓ applies
+            // them and ⊘ drops them.
+            opt(ui, tl!("Mode:"));
+            crate::widgets::dropdown(ui, "remove-generative", &mut o.remove_generative, &generative_modes(), 130.0);
+            generative_status(app, ui);
+            crate::widgets::vline(ui, 22.0);
+            let o = &mut app.ui.tool_options;
             crate::widgets::checkbox(ui, &mut o.sample_all_layers, tl!("Sample All Layers"));
             crate::widgets::checkbox(ui, &mut o.remove_new_layer, tl!("Create a new layer"));
             crate::widgets::checkbox(ui, &mut o.remove_after_each_stroke, tl!("Remove after each stroke"));
@@ -1168,6 +1231,75 @@ mod tests {
         let (id, p) = app.session.journal.last().cloned().unwrap();
         assert_eq!((id.as_str(), p["newLayer"].as_bool()), ("paint.remove", Some(true)));
         assert_eq!(app.session.active().unwrap().doc.walk().len(), layers + 1, "the fill went to a new layer");
+    }
+
+    #[test]
+    fn remove_mode_reaches_the_command() {
+        use photocraft_engine::generative::{self, State};
+        let installed = generative::state() != State::Missing;
+        for mode in ["off", "auto", "on"] {
+            let mut app = app();
+            app.run("paint.pencil", json!({"points": [[0, 30], [100, 30]], "size": 200, "color": "#808080"})).unwrap();
+            app.ui.tool = Tool::Remove;
+            app.ui.tool_options.remove_generative = mode.into();
+            let m = egui::Modifiers::NONE;
+            tool_event(&mut app, ToolEvent::Down { x: 30.0, y: 18.0, pressure: 1.0 }, m);
+            tool_event(&mut app, ToolEvent::Up { x: 30.0, y: 42.0 }, m);
+            if mode == "on" && !installed {
+                // On without the model says so instead of quietly using the patch fill.
+                assert!(app.ui.status_error && app.ui.status.contains("Generative AI is on"), "{}", app.ui.status);
+                continue;
+            }
+            assert!(!app.ui.status_error, "{mode}: {}", app.ui.status);
+            let (id, p) = app.session.journal.last().cloned().unwrap();
+            assert_eq!((id.as_str(), p["generative"].as_str()), ("paint.remove", Some(mode)));
+        }
+    }
+
+    #[test]
+    fn the_generative_model_is_looked_up_at_most_once_a_second() {
+        use photocraft_engine::generative::{Device, State};
+        let mut app = app();
+        app.generative_probe = Some((10.0, State::Ready(Device::Cpu)));
+        assert_eq!(generative_state(&mut app, 10.5), State::Ready(Device::Cpu), "within the second: as last seen");
+        let fresh = generative_state(&mut app, 11.5);
+        assert_eq!(app.generative_probe, Some((11.5, fresh)));
+        // A clock that went back looks again.
+        app.generative_probe = Some((20.0, State::Ready(Device::Cpu)));
+        generative_state(&mut app, 5.0);
+        assert_eq!(app.generative_probe.as_ref().map(|p| p.0), Some(5.0));
+    }
+
+    #[test]
+    fn remove_options_bar_has_the_mode_and_the_models_state() {
+        use crate::theme::ThemeKind;
+        use egui::vec2;
+        use egui_kittest::kittest::Queryable;
+        use photocraft_engine::generative::State;
+        let mut app = app();
+        app.ui.tool = Tool::Remove;
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(1400.0, 60.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if !ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    return;
+                }
+                crate::panels::options_bar(app, ui);
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, ThemeKind::Studio);
+        h.run_steps(4);
+        h.get_by_label("Mode:");
+        h.get_by_label("Sample All Layers");
+        let state = h.state().generative_probe.clone().map(|p| p.1);
+        assert!(state.is_some(), "the options bar looked the model up");
+        if state == Some(State::Missing) {
+            h.get_by_label("AI model not installed");
+        }
+        // Off: no model state beside the Mode.
+        h.state_mut().ui.tool_options.remove_generative = "off".into();
+        h.run_steps(2);
+        assert!(h.query_by_label("AI model not installed").is_none());
     }
 
     #[test]

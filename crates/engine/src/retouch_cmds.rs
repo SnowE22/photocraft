@@ -1292,7 +1292,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: brush_params!(
-                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was) → {"damage","layer"?} (a background job)"#
+                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":"auto|on|off"="auto" (Photoshop's Mode: the local generative model, LaMa, makes up new detail; auto uses it when it is installed and suits the stroke, else the patch fill; on uses it or fails; masks and channels always get the patch fill) → {"damage","layer"?,"fill":"generative|patch","device"?,"note"?} (a background job)"#
             ),
             enabled: has_pixel_layer,
             run: remove::remove,

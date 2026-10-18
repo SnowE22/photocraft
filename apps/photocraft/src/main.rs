@@ -171,6 +171,10 @@ fn main() -> eframe::Result {
     crash_guard::install_hook();
     // The system font scan can take seconds (minutes on some Macs): run it off the UI thread.
     photocraft_ui_egui::type_tool::warm_fonts();
+    // The Remove tool's Generative AI model and ONNX Runtime can also go in the settings folder.
+    if let Some(dir) = app_dirs::config_dir() {
+        photocraft_engine::generative::add_search_dir(dir.join("models"));
+    }
     let mut control_port: Option<u16> = None;
     let mut control_arg_errors: Vec<String> = Vec::new();
     if let Some(value) = std::env::var("PHOTOCRAFT_CONTROL_PORT").ok().filter(|v| !v.trim().is_empty()) {

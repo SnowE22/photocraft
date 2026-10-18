@@ -3338,3 +3338,11 @@ curves	Smooth	매끄럽게
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× 확대하여 {w} × {h} px (새 레이어)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI를 기다리는 중: 그곳에서 확대한 이미지를 내보내면 여기로 돌아옵니다.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file}에서 세트 {sets}개의 액션 {n}개를 불러왔습니다
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	생성형 AI 켜기
+	Generative AI Off	생성형 AI 끄기
+	Loading the AI model…	AI 모델 불러오는 중…
+	AI model not installed	AI 모델이 설치되지 않음
+	AI model failed to load	AI 모델을 불러오지 못했습니다
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx와 ONNX Runtime(onnxruntime.dll, DirectML.dll)을 다음 폴더 중 하나에 넣으세요: {folders}. 그 전까지 '자동'은 일반 채우기를 사용합니다.

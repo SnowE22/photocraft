@@ -543,6 +543,9 @@ pub struct ToolOptions {
     pub sample_all_layers: bool,
     /// Object Selection › Object Finder: hovering highlights the object a click selects (#4087).
     pub object_finder: bool,
+    /// Remove tool: Photoshop's Mode, whether the local generative model fills the stroke
+    /// (`paint.remove` `generative`): auto | on | off.
+    pub remove_generative: String,
     /// Remove tool: the fill goes to a new layer above the target (Photoshop's Create a new layer).
     pub remove_new_layer: bool,
     /// Remove tool: each stroke is filled when released (Photoshop's default). Off, the strokes
@@ -790,6 +793,7 @@ impl Default for ToolOptions {
             anti_alias: true,
             sample_all_layers: false,
             object_finder: true,
+            remove_generative: "auto".into(),
             remove_new_layer: false,
             remove_after_each_stroke: true,
             feather: 0.0,

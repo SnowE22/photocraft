@@ -3649,3 +3649,11 @@ curves	Smooth	Làm mượt
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: đã phóng to {scale}× lên {w} × {h} px (lớp mới)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Đang chờ Topaz Gigapixel AI: hãy xuất ảnh đã phóng to ở đó để đưa ảnh trở lại.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Đã nạp {n} hành động trong {sets} bộ từ {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Bật AI tạo sinh
+	Generative AI Off	Tắt AI tạo sinh
+	Loading the AI model…	Đang tải mô hình AI…
+	AI model not installed	Chưa cài mô hình AI
+	AI model failed to load	Không tải được mô hình AI
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Hãy đặt lama_fp32.onnx và ONNX Runtime (onnxruntime.dll, DirectML.dll) vào một trong các thư mục sau: {folders}. Cho đến lúc đó, "Tự động" dùng cách tô thông thường.

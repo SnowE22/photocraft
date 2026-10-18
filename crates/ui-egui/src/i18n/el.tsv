@@ -3860,3 +3860,11 @@ curves	Smooth	Εξομάλυνση
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: μεγέθυνση {scale}× σε {w} × {h} px (νέο επίπεδο)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Αναμονή για το Topaz Gigapixel AI: εξαγάγετε εκεί τη μεγεθυμένη εικόνα για να επιστρέψει εδώ.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Φορτώθηκε {n} ενέργεια σε {sets} σύνολα από το {file}|Φορτώθηκαν {n} ενέργειες σε {sets} σύνολα από το {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Παραγωγική ΤΝ ενεργή
+	Generative AI Off	Παραγωγική ΤΝ ανενεργή
+	Loading the AI model…	Φόρτωση του μοντέλου ΤΝ…
+	AI model not installed	Το μοντέλο ΤΝ δεν είναι εγκατεστημένο
+	AI model failed to load	Η φόρτωση του μοντέλου ΤΝ απέτυχε
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Τοποθετήστε τα lama_fp32.onnx και ONNX Runtime (onnxruntime.dll, DirectML.dll) σε έναν από τους φακέλους: {folders}. Μέχρι τότε το «Αυτόματα» χρησιμοποιεί το συνηθισμένο γέμισμα.

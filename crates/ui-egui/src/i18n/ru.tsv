@@ -3128,3 +3128,11 @@ curves	Smooth	Сгладить
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: увеличено в {scale}× до {w} × {h} пикс. (новый слой)
 	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Ожидание Topaz Gigapixel AI: экспортируйте там увеличенное изображение, чтобы вернуть его сюда.
 @plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Загружена {n} операция в наборах ({sets}) из {file}|Загружены {n} операции в наборах ({sets}) из {file}|Загружено {n} операций в наборах ({sets}) из {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Генеративный ИИ вкл.
+	Generative AI Off	Генеративный ИИ выкл.
+	Loading the AI model…	Загрузка модели ИИ…
+	AI model not installed	Модель ИИ не установлена
+	AI model failed to load	Не удалось загрузить модель ИИ
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Поместите lama_fp32.onnx и ONNX Runtime (onnxruntime.dll, DirectML.dll) в одну из папок: {folders}. До тех пор режим «Авто» использует обычную заливку.
