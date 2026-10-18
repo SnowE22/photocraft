@@ -226,6 +226,12 @@ pub(crate) fn report_play(app: &mut PhotocraftApp, v: &Value) {
     app.ui.status_error = true;
 }
 
+/// The height of a set, action or step row, rows flush: as dense as Photoshop's list (it fits
+/// about 9 rows where 24–26 pt rows with 6 pt gaps fitted 7, user report).
+const ROW_H: f32 = 23.0;
+/// An action's button in Button Mode (buttons keep their gaps).
+const BUTTON_H: f32 = 26.0;
+
 fn visible_steps(app: &PhotocraftApp, action: usize) -> Vec<(String, Value)> {
     app.session.actions.list.get(action).into_iter().flat_map(|a| a.steps.iter()).chain(actions_cmds::pending_steps(&app.session, action)).cloned().collect()
 }
@@ -702,6 +708,11 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
     }
     egui::ScrollArea::vertical().id_salt("actions-rows").max_height(max_h).min_scrolled_height(max_h).auto_shrink([false, false]).show(ui, |ui| {
+        // Rows flush and ROW_H tall, as dense as Photoshop's list (and the History panel's);
+        // Button Mode keeps its buttons apart.
+        if !app.ui.actions.button_mode {
+            ui.spacing_mut().item_spacing.y = 0.0;
+        }
         if rows.is_empty() {
             ui.label(egui::RichText::new(tl!("Record ● a sequence of edits, then play ▶ it on any document.")).color(t.text_faint).size(11.5));
         }
@@ -730,7 +741,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             {
                 shown_set = Some(set);
                 let collapsed = app.ui.actions.collapsed_sets.iter().any(|c| c == set);
-                let (hr, hresp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
+                let (hr, hresp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
                 hresp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, !collapsed, set));
                 if hresp.hovered() {
                     ui.painter().rect_filled(hr, 0.0, t.hover.gamma_multiply(0.5));
@@ -767,7 +778,8 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 continue;
             }
             let indent = if set.is_some() { 14.0 } else { 0.0 };
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click_and_drag());
+            let row_h = if app.ui.actions.button_mode { BUTTON_H } else { ROW_H };
+            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click_and_drag());
             let x0 = rect.left() + indent;
             if reveal == Some((i, 0)) {
                 ui.scroll_to_rect(rect, Some(egui::Align::BOTTOM));
@@ -818,7 +830,8 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         .shortcuts
                         .get(&shortcut_id(name))
                         .filter(|s| !s.is_empty())
-                        .map_or_else(|| step_count(nsteps, disabled.len()), |key| format!("{key} · {}", step_count(nsteps, disabled.len()))),
+                        // The step count, then the shortcut at the right edge.
+                        .map_or_else(|| step_count(nsteps, disabled.len()), |key| format!("{} · {key}", step_count(nsteps, disabled.len()))),
                     egui::FontId::proportional(11.0),
                     t.text_faint,
                 );
@@ -879,7 +892,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
             if expanded {
                 for (step, (id, params)) in steps.iter().enumerate() {
-                    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), 20.0), Sense::click_and_drag());
+                    let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
                     if reveal == Some((i, step + 1)) {
                         ui.scroll_to_rect(r, Some(egui::Align::BOTTOM));
                     }

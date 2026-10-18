@@ -2172,6 +2172,39 @@ fn outside_bars_id(idx: usize) -> egui::Id {
     egui::Id::new(("pc-outside-bars", idx))
 }
 
+/// Which way the wheel scrolls a view with the pointer over its scrollbars or the document tabs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WheelScroll {
+    /// The right bar, and the tabs above the main view.
+    Vertical,
+    /// The bottom bar (in the status bar, or under a tiled view's canvas).
+    Horizontal,
+}
+
+/// Whether the pointer is over view `idx`'s scrollbars (outside its canvas `rect`, or over its
+/// edges in tiled views) or, for the main view, the document tabs; there the wheel scrolls the
+/// image whatever Zoom with Scroll Wheel says, as in Photoshop.
+fn wheel_scroll_zone(app: &PhotocraftApp, ctx: &egui::Context, idx: usize, rect: Rect, primary: bool) -> Option<WheelScroll> {
+    let p = ctx.input(|i| i.pointer.hover_pos())?;
+    // A menu, popup or floating panel over the bars or tabs keeps its own wheel.
+    if ctx.layer_id_at(p).is_some_and(|l| l.order != egui::Order::Background) {
+        return None;
+    }
+    if app.ui.view.shows_scrollbars() {
+        let (h, v) = match ctx.data(|d| d.get_temp::<crate::scrollbars::Outside>(outside_bars_id(idx))) {
+            Some(o) => (Some(o.horizontal), Some(o.vertical)),
+            None => crate::scrollbars::bar_rects(rect, true, true),
+        };
+        if v.is_some_and(|r| r.contains(p)) {
+            return Some(WheelScroll::Vertical);
+        }
+        if h.is_some_and(|r| r.contains(p)) {
+            return Some(WheelScroll::Horizontal);
+        }
+    }
+    (primary && app.tab_strip.as_ref().is_some_and(|t| t.rect.contains(p))).then_some(WheelScroll::Vertical)
+}
+
 /// The tab strip; returns where its document tabs are.
 fn tabs(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> TabStrip {
     let t = crate::theme::Tokens::get(ui.ctx());
@@ -3222,6 +3255,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             Some(Some((proxy, k))) => (proxy.selection.as_ref(), (*k).max(1)),
         };
         // Selection outline: true boundary, animated marching ants (cached per revision).
+        let ants_id = egui::Id::new(("pc-canvas-ants", idx));
+        let mut raster_ants = false;
         if let Some(sel) = outlined.filter(|_| app.ui.view.shows(app.ui.view.show.selection_edges) && !polygon_replaces_selection(app)) {
             // Trace at display resolution over the visible part only; key by the mask's tile identity
             // (not the document revision) so unrelated edits don't re-trace it. The step is in
@@ -3295,10 +3330,18 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 }
                 // Under a Free Transform box they are where the box puts them (#5297).
                 if !(carried && crate::transform_tool::draw_selection(app, &painter, &xf, doc.id, segs, time)) {
-                    marching_ants_segments(&painter, &shown, segs, time);
+                    // A big outline (a speckled or detailed selection) from a texture made once per
+                    // view: as a mesh it slowed every frame (ants_raster.rs).
+                    raster_ants = segs.len() > crate::ants_raster::MIN_SEGMENTS && crate::ants_raster::draw(&ctx, &painter, ants_id, &shown, segs, time);
+                    if !raster_ants {
+                        marching_ants_segments(&painter, &shown, segs, time);
+                    }
                 }
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
+        }
+        if !raster_ants {
+            crate::ants_raster::clear(&ctx, ants_id);
         }
 
         (img_rect, beyond, layer_edges)
@@ -3317,11 +3360,14 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     // The wheel also scrolls over the scrollbars drawn on top of the canvas (last frame's hover).
     let bars_id = egui::Id::new(("pc-canvas-bars-hover", idx));
     let over_bars = ctx.data(|d| d.get_temp::<bool>(bars_id)).unwrap_or(false);
-    let nav_hovered = response.hovered() || free_hover || over_bars;
+    // Over a scrollbar or the document tabs the wheel scrolls even with Zoom with Scroll Wheel on,
+    // as in Photoshop: up and down over the right bar and the tabs, sideways over the bottom bar.
+    let scroll_zone = wheel_scroll_zone(app, &ctx, idx, rect, primary);
+    let nav_hovered = response.hovered() || free_hover || over_bars || scroll_zone.is_some();
     // Interface › Enable Animations off: the wheel moves the canvas without a glide (#5721).
     let wheel = crate::wheel_nav::read_with(
         &ctx,
-        app.session.prefs().general.zoom_with_scroll_wheel,
+        app.session.prefs().general.zoom_with_scroll_wheel && scroll_zone.is_none(),
         app.session.prefs().enhanced_controls.zoom_with_trackpad_pinch,
         response.id.with("wheel"),
         nav_hovered,
@@ -3351,6 +3397,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 }
             }
             (Some(crate::wheel_nav::Wheel::Pan(scroll)), _) => {
+                // Over the bottom bar the wheel's up and down moves the image sideways.
+                let scroll = if scroll_zone == Some(WheelScroll::Horizontal) { vec2(scroll.x + scroll.y, 0.0) } else { scroll };
                 let d = xf.unmap_vec(scroll) / (view.zoom / ppp);
                 view.center[0] -= d.x;
                 view.center[1] -= d.y;
@@ -4361,7 +4409,7 @@ pub(crate) fn marching_ants_mapped(painter: &egui::Painter, segs: &[crate::outli
 }
 
 /// The part of the line `a`–`b` inside `r` (Liang–Barsky), if any.
-fn clip_line(r: Rect, a: Pos2, b: Pos2) -> Option<(Pos2, Pos2)> {
+pub(crate) fn clip_line(r: Rect, a: Pos2, b: Pos2) -> Option<(Pos2, Pos2)> {
     // Perspective can put endpoints billions of pixels away. f32 subtraction/interpolation
     // loses viewport-sized differences there, clipping visible ants to the wrong endpoints.
     let (ax, ay) = (f64::from(a.x), f64::from(a.y));

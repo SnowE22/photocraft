@@ -22,6 +22,7 @@ pub mod adjust_ui;
 mod alt_grab;
 pub mod analysis_ui;
 pub mod anchor_tools;
+mod ants_raster;
 pub mod artboard_tool;
 pub mod artboard_ui;
 pub(crate) mod background_redraw;

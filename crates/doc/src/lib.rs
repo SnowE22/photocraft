@@ -1174,6 +1174,26 @@ impl Document {
         id
     }
 
+    /// Insert a new `layer` where Photoshop puts one for the selected layer `active`: at the top of
+    /// `active`'s children when it is a group shown open in the Layers panel, otherwise directly
+    /// above it (or at the top of the root if None). A group too deep to take the layer without
+    /// passing [`MAX_GROUP_DEPTH`] gets it above itself instead.
+    pub fn insert_new(&mut self, active: Option<LayerId>, layer: Layer) -> LayerId {
+        let into = active.filter(|&a| {
+            let open = matches!(self.layer(a).map(|l| &l.content), Some(LayerContent::Group(g)) if g.expanded);
+            // The group's children list sits as deep as the group's path is long.
+            open && self.path_of(a).is_some_and(|p| p.len().saturating_add(nested_depth(&layer)) <= MAX_GROUP_DEPTH)
+        });
+        match into.and_then(|a| self.layer_mut(a)).and_then(Layer::children_mut) {
+            Some(children) => {
+                let id = layer.id;
+                children.push(layer);
+                id
+            }
+            None => self.insert_above(active, layer),
+        }
+    }
+
     /// Insert `layer` directly below the layer `below` (or at the bottom of the root if None).
     pub fn insert_below(&mut self, below: Option<LayerId>, layer: Layer) -> LayerId {
         let id = layer.id;
@@ -1231,6 +1251,21 @@ impl Document {
     pub fn top_layer(&self) -> Option<LayerId> {
         self.layers.last().map(|l| l.id)
     }
+}
+
+/// How many levels of non-empty child lists `layer` holds, as [`Document::max_group_depth`]
+/// counts them: 0 for a layer or an empty group, 1 for a group of layers, and so on.
+fn nested_depth(layer: &Layer) -> usize {
+    let mut max = 0;
+    let mut stack: Vec<(&[Layer], usize)> = layer.children().map(|c| vec![(c, 1)]).unwrap_or_default();
+    while let Some((layers, depth)) = stack.pop() {
+        if layers.is_empty() {
+            continue;
+        }
+        max = max.max(depth);
+        stack.extend(layers.iter().filter_map(|l| l.children()).map(|c| (c, depth + 1)));
+    }
+    max
 }
 
 #[cfg(test)]
@@ -1390,6 +1425,51 @@ mod tests {
         let names: Vec<_> = d.layers.iter().map(|l| l.name.as_str()).collect();
         assert_eq!(names, ["Background", "B", "A"]);
         assert_eq!(d.layers[1].id, b);
+    }
+
+    /// A new layer for a selected open group lands at the top inside it, as in Photoshop; a closed
+    /// group, or any other layer, gets it directly above.
+    #[test]
+    fn a_new_layer_goes_into_a_selected_open_group() {
+        let mut d = doc();
+        let inner = Layer::raster("inner", d.pixel_format());
+        let g = d.insert_above(None, Layer::group("G", vec![inner]));
+        let a = d.insert_new(Some(g), Layer::raster("A", d.pixel_format()));
+        let names = |d: &Document, id| d.layer(id).and_then(Layer::children).map(|c| c.iter().map(|l| l.name.clone()).collect::<Vec<_>>());
+        assert_eq!(names(&d, g).unwrap(), ["inner", "A"]);
+        assert_eq!(d.path_of(a).map(|p| p.len()), Some(2));
+        // An empty open group takes it too.
+        let empty = d.insert_new(Some(g), Layer::group("Empty", vec![]));
+        let b = d.insert_new(Some(empty), Layer::raster("B", d.pixel_format()));
+        assert_eq!(names(&d, empty).unwrap(), ["B"]);
+        // Closed: above the group, beside it.
+        if let Some(LayerContent::Group(gr)) = d.layer_mut(g).map(|l| &mut l.content) {
+            gr.expanded = false;
+        }
+        let c = d.insert_new(Some(g), Layer::raster("C", d.pixel_format()));
+        let root: Vec<_> = d.layers.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(root, ["Background", "G", "C"]);
+        // A layer that isn't a group: directly above it.
+        let e = d.insert_new(Some(b), Layer::raster("E", d.pixel_format()));
+        assert_eq!(names(&d, empty).unwrap(), ["B", "E"]);
+        assert!(d.layer(c).is_some() && d.layer(e).is_some());
+    }
+
+    /// Inside a group as deep as the nesting limit allows, a new group (or a group of layers)
+    /// goes above it instead of nesting past the limit; a plain layer still goes in.
+    #[test]
+    fn a_new_layer_never_nests_past_the_group_limit() {
+        let mut d = doc();
+        let mut top = d.insert_above(None, Layer::group("G0", vec![]));
+        for i in 1..MAX_GROUP_DEPTH {
+            top = d.insert_new(Some(top), Layer::group(format!("G{i}"), vec![]));
+        }
+        assert_eq!(d.path_of(top).map(|p| p.len()), Some(MAX_GROUP_DEPTH));
+        let deep = d.insert_new(Some(top), Layer::group("too deep", vec![Layer::raster("x", d.pixel_format())]));
+        assert_eq!(d.path_of(deep).map(|p| p.len()), Some(MAX_GROUP_DEPTH), "beside the deepest group");
+        let plain = d.insert_new(Some(top), Layer::raster("plain", d.pixel_format()));
+        assert_eq!(d.path_of(plain).map(|p| p.len()), Some(MAX_GROUP_DEPTH + 1));
+        assert!(d.max_group_depth() <= MAX_GROUP_DEPTH);
     }
 
     #[test]

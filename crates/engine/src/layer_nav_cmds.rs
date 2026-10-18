@@ -114,11 +114,12 @@ mod tests {
         let a = id(&mut s, "layer.new.layer", json!({"name": "A"}));
         let b = id(&mut s, "layer.new.layer", json!({"name": "B"}));
         let c = id(&mut s, "layer.new.layer", json!({"name": "C"}));
+        // D before the grouping: a new layer for the (open, selected) new group would go inside it.
+        let d = id(&mut s, "layer.new.layer", json!({"name": "D"}));
         s.execute("layer.select", json!({"layer": b.0})).unwrap();
         s.execute("layer.select", json!({"layer": c.0, "mode": "add"})).unwrap();
         s.execute("layer.groupLayers", json!({})).unwrap();
         let group = s.active().unwrap().doc.layers.iter().find(|l| l.is_group()).unwrap().id;
-        let d = id(&mut s, "layer.new.layer", json!({"name": "D"}));
         (s, [bg, a, group, b, c, d])
     }
 

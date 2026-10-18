@@ -1053,6 +1053,44 @@ fn wheel_zoom_over_the_image_still_anchors_on_the_pointer() {
     assert!((d1[0] - d0[0]).abs() < 0.1 && (d1[1] - d0[1]).abs() < 0.1, "{d0:?} -> {d1:?}");
 }
 
+/// Over the scrollbars and the document tabs the wheel scrolls the image even with Zoom with
+/// Scroll Wheel on, as in Photoshop: up and down over the right bar and the tabs, sideways over
+/// the bottom bar. Over the image it still zooms.
+#[test]
+fn the_wheel_scrolls_over_the_scrollbars_and_tabs_with_zoom_with_scroll_wheel_on() {
+    let mut h = harness();
+    h.state_mut().session.edit_prefs(|p| p.general.zoom_with_scroll_wheel = true);
+    // Zoomed in, so both axes can scroll.
+    h.state_mut().ui.views[0].zoom = 8.0;
+    h.state_mut().ui.views[0].center = [200.0, 150.0];
+    h.run_steps(4);
+    let canvas = h.state().last_canvas_rect;
+    let tabs = h.state().tab_strip.as_ref().map(|t| t.rect).expect("the tab strip");
+    let right_bar = pos2(canvas.right() + 6.0, canvas.center().y);
+    let bottom_bar = pos2(canvas.center().x, canvas.bottom() + 6.0);
+    let tab_strip = pos2(tabs.right() - 40.0, tabs.center().y);
+    for (at, axis) in [(right_bar, 1), (tab_strip, 1), (bottom_bar, 0)] {
+        let before = (h.state().ui.views[0].center, zoom(&h));
+        h.hover_at(at);
+        h.run_steps(2);
+        for _ in 0..3 {
+            wheel(&h, -1.0, Modifiers::NONE);
+            h.run_steps(3);
+        }
+        h.run_steps(20);
+        let after = (h.state().ui.views[0].center, zoom(&h));
+        assert_eq!(after.1, before.1, "{at:?}: the zoom stays");
+        assert!(after.0[axis] > before.0[axis] + 1.0, "{at:?}: the wheel scrolls along axis {axis}: {before:?} -> {after:?}");
+        assert!((after.0[1 - axis] - before.0[1 - axis]).abs() < 0.01, "{at:?}: and only along it: {before:?} -> {after:?}");
+    }
+    h.hover_at(canvas.center());
+    h.run_steps(2);
+    let z = zoom(&h);
+    wheel(&h, 1.0, Modifiers::NONE);
+    h.run_steps(20);
+    assert!(zoom(&h) > z, "over the image the wheel zooms");
+}
+
 /// #4658: with the Move tool's Show Transform Controls, the band just outside the box shows the
 /// curved rotate arrow, not a plain pointer, and one drag from there rotates the layer.
 #[test]

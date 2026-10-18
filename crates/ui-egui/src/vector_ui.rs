@@ -2403,11 +2403,15 @@ mod tests {
         // Deselected (or a stale name): the selection is the layer mask, no vector mask.
         for sel in [None, Some("Gone".to_string())] {
             app.ui.selected_path = sel;
+            app.run("select.rect", json!({"x": 150, "y": 150, "width": 20, "height": 20})).unwrap();
             let r = app.run("layer.newFillLayer.solidColor", json!({}));
             let l = layer(&app, r);
             assert!(l.vector_mask.is_none() && l.mask.is_some());
+            // The selection is in the mask now: dropped, as in Photoshop.
+            assert!(app.session.active().unwrap().doc.selection.is_none());
         }
         // Make Work Path selects the new work path.
+        app.run("select.rect", json!({"x": 150, "y": 150, "width": 20, "height": 20})).unwrap();
         app.run("select.toWorkPath", json!({"tolerance": 2.0})).unwrap();
         assert_eq!(app.ui.selected_path.as_deref(), Some("work"));
     }

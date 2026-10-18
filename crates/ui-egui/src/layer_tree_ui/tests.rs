@@ -16,11 +16,16 @@ fn layered() -> photocraft_engine::Session {
     s.execute("layer.new.layer", json!({"name": "deep"})).unwrap();
     let inner = s.execute("layer.groupLayers", json!({"name": "inner"})).unwrap()["layer"].as_u64().unwrap();
     let outer = s.execute("layer.groupLayers", json!({"layer": inner, "name": "outer"})).unwrap()["layer"].as_u64().unwrap();
-    s.execute("layer.select", json!({"layer": inner})).unwrap();
-    // `layer.new.layer` lands above the active layer, inside `outer`.
-    s.execute("layer.new.layer", json!({"name": "in-outer"})).unwrap();
-    s.execute("layer.select", json!({"layer": outer})).unwrap();
-    s.execute("layer.new.layer", json!({"name": "top"})).unwrap();
+    // A selected closed group takes a new layer above itself (an open one, inside), so each group
+    // is closed for the layer that goes beside it.
+    let beside = |s: &mut photocraft_engine::Session, group: u64, name: &str| {
+        s.execute("layer.select", json!({"layer": group})).unwrap();
+        s.execute("layer.setExpanded", json!({"layer": group, "expanded": false})).unwrap();
+        s.execute("layer.new.layer", json!({"name": name})).unwrap();
+        s.execute("layer.setExpanded", json!({"layer": group, "expanded": true})).unwrap();
+    };
+    beside(&mut s, inner, "in-outer");
+    beside(&mut s, outer, "top");
     s
 }
 

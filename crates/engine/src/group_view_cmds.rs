@@ -209,13 +209,14 @@ mod tests {
         let a2 = group(&mut s, json!({"name": "a2"}));
         let a1 = group(&mut s, json!({"layer": a2, "name": "a1"}));
         let a = group(&mut s, json!({"layer": a1, "name": "A"}));
-        s.execute("layer.new.layer", json!({"name": "pb"})).unwrap();
+        // Below the selected group: a new layer for an open group would go inside it.
+        s.execute("layer.new.layer", json!({"name": "pb", "position": "below"})).unwrap();
         let b1 = group(&mut s, json!({"name": "b1"}));
         let b = group(&mut s, json!({"layer": b1, "name": "B"}));
         s.execute("layer.select", json!({"layer": a})).unwrap();
         s.execute("layer.select", json!({"layer": b, "mode": "add"})).unwrap();
         let outer = group(&mut s, json!({"name": "Outer"}));
-        s.execute("layer.new.layer", json!({"name": "pd"})).unwrap();
+        s.execute("layer.new.layer", json!({"name": "pd", "position": "below"})).unwrap();
         let d = group(&mut s, json!({"name": "D"}));
         let all = [a2, a1, a, b1, b, outer, d];
         let open = |s: &Session| all.iter().map(|id| expanded(s, *id)).collect::<Vec<_>>();

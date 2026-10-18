@@ -17,10 +17,11 @@ fn shift_range_follows_visible_rows_on_both_sides_of_an_expanded_group() {
     s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
     let b = s.execute("layer.new.layer", json!({"name": "B"})).unwrap()["layer"].as_u64().unwrap();
     let c = s.execute("layer.new.layer", json!({"name": "C"})).unwrap()["layer"].as_u64().unwrap();
+    // D before the grouping: a new layer for the (open, selected) new group would go inside it.
+    let d = s.execute("layer.new.layer", json!({"name": "D"})).unwrap()["layer"].as_u64().unwrap();
     select(&mut s, b, "replace");
     select(&mut s, c, "add");
     let group = s.execute("layer.groupLayers", json!({})).unwrap()["layer"].as_u64().unwrap();
-    let d = s.execute("layer.new.layer", json!({"name": "D"})).unwrap()["layer"].as_u64().unwrap();
 
     for (anchor, target, wanted) in
         [(d, group, vec![d, group]), (group, d, vec![d, group]), (group, b, vec![group, c, b]), (b, group, vec![group, c, b]), (c, b, vec![c, b])]

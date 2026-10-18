@@ -60,6 +60,8 @@ fn create_masks_the_layer_with_the_selection() {
     let m = l.mask.as_ref().expect("selection becomes the mask");
     assert_eq!(m.value(5, 5), 1.0);
     assert_eq!(m.value(30, 20), 0.0);
+    // The selection is in the mask now: dropped, as in Photoshop.
+    assert!(d.doc.selection.is_none());
     // Still laid out on the canvas, not the mask's bounds.
     assert_eq!(photocraft_compose::fill_frame(l, d.doc.bounds()), d.doc.bounds());
     // The composite outside the selection is the white background.

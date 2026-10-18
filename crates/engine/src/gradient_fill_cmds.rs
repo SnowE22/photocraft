@@ -327,8 +327,13 @@ fn create(s: &mut Session, p: &Value) -> Result<Value> {
         let d = s.active().ok_or(EngineError::NoDocument)?;
         new_layer(s, &d.doc, p)?
     };
+    // The selection became the layer mask: dropped, as in Photoshop (Undo brings it back).
+    let masked_by_selection = layer.mask.is_some();
     let id = s.edit("New Gradient Fill Layer", |doc, active| {
-        let id = doc.insert_above(*active, layer);
+        let id = doc.insert_new(*active, layer);
+        if masked_by_selection {
+            doc.selection = None;
+        }
         *active = Some(id);
         Ok(id)
     })?;

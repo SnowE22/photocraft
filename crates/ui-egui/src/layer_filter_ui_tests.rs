@@ -16,15 +16,15 @@ fn session() -> photocraft_engine::Session {
     let mut s = photocraft_engine::Session::new();
     s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
     s.execute("layer.new.layer", json!({"name": "Paper"})).unwrap();
-    s.execute("layer.groupLayers", json!({"name": "Sheets"})).unwrap();
+    // The type layer before the grouping: one made for the (open, selected) group goes inside it.
+    let text = s.execute("type.create", json!({"text": "ink notes", "x": 4, "y": 20, "size": 12})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.setProps", json!({"layer": text, "name": "ink notes"})).unwrap();
     let paper = layer(&s.active().unwrap().doc, "Paper");
+    s.execute("layer.select", json!({"layer": paper})).unwrap();
+    s.execute("layer.groupLayers", json!({"name": "Sheets"})).unwrap();
     s.execute("layer.select", json!({"layer": paper})).unwrap();
     let ink = s.execute("layer.new.layer", json!({"name": "Ink"})).unwrap()["layer"].as_u64().unwrap();
     s.execute("layer.setProps", json!({"layer": ink, "blend": "Multiply"})).unwrap();
-    let sheets = layer(&s.active().unwrap().doc, "Sheets");
-    s.execute("layer.select", json!({"layer": sheets})).unwrap();
-    let text = s.execute("type.create", json!({"text": "ink notes", "x": 4, "y": 20, "size": 12})).unwrap()["layer"].as_u64().unwrap();
-    s.execute("layer.setProps", json!({"layer": text, "name": "ink notes"})).unwrap();
     s
 }
 

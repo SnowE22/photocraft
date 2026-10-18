@@ -238,8 +238,9 @@ fn new_adjustment_and_fill_layers_are_masked_by_the_selection() {
             assert_eq!(mask.value(10, 10), 1.0, "{id} at {depth}-bit: the mask hides the selected area");
             assert_eq!(mask.value(2, 2), 0.0, "{id} at {depth}-bit: the mask reveals outside the selection");
             assert!(mask.linked && mask.enabled, "{id}");
-            // The selection stays, as after Layer › Layer Mask › Reveal Selection.
-            assert!(d.doc.selection.is_some(), "{id} dropped the selection");
+            // The selection is in the mask now, so it is dropped, as in Photoshop (and as after
+            // Layer › Layer Mask › Reveal Selection).
+            assert!(d.doc.selection.is_none(), "{id} kept the selection");
             // The white canvas is untouched outside the selection.
             assert_eq!(px(&mut s, 2, 2), vec![1.0, 1.0, 1.0, 1.0], "{id} at {depth}-bit changed pixels outside the selection");
             if blackens {
@@ -247,7 +248,38 @@ fn new_adjustment_and_fill_layers_are_masked_by_the_selection() {
             }
             s.execute("edit.undo", json!({})).unwrap();
             assert!(s.active().unwrap().doc.layer(layer).is_none(), "{id}: undo keeps the layer");
+            assert!(s.active().unwrap().doc.selection.is_some(), "{id}: undo brings the selection back");
         }
+    }
+}
+
+#[test]
+fn new_layers_go_into_a_selected_open_group() {
+    // As in Photoshop: with an open group selected, a new layer, group, adjustment or fill layer
+    // lands at the top inside it; with the group closed, directly above it.
+    for (id, params) in [
+        ("layer.new.layer", json!({})),
+        ("layer.new.group", json!({})),
+        ("layer.newAdjustmentLayer.invert", json!({})),
+        ("layer.newFillLayer.solidColor", json!({"color": "#000000"})),
+    ] {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 32, "height": 32})).unwrap();
+        let group = LayerId(s.execute("layer.new.group", json!({"name": "G"})).unwrap()["layer"].as_u64().unwrap());
+        s.execute("layer.new.layer", json!({"name": "inner"})).unwrap();
+        s.execute("layer.select", json!({"layer": group.0})).unwrap();
+        let new = LayerId(s.execute(id, params.clone()).unwrap()["layer"].as_u64().unwrap());
+        let d = &s.active().unwrap().doc;
+        let children: Vec<LayerId> = d.layer(group).and_then(|g| g.children()).unwrap().iter().map(|l| l.id).collect();
+        assert_eq!(children.last(), Some(&new), "{id}: at the top inside the open group");
+        assert_eq!(children.len(), 2, "{id}");
+        assert_eq!(s.active().unwrap().active_layer, Some(new), "{id}: the new layer is selected");
+        // Closed: beside the group, directly above it.
+        s.execute("layer.setExpanded", json!({"layer": group.0, "expanded": false})).unwrap();
+        s.execute("layer.select", json!({"layer": group.0})).unwrap();
+        let above = LayerId(s.execute(id, params).unwrap()["layer"].as_u64().unwrap());
+        let root: Vec<LayerId> = s.active().unwrap().doc.layers.iter().map(|l| l.id).collect();
+        assert_eq!(root.iter().position(|l| *l == above), root.iter().position(|l| *l == group).map(|i| i + 1), "{id}: above the closed group");
     }
 }
 
@@ -917,7 +949,8 @@ fn move_to_refuses_to_nest_past_the_group_depth_cap() {
     // would put `Leaf` at MAX + 1.
     let path = s.active().unwrap().doc.path_of(photocraft_doc::LayerId(deep)).unwrap();
     assert_eq!(path.len() - 1, photocraft_doc::MAX_GROUP_DEPTH - 1);
-    let leaf = s.execute("layer.new.layer", json!({"name": "Leaf"})).unwrap()["layer"].as_u64().unwrap();
+    // Below the selected outermost group: a new layer for an open group would go inside it.
+    let leaf = s.execute("layer.new.layer", json!({"name": "Leaf", "position": "below"})).unwrap()["layer"].as_u64().unwrap();
     let g1 = s.execute("layer.groupLayers", json!({"layer": leaf})).unwrap()["layer"].as_u64().unwrap();
     let g = s.execute("layer.groupLayers", json!({"layer": g1})).unwrap()["layer"].as_u64().unwrap();
     let past = s.active().unwrap().history.past_len();
@@ -1073,9 +1106,11 @@ fn move_selected_layers_keeps_selected_group_children_and_supports_above_below()
     let a = s.execute("layer.new.layer", json!({"name": "A"})).unwrap()["layer"].as_u64().unwrap();
     let b = s.execute("layer.new.layer", json!({"name": "B"})).unwrap()["layer"].as_u64().unwrap();
     let c = s.execute("layer.new.layer", json!({"name": "C"})).unwrap()["layer"].as_u64().unwrap();
-    let group = s.execute("layer.new.group", json!({"name": "G"})).unwrap()["layer"].as_u64().unwrap();
-    // Made before B moves into G: a new group goes above the active layer, which would then be inside G.
+    // Target first, then G above C (under Target): a new group for a selected open group goes
+    // inside it.
     let target = s.execute("layer.new.group", json!({"name": "Target"})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.select", json!({"layer": c})).unwrap();
+    let group = s.execute("layer.new.group", json!({"name": "G"})).unwrap()["layer"].as_u64().unwrap();
     s.execute("layer.moveTo", json!({"layer": b, "target": group, "position": "into"})).unwrap();
 
     let r = s.execute("layer.moveTo", json!({"layers": [b, group, a], "target": target, "position": "into"})).unwrap();

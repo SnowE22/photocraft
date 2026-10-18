@@ -66,7 +66,7 @@ fn stamp_visible(s: &mut Session, p: &Value) -> Result<Value> {
             return Err(EngineError::Other("there are no visible layers to stamp".into()));
         }
         let layer = stamp_layer(doc, doc.next_layer_name("Layer"))?;
-        let id = doc.insert_above(*active, layer);
+        let id = doc.insert_new(*active, layer);
         *active = Some(id);
         Ok(id)
     })?;

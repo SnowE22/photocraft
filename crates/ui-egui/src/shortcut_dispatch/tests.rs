@@ -20,8 +20,11 @@ fn realistic() -> photocraft_engine::Session {
     let mut s = photocraft_engine::Session::new();
     s.execute("file.new", json!({"width": 240, "height": 160})).unwrap();
     s.execute("layer.new.layer", json!({"name": "in-group"})).unwrap();
-    s.execute("layer.groupLayers", json!({"name": "group"})).unwrap();
+    let group = s.execute("layer.groupLayers", json!({"name": "group"})).unwrap()["layer"].as_u64().unwrap();
+    // Closed, the selected group takes the type layer above itself (open, it would go inside).
+    s.execute("layer.setExpanded", json!({"layer": group, "expanded": false})).unwrap();
     s.execute("type.create", json!({"x": 20, "y": 60, "text": "Hello"})).unwrap();
+    s.execute("layer.setExpanded", json!({"layer": group, "expanded": true})).unwrap();
     let paint = s.execute("layer.new.layer", json!({"name": "paint"})).unwrap()["layer"].as_u64().unwrap();
     s.execute("select.rect", json!({"x": 20, "y": 20, "width": 80, "height": 60})).unwrap();
     s.execute("edit.fill", json!({"color": "#3070c0"})).unwrap();
@@ -579,6 +582,9 @@ fn delete_with_several_layers_selected_deletes_them_even_with_the_mask_targeted(
     let s = &mut h.state_mut().session;
     let first = photocraft_doc::LayerId(s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap());
     let second = photocraft_doc::LayerId(s.execute("layer.newAdjustmentLayer.invert", json!({})).unwrap()["layer"].as_u64().unwrap());
+    // The first adjustment layer took the harness's selection as its mask and dropped it, as in
+    // Photoshop: Reselect brings it back.
+    s.execute("select.reselect", json!({})).unwrap();
     s.execute("layer.select", json!({"layer": first.0, "mode": "add"})).unwrap();
     let st = s.active().unwrap();
     assert_eq!(st.selected_layers().len(), 2);

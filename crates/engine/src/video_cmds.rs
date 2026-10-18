@@ -123,7 +123,7 @@ fn new_blank(s: &mut Session, _p: &Value) -> Result<Value> {
         let name = doc.next_layer_name("Video Layer");
         let mut l = Layer::raster(name, fmt);
         l.video = Some(VideoData::new(frames, fps));
-        let id = doc.insert_above(*active, l);
+        let id = doc.insert_new(*active, l);
         *active = Some(id);
         sync(doc);
         Ok(id)
@@ -316,7 +316,7 @@ fn new_from_file(s: &mut Session, p: &Value) -> Result<Value> {
         v.original_frames = Some(v.frames.clone());
         v.source = photocraft_doc::VideoSource::File { path: path.clone() };
         l.video = Some(v);
-        let id = doc.insert_above(*active, l);
+        let id = doc.insert_new(*active, l);
         *active = Some(id);
         sync(doc);
         Ok(id)

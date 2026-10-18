@@ -3558,6 +3558,8 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let footer = if t.pro { widgets::footer_height(ui) + ui.spacing().item_spacing.y } else { 0.0 };
     let max_h = (ui.available_height() - footer).max(40.0);
     egui::ScrollArea::vertical().id_salt("history-rows").max_height(max_h).auto_shrink([false, false]).show(ui, |ui| {
+        // Rows flush and HISTORY_ROW_H tall, as dense as Photoshop's list.
+        ui.spacing_mut().item_spacing.y = 0.0;
         // Snapshots head the list and scroll with the states, so many of them never push the
         // footer out of a short dock.
         snap_cmd = snapshot_rows(app, ui, selected_snap);
@@ -3566,7 +3568,7 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             let selected = i == current && selected_snap.is_none();
             // Past states can be dragged onto the trash; the oldest one can't be deleted.
             let sense = if is_redo || i == 0 { Sense::click() } else { Sense::click_and_drag() };
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 24.0), sense);
+            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), HISTORY_ROW_H), sense);
             resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &e));
             if resp.drag_started() {
                 ui.ctx().data_mut(|d| d.insert_temp(history_drag_key(), HistoryDrag::State(i)));
@@ -3674,6 +3676,10 @@ fn history(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         app.ui.status_error = true;
     }
 }
+
+/// The height of a History state row, rows flush. Photoshop fits nine states where 24 pt rows
+/// with the theme's 6 pt gaps fitted seven (user report, side by side).
+pub(crate) const HISTORY_ROW_H: f32 = 23.0;
 
 /// A History panel row being dragged, for a drop on the trash (#5324).
 #[derive(Clone, Copy, Debug)]

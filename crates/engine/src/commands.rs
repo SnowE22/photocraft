@@ -373,9 +373,10 @@ fn mask_at_depth(mut mask: LayerMask, depth: SampleType) -> Result<LayerMask> {
 /// Mask a fill or adjustment layer being created, as Photoshop does: the path selected in the
 /// Paths panel (`"path"`: `"work"`, a saved path's name or a path object) becomes its vector
 /// mask, which makes a Solid Color fill a shape (#1419); without one, the selection becomes its
-/// layer mask ([`selection_mask`]); without either, a white mask reveals the whole layer (#1768).
+/// layer mask ([`selection_mask`]) and, as in Photoshop, the selection is dropped (it is in the
+/// mask now; Undo brings it back); without either, a white mask reveals the whole layer (#1768).
 /// A path that isn't there is an error.
-pub(crate) fn mask_new_layer(doc: &Document, l: &mut Layer, p: &Value, cmd: &str) -> Result<()> {
+pub(crate) fn mask_new_layer(doc: &mut Document, l: &mut Layer, p: &Value, cmd: &str) -> Result<()> {
     let path = match p.get("path") {
         None | Some(Value::Null) => None,
         Some(Value::String(n)) if crate::vector_cmds::is_work(Some(n)) => Some(doc.work_path.clone().ok_or_else(|| bad(cmd, "no work path"))?),
@@ -386,7 +387,10 @@ pub(crate) fn mask_new_layer(doc: &Document, l: &mut Layer, p: &Value, cmd: &str
     };
     match path {
         Some(path) => l.vector_mask = Some(photocraft_doc::VectorMask::new(path)),
-        None => l.mask = Some(mask_at_depth(selection_mask(doc)?.unwrap_or_else(LayerMask::reveal_all), doc.depth)?),
+        None => {
+            l.mask = Some(mask_at_depth(selection_mask(doc)?.unwrap_or_else(LayerMask::reveal_all), doc.depth)?);
+            doc.selection = None;
+        }
     }
     Ok(())
 }
@@ -401,7 +405,7 @@ fn new_adjustment(s: &mut Session, adj: Adjustment, p: &Value, cmd: &str) -> Res
     let id = s.edit(&label, |doc, active| {
         let mut l = Layer::new(doc.next_layer_name(&name), LayerContent::Adjustment(adj));
         mask_new_layer(doc, &mut l, p, cmd)?;
-        let id = doc.insert_above(*active, l);
+        let id = doc.insert_new(*active, l);
         *active = Some(id);
         Ok(id)
     })?;
@@ -667,7 +671,7 @@ fn build() -> Vec<CommandSpec> {
         cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?}"##, has_doc, |s, p| {
             let id = s.edit("New Group", |doc, active| {
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
-                let id = doc.insert_above(*active, Layer::group(name, vec![]));
+                let id = doc.insert_new(*active, Layer::group(name, vec![]));
                 *active = Some(id);
                 Ok(id)
             })?;
@@ -996,7 +1000,7 @@ fn build() -> Vec<CommandSpec> {
                     let fill = Fill::Solid(Color::rgba(c[0], c[1], c[2], c[3])).in_mode(doc.mode);
                     let mut l = Layer::new(doc.next_layer_name("Color Fill"), LayerContent::Fill(fill));
                     mask_new_layer(doc, &mut l, p, "layer.newFillLayer.solidColor")?;
-                    let id = doc.insert_above(*active, l);
+                    let id = doc.insert_new(*active, l);
                     *active = Some(id);
                     Ok(id)
                 })?;
@@ -1027,7 +1031,7 @@ fn build() -> Vec<CommandSpec> {
                     .in_mode(doc.mode);
                     let mut l = Layer::new(doc.next_layer_name("Gradient Fill"), LayerContent::Fill(fill));
                     mask_new_layer(doc, &mut l, p, "layer.newFillLayer.gradient")?;
-                    let id = doc.insert_above(*active, l);
+                    let id = doc.insert_new(*active, l);
                     *active = Some(id);
                     Ok(id)
                 })?;
