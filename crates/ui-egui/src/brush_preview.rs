@@ -232,6 +232,16 @@ pub fn with_cache<R>(ctx: &egui::Context, f: impl FnOnce(&mut SigCache<egui::Tex
     r
 }
 
+/// The cache slot of `prefix`'s preview of preset `p`: `prefix@<place>:<name>`. Presets of one
+/// name in different groups or folders (the default library has several "Hard Round"s) get slots
+/// of their own; sharing one, they re-rendered over each other every frame. The name stays after
+/// the first `:`, where the Brushes panel's clean-up looks for it.
+pub fn preset_slot(prefix: &str, p: &photocraft_engine::paint::BrushPreset) -> String {
+    let mut hs = DefaultHasher::new();
+    (&p.group, &p.folder).hash(&mut hs);
+    format!("{prefix}@{:x}:{}", hs.finish(), p.name)
+}
+
 /// Renders done by the preview cache so far.
 pub fn render_count(ctx: &egui::Context) -> u64 {
     with_cache(ctx, |c| c.renders)

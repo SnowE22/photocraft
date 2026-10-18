@@ -1036,6 +1036,26 @@ fn pattern_desc(p: &Value) -> Option<Descriptor> {
 }
 
 fn make_from(d: &Descriptor) -> Mapped {
+    // Duplicate layer/group into a new document: `Mk` with a document class, a layer
+    // `Usng`, an optional `Nm` (the new document's name) and an optional `LyrN`
+    // (the copy's name). A `Dplc` with a `T` document reference (duplicate into another
+    // open document) stays a kept Photoshop step: document indices mean nothing at replay.
+    if let Some(r) = get_ref(d, "null")
+        && ref_class(r).as_deref() == Some("Dcmn")
+        && matches!(target(r), Target::Class)
+        && let Some(u) = get_ref(d, "Usng")
+        && matches!(ref_class(u).as_deref(), Some("Lyr") | Some("layerSection"))
+        && let Some(mut p) = layer_target(u)
+    {
+        p.insert("document".into(), "new".into());
+        if let Some(n) = get_text(d, "Nm  ") {
+            p.insert("documentName".into(), n.into());
+        }
+        if let Some(n) = get_text(d, "LyrN") {
+            p.insert("name".into(), n.into());
+        }
+        return step("layer.duplicate", Value::Object(p));
+    }
     if let Some(m) = extra::make_from(d) {
         return m;
     }
@@ -1172,6 +1192,21 @@ fn make_to(id: &str, p: &Value) -> Option<Descriptor> {
             }
             let t = pattern_desc(p)?;
             desc("null").with("null", class_ref("contentLayer")).with("Usng", D::Descriptor(desc("contentLayer").with("Type", D::Descriptor(t))))
+        }
+        "layer.duplicate" => {
+            // Duplicate into a new document is a `Mk`, not a `Dplc` (see `make_from`).
+            // Anything else falls through to the `Dplc` event below.
+            if jstr(p, "document") != Some("new") {
+                return None;
+            }
+            let mut d = desc("null").with("null", class_ref("Dcmn")).with("Usng", layer_ref(p));
+            if let Some(n) = jstr(p, "documentName") {
+                d = d.with("Nm  ", text(n));
+            }
+            if let Some(n) = jstr(p, "name") {
+                d = d.with("LyrN", text(n));
+            }
+            d
         }
         "file.newFromClipboard" => desc("null").with("Nw  ", D::Descriptor(desc("Dcmn").with("preset", text("Clipboard")))),
         "file.new" => {
@@ -1976,6 +2011,11 @@ fn duplicate_from(d: &Descriptor) -> Mapped {
     let Some(r) = get_ref(d, "null") else { return Mapped::Unsupported { harmless: false } };
     match ref_class(r).as_deref() {
         Some("Lyr") => {
+            // A `T` document reference (duplicate into another open document) has no
+            // replayable meaning here: keep the step verbatim rather than misplay it.
+            if get_ref(d, "T   ").is_some() {
+                return Mapped::Unsupported { harmless: false };
+            }
             let Some(mut p) = layer_target(r) else { return Mapped::Unsupported { harmless: false } };
             if let Some(n) = get_text(d, "Nm  ") {
                 p.insert("name".into(), n.into());
@@ -1997,6 +2037,10 @@ fn duplicate_from(d: &Descriptor) -> Mapped {
 }
 
 fn duplicate_to(id: &str, p: &Value) -> Option<Descriptor> {
+    // Duplicate into a new document is a `Mk` (handled above); let it fall through.
+    if id == "layer.duplicate" && jstr(p, "document") == Some("new") {
+        return None;
+    }
     let mut d = match id {
         "layer.duplicate" => desc("null").with("null", layer_ref(p)),
         "image.duplicate" => {
@@ -2799,6 +2843,7 @@ const EVENTS: &[Event] = &[
             "layer.new.layer",
             "layer.new.group",
             "layer.groupLayers",
+            "layer.duplicate",
             "layer.new.layerViaCopy",
             "layer.new.layerViaCut",
             "layer.newFillLayer.solidColor",

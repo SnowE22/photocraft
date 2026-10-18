@@ -308,12 +308,13 @@ fn reset_workspace_restores_the_default_layout_and_new_workspaces_keep_theirs() 
     let (app, _, _) = app_with_layers();
     let mut h = harness(app, vec2(1200.0, 800.0), ThemeKind::ProMedium);
     let ctx = h.ctx.clone();
-    let default = last_rects(&h.ctx);
     h.state_mut().ui.dock.heights.insert(Group::Properties, 120.0);
     h.state_mut().ui.dock.set_collapsed(Group::Color, true);
     crate::menus::invoke(h.state_mut(), &ctx, "window.workspace.newWorkspace", json!({"name": "Tall Layers"})).unwrap();
     let mine = h.state().ui.dock.clone();
     crate::menus::invoke(h.state_mut(), &ctx, "window.workspace.essentials", json!({})).unwrap();
+    h.run_steps(3);
+    let default = last_rects(&h.ctx);
     assert_eq!(h.state().ui.dock, DockLayout::default());
     h.state_mut().ui.dock.heights.insert(Group::Color, 300.0);
     crate::menus::invoke(h.state_mut(), &ctx, "window.workspace.resetWorkspace", json!({})).unwrap();

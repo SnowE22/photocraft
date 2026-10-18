@@ -123,10 +123,9 @@ fn path_param(v: Option<&Value>, cmd: &str, key: &str) -> Result<Vec<String>> {
     let err = || bad(cmd, format!("`{key}` must be a list of at most {MAX_PATH} folder names (non-empty strings of at most {MAX_NAME} characters)"));
     match v {
         None | Some(Value::Null) => Ok(Vec::new()),
-        Some(Value::Array(a)) if a.len() <= MAX_PATH => a
-            .iter()
-            .map(|x| x.as_str().map(str::trim).filter(|n| !n.is_empty() && n.chars().count() <= MAX_NAME).map(str::to_string).ok_or_else(err))
-            .collect(),
+        Some(Value::Array(a)) if a.len() <= MAX_PATH => {
+            a.iter().map(|x| x.as_str().map(str::trim).filter(|n| !n.is_empty() && n.chars().count() <= MAX_NAME).map(str::to_string).ok_or_else(err)).collect()
+        }
         Some(_) => Err(err()),
     }
 }
@@ -400,7 +399,15 @@ mod tests {
     use super::*;
 
     fn preset(name: &str, place: &[&str]) -> BrushPreset {
-        let mut p = BrushPreset { name: name.into(), brush: Default::default(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default(), tool: None };
+        let mut p = BrushPreset {
+            name: name.into(),
+            brush: Default::default(),
+            builtin: false,
+            group: String::new(),
+            folder: Vec::new(),
+            captures: Default::default(),
+            tool: None,
+        };
         set_place(&mut p, &place.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         p
     }
@@ -551,7 +558,10 @@ mod tests {
         s.tools.presets.push(preset("X1", &["Ink"]));
         let before = s.tools.presets.clone();
         assert!(s.execute("brush.presets.moveItems", json!({"items": [{"folder": ["A", "Ink"]}]})).is_err(), "a group named Ink is already at the top");
-        assert!(s.execute("brush.presets.moveItems", json!({"items": [{"folder": ["A", "Ink"]}, {"folder": ["Ink"]}], "into": ["B"]})).is_err(), "two folders named Ink");
+        assert!(
+            s.execute("brush.presets.moveItems", json!({"items": [{"folder": ["A", "Ink"]}, {"folder": ["Ink"]}], "into": ["B"]})).is_err(),
+            "two folders named Ink"
+        );
         assert_eq!(s.tools.presets, before);
         let mut full = vec!["Deep".to_string()];
         full.extend((0..MAX_FOLDER_DEPTH).map(|i| format!("d{i}")));

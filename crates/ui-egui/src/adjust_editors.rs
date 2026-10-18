@@ -92,6 +92,8 @@ pub struct EditorCx {
     /// Preferences ▸ Interface ▸ Dynamic Color Sliders: colour tracks on the colour sliders
     /// (off: the plain track).
     pub dynamic_color_sliders: bool,
+    /// Image › Curves with a single Channels-panel target: that channel only (#5335).
+    pub isolated_curve: Option<photocraft_engine::channel_cmds::IsolatedCurveChannel>,
 }
 
 /// The Levels/Curves channel space the values address.
@@ -291,14 +293,26 @@ pub fn tone_channels(space: ToneSpace, gray: bool) -> &'static [ToneChannel] {
 }
 
 fn channel_picker(ui: &mut egui::Ui, id: egui::Id, chans: &[ToneChannel], text: &str) -> usize {
+    let opts: Vec<(usize, &str)> = chans.iter().enumerate().map(|(i, c)| (i, c.label)).collect();
+    channel_picker_opts(ui, id, &opts, text, true)
+}
+
+/// The popup, with `translate` for whether the built-in labels follow the interface language;
+/// a user-typed channel name is shown exactly as entered (#5335).
+fn channel_picker_opts(ui: &mut egui::Ui, id: egui::Id, opts: &[(usize, &str)], text: &str, translate: bool) -> usize {
     let mut ch: usize = ui.data(|d| d.get_temp(id)).unwrap_or(0);
-    if ch >= chans.len() {
+    if ch >= opts.len() {
         ch = 0;
     }
     ui.horizontal(|ui| {
         label(ui, text);
-        let opts: Vec<(usize, &str)> = chans.iter().enumerate().map(|(i, c)| (i, c.label)).collect();
-        widgets::dropdown(ui, &format!("{id:?}-ch"), &mut ch, &opts, 110.0);
+        let width = if opts.len() == 1 { 160.0 } else { 110.0 };
+        let key = format!("{id:?}-ch");
+        if translate {
+            widgets::dropdown(ui, &key, &mut ch, opts, width);
+        } else {
+            widgets::dropdown_literal(ui, &key, &mut ch, opts, width);
+        }
     });
     ui.data_mut(|d| d.insert_temp(id, ch));
     ch
@@ -469,11 +483,20 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
     let chans = tone_channels(space, cx.gray);
     let state_id = cx.mem.with("curves");
     let mut st: CurveUi = ui.data(|d| d.get_temp(state_id)).unwrap_or_default();
-    let ch = channel_picker(ui, cx.mem.with("curves-ch"), chans, tl!("Channel:"));
+    let isolated = cx.isolated_curve.as_ref();
+    let ch = if let Some(iso) = isolated {
+        channel_picker_opts(ui, cx.mem.with("curves-ch"), &[(0, iso.name.as_str())], tl!("Channel:"), iso.translate)
+    } else {
+        channel_picker(ui, cx.mem.with("curves-ch"), chans, tl!("Channel:"))
+    };
     if ch != st.channel {
         st = CurveUi { channel: ch, ..Default::default() };
     }
-    let chan = chans.get(ch).copied().unwrap_or(ToneChannel { key: "", label: "" });
+    let chan =
+        if let Some(iso) = isolated { ToneChannel { key: iso.key, label: "" } } else { chans.get(ch).copied().unwrap_or(ToneChannel { key: "", label: "" }) };
+    let overlay_others = isolated.is_none();
+    let tinted = isolated.is_some_and(|c| c.tint) || (isolated.is_none() && ch != 0);
+    let hist_i = isolated.map_or(ch, |c| c.hist);
     let key = curve_key(&chan);
     let mut e = Edit::default();
     // Photoshop's layout: a tool column (the eyedroppers, then the point and pencil buttons) left
@@ -541,7 +564,10 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         for (end, i) in [(0usize, 0usize), (1, pts.len().saturating_sub(1))] {
             let Some(q) = pts.get(i).copied() else { continue };
             let x = to_scr(q).x;
-            let r = Rect::from_min_max(pos2(x - CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0), pos2(x + CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0 + CURVES_SLIDER_H));
+            let r = Rect::from_min_max(
+                pos2(x - CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0),
+                pos2(x + CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0 + CURVES_SLIDER_H),
+            );
             let id = cx.mem.with(("curves-input-slider", end));
             let s = ui.interact(r.expand(3.0), id, Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
             if s.dragged()
@@ -562,7 +588,7 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
     let p = ui.painter_at(full.expand(2.0));
     p.rect_filled(graph, 0.0, t.field);
     if let Some(h) = &cx.hist {
-        tone::draw_histogram(&p, graph, &h[ch], Color32::from_gray(if t.pro { 88 } else { 190 }).gamma_multiply(0.75));
+        tone::draw_histogram(&p, graph, &h[hist_i], Color32::from_gray(if t.pro { 88 } else { 190 }).gamma_multiply(0.75));
     }
     for i in 1..4 {
         let f = i as f32 / 4.0;
@@ -602,7 +628,7 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         let line: Vec<Pos2> = map.iter().enumerate().map(|(k, o)| to_scr([k as f32 / last * 255.0, *o])).collect();
         p.add(egui::Shape::line(line, Stroke::new(width, color)));
     };
-    if ch == 0 {
+    if overlay_others && ch == 0 {
         // Photoshop overlays the edited channel curves on the composite.
         for c in chans.iter().skip(1) {
             if pencil {
@@ -618,7 +644,7 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
             }
         }
     }
-    let color = if ch == 0 { t.text } else { bar_color(&chan, &t) };
+    let color = if tinted { bar_color(&chan, &t) } else { t.text };
     if pencil {
         draw_map(&map, color, 1.5);
     } else {
@@ -1721,6 +1747,7 @@ pub fn layer_editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj
         gradients: gradient_presets(app, kind),
         dialog: false,
         dynamic_color_sliders: app.session.prefs().interface.dynamic_color_sliders,
+        isolated_curve: None,
     };
     if kind == "levels" {
         crate::layer_picker::controls(app, ui, id);
@@ -1804,6 +1831,7 @@ mod tests {
             gradients: Vec::new(),
             dialog: false,
             dynamic_color_sliders: dynamic,
+            isolated_curve: None,
         };
         let stops = [Color32::BLACK, Color32::RED];
         assert_eq!(track_stops(&cx(true), &stops), Some(&stops[..]));

@@ -87,7 +87,15 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 }
             };
             let name = if b.name.trim().is_empty() { default_name } else { b.name.trim().to_string() };
-            out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder: Vec::new(), captures: Default::default(), tool: None });
+            out.presets.push(BrushPreset {
+                name,
+                brush,
+                builtin: false,
+                group: group.to_string(),
+                folder: Vec::new(),
+                captures: Default::default(),
+                tool: None,
+            });
         }
     } else if f.presets.is_empty() {
         // Tips without a settings section (early v6 files): one preset per tip.
@@ -114,7 +122,15 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 // named after the imported file.
                 Some(brush) => {
                     let folder = f.folders.get(i).cloned().unwrap_or_default();
-                    out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder, captures: captures(d), tool: preset_tool(d) });
+                    out.presets.push(BrushPreset {
+                        name,
+                        brush,
+                        builtin: false,
+                        group: group.to_string(),
+                        folder,
+                        captures: captures(d),
+                        tool: preset_tool(d),
+                    });
                 }
                 None => {
                     m.warnings.insert(format!("\"{name}\": its sampled tip is missing from the file; skipped"));
@@ -325,6 +341,7 @@ impl Mapper<'_> {
             control,
             fade_steps: num(d, "fStp").map_or(25, |v| v.clamp(1.0, 9999.0) as u32),
             minimum: pct(d, "Mnm ").unwrap_or(0.0).clamp(0.0, 1.0),
+            ..Dynamic::default()
         }
     }
 

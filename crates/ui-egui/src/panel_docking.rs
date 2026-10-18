@@ -26,6 +26,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("layers", "Layers", Group::Layers),
     ("channels", "Channels", Group::Layers),
     ("paths", "Paths", Group::Layers),
+    ("brushes", "Brushes", Group::Brushes),
 ];
 #[derive(Clone, Default)]
 struct LegacyDrag {
@@ -184,12 +185,13 @@ pub(crate) fn command(app: &mut PhotocraftApp, id: &str, params: &Value) -> Opti
                 .and_then(|action| apply_action(app, action)),
         );
     }
-    if let Some(layout) = &app.ui.docking
-        && let Some(panel) = id.strip_prefix("window.panel.").or_else(|| id.strip_prefix("window.toggle.")).and_then(normalize)
-    {
-        let showing = layout.contains(&panel.to_string());
+    if let Some(panel) = id.strip_prefix("window.panel.").or_else(|| id.strip_prefix("window.toggle.")).and_then(normalize) {
+        if app.ui.docking.is_none() && panel != "brushes" {
+            return None;
+        }
+        let showing = app.ui.docking.as_ref().is_some_and(|layout| layout.contains(&panel.to_string()));
         let show = match params.get("show").or_else(|| params.get("on")) {
-            None => !showing || !panel_active(layout, panel) || collapsed_members(app, layout).contains(panel),
+            None => !showing || app.ui.docking.as_ref().is_some_and(|layout| !panel_active(layout, panel) || collapsed_members(app, layout).contains(panel)),
             Some(value) => match value.as_bool() {
                 Some(show) => show,
                 None => return Some(Err("show must be a boolean".into())),
@@ -746,6 +748,7 @@ pub(crate) fn rail_on(app: &PhotocraftApp, group: Group) -> bool {
 
 pub(crate) fn rail_click(app: &mut PhotocraftApp, group: Group) {
     let Some(layout) = app.ui.docking.as_ref() else { return };
+    let floating = PANELS.iter().filter(|p| p.2 == group).any(|p| layout.floating.iter().any(|g| g.panels.iter().any(|id| id == p.0)));
     let existing = PANELS.iter().find(|p| p.2 == group && layout.contains(&p.0.to_owned())).map(|p| p.0);
     let panel = existing.or_else(|| {
         group
@@ -755,7 +758,11 @@ pub(crate) fn rail_click(app: &mut PhotocraftApp, group: Group) {
     });
     if let Some(panel) = panel {
         let result = if existing.is_some() && rail_on(app, group) {
-            group_command(app, &json!({"panel": panel, "operation":"collapse"}))
+            if floating {
+                group_command(app, &json!({"panel": panel, "operation":"close"}))
+            } else {
+                group_command(app, &json!({"panel": panel, "operation":"collapse"}))
+            }
         } else {
             change(app, "activate", &json!({"panel":panel}))
         };
@@ -1058,6 +1065,10 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
             panel_menu(self.app, ui, active);
             if ui.add_enabled(!locked, egui::Button::new(if collapsed { tl!("Expand Panel Group") } else { tl!("Collapse Panel Group") })).clicked() {
                 self.commands.push(("window.panel.group", json!({"panel":active,"operation":if collapsed {"expand"} else {"collapse"}})));
+                ui.close();
+            }
+            if ui.add_enabled(!locked, egui::Button::new(if floating { tl!("Dock Panel") } else { tl!("Float Panel") })).clicked() {
+                self.commands.push((if floating { "window.panel.dock" } else { "window.panel.float" }, json!({"panel":active})));
                 ui.close();
             }
             if !floating {

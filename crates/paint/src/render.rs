@@ -310,7 +310,8 @@ impl BrushContext {
         }
         let (cx, cy) = (d.center.x.floor() as i32, d.center.y.floor() as i32);
         let (rx, ry) = ((hx.ceil() as i32).saturating_add(2), (hy.ceil() as i32).saturating_add(2));
-        Rect::new(cx.saturating_sub(rx), cy.saturating_sub(ry), cx.saturating_add(rx).saturating_add(1), cy.saturating_add(ry).saturating_add(1)).intersect(&full)
+        Rect::new(cx.saturating_sub(rx), cy.saturating_sub(ry), cx.saturating_add(rx).saturating_add(1), cy.saturating_add(ry).saturating_add(1))
+            .intersect(&full)
     }
 
     /// Rasterise a dab over `rect` into `out` (tip shape × noise × per-tip texture × flow). Wet
@@ -1129,8 +1130,7 @@ impl StrokeRenderer {
                     let ti = ((y - ty * COV_TILE) * COV_TILE + (x - tx * COV_TILE)) as usize;
                     let c = t.cov[ti];
                     if c > 0.0 {
-                        out[(y - b.y0) as usize * w + (x - b.x0) as usize] =
-                            self.ctx.stroke_mask(c, self.dual.as_ref().map(|d| d.get(x, y)), x, y);
+                        out[(y - b.y0) as usize * w + (x - b.x0) as usize] = self.ctx.stroke_mask(c, self.dual.as_ref().map(|d| d.get(x, y)), x, y);
                     }
                 }
             }
@@ -1148,7 +1148,15 @@ impl StrokeRenderer {
 
     /// [`composite`](Self::composite), on several threads when `parallel` and there are enough
     /// tiles (the same pixels either way).
-    fn composite_tiles(&mut self, pre: &Surface, target: &mut Surface, selection: Option<&Surface>, lock_transparency: bool, all: bool, parallel: bool) -> Rect {
+    fn composite_tiles(
+        &mut self,
+        pre: &Surface,
+        target: &mut Surface,
+        selection: Option<&Surface>,
+        lock_transparency: bool,
+        all: bool,
+        parallel: bool,
+    ) -> Rect {
         let keys: Vec<(i32, i32)> = if all {
             self.cov.dirty.clear();
             let mut k: Vec<_> = self.cov.tiles.keys().copied().collect();
@@ -1426,7 +1434,9 @@ impl SampledTip<'_> {
                 }
             } else {
                 // The bitmap's edge: texels outside it are 0.
-                let get = |x: i64, y: i64| if x < 0 || y < 0 || x >= lw as i64 || y >= lh as i64 { 0.0 } else { data.get(y as usize * lw + x as usize).copied().unwrap_or(0.0) };
+                let get = |x: i64, y: i64| {
+                    if x < 0 || y < 0 || x >= lw as i64 || y >= lh as i64 { 0.0 } else { data.get(y as usize * lw + x as usize).copied().unwrap_or(0.0) }
+                };
                 let a = get(xi, yi) + (get(xi + 1, yi) - get(xi, yi)) * tx;
                 let b = get(xi, yi + 1) + (get(xi + 1, yi + 1) - get(xi, yi + 1)) * tx;
                 a + (b - a) * ty
@@ -1441,7 +1451,8 @@ impl SampledTip<'_> {
 /// How far (in pixels) a row's span is widened beyond the footprint: two pixels, more far from
 /// the origin, where `f32` pixel coordinates lose precision (the per-pixel test still decides).
 fn span_slack(cx: f32, cy: f32, rect: Rect) -> f32 {
-    let far = cx.abs().max(cy.abs()).max(rect.x0.unsigned_abs().max(rect.x1.unsigned_abs()) as f32).max(rect.y0.unsigned_abs().max(rect.y1.unsigned_abs()) as f32);
+    let far =
+        cx.abs().max(cy.abs()).max(rect.x0.unsigned_abs().max(rect.x1.unsigned_abs()) as f32).max(rect.y0.unsigned_abs().max(rect.y1.unsigned_abs()) as f32);
     let s = 2.0 + far * 4e-6;
     if s.is_finite() { s } else { f32::INFINITY }
 }

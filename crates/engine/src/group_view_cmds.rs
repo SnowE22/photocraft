@@ -133,11 +133,7 @@ fn set_expanded(s: &mut Session, p: &Value) -> Result<Value> {
             },
             Scope::Siblings | Scope::SiblingsTree => {
                 let list = siblings_of(&mut doc.layers, id, MAX_DEPTH).ok_or(EngineError::NoLayer(id))?;
-                if scope == Scope::Siblings {
-                    set_below(list, expanded, 0)
-                } else {
-                    set_below(list, expanded, MAX_DEPTH)
-                }
+                if scope == Scope::Siblings { set_below(list, expanded, 0) } else { set_below(list, expanded, MAX_DEPTH) }
             }
         }
     };

@@ -92,6 +92,7 @@ impl Group {
     pub fn preferred_fill(self) -> f32 {
         match self {
             Group::Layers => 500.0,
+            Group::Brushes => 100.0,
             g => g.min_height(),
         }
     }
@@ -100,6 +101,7 @@ impl Group {
     pub fn min_height(self) -> f32 {
         match self {
             Group::Layers => 140.0,
+            Group::Brushes => 100.0,
             _ => 80.0,
         }
     }

@@ -176,21 +176,23 @@ fn main() {
     with_gpu_sync();
 
     let doc = document(w, h, n);
-    let harness = egui_kittest::Harness::builder().with_size(egui::vec2(1600.0, 1000.0)).with_pixels_per_point(1.0).wgpu_setup(hardware_setup()).build_eframe(move |cc| {
-        PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
-        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Services::default());
-        // As the desktop app (`PHOTOCRAFT_INLINE_JOBS` unset): long work runs off the UI thread.
-        app.background_jobs = true;
-        if cpu {
-            app.perf.gpu_info.selected = "cpu".into();
-            app.perf.gpu_info.canvas = "cpu".into();
-        } else if let Some(rs) = cc.wgpu_render_state.as_ref() {
-            let info = rs.adapter.get_info();
-            println!("adapter: {} ({:?}, {:?})", info.name, info.backend, info.device_type);
-            app.set_wgpu(rs.clone());
-        }
-        app
-    });
+    let harness = egui_kittest::Harness::builder().with_size(egui::vec2(1600.0, 1000.0)).with_pixels_per_point(1.0).wgpu_setup(hardware_setup()).build_eframe(
+        move |cc| {
+            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Services::default());
+            // As the desktop app (`PHOTOCRAFT_INLINE_JOBS` unset): long work runs off the UI thread.
+            app.background_jobs = true;
+            if cpu {
+                app.perf.gpu_info.selected = "cpu".into();
+                app.perf.gpu_info.canvas = "cpu".into();
+            } else if let Some(rs) = cc.wgpu_render_state.as_ref() {
+                let info = rs.adapter.get_info();
+                println!("adapter: {} ({:?}, {:?})", info.name, info.backend, info.device_type);
+                app.set_wgpu(rs.clone());
+            }
+            app
+        },
+    );
     let mut b = Bench { harness };
     b.app().session.open_document(doc, None);
     let t = Instant::now();

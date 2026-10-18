@@ -314,7 +314,10 @@ fn loose_presets_between_groups_keep_their_places() {
     // A loose preset moved between the two groups.
     s.execute("brush.presets.moveItems", json!({"items": [{"preset": "Loose 1"}], "before": {"folder": "Washes"}})).unwrap();
     let (t, _) = session(&dir);
-    assert_eq!(names(&t), [("Ink 1".to_string(), "Inks".to_string()), ("Loose 2".into(), "".into()), ("Loose 1".into(), "".into()), ("Wash".into(), "Washes".into())]);
+    assert_eq!(
+        names(&t),
+        [("Ink 1".to_string(), "Inks".to_string()), ("Loose 2".into(), "".into()), ("Loose 1".into(), "".into()), ("Wash".into(), "Washes".into())]
+    );
 }
 
 #[test]

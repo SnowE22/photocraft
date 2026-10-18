@@ -122,7 +122,9 @@ fn alt_click_toggles_the_group_tree_and_ctrl_click_its_siblings() {
     let p = triangle(&mut h, "inner").unwrap();
     click(&mut h, p, Modifiers::COMMAND);
     assert!(!group(&h, "inner").1 && group(&h, "outer").1, "⌘-click stays inside inner's folder");
-    for (m, want) in [(Modifiers::NONE, "group"), (Modifiers::COMMAND, "siblings"), (Modifiers::ALT, "tree"), (Modifiers::COMMAND | Modifiers::ALT, "siblingsTree")] {
+    for (m, want) in
+        [(Modifiers::NONE, "group"), (Modifiers::COMMAND, "siblings"), (Modifiers::ALT, "tree"), (Modifiers::COMMAND | Modifiers::ALT, "siblingsTree")]
+    {
         assert_eq!(super::expand_scope(m), want);
     }
 }

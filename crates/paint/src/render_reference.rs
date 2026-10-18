@@ -137,7 +137,11 @@ fn compare_within(ctx: &BrushContext, dab: &Dab, dual: bool, rect: Rect, tol: f3
     ctx.rasterize(dab, dual, rect, &mut actual);
     ctx.rasterize_reference(dab, dual, rect, &mut expected);
     assert_eq!(actual.len(), expected.len());
-    let mismatch = actual.iter().zip(&expected).enumerate().find(|(_, (a, b))| if tol > 0.0 { (*a - *b).abs() > tol || a.is_nan() != b.is_nan() } else { a.to_bits() != b.to_bits() });
+    let mismatch = actual
+        .iter()
+        .zip(&expected)
+        .enumerate()
+        .find(|(_, (a, b))| if tol > 0.0 { (*a - *b).abs() > tol || a.is_nan() != b.is_nan() } else { a.to_bits() != b.to_bits() });
     assert!(mismatch.is_none(), "coverage mismatch {mismatch:?}; {dab:?}; dual={dual}, rect={rect:?}");
 }
 
@@ -310,7 +314,8 @@ fn tile_parallel_strokes_match_dab_by_dab_accumulation() {
     b.transfer.opacity.jitter = 0.6;
     brushes.push(b.clone());
     let mut dual = b.clone();
-    dual.dual_brush = crate::DualBrush { enabled: true, tip: TipShape::Sampled(blob(40, 30)), size: 120.0, spacing: 0.1, scatter: 1.0, count: 3, ..Default::default() };
+    dual.dual_brush =
+        crate::DualBrush { enabled: true, tip: TipShape::Sampled(blob(40, 30)), size: 120.0, spacing: 0.1, scatter: 1.0, count: 3, ..Default::default() };
     brushes.push(dual);
     let mut wet = BrushSettings { size: 260.0, hardness: 0.2, spacing: 0.08, wet_edges: true, ..Default::default() };
     wet.shape_dynamics.enabled = true;

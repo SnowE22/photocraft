@@ -89,11 +89,11 @@ mod platform {
             HwndPlace::None,
             POINT::new(),
             SIZE::new(),
-            co::SWP::FRAMECHANGED | co::SWP::NOMOVE | co::SWP::NOSIZE | co::SWP::NOZORDER | co::SWP::NOACTIVATE,
+            co::SWP::FRAMECHANGED | co::SWP::NOCOPYBITS | co::SWP::NOMOVE | co::SWP::NOSIZE | co::SWP::NOZORDER | co::SWP::NOACTIVATE,
         );
     }
 
-    /// How far a parked maximize reaches past its monitor on the left, top and right: the resize
+    /// How far a parked maximize reaches past a monitor/work-area edge: the resize
     /// border (about 8 pt at 100 %, more with DPI). Past that, a maximized window's rect is not
     /// parked but being dragged or snapped, and is left alone.
     const FRAME: i32 = 32;
@@ -110,9 +110,9 @@ mod platform {
         Bottom,
     }
 
-    /// Keeps a maximized window clear of the taskbar: one whose rect runs under a taskbar that
-    /// reserves its space is trimmed back to the work area plus its frame (#3144), and one covering
-    /// its whole monitor stops a pixel short of each auto-hiding taskbar's edge. No-op otherwise.
+    /// Keep a parked maximize inside all four work-area edges, including a top taskbar, and stop a
+    /// maximize that covers its whole monitor a pixel short of each auto-hiding taskbar's edge, so
+    /// the shell doesn't take it for a full-screen app and still slides the taskbar up there.
     fn keep_clear_of_the_taskbar(hwnd: &HWND) {
         if !hwnd.IsZoomed() {
             return;
@@ -124,22 +124,28 @@ mod platform {
         let rect = (r.left, r.top, r.right, r.bottom);
         let monitor = (m.left, m.top, m.right, m.bottom);
         let work = (w.left, w.top, w.right, w.bottom);
-        let target = match clamped_height(rect, monitor, work) {
-            Some(height) => Some((rect.0, rect.1, rect.2, rect.1.saturating_add(height))),
+        let target = match clamped_rect(rect, monitor, work) {
+            Some(clamped) => Some(clamped),
             // The taskbars are only looked up while the window covers its whole monitor, which a
-            // trimmed maximize no longer does.
+            // clamped maximize no longer does.
             None if covers(rect, monitor) => short_of_autohide_taskbars(rect, monitor, work, &taskbar_edges(monitor)),
             None => None,
         };
         let Some((left, top, right, bottom)) = target else {
             return;
         };
+        let (Some(width), Some(height)) = (right.checked_sub(left), bottom.checked_sub(top)) else {
+            return;
+        };
+        // Moving the outer frame while winit pins the client rect to the work area must
+        // not copy the old frame's pixels into the custom title bar.
         let _ = hwnd.SetWindowPos(
             HwndPlace::None,
             POINT { x: left, y: top },
-            SIZE { cx: right.saturating_sub(left), cy: bottom.saturating_sub(top) },
-            co::SWP::NOZORDER | co::SWP::NOACTIVATE,
+            SIZE { cx: width, cy: height },
+            co::SWP::FRAMECHANGED | co::SWP::NOCOPYBITS | co::SWP::NOZORDER | co::SWP::NOACTIVATE,
         );
+        let _ = hwnd.InvalidateRect(None, false);
     }
 
     /// How long a look for the taskbars holds before the windows are listed again.
@@ -214,23 +220,39 @@ mod platform {
         (l < r && t < b && trimmed != rect).then_some(trimmed)
     }
 
-    /// The height to trim a maximize to so its rect stops at the taskbar, or `None` when it
-    /// already does or `rect` (desktop coordinates) is not parked at its maximize place. `monitor`
-    /// is the monitor's full rect and `work` its work area (the monitor less the taskbar) in the
-    /// same coordinates. The parked check is against the full monitor, because that is where
-    /// Windows puts a maximize; the trim is against the work area.
-    fn clamped_height(rect: Rect, monitor: Rect, work: Rect) -> Option<i32> {
+    /// Return the corrected outer rect in desktop coordinates, preserving the resize border.
+    /// Each edge must be parked just outside either the monitor or work-area edge. Accepting
+    /// both makes the guard idempotent and handles Windows already correcting some edges.
+    /// Dragged/snapped windows are left alone; no monitor-origin or DPI assumptions are needed.
+    fn clamped_rect(rect: (i32, i32, i32, i32), monitor: (i32, i32, i32, i32), work: (i32, i32, i32, i32)) -> Option<(i32, i32, i32, i32)> {
         let (l, t, r, b) = rect;
-        let (ml, mt, mr, _) = monitor;
-        let (_, _, _, wb) = work;
-        let side = ml - l;
-        if !(0..=FRAME).contains(&side) || !(0..=FRAME).contains(&(mt - t)) || !(0..=FRAME).contains(&(r - mr)) {
+        let (ml, mt, mr, mb) = monitor;
+        let (wl, wt, wr, wb) = work;
+        if ml >= mr || mt >= mb || wl < ml || wt < mt || wr > mr || wb > mb || wl >= wr || wt >= wb {
             return None;
         }
-        if b <= wb + side {
+        // Infer the frame from an edge without a taskbar. On an obstructed edge, the
+        // monitor and work-area offsets can both look like valid borders (e.g. auto-hide).
+        let border = [
+            (ml == wl).then(|| ml.checked_sub(l)).flatten(),
+            (mt == wt).then(|| mt.checked_sub(t)).flatten(),
+            (mr == wr).then(|| r.checked_sub(mr)).flatten(),
+            (mb == wb).then(|| b.checked_sub(mb)).flatten(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|n| (0..=FRAME).contains(n))
+        .min()?;
+        let parked = |monitor: Option<i32>, work: Option<i32>| monitor == Some(border) || work == Some(border);
+        if !parked(ml.checked_sub(l), wl.checked_sub(l))
+            || !parked(mt.checked_sub(t), wt.checked_sub(t))
+            || !parked(r.checked_sub(mr), r.checked_sub(wr))
+            || !parked(b.checked_sub(mb), b.checked_sub(wb))
+        {
             return None;
         }
-        Some(wb + side - t)
+        let corrected = (wl.checked_sub(border)?, wt.checked_sub(border)?, wr.checked_add(border)?, wb.checked_add(border)?);
+        (corrected != rect).then_some(corrected)
     }
 
     /// `style` without the OS title bar and frame (`WS_CAPTION`, which already includes
@@ -242,7 +264,7 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::{Edge, borderless, clamped_height, covers, short_of_autohide_taskbars, taskbar_edge};
+        use super::{Edge, borderless, clamped_rect, covers, short_of_autohide_taskbars, taskbar_edge};
         use winsafe::co;
 
         #[test]
@@ -259,26 +281,38 @@ mod platform {
         }
 
         #[test]
-        fn a_maximize_covering_the_taskbar_is_trimmed_to_the_work_area() {
-            // 1920 × 1080 with a 34 pt taskbar: a caption-less maximize covers the whole
-            // monitor, taskbar included (#3144). Trimmed so the rect ends at the work area
-            // plus the frame the window was parked with.
+        fn a_maximize_respects_taskbars_on_every_edge() {
             let monitor = (0, 0, 1920, 1080);
-            let work = (0, 0, 1920, 1046);
-            assert_eq!(clamped_height((-7, -7, 1927, 1087), monitor, work), Some(1046 + 7 - (-7)));
+            let rect = (-8, -8, 1928, 1088);
+            for (work, expected) in [
+                ((0, 0, 1920, 1046), (-8, -8, 1928, 1054)),
+                ((0, 48, 1920, 1080), (-8, 40, 1928, 1088)),
+                ((0, 2, 1920, 1080), (-8, -6, 1928, 1088)),
+                ((0, 0, 1920, 1078), (-8, -8, 1928, 1086)),
+                ((48, 0, 1920, 1080), (40, -8, 1928, 1088)),
+                ((0, 0, 1872, 1080), (-8, -8, 1880, 1088)),
+            ] {
+                assert_eq!(clamped_rect(rect, monitor, work), Some(expected));
+                assert_eq!(clamped_rect(expected, monitor, work), None, "already corrected");
+            }
         }
 
         #[test]
-        fn a_maximize_already_clear_of_the_taskbar_is_left_alone() {
-            // What Windows sizes a framed maximize to: the work area plus the frame.
-            assert_eq!(clamped_height((-8, -8, 1928, 1054), (0, 0, 1920, 1080), (0, 0, 1920, 1046)), None);
+        fn a_top_taskbar_keeps_its_offset_at_other_origins_and_frame_sizes() {
+            let monitor = (-1920, -1080, 0, 0);
+            let work = (-1920, -1032, 0, 0);
+            for border in [0, 8, 16, 32] {
+                let rect = (-1920 - border, -1080 - border, border, border);
+                let expected = (-1920 - border, -1032 - border, border, border);
+                assert_eq!(clamped_rect(rect, monitor, work), Some(expected));
+                assert_eq!(clamped_rect(expected, monitor, work), None);
+            }
         }
 
         #[test]
-        fn a_maximize_beside_a_side_taskbar_is_left_alone() {
-            // Taskbar on the left: the work area starts further right, but the monitor's bottom
-            // is still clear, so the rect reaches nothing.
-            assert_eq!(clamped_height((-8, -8, 1928, 1088), (0, 0, 1920, 1080), (48, 0, 1920, 1080)), None);
+        fn a_maximize_without_a_reserved_taskbar_is_left_alone() {
+            let monitor = (0, 0, 1920, 1080);
+            assert_eq!(clamped_rect((-8, -8, 1928, 1088), monitor, monitor), None);
         }
 
         /// An auto-hiding taskbar leaves the work area whole, so the maximize covers the monitor
@@ -289,13 +323,10 @@ mod platform {
         fn a_maximize_leaves_a_pixel_strip_on_an_auto_hidden_taskbar_edge() {
             let monitor = (0, 0, 2560, 1440);
             let rect = (-8, -8, 2568, 1448);
-            assert_eq!(clamped_height(rect, monitor, monitor), None, "no reserved area to clamp to");
-            for (edge, expected) in [
-                (Edge::Bottom, (-8, -8, 2568, 1439)),
-                (Edge::Top, (-8, 1, 2568, 1448)),
-                (Edge::Left, (1, -8, 2568, 1448)),
-                (Edge::Right, (-8, -8, 2559, 1448)),
-            ] {
+            assert_eq!(clamped_rect(rect, monitor, monitor), None, "no reserved area to clamp to");
+            for (edge, expected) in
+                [(Edge::Bottom, (-8, -8, 2568, 1439)), (Edge::Top, (-8, 1, 2568, 1448)), (Edge::Left, (1, -8, 2568, 1448)), (Edge::Right, (-8, -8, 2559, 1448))]
+            {
                 assert_eq!(short_of_autohide_taskbars(rect, monitor, monitor, &[edge]), Some(expected), "{edge:?}");
                 assert!(!covers(expected, monitor), "{edge:?} no longer reads as full screen");
                 assert_eq!(short_of_autohide_taskbars(expected, monitor, monitor, &[edge]), None, "{edge:?} already trimmed");
@@ -323,11 +354,12 @@ mod platform {
         }
 
         #[test]
-        fn a_maximize_being_dragged_away_is_left_alone() {
+        fn a_maximize_being_dragged_or_snapped_is_left_alone() {
             let monitor = (0, 0, 1920, 1080);
-            let work = (0, 0, 1920, 1046);
-            assert_eq!(clamped_height((100, 200, 1100, 900), monitor, work), None, "moved");
-            assert_eq!(clamped_height((-500, -7, 1427, 1087), monitor, work), None, "resized");
+            let work = (0, 48, 1920, 1080);
+            assert_eq!(clamped_rect((100, 200, 1100, 900), monitor, work), None, "moved");
+            assert_eq!(clamped_rect((-500, -8, 1428, 1088), monitor, work), None, "dragged");
+            assert_eq!(clamped_rect((0, 48, 960, 1080), monitor, work), None, "half-screen");
         }
     }
 }

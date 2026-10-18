@@ -384,7 +384,7 @@ budget_ms = 16
 enforce = false  # measurable since the release commits the live stroke's pixels; awaiting a baseline run
 
 [[scenario]]
-id = "P60"
+id = "P62"
 title = "Large imported brush, one stroke frame (dab to screen)"
 target = "≤ 16 ms (the stroke keeps up with the pointer)"
 bench = "perf_scenarios"
@@ -527,3 +527,21 @@ id = "P59"
 title = "Chisel bevel size change, 12 MP text paragraph, size 8 (CPU)"
 bench = "bevel_bench"
 row = "bevel size change to 8, text (CPU)"
+
+[[scenario]]
+id = "P60"
+title = "Layer opacity among 150 full-canvas layers, 6 MP (app GPU budget)"
+issue = 5973
+bench = "perf_scenarios"
+row = "opacity of a layer among many full-canvas layers + refresh"
+budget_ms = 30
+enforce = false  # new; no baseline yet
+
+[[scenario]]
+id = "P61"
+title = "Hide a layer among 150 full-canvas layers, 6 MP (app GPU budget)"
+issue = 5973
+bench = "perf_scenarios"
+row = "hide a layer among many full-canvas layers + refresh"
+budget_ms = 30
+enforce = false  # new; no baseline yet

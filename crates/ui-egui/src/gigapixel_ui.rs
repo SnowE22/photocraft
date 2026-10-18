@@ -61,17 +61,20 @@ pub fn frame(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
     ctx.request_repaint_after(std::time::Duration::from_secs_f64(LOOK_EVERY));
     let mut cancelled = false;
-    egui::Area::new(egui::Id::new("gigapixel-waiting")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -40.0)).order(egui::Order::Foreground).show(ctx, |ui| {
-        egui::Frame::popup(ui.style()).show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.spinner();
-                ui.label(tl!("Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back."));
-                if ui.button(tl!("Cancel")).clicked() {
-                    cancelled = true;
-                }
+    egui::Area::new(egui::Id::new("gigapixel-waiting")).anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -40.0)).order(egui::Order::Foreground).show(
+        ctx,
+        |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spinner();
+                    ui.label(tl!("Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back."));
+                    if ui.button(tl!("Cancel")).clicked() {
+                        cancelled = true;
+                    }
+                });
             });
-        });
-    });
+        },
+    );
     if cancelled {
         cancel(app);
     }
@@ -85,7 +88,8 @@ fn arrived(app: &mut PhotocraftApp, path: &str, document: u64) {
             let (wd, ht) = (r["width"].as_u64().unwrap_or(0).to_string(), r["height"].as_u64().unwrap_or(0).to_string());
             let scale = format!("{:.2}", r["scale"].as_f64().unwrap_or(1.0)).trim_end_matches('0').trim_end_matches('.').to_string();
             app.ui.status_error = false;
-            app.ui.status = crate::i18n::fmt(tl!("Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)"), &[("scale", &scale), ("w", &wd), ("h", &ht)]);
+            app.ui.status =
+                crate::i18n::fmt(tl!("Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)"), &[("scale", &scale), ("w", &wd), ("h", &ht)]);
         }
         Err(e) => {
             app.ui.status_error = true;

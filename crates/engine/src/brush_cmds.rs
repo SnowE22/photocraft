@@ -143,6 +143,10 @@ pub fn merge_brush(base: &BrushSettings, patch: &Value, cmd: &str) -> Result<Bru
     if let Some(p) = pattern {
         out.texture.pattern = p;
     }
+    // A new diameter takes the Dual Brush tip with it, unless the patch sets the tip's own size.
+    if patch.get("size").is_some() && !touches(&["dualBrush", "size"]) {
+        out.scale_dual_with_size(base.size);
+    }
     Ok(out)
 }
 
@@ -866,9 +870,13 @@ fn define_from_selection(s: &mut Session, p: &Value) -> Result<Value> {
     }
     // Paint amount = darkness × alpha × selection (black = full paint, like Photoshop).
     let (w, h) = (area.width() as usize, area.height() as usize);
-    let mut v = vec![0.0f32; w * h];
+    // The sampled tip is one f32 buffer over the whole selection; a large selection must fail
+    // gracefully instead of aborting the process on allocation, so reserve it fallibly.
+    let mut v = crate::allocation::filled(w * h, 0.0, "defining a brush from the selection")?;
     let sc = sel.channels();
-    let sv = sel.read_region(area);
+    // The selection mask is a second buffer of the same size; it must fail gracefully too
+    // (review of #5469), so read it through the fallible allocator.
+    let sv = crate::allocation::read_region(sel, area, "defining a brush from the selection")?;
     for y in 0..h {
         for x in 0..w {
             let c = surf.rgba(area.x0 + x as i32, area.y0 + y as i32);
@@ -876,11 +884,35 @@ fn define_from_selection(s: &mut Session, p: &Value) -> Result<Value> {
             v[y * w + x] = ((1.0 - l) * c[3] * sv[(y * w + x) * sc]).clamp(0.0, 1.0);
         }
     }
+    let (brush, tw, th) = sampled_brush(cmd, &v, w, h)?;
+    upsert(
+        s,
+        BrushPreset {
+            name: name.clone(),
+            brush: brush.clone(),
+            builtin: false,
+            group: String::new(),
+            folder: Vec::new(),
+            captures: Default::default(),
+            tool: None,
+        },
+    );
+    s.tools.brush = brush;
+    s.tools.current_preset = Some(name.clone());
+    s.tools.brush_changed();
+    Ok(json!({ "name": name, "width": tw, "height": th }))
+}
+
+/// A sampled-tip brush from a paint-amount map (`w`×`h`, row-major, 0 = no paint, 1 = full):
+/// cropped to the painted extent, at most [`MAX_TIP`] px a side. Shared by Define Brush Preset
+/// and importing an image file as a brush (`brush.presets.importImage`).
+pub(crate) fn sampled_brush(cmd: &str, v: &[f32], w: usize, h: usize) -> Result<(BrushSettings, u32, u32)> {
+    let at = |x: usize, y: usize| v.get(y * w + x).copied().unwrap_or(0.0);
     // Crop to the painted extent.
     let (mut x0, mut y0, mut x1, mut y1) = (w, h, 0, 0);
     for y in 0..h {
         for x in 0..w {
-            if v[y * w + x] > 1e-4 {
+            if at(x, y) > 1e-4 {
                 x0 = x0.min(x);
                 y0 = y0.min(y);
                 x1 = x1.max(x + 1);
@@ -889,23 +921,19 @@ fn define_from_selection(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     if x1 <= x0 || y1 <= y0 {
-        return Err(bad(cmd, "the selected pixels contain no paint (all white or transparent)"));
+        return Err(bad(cmd, "the pixels contain no paint (all white or transparent)"));
     }
     let (tw, th) = ((x1 - x0) as u32, (y1 - y0) as u32);
     if tw.max(th) > MAX_TIP {
-        return Err(bad(cmd, format!("selection too large for a brush tip ({tw}×{th}; max {MAX_TIP} px)")));
+        return Err(bad(cmd, format!("too large for a brush tip ({tw}×{th}; max {MAX_TIP} px)")));
     }
     let mut data = Vec::with_capacity((tw * th) as usize);
     for y in y0..y1 {
-        data.extend_from_slice(&v[y * w + x0..y * w + x1]);
+        data.extend((x0..x1).map(|x| at(x, y)));
     }
     let tip = GrayTile::from_f32(tw, th, &data);
     let brush = BrushSettings { tip: TipShape::Sampled(tip), size: tw.max(th) as f32, spacing: 0.25, pressure_size: false, ..BrushSettings::default() };
-    upsert(s, BrushPreset { name: name.clone(), brush: brush.clone(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default(), tool: None });
-    s.tools.brush = brush;
-    s.tools.current_preset = Some(name.clone());
-    s.tools.brush_changed();
-    Ok(json!({ "name": name, "width": tw, "height": th }))
+    Ok((brush, tw, th))
 }
 
 pub(crate) fn set_brush(s: &mut Session, p: &Value) -> Result<Value> {
@@ -923,9 +951,7 @@ pub(crate) fn set_brush(s: &mut Session, p: &Value) -> Result<Value> {
     if reset {
         b = BrushSettings::default();
     }
-    // A new diameter takes the Dual Brush tip with it, unless the call sets the tip's own size.
-    let size_before = b.size;
-    let sets_dual_size = [p.get("dualBrush"), p.get("brush").and_then(|i| i.get("dualBrush"))].into_iter().flatten().any(|d| d.get("size").is_some());
+    // `merge_brush` takes the Dual Brush tip along with a new diameter.
     let mut patch = p.clone();
     if let Some(o) = patch.as_object_mut() {
         for k in ["preset", "reset", "coalesce"] {
@@ -940,9 +966,6 @@ pub(crate) fn set_brush(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     b = merge_brush(&b, &patch, cmd)?;
-    if !sets_dual_size {
-        b.scale_dual_with_size(size_before);
-    }
     validate_brush(&b, cmd)?;
     // The picked preset stays "the current brush" across later edits, so `brush.presets.update`
     // knows what to overwrite. Only once the brush is accepted: a failed call leaves no state

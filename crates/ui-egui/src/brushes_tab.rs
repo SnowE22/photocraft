@@ -87,7 +87,11 @@ pub enum Action {
     Choose(String),
     /// View only: a click on a preset or folder. `shift` selects the range from the anchor,
     /// `toggle` (Ctrl, ⌘ on macOS) adds or removes the item; both add the range.
-    Click { item: BrushItem, shift: bool, toggle: bool },
+    Click {
+        item: BrushItem,
+        shift: bool,
+        toggle: bool,
+    },
     /// View only: a click on the empty list clears the selection.
     Deselect,
     /// View only: open or close a group or folder (by its [`folder_view_key`]; [`preset_list`]
@@ -95,14 +99,23 @@ pub enum Action {
     ToggleGroup(String),
     /// Move items into folder `into` (`[]` = the top level): before or after a sibling there, or
     /// to its end. `create` makes `into`, a new folder where the first item was.
-    MoveItems { items: Vec<BrushItem>, into: Vec<String>, before: Option<BrushItem>, after: Option<BrushItem>, create: bool },
+    MoveItems {
+        items: Vec<BrushItem>,
+        into: Vec<String>,
+        before: Option<BrushItem>,
+        after: Option<BrushItem>,
+        create: bool,
+    },
     /// View only: show the rename bar for a preset or group ([`preset_list`] applies it).
     BeginRename(Renaming),
     /// Commit a rename typed in the rename bar.
     Rename(Renaming),
     Delete(String),
     /// Delete a group (`folder` empty) or one of its nested folders, with their presets.
-    DeleteGroup { group: String, folder: Vec<String> },
+    DeleteGroup {
+        group: String,
+        folder: Vec<String>,
+    },
     /// Delete presets and folders (with their presets) in one command.
     DeleteItems(Vec<BrushItem>),
 }
@@ -591,7 +604,8 @@ fn paint_tile(ui: &egui::Ui, p: &BrushPreset, r: egui::Rect, selected: bool, hov
     let pb = &p.brush;
     let mut x = inner.left();
     if tip {
-        let tex = brush_preview::tip_texture(ui.ctx(), &format!("brushes-tip:{}", p.name), &pb.tip, (pb.hardness, pb.angle, pb.roundness), 36, t.text);
+        let tex =
+            brush_preview::tip_texture(ui.ctx(), &brush_preview::preset_slot("brushes-tip", p), &pb.tip, (pb.hardness, pb.angle, pb.roundness), 36, t.text);
         if !stroke && !name {
             // A grid of tips with their sizes under them.
             let number = painter.layout_no_wrap(format!("{}", pb.size.round() as i64), egui::FontId::proportional(CARD_NUM_FONT), t.text_faint);
@@ -614,7 +628,7 @@ fn paint_tile(ui: &egui::Ui, p: &BrushPreset, r: egui::Rect, selected: bool, hov
         let ppp = ui.ctx().pixels_per_point();
         let sw = ((sr.width() / 4.0).floor() * 4.0).max(4.0);
         let (pw, ph) = ((sw * ppp).round().clamp(1.0, 4096.0) as u32, (sr.height() * ppp).round().clamp(1.0, 1024.0) as u32);
-        let tex = brush_preview::stroke_texture(ui.ctx(), &format!("brushes-tile:{}", p.name), pb, pw, ph, t.text);
+        let tex = brush_preview::stroke_texture(ui.ctx(), &brush_preview::preset_slot("brushes-tile", p), pb, pw, ph, t.text);
         painter.image(tex.id(), egui::Rect::from_min_size(sr.left_top(), vec2(sw, sr.height())), full_uv(), Color32::WHITE);
     }
     if name {
@@ -792,7 +806,17 @@ fn preset_card(ui: &mut egui::Ui, p: &BrushPreset, d: &Draw, parent: &[String], 
 /// Paint a picker card (see [`preset_card`]); `rows` is the tip/stroke row's and the name row's
 /// height.
 #[allow(clippy::too_many_arguments)]
-fn paint_card(ui: &egui::Ui, p: &BrushPreset, card: egui::Rect, current: bool, hovered: bool, show: (bool, bool, bool), scale: f32, rows: (f32, f32), t: &Tokens) {
+fn paint_card(
+    ui: &egui::Ui,
+    p: &BrushPreset,
+    card: egui::Rect,
+    current: bool,
+    hovered: bool,
+    show: (bool, bool, bool),
+    scale: f32,
+    rows: (f32, f32),
+    t: &Tokens,
+) {
     let (show_name, show_stroke, show_tip) = show;
     let tip_only = tip_only(show);
     let name_in_top = tip_and_name(show);
@@ -819,7 +843,8 @@ fn paint_card(ui: &egui::Ui, p: &BrushPreset, card: egui::Rect, current: bool, h
         // Compact cards drop the number — it wouldn't fit — and the tip takes the cell whole.
         let tip_w = if tip_only { top.width() } else { (CARD_TIP_W * scale).min(top.width() * 0.5) };
         let cell = egui::Rect::from_min_size(top.left_top(), vec2(tip_w, top_h));
-        let tip = brush_preview::tip_texture(ui.ctx(), &format!("brushes-tip:{}", p.name), &pb.tip, (pb.hardness, pb.angle, pb.roundness), 36, t.text);
+        let tip =
+            brush_preview::tip_texture(ui.ctx(), &brush_preview::preset_slot("brushes-tip", p), &pb.tip, (pb.hardness, pb.angle, pb.roundness), 36, t.text);
         let number =
             (!compact).then(|| ui.painter().layout_no_wrap(format!("{}", pb.size.round() as i64), egui::FontId::proportional(CARD_NUM_FONT), t.text_faint));
         let tr = card_tip_rect(cell, number.as_ref().map(|g| g.size().y), pb.size, scale);
@@ -899,7 +924,13 @@ fn folder_row(ui: &mut egui::Ui, d: &Draw, f: &FolderNode, open: bool, acts: &mu
             painter.rect_filled(r, 0.0, mix(c.well, t.hover, 0.5));
         }
         painter.hline(r.x_range(), r.bottom() - 0.5, Stroke::new(1.0, c.line));
-        icons::paint(ui, egui::Rect::from_center_size(chevron.center(), vec2(12.0, 12.0)), if open { "chevron-down" } else { "chevron-right" }, 11.0, t.text_faint);
+        icons::paint(
+            ui,
+            egui::Rect::from_center_size(chevron.center(), vec2(12.0, 12.0)),
+            if open { "chevron-down" } else { "chevron-right" },
+            11.0,
+            t.text_faint,
+        );
         crate::layer_row_ui::paint_folder(painter, egui::Rect::from_min_size(pos2((x + 18.0).round(), (r.center().y - 6.0).round()), vec2(16.0, 12.0)), t.icon);
         let right = if t.pro { r.right() - 6.0 } else { r.right() - 34.0 };
         crate::layer_row_ui::label(painter, x + 42.0, r.center().y, right, shown, egui::FontId::proportional(12.0), t.text);
@@ -1125,6 +1156,16 @@ pub fn preset_list(ui: &mut egui::Ui, presets: &[BrushPreset], current: Option<&
     let well = (!layout.cards).then(|| list_colors(&t).well);
     egui::Frame::new().fill(well.unwrap_or(Color32::TRANSPARENT)).show(ui, |ui| {
         egui::ScrollArea::vertical().id_salt(layout.id).max_height(layout.max_height).auto_shrink([false, well.is_none()]).show(ui, |ui| {
+            // A preset, group or folder dragged to the list's top or bottom edge (or past it)
+            // scrolls the list, as the Layers panel's rows do, so it can be dropped on rows out of
+            // view (#5741).
+            let dragging = egui::DragAndDrop::has_payload_of_type::<BrushDrag>(ui.ctx()) && ui.input(|i| i.pointer.primary_down());
+            let pointer = ui.ctx().pointer_interact_pos();
+            let delta = crate::panels::layer_drag_edge_scroll(pointer, ui.clip_rect(), dragging, ui.input(|i| i.stable_dt));
+            if delta != 0.0 {
+                ui.scroll_with_delta(vec2(0.0, delta));
+                ui.ctx().request_repaint();
+            }
             ui.spacing_mut().item_spacing.y = if layout.cards { 1.0 } else { 0.0 };
             draw_nodes(ui, &d, &tree, &[], &mut acts);
             if !layout.cards {
@@ -1162,10 +1203,36 @@ pub fn preset_list(ui: &mut egui::Ui, presets: &[BrushPreset], current: Option<&
             [one] => one.label().to_string(),
             [first, rest @ ..] => format!("{} +{}", first.label(), rest.len()),
         };
+        // A dragged preset shows its tip beside the name (the first one when several go).
+        let first_preset = match dragged.0.first() {
+            Some(BrushItem::Preset(n)) => Some(n.clone()),
+            _ => None,
+        };
         egui::Area::new(egui::Id::new(("brush-drag-label", layout.id))).order(egui::Order::Tooltip).fixed_pos(p + vec2(12.0, 8.0)).interactable(false).show(
             ui.ctx(),
             |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(name));
+                if first_preset.is_some() {
+                    ui.set_opacity(0.8);
+                }
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        if let Some(n) = &first_preset
+                            && let Some(preset) = presets.iter().find(|preset| preset.name == *n)
+                        {
+                            let brush = &preset.brush;
+                            let tip = brush_preview::tip_texture(
+                                ui.ctx(),
+                                &format!("brushes-drag-tip:{}", preset.name),
+                                &brush.tip,
+                                (brush.hardness, brush.angle, brush.roundness),
+                                36,
+                                Tokens::get(ui.ctx()).text,
+                            );
+                            ui.add(egui::Image::new(&tip).fit_to_exact_size(vec2(36.0, 36.0)).alt_text(&preset.name));
+                        }
+                        ui.label(name);
+                    });
+                });
             },
         );
     }
@@ -1248,7 +1315,14 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         icons::paint(ui, egui::Rect::from_min_size(ui.cursor().min + vec2(0.0, 3.0), vec2(16.0, 16.0)), "search", 14.0, t.text_faint);
         ui.add_space(20.0);
-        widgets::text_field(ui, ui.id().with("brush-search"), &mut app.ui.brushes_panel.filter, tl!("Search Brushes"), (ui.available_width() - 4.0).max(60.0), false);
+        widgets::text_field(
+            ui,
+            ui.id().with("brush-search"),
+            &mut app.ui.brushes_panel.filter,
+            tl!("Search Brushes"),
+            (ui.available_width() - 4.0).max(60.0),
+            false,
+        );
     });
     ui.add_space(6.0);
     // The list fills the panel down to the footer (about 36 pt), so the footer stays in view in
@@ -1283,15 +1357,18 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 crate::brush_preset_dialog::open(app, None);
             }
             let group = new_group(&app.session.tools.presets, &app.ui.brushes_panel.selected);
-            if crate::brush_picker::named(ui.add_enabled_ui(group.is_some(), |ui| icons::button(ui, "folder-plus", 24.0, false, "Create a new group")).inner, "Create a new group")
-                .clicked()
+            if crate::brush_picker::named(
+                ui.add_enabled_ui(group.is_some(), |ui| icons::button(ui, "folder-plus", 24.0, false, "Create a new group")).inner,
+                "Create a new group",
+            )
+            .clicked()
                 && let Some((act, renaming)) = group
             {
                 acts.push(act);
                 app.ui.brushes_panel.renaming = Some(renaming);
             }
-            if icons::button(ui, "folder-open", 24.0, false, "Import Brushes… (.abr)").clicked() {
-                let _ = app.open_dialog_file();
+            if icons::button(ui, "folder-open", 24.0, false, "Import Brushes… (.abr or image)").clicked() {
+                let _ = crate::preset_files_ui::import_brushes(app);
             }
         });
     });

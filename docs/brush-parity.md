@@ -65,7 +65,7 @@ tablets against Photoshop side by side.
 | Brush preview and cursor crisp, not pixelated | partial | #1433 |
 | Cursor outline equals the painted footprint at every zoom | partial | #1761, #2364; shaped tips trace their outline (#3467), turned and flipped with a rotated or flipped view |
 | Latency: dab to screen within a frame | partial | budgets P13/P16/P33 over (scorecard); big-brush lag #2619, #1994; cursor lag #2566, #1343 |
-| Large brushes keep up with the pointer | done | dabs and the stroke composite run tile by tile on every core, only over each tip's footprint (`CoverageMap::apply_dabs`, `paint_rect`, row spans); a 500 px sampled tip at 3 % with a Dual Brush and texture: 4.0 ms a frame dab to screen (P60, RTX 5070 laptop), was ~19 ms before the canvas; a 1500 px tip at 1 %: ~8 ms of engine time a frame, was ~290 ms |
+| Large brushes keep up with the pointer | done | dabs and the stroke composite run tile by tile on every core, only over each tip's footprint (`CoverageMap::apply_dabs`, `paint_rect`, row spans); a 500 px sampled tip at 3 % with a Dual Brush and texture: 4.0 ms a frame dab to screen (P62, RTX 5070 laptop), was ~19 ms before the canvas; a 1500 px tip at 1 %: ~8 ms of engine time a frame, was ~290 ms |
 | No hitch at mouse-up on a long stroke | not measurable | P32 needs a frame harness |
 | Live stroke for Brush and Eraser | done | |
 | Live stroke for every brush-based retouch tool | missing | TOOL-213-7 |
@@ -123,6 +123,7 @@ tablets against Photoshop side by side.
 | Brushes panel: click selects a group, the chevron opens it, double-click renames | done | `brushes_tab::folder_row` |
 | Brushes panel: stroke tiles side by side, thumbnail-size slider, Brush Name/Stroke/Tip menu | done | `brushes_tab::tile`, footer slider, panel menu |
 | Brushes panel: Create a New Group from the selection | done | `brush.presets.moveItems {create}` |
+| Dragged brush preset preview | done | Cached, translucent tip thumbnail plus name in panel list/grid and the preset picker; `ui-egui/src/brushes_tab.rs`, real pointer-drag test in `brushes_tab_tests.rs` (#4225, partial) |
 | Tool presets (.tpl) | partial | Tool Presets panel exists; .tpl import not found |
 | Import 500 brushes without blocking the UI | not run | P24 |
 
@@ -133,7 +134,7 @@ tablets against Photoshop side by side.
 | 2026-10-18 | minor | Each painting tool's brush and preset are remembered across restarts (`Preferences::tool_brushes`): before, the Brush started with whatever brush the app quit with, the Eraser's included (#2542) |
 | 2026-10-17 | minor | Tool presets: an `.abr` preset saved with the Eraser's (Smudge's, Mixer Brush's, …) settings remembers its tool, and picking it switches to that tool |
 | 2026-10-17 | minor | Brushes measured against Photoshop 2026 by scripting it (strokes of computed and real presets, compared pixel by pixel): Dual Brush modes (Hard Mix, Linear Height), Texture Hard Mix and Linear Burn, Color Dodge/Burn at 248/255 of the depth (Texture and Dual Brush), Wet Edges as a coverage curve, the mask order Texture → Dual Brush → Wet Edges → opacity, spacing by the tip's shorter side, Both Axes scatter in a disc, dual dabs at random angles. ABR import reads Photoshop CC's long mode ids and the older four-character codes (`colorBurn`, `hMix`, `lHgt`, …), which fell back to Multiply |
-| 2026-10-17 | minor | Large brushes: dabs and the stroke composite run tile by tile on every core over each tip's footprint only (bit-identical to the one-thread path), a dedicated loop for plain sampled tips; P60 measures one frame dab to screen (4.0 ms for a 500 px imported-style brush). The Dual Brush tip scales with the brush size, as in Photoshop. ABR import reads Capture Brush Size in Preset (`useBrushSize`), Include Tool Settings and the tool blend mode, so picking a downloaded brush keeps the tool's size and settings |
+| 2026-10-17 | minor | Large brushes: dabs and the stroke composite run tile by tile on every core over each tip's footprint only (bit-identical to the one-thread path), a dedicated loop for plain sampled tips; P62 measures one frame dab to screen (4.0 ms for a 500 px imported-style brush). The Dual Brush tip scales with the brush size, as in Photoshop. ABR import reads Capture Brush Size in Preset (`useBrushSize`), Include Tool Settings and the tool blend mode, so picking a downloaded brush keeps the tool's size and settings |
 | 2026-10-16 | minor | Brushes panel matches Photoshop's: brushes can sit outside groups and drop between groups, Shift/Ctrl multi-select (drag, delete, New Group), a click selects a group and its chevron opens it, stroke-and-name tiles fill each row with a thumbnail-size slider in the footer, Brush Name/Stroke/Tip in the panel menu, Photoshop's darker list well; new `brush.presets.moveItems` and `deleteItems` |
 | 2026-10-13 | minor | Stale "missing tool" row corrected against main: Color Replacement (`paint.colorReplacement`) is a live toolbar tool; no brush-feel estimate changed |
 | 2026-10-10 | major | First version, from a source audit and the open issues |
@@ -142,3 +143,4 @@ tablets against Photoshop side by side.
 | 2026-10-12 | minor | A shaped tip's cursor outline turns and flips with a rotated or flipped view, and follows pixel aspect correction |
 | 2026-10-13 | minor | Shape Dynamics and Transfer minimum inputs follow their Control and retain their values while disabled (#3825, partial). No brush-feel estimate changed. |
 | 2026-10-13 | minor | Hue Jitter uses the same themed amount slider as other jitter controls (#3825, partial). No brush-feel estimate changed. |
+| 2026-10-13 | minor | Dragging a brush preset shows its cached tip thumbnail and name in the Brushes panel and preset picker (#4225, partial). No brush-feel estimate changed. |

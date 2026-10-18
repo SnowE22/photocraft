@@ -24,7 +24,7 @@ fn sections_with_boxes_have_flags() {
 
 /// What each section's controls edit, set to non-default values.
 fn edit_section(i: usize, b: &mut BrushSettings) {
-    let dynamic = |jitter: f32, control: Control, minimum: f32| paint::Dynamic { jitter, control, fade_steps: 40, minimum };
+    let dynamic = |jitter: f32, control: Control, minimum: f32| paint::Dynamic { jitter, control, fade_steps: 40, minimum, ..Default::default() };
     match i {
         0 => {
             b.size = 87.0;
@@ -403,6 +403,21 @@ fn brush_mode_dropdown_shows_outside_the_pro_themes() {
     let j = &h.state().session.journal;
     assert_eq!(j.len(), n + 1, "{:?}", &j[n..]);
     assert_eq!(j[n].0, "tools.setBrush");
+}
+
+#[test]
+fn brush_and_eraser_size_fields_keep_sizes_above_2500_px() {
+    // #5708: outside the Pro themes the Size field capped at 2500 px and clamped a bigger brush
+    // (set from the picker or `]`) on the next frame; Photoshop and the engine allow 5000 px.
+    for tool in [crate::state::Tool::Brush, crate::state::Tool::Eraser] {
+        let mut h = options_bar_harness(tool);
+        let n = h.state().session.journal.len();
+        h.state_mut().session.tools.brush.size = 4000.0;
+        h.run_steps(4);
+        assert_eq!(h.state().session.tools.brush.size, 4000.0, "{tool:?}");
+        let j = &h.state().session.journal;
+        assert_eq!(j.len(), n, "showing the bar issues nothing: {:?}", &j[n..]);
+    }
 }
 
 #[test]
@@ -854,7 +869,8 @@ fn folder_tree_nests_presets_in_panel_order() {
     let deep: Vec<&str> = vec!["d"; MAX_VIEW_DEPTH + 5];
     let mut loose = kit("Loose", &[]);
     loose.group.clear();
-    let presets = [kit("Top", &[]), kit("Pen", &["Inks"]), loose, kit("Chalk", &["Dry"]), kit("Nib", &["Inks", "Fine"]), kit("Quill", &["Inks"]), kit("Deep", &deep)];
+    let presets =
+        [kit("Top", &[]), kit("Pen", &["Inks"]), loose, kit("Chalk", &["Dry"]), kit("Nib", &["Inks", "Fine"]), kit("Quill", &["Inks"]), kit("Deep", &deep)];
     let items: Vec<&paint::BrushPreset> = presets.iter().collect();
     let tree = folder_tree(&items);
     fn show(nodes: &[Node], out: &mut Vec<String>) {
@@ -873,7 +889,10 @@ fn folder_tree_nests_presets_in_panel_order() {
     show(&tree, &mut out);
     // The group is a top-level folder; a loose preset sits beside it, where it is in the library.
     let deep_path = format!("Kit/{}", vec!["d"; MAX_VIEW_DEPTH].join("/"));
-    assert_eq!(out[..13], ["[Kit 6]", "Top", "[Kit/Inks 3]", "Pen", "[Kit/Inks/Fine 1]", "Nib", "[end]", "Quill", "[end]", "[Kit/Dry 1]", "Chalk", "[end]", "[Kit/d 1]"]);
+    assert_eq!(
+        out[..13],
+        ["[Kit 6]", "Top", "[Kit/Inks 3]", "Pen", "[Kit/Inks/Fine 1]", "Nib", "[end]", "Quill", "[end]", "[Kit/Dry 1]", "Chalk", "[end]", "[Kit/d 1]"]
+    );
     assert_eq!(out.last().map(String::as_str), Some("Loose"));
     assert!(out.contains(&format!("[{deep_path} 1]")), "paths are cut at the view depth");
     assert_eq!(out.iter().filter(|s| s.starts_with("[Kit/d")).count(), MAX_VIEW_DEPTH);
@@ -986,7 +1005,10 @@ fn folder_drops_map_to_move_actions() {
         drop_action(&[f(&["Kit", "Dry"])], &f(&["Kit", "Inks"]), &v(&["Kit"]), Spot::Before),
         Some(mv(f(&["Kit", "Dry"]), &["Kit"], Some(f(&["Kit", "Inks"])), None))
     );
-    assert_eq!(drop_action(&[f(&["Kit", "Inks", "Fine"])], &f(&["Pack"]), &[], Spot::After), Some(mv(f(&["Kit", "Inks", "Fine"]), &[], None, Some(f(&["Pack"])))));
+    assert_eq!(
+        drop_action(&[f(&["Kit", "Inks", "Fine"])], &f(&["Pack"]), &[], Spot::After),
+        Some(mv(f(&["Kit", "Inks", "Fine"]), &[], None, Some(f(&["Pack"]))))
+    );
 
     let mut app = app();
     for p in [kit("Kit Pen", &["Inks"]), kit("Kit Nib", &["Inks", "Fine"]), kit("Kit Chalk", &["Dry"])] {
@@ -1073,12 +1095,12 @@ fn brushes_panel_selects_like_photoshop_and_drags_the_selection() {
     let to = h.get_by_label(&builtin_groups[0]).rect();
     let to = egui::pos2(to.center().x, to.top() + 3.0);
     h.hover_at(from);
-    h.run();
+    h.run_steps(1);
     h.drag_at(from);
-    h.run();
+    h.run_steps(1);
     for k in 1..=6 {
         h.hover_at(from + (to - from) * (k as f32 / 6.0));
-        h.run();
+        h.run_steps(1);
     }
     h.drop_at(to);
     h.run_steps(3);
@@ -1377,6 +1399,27 @@ fn hand_tool_offers_scale_buttons_and_requests_the_right_view() {
     h.run_steps(1);
     assert!(h.state().ui.views[0].fill_pending);
     assert!(!h.state().ui.views[0].fit_pending);
+}
+
+#[test]
+fn a_dynamic_gets_its_own_response_curve() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = harness(0, 1);
+    h.state_mut().run("tools.setBrush", json!({"shapeDynamics": {"enabled": true, "size": {"control": "penPressure"}}})).unwrap();
+    h.run_steps(3);
+    // Only Size has a control with an input to shape; its curve button shows the editor.
+    assert_eq!(h.query_all_by_label("Response curve").count(), 1);
+    h.get_by_label("Response curve").click();
+    h.run_steps(3);
+    h.get_by_label("Soft").click();
+    h.run_steps(3);
+    let (id, p) = last_journal(h.state()).unwrap();
+    assert_eq!(id, "tools.setBrush");
+    let curve: Vec<[f32; 2]> = serde_json::from_value(p["brush"]["shapeDynamics"]["size"]["curve"].clone()).unwrap();
+    assert_eq!(curve, vec![[0.0, 0.0], [0.3, 0.6], [1.0, 1.0]]);
+    let b = &h.state().session.tools.brush;
+    assert_eq!(b.shape_dynamics.size.curve.points(), curve);
+    assert!(b.shape_dynamics.roundness.curve.is_linear() && b.transfer.opacity.curve.is_linear());
 }
 
 #[test]
