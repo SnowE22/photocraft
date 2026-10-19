@@ -197,6 +197,7 @@ pub(crate) mod solid_fill_ui;
 pub mod spring_tools;
 pub mod stack_dialog;
 pub mod state;
+pub mod typesetter_ui;
 pub mod stroke_constraint;
 pub mod stroke_trace;
 pub mod stroke_trail;
@@ -574,6 +575,7 @@ pub(crate) type HistJob = (DocId, u64, std::sync::mpsc::Receiver<(DocId, f64, st
 type InfoSampleKey = (i32, i32, u64, u32);
 
 pub struct PhotocraftApp {
+    pub typesetter: typesetter_ui::TypesetterUi,
     pub session: Session,
     pub ui: UiState,
     pub services: Services,
@@ -866,6 +868,7 @@ pub struct PhotocraftApp {
 impl PhotocraftApp {
     pub fn new(session: Session, services: Services) -> Self {
         let mut app = Self {
+            typesetter: typesetter_ui::TypesetterUi::new(),
             session,
             ui: UiState::default(),
             services,
@@ -1064,6 +1067,72 @@ impl PhotocraftApp {
     pub fn with_control(mut self, rx: Receiver<ControlRequest>) -> Self {
         self.control_rx = Some(rx);
         self
+    }
+
+    /// Обработка действий тайпсеттера: создание текстового слоя на активном холсте.
+    pub(crate) fn handle_typesetter_action(&mut self, action: typesetter_ui::TypesetterAction) {
+        match action {
+            typesetter_ui::TypesetterAction::InsertText { text, font, size } => {
+                let Some(st) = self.session.active() else {
+                    self.ui.status = "Откройте или создайте документ для вставки текста".into();
+                    self.ui.status_error = true;
+                    return;
+                };
+
+                // 1. Приоритет: оптический центр выделенной области
+                let selection_center = st.doc.selection.as_ref().and_then(|sel| {
+                    let bounds = sel.content_bounds();
+                    if !bounds.is_empty() {
+                        let cx = bounds.x0 as f32 + bounds.width() as f32 * 0.5;
+                        // Сдвиг базовой линии вниз на ~0.35 размера шрифта для точной вертикальной центровки
+                        let cy = bounds.y0 as f32 + bounds.height() as f32 * 0.5 + (action.preset.font_size * 0.35);
+                        Some((cx, cy))
+                    } else {
+                        None
+                    }
+                });
+
+                // 2. Если выделения нет: курсор мыши
+                // 3. Если курсор вне холста: геометрический центр документа
+                let (x, y) = if let Some(center) = selection_center {
+                    center
+                } else if let Some([hx, hy]) = self.hover_doc {
+                    (hx as f32, hy as f32)
+                } else {
+                    (st.doc.size.width as f32 * 0.5, st.doc.size.height as f32 * 0.5)
+                };
+
+                // Готовим финальный текст (применяем ALL_CAPS если задано в стиле TypeR)
+                let final_text = if action.preset.all_caps {
+                    action.text.to_uppercase()
+                } else {
+                    action.text
+                };
+
+                // Предпочитаем PostScript-имя для точного начертания (например KuraiVoice2-Italic)
+                let resolved_font = if !action.preset.font_postscript.is_empty() {
+                    &action.preset.font_postscript
+                } else {
+                    &action.preset.font_family
+                };
+
+                let _ = self.run(
+                    "type.create",
+                    serde_json::json!({
+                        "x": x,
+                        "y": y,
+                        "text": final_text,
+                        "size": action.preset.font_size,
+                        "font": resolved_font,
+                        "align": "center",
+                        "italic": action.preset.italic,
+                        "bold": action.preset.bold,
+                        "tracking": action.preset.tracking,
+                        "leading": action.preset.leading
+                    }),
+                );
+            }
+        }
     }
 
     /// Run an engine command, reporting errors in the status bar.
@@ -2083,6 +2152,9 @@ impl eframe::App for PhotocraftApp {
         preset_panels::windows(self, &ctx);
         gradient_ui::editor_window(self, &ctx);
         type_panels_ui::windows(self, &ctx);
+        if let Some(action) = self.typesetter.show(&ctx) {
+            self.handle_typesetter_action(action);
+        }
         analysis_ui::windows(self, &ctx);
         timeline_ui::windows(self, &ctx);
         workspace_ui::windows(self, &ctx);
