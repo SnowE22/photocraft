@@ -5,6 +5,9 @@ use egui::{
 use photocraft_engine::typesetter::{TextStylePreset, TypesetterState};
 use serde::{Deserialize, Serialize};
 
+use crate::theme::Tokens;
+use crate::widgets;
+
 #[derive(PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum TypesetterDockMode {
     Floating,
@@ -183,18 +186,31 @@ impl TypesetterUi {
         let mut action = None;
         let mut open_flag = self.is_open;
         let ctx = ui.ctx().clone();
+        let t = Tokens::get(&ctx);
+
+        let dock_frame = egui::Frame::NONE
+            .fill(t.card)
+            .stroke(Stroke::new(1.0, t.card_border))
+            .inner_margin(Margin::same(8));
 
         match self.dock_mode {
             TypesetterDockMode::Floating => {
                 Window::new("TypeR Manga Typesetter")
                     .open(&mut open_flag)
-                    .default_width(380.0)
-                    .default_height(620.0)
-                    .min_width(320.0)
+                    .default_width(360.0)
+                    .default_height(600.0)
+                    .min_width(300.0)
                     .max_width(450.0)
                     .min_height(350.0)
                     .collapsible(false)
                     .resizable(true)
+                    .frame(
+                        egui::Frame::NONE
+                            .fill(t.card)
+                            .stroke(Stroke::new(1.0, t.card_border))
+                            .corner_radius(CornerRadius::same(t.radius_sm as u8))
+                            .inner_margin(Margin::same(8)),
+                    )
                     .show(&ctx, |ui| {
                         self.render_header_toolbar(ui);
                         self.render_body(ui, &mut action);
@@ -205,7 +221,7 @@ impl TypesetterUi {
                     .resizable(true)
                     .default_size(340.0)
                     .size_range(280.0..=450.0)
-                    .frame(egui::Frame::NONE.fill(Color32::from_rgb(26, 28, 34)).inner_margin(Margin::same(6)))
+                    .frame(dock_frame)
                     .show(ui, |ui| {
                         self.render_dock_title_bar(ui, &mut open_flag);
                         self.render_header_toolbar(ui);
@@ -217,7 +233,7 @@ impl TypesetterUi {
                     .resizable(true)
                     .default_size(340.0)
                     .size_range(280.0..=450.0)
-                    .frame(egui::Frame::NONE.fill(Color32::from_rgb(26, 28, 34)).inner_margin(Margin::same(6)))
+                    .frame(dock_frame)
                     .show(ui, |ui| {
                         self.render_dock_title_bar(ui, &mut open_flag);
                         self.render_header_toolbar(ui);
@@ -229,7 +245,7 @@ impl TypesetterUi {
                     .resizable(true)
                     .default_size(240.0)
                     .size_range(160.0..=340.0)
-                    .frame(egui::Frame::NONE.fill(Color32::from_rgb(26, 28, 34)).inner_margin(Margin::same(6)))
+                    .frame(dock_frame)
                     .show(ui, |ui| {
                         self.render_dock_title_bar(ui, &mut open_flag);
                         self.render_header_toolbar(ui);
@@ -284,8 +300,9 @@ impl TypesetterUi {
 
     /// Заголовок закрепленной панели с кнопками управления режимом докинга (как в Photoshop).
     fn render_dock_title_bar(&mut self, ui: &mut egui::Ui, open_flag: &mut bool) {
+        let t = Tokens::get(ui.ctx());
         ui.horizontal(|ui| {
-            ui.label(RichText::new("TypeR Тайпсеттер").strong());
+            ui.label(RichText::new("Тайпсеттер").color(t.text).strong().size(12.0));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui.small_button("✕").on_hover_text("Закрыть панель").clicked() {
                     *open_flag = false;
@@ -296,118 +313,126 @@ impl TypesetterUi {
                 }
             });
         });
-        ui.separator();
+        widgets::hairline(ui);
+        ui.add_space(2.0);
     }
 
-    /// Верхняя панель вкладок и переключения режимов закрепления/импорта/экспорта.
+    /// Верхняя панель вкладок и меню опций/импорта/экспорта в едином стиле Photoshop.
     fn render_header_toolbar(&mut self, ui: &mut egui::Ui) {
-        // Ряд 1: Вкладки навигации (с переносом при сжатии панели)
-        ui.horizontal_wrapped(|ui| {
-            ui.selectable_value(&mut self.current_tab, TypesetterTab::Queue, "⚡ Очередь");
-            ui.selectable_value(&mut self.current_tab, TypesetterTab::FullText, "📜 Текст");
-            ui.selectable_value(&mut self.current_tab, TypesetterTab::Styles, "🎨 Стили");
-            ui.selectable_value(&mut self.current_tab, TypesetterTab::Settings, "⚙ Опции");
-        });
+        let t = Tokens::get(ui.ctx());
 
-        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            for (tab_val, label) in [
+                (TypesetterTab::Queue, "Очередь"),
+                (TypesetterTab::FullText, "Текст"),
+                (TypesetterTab::Styles, "Стили"),
+                (TypesetterTab::Settings, "Опции"),
+            ] {
+                let is_sel = self.current_tab == tab_val;
+                if widgets::pill_tab(ui, label, is_sel).clicked() {
+                    self.current_tab = tab_val;
+                }
+            }
 
-        // Ряд 2: Вспомогательные действия (Док, Импорт, Экспорт)
-        ui.horizontal_wrapped(|ui| {
-            // Переключатель закрепления в интерфейсе
-            let dock_title = match self.dock_mode {
-                TypesetterDockMode::Floating => "📌 Док: Окно",
-                TypesetterDockMode::DockRight => "📌 Док: Справа",
-                TypesetterDockMode::DockLeft => "📌 Док: Слева",
-                TypesetterDockMode::DockBottom => "📌 Док: Снизу",
-            };
-            ui.menu_button(dock_title, |ui| {
-                if ui.selectable_label(self.dock_mode == TypesetterDockMode::Floating, "🪟 Плавающее окно").clicked() {
-                    self.dock_mode = TypesetterDockMode::Floating;
-                    self.auto_save();
-                    ui.close();
-                }
-                if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockRight, "📌 Закрепить справа").clicked() {
-                    self.dock_mode = TypesetterDockMode::DockRight;
-                    self.auto_save();
-                    ui.close();
-                }
-                if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockLeft, "📌 Закрепить слева").clicked() {
-                    self.dock_mode = TypesetterDockMode::DockLeft;
-                    self.auto_save();
-                    ui.close();
-                }
-                if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockBottom, "📌 Закрепить снизу").clicked() {
-                    self.dock_mode = TypesetterDockMode::DockBottom;
-                    self.auto_save();
-                    ui.close();
-                }
+            // Меню панели (троеточие как во всех панелях Photoshop)
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.menu_button("···", |ui| {
+                    widgets::style_spectrum_popup_menu(ui);
+
+                    ui.label(RichText::new("Стили TypeR").size(11.0).color(t.text_dim).strong());
+
+                    if ui.button("Импорт TypeR JSON...").clicked() {
+                        ui.close();
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("TypeR JSON (*.json)", &["json"])
+                            .set_title("Выберите файл стилей TypeR")
+                            .pick_file()
+                        {
+                            match std::fs::read_to_string(&path) {
+                                Ok(content) => match self.state.import_styles_json(&content) {
+                                    Ok(count) => {
+                                        self.status_message = Some(format!("Загружено стилей: {}", count));
+                                        self.status_error = false;
+                                        self.auto_save();
+                                    }
+                                    Err(err) => {
+                                        self.status_message = Some(format!("Ошибка: {}", err));
+                                        self.status_error = true;
+                                    }
+                                },
+                                Err(err) => {
+                                    self.status_message = Some(format!("Ошибка чтения: {}", err));
+                                    self.status_error = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if ui.button("Экспорт TypeR JSON...").clicked() {
+                        ui.close();
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("TypeR JSON (*.json)", &["json"])
+                            .set_title("Экспорт стилей TypeR")
+                            .save_file()
+                        {
+                            match self.state.export_styles_json(self.selected_folder.as_deref()) {
+                                Ok(json_content) => match std::fs::write(&path, json_content) {
+                                    Ok(_) => {
+                                        self.status_message = Some("Стили успешно экспортированы".into());
+                                        self.status_error = false;
+                                    }
+                                    Err(err) => {
+                                        self.status_message = Some(format!("Ошибка записи: {}", err));
+                                        self.status_error = true;
+                                    }
+                                },
+                                Err(err) => {
+                                    self.status_message = Some(format!("Ошибка экспорта: {}", err));
+                                    self.status_error = true;
+                                }
+                            }
+                        }
+                    }
+
+                    ui.separator();
+                    ui.label(RichText::new("Закрепление").size(11.0).color(t.text_dim).strong());
+
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::Floating, "Плавающее окно").clicked() {
+                        self.dock_mode = TypesetterDockMode::Floating;
+                        self.auto_save();
+                        ui.close();
+                    }
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockRight, "Закрепить справа").clicked() {
+                        self.dock_mode = TypesetterDockMode::DockRight;
+                        self.auto_save();
+                        ui.close();
+                    }
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockLeft, "Закрепить слева").clicked() {
+                        self.dock_mode = TypesetterDockMode::DockLeft;
+                        self.auto_save();
+                        ui.close();
+                    }
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockBottom, "Закрепить снизу").clicked() {
+                        self.dock_mode = TypesetterDockMode::DockBottom;
+                        self.auto_save();
+                        ui.close();
+                    }
+                });
             });
-
-            // Импорт стилей TypeR JSON
-            if ui.button("📁 Импорт").on_hover_text("Загрузить стили из TypeR JSON").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("TypeR JSON (*.json)", &["json"])
-                    .set_title("Выберите файл стилей TypeR")
-                    .pick_file()
-                {
-                    match std::fs::read_to_string(&path) {
-                        Ok(content) => match self.state.import_styles_json(&content) {
-                            Ok(count) => {
-                                self.status_message = Some(format!("Загружено стилей: {}", count));
-                                self.status_error = false;
-                                self.auto_save();
-                            }
-                            Err(err) => {
-                                self.status_message = Some(format!("Ошибка: {}", err));
-                                self.status_error = true;
-                            }
-                        },
-                        Err(err) => {
-                            self.status_message = Some(format!("Ошибка чтения: {}", err));
-                            self.status_error = true;
-                        }
-                    }
-                }
-            }
-
-            // Экспорт стилей TypeR JSON
-            if ui.button("💾 Экспорт").on_hover_text("Экспортировать стили в TypeR JSON").clicked() {
-                if let Some(path) = rfd::FileDialog::new()
-                    .add_filter("TypeR JSON (*.json)", &["json"])
-                    .set_title("Экспорт стилей TypeR")
-                    .save_file()
-                {
-                    match self.state.export_styles_json(self.selected_folder.as_deref()) {
-                        Ok(json_content) => match std::fs::write(&path, json_content) {
-                            Ok(_) => {
-                                self.status_message = Some("Стили успешно экспортированы".into());
-                                self.status_error = false;
-                            }
-                            Err(err) => {
-                                self.status_message = Some(format!("Ошибка записи: {}", err));
-                                self.status_error = true;
-                            }
-                        },
-                        Err(err) => {
-                            self.status_message = Some(format!("Ошибка экспорта: {}", err));
-                            self.status_error = true;
-                        }
-                    }
-                }
-            }
         });
 
         // Статусное сообщение
         if let Some(msg) = &self.status_message {
             let color = if self.status_error {
-                Color32::from_rgb(255, 110, 110)
+                t.danger
             } else {
-                Color32::from_rgb(110, 210, 255)
+                t.accent
             };
             ui.label(RichText::new(msg).color(color).small());
         }
 
-        ui.separator();
+        widgets::hairline(ui);
+        ui.add_space(4.0);
     }
 
     /// Тело активной вкладки тайпсеттера.
@@ -420,8 +445,9 @@ impl TypesetterUi {
         }
     }
 
-    /// Вкладка "⚡ Очередь": текущая реплика, интерактивное превью, быстрая вставка.
+    /// Вкладка "Очередь": текущая реплика, интерактивное превью, быстрая вставка.
     fn render_queue_tab(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
+        let t = Tokens::get(ui.ctx());
         let pages = self.state.pages();
         let total_pages = pages.len();
         let current_page = self.state.current_page;
@@ -436,7 +462,7 @@ impl TypesetterUi {
                 }
             }
 
-            ui.label(RichText::new(format!("📄 Стр. {}", current_page)).strong());
+            ui.label(RichText::new(format!("Стр. {}", current_page)).color(t.text).strong());
 
             egui::ComboBox::from_id_salt("page_select_combo")
                 .selected_text(format!("Стр. {}/{}", current_page, pages.last().copied().unwrap_or(1)))
@@ -456,20 +482,21 @@ impl TypesetterUi {
             }
 
             let lines_on_page = self.state.lines_for_page(current_page).len();
-            ui.label(RichText::new(format!("({} репл.)", lines_on_page)).weak().small());
+            ui.label(RichText::new(format!("({} репл.)", lines_on_page)).color(t.text_dim).small());
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("📜 Весь текст").on_hover_text("Перейти к полному тексту сценария").clicked() {
+                if ui.button("Весь текст").on_hover_text("Перейти к полному тексту сценария").clicked() {
                     self.current_tab = TypesetterTab::FullText;
                 }
             });
         });
 
-        ui.separator();
+        widgets::hairline(ui);
+        ui.add_space(2.0);
 
         // 2. Выбор активного стиля
         ui.horizontal(|ui| {
-            ui.label("Стиль:");
+            ui.label(RichText::new("Стиль:").color(t.text_dim));
             egui::ComboBox::from_id_salt("script_preset_select")
                 .selected_text(
                     self.state
@@ -489,14 +516,11 @@ impl TypesetterUi {
                 });
         });
 
-        // 3. Live Preview карточка
-        let preview_bg = Color32::from_rgb(26, 28, 34);
-        let preview_border = Color32::from_rgb(52, 58, 70);
-
+        // 3. Live Preview карточка в стиле Photoshop
         Frame::NONE
-            .fill(preview_bg)
-            .stroke(Stroke::new(1.0, preview_border))
-            .corner_radius(CornerRadius::same(6))
+            .fill(t.field)
+            .stroke(Stroke::new(1.0, t.field_border))
+            .corner_radius(CornerRadius::same(t.radius_sm as u8))
             .inner_margin(Margin::same(8))
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -504,7 +528,7 @@ impl TypesetterUi {
                     let cur_idx = if total_lines == 0 { 0 } else { self.state.current_line_idx + 1 };
                     ui.label(
                         RichText::new(format!("ПРЕДПРОСМОТР #{} / {}", cur_idx, total_lines))
-                            .color(Color32::from_rgb(160, 175, 200))
+                            .color(t.text_dim)
                             .small()
                             .strong(),
                     );
@@ -516,7 +540,7 @@ impl TypesetterUi {
                             } else {
                                 "Без обводки".into()
                             };
-                            ui.label(RichText::new(stroke_txt).color(Color32::from_rgb(140, 200, 160)).small());
+                            ui.label(RichText::new(stroke_txt).color(t.accent).small());
                         });
                     }
                 });
@@ -549,22 +573,22 @@ impl TypesetterUi {
 
                 ui.label(
                     RichText::new(&display_text)
-                        .size(16.0)
+                        .size(15.0)
                         .strong()
-                        .color(Color32::from_rgb(255, 235, 150)),
+                        .color(t.text),
                 );
 
-                ui.label(RichText::new(active_style_info).weak().small());
+                ui.label(RichText::new(active_style_info).color(t.text_faint).small());
 
                 ui.add_space(3.0);
 
                 // Быстрое масштабирование A- / A+
                 ui.horizontal(|ui| {
-                    if ui.button("A-").on_hover_text("Уменьшить кегль (-1pt) с синхронизацией интерлиньяжа").clicked() {
+                    if ui.button("A-").on_hover_text("Уменьшить кегль (-1pt)").clicked() {
                         self.state.adjust_active_preset_size(-1.0);
                         self.auto_save();
                     }
-                    if ui.button("A+").on_hover_text("Увеличить кегль (+1pt) с синхронизацией интерлиньяжа").clicked() {
+                    if ui.button("A+").on_hover_text("Увеличить кегль (+1pt)").clicked() {
                         self.state.adjust_active_preset_size(1.0);
                         self.auto_save();
                     }
@@ -587,12 +611,12 @@ impl TypesetterUi {
 
         ui.add_space(4.0);
 
-        // 4. Главная кнопка вставки реплики
+        // 4. Главная кнопка вставки реплики (в фирменном цвете акцента Photoshop)
         if let Some(line) = self.state.active_line() {
             let preview: String = line.text.chars().take(24).collect();
             let ellipsis = if line.text.chars().count() > 24 { "…" } else { "" };
             let btn_text = format!(
-                "🎯 Вставить в бабл #{}: \"{}{}\"",
+                "Вставить в бабл #{}: \"{}{}\"",
                 self.state.current_line_idx + 1,
                 preview,
                 ellipsis
@@ -600,12 +624,12 @@ impl TypesetterUi {
 
             let insert_btn = egui::Button::new(
                 RichText::new(btn_text)
-                    .size(14.0)
+                    .size(13.0)
                     .strong()
-                    .color(Color32::from_rgb(20, 25, 30)),
+                    .color(t.accent_text),
             )
-            .fill(Color32::from_rgb(255, 210, 60))
-            .min_size(Vec2::new(ui.available_width(), 32.0));
+            .fill(t.accent)
+            .min_size(Vec2::new(ui.available_width(), 30.0));
 
             if ui.add(insert_btn).clicked() {
                 if let Some(preset) = self.state.active_preset().cloned() {
@@ -620,7 +644,7 @@ impl TypesetterUi {
         } else {
             ui.add_enabled(
                 false,
-                egui::Button::new("🎯 Сценарий пуст или завершен").min_size(Vec2::new(ui.available_width(), 30.0)),
+                egui::Button::new("Сценарий пуст или завершен").min_size(Vec2::new(ui.available_width(), 30.0)),
             );
         }
 
@@ -639,7 +663,7 @@ impl TypesetterUi {
                 self.state.advance_line();
                 self.auto_save();
             }
-            if ui.button("↺ Сброс").on_hover_text("Сбросить отметки готовности всех реплик").clicked() {
+            if ui.button("Сброс").on_hover_text("Сбросить отметки готовности всех реплик").clicked() {
                 for line in &mut self.state.lines {
                     line.is_applied = false;
                 }
@@ -747,8 +771,9 @@ impl TypesetterUi {
         });
     }
 
-    /// Вкладка "📜 Весь текст": окно всего текста с листанием наперёд и полным просмотром.
+    /// Вкладка "Текст": окно всего текста с листанием наперёд и полным просмотром.
     fn render_full_text_content(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
+        let t = Tokens::get(ui.ctx());
         let pages = self.state.pages();
         let current_page = self.state.current_page;
         let total_lines = self.state.lines.len();
@@ -846,50 +871,50 @@ impl TypesetterUi {
                         last_rendered_page = line.page;
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(format!("────── Страница {} ──────", line.page)).color(Color32::from_rgb(130, 170, 220)).strong().small());
+                            ui.label(RichText::new(format!("─── Страница {} ───", line.page)).color(t.text_dim).strong().small());
                         });
                         ui.add_space(2.0);
                     }
 
                     let is_active = idx == self.state.current_line_idx;
                     let (card_bg, card_border) = if is_active {
-                        (Color32::from_rgb(38, 44, 58), Color32::from_rgb(255, 215, 60))
+                        (t.row_selected, t.accent)
                     } else if line.is_applied {
-                        (Color32::from_rgb(22, 24, 28), Color32::from_rgb(40, 44, 52))
+                        (t.card, t.card_border)
                     } else {
-                        (Color32::from_rgb(28, 30, 36), Color32::from_rgb(48, 54, 66))
+                        (t.card, t.card_border)
                     };
 
                     Frame::NONE
                         .fill(card_bg)
                         .stroke(Stroke::new(if is_active { 1.5 } else { 1.0 }, card_border))
-                        .corner_radius(CornerRadius::same(4))
+                        .corner_radius(CornerRadius::same(t.radius_sm as u8))
                         .inner_margin(Margin::symmetric(8, 6))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 if is_active {
-                                    ui.label(RichText::new("▶ ТЕКУЩАЯ").color(Color32::from_rgb(255, 215, 60)).strong().small());
+                                    ui.label(RichText::new("▶ Текущая").color(t.accent).strong().small());
                                 } else if line.is_applied {
-                                    ui.label(RichText::new("✓ Готово").color(Color32::from_rgb(120, 200, 140)).small());
+                                    ui.label(RichText::new("✓ Готово").color(t.text_faint).small());
                                 } else {
-                                    ui.label(RichText::new(format!("#{}", idx + 1)).weak().small());
+                                    ui.label(RichText::new(format!("#{}", idx + 1)).color(t.text_dim).small());
                                 }
 
                                 let text_color = if is_active {
-                                    Color32::from_rgb(255, 240, 180)
+                                    t.text
                                 } else if line.is_applied {
-                                    Color32::from_rgb(130, 135, 145)
+                                    t.text_faint
                                 } else {
-                                    Color32::WHITE
+                                    t.text
                                 };
 
                                 ui.label(RichText::new(&line.text).color(text_color).strong());
 
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    if ui.small_button("🎯 Вставить").on_hover_text("Вставить эту реплику в текущее выделение").clicked() {
+                                    if ui.small_button("Вставить").on_hover_text("Вставить эту реплику в текущее выделение").clicked() {
                                         line_to_insert = Some((idx, line.clone()));
                                     }
-                                    if !is_active && ui.small_button("В очередь").on_hover_text("Сделать эту реплику текущей").clicked() {
+                                    if !is_active && ui.small_button("Выбрать").on_hover_text("Сделать эту реплику текущей").clicked() {
                                         line_to_set = Some(idx);
                                     }
                                 });
@@ -915,30 +940,32 @@ impl TypesetterUi {
             });
     }
 
-    /// Вкладка "🎨 Стили": стили представлены отдельными кнопками + модальные настройки шрифта.
+    /// Вкладка "Стили": стили представлены отдельными кнопками + модальные настройки шрифта.
     fn render_styles_tab(&mut self, ui: &mut egui::Ui) {
+        let t = Tokens::get(ui.ctx());
+
         // --- 1. Папки как вкладки ---
         let folders = self.state.folders();
 
         ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
             ui.horizontal(|ui| {
-                if ui.selectable_label(self.selected_folder.is_none(), "📁 Все").clicked() {
+                if widgets::pill_tab(ui, "Все", self.selected_folder.is_none()).clicked() {
                     self.selected_folder = None;
                 }
 
                 for folder in &folders {
                     let is_sel = self.selected_folder.as_deref() == Some(folder.as_str());
-                    if ui.selectable_label(is_sel, format!("📁 {}", folder)).clicked() {
+                    if widgets::pill_tab(ui, folder, is_sel).clicked() {
                         self.selected_folder = Some(folder.clone());
                     }
                 }
 
-                if ui.small_button("➕ Папка").on_hover_text("Создать новую папку стилей").clicked() {
+                if ui.small_button("+ Папка").on_hover_text("Создать новую папку стилей").clicked() {
                     self.creating_new_folder = true;
                     self.new_folder_name_buffer = "Новая папка".into();
                 }
                 if let Some(f) = &self.selected_folder {
-                    if ui.small_button("📋 Копия").on_hover_text("Дублировать текущую папку").clicked() {
+                    if ui.small_button("Копия").on_hover_text("Дублировать текущую папку").clicked() {
                         self.duplicating_folder = Some(f.clone());
                         self.duplicate_folder_name_buffer = format!("{} (Копия)", f);
                     }
@@ -949,12 +976,13 @@ impl TypesetterUi {
         // Создание новой папки
         if self.creating_new_folder {
             Frame::NONE
-                .fill(Color32::from_rgb(35, 38, 48))
-                .corner_radius(CornerRadius::same(4))
+                .fill(t.field)
+                .stroke(Stroke::new(1.0, t.field_border))
+                .corner_radius(CornerRadius::same(t.radius_sm as u8))
                 .inner_margin(Margin::same(6))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("Имя папки:");
+                        ui.label(RichText::new("Имя папки:").color(t.text));
                         ui.text_edit_singleline(&mut self.new_folder_name_buffer);
                         if ui.button("OK").clicked() {
                             let name = self.new_folder_name_buffer.trim().to_string();
@@ -973,11 +1001,12 @@ impl TypesetterUi {
         // Дублирование папки
         if let Some(src_folder) = self.duplicating_folder.clone() {
             Frame::NONE
-                .fill(Color32::from_rgb(35, 38, 48))
-                .corner_radius(CornerRadius::same(4))
+                .fill(t.field)
+                .stroke(Stroke::new(1.0, t.field_border))
+                .corner_radius(CornerRadius::same(t.radius_sm as u8))
                 .inner_margin(Margin::same(6))
                 .show(ui, |ui| {
-                    ui.label(RichText::new(format!("Дублировать папку '{}':", src_folder)).strong());
+                    ui.label(RichText::new(format!("Дублировать папку '{}':", src_folder)).color(t.text).strong());
                     ui.horizontal(|ui| {
                         ui.text_edit_singleline(&mut self.duplicate_folder_name_buffer);
                         if ui.button("OK").clicked() {
@@ -993,13 +1022,14 @@ impl TypesetterUi {
                 });
         }
 
-        ui.separator();
+        widgets::hairline(ui);
+        ui.add_space(2.0);
 
         // Поиск и кнопка создания стиля
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.style_filter).hint_text("🔍 Поиск стиля..."));
+            ui.add(egui::TextEdit::singleline(&mut self.style_filter).hint_text("Поиск стиля..."));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.button("➕ Новый стиль").clicked() {
+                if ui.button("+ Новый стиль").clicked() {
                     let new_preset = TextStylePreset {
                         name: "Новый стиль".to_string(),
                         folder: self.selected_folder.clone(),
@@ -1040,40 +1070,34 @@ impl TypesetterUi {
 
                     let is_active = idx == active_preset_idx;
                     let pill_bg = if is_active {
-                        Color32::from_rgb(45, 55, 75)
+                        t.row_selected
                     } else {
-                        Color32::from_rgb(30, 33, 40)
+                        t.card
                     };
                     let pill_border = if is_active {
-                        Color32::from_rgb(110, 180, 255)
+                        t.accent
                     } else {
-                        Color32::from_rgb(55, 60, 75)
+                        t.card_border
                     };
 
                     Frame::NONE
                         .fill(pill_bg)
                         .stroke(Stroke::new(if is_active { 1.5 } else { 1.0 }, pill_border))
-                        .corner_radius(CornerRadius::same(5))
+                        .corner_radius(CornerRadius::same(t.radius_sm as u8))
                         .inner_margin(Margin::symmetric(6, 4))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 // Кнопка выбора стиля
-                                let title_color = if is_active {
-                                    Color32::from_rgb(255, 220, 90)
-                                } else {
-                                    Color32::WHITE
-                                };
-
-                                let btn_label = RichText::new(&preset.name).color(title_color).strong();
+                                let btn_label = RichText::new(&preset.name).color(t.text).strong();
                                 if ui.selectable_label(is_active, btn_label).clicked() {
                                     to_select = Some(idx);
                                 }
 
                                 // Бейджик кегля
-                                ui.label(RichText::new(format!("{}pt", preset.font_size.round())).color(Color32::from_rgb(160, 175, 200)).small());
+                                ui.label(RichText::new(format!("{}pt", preset.font_size.round())).color(t.text_dim).small());
 
                                 // Кнопка захода в настройки шрифта
-                                if ui.small_button("⚙").on_hover_text("Настройки шрифта и стиля").clicked() {
+                                if ui.small_button("···").on_hover_text("Настройки шрифта и стиля").clicked() {
                                     to_edit = Some(idx);
                                 }
                             });
@@ -1245,86 +1269,120 @@ impl TypesetterUi {
         }
     }
 
-    /// Вкладка "⚙ Опции": общие настройки тайпсеттера, привязки и сохранение.
+    /// Вкладка "Опции": общие настройки тайпсеттера, привязки и сохранение.
     fn render_settings_tab(&mut self, ui: &mut egui::Ui) {
-        ui.label(RichText::new("Закрепление в интерфейсе (Photoshop Docking)").strong());
+        let t = Tokens::get(ui.ctx());
+
+        ui.label(RichText::new("ЗАКРЕПЛЕНИЕ ПАНЕЛИ").size(11.0).color(t.text_dim).strong());
         ui.horizontal(|ui| {
-            ui.label("Режим панели:");
-            if ui.selectable_label(self.dock_mode == TypesetterDockMode::Floating, "🪟 Плавающее окно").clicked() {
-                self.dock_mode = TypesetterDockMode::Floating;
-                self.auto_save();
-            }
-            if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockRight, "📌 Справа").clicked() {
-                self.dock_mode = TypesetterDockMode::DockRight;
-                self.auto_save();
-            }
-            if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockLeft, "📌 Слева").clicked() {
-                self.dock_mode = TypesetterDockMode::DockLeft;
-                self.auto_save();
-            }
-            if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockBottom, "📌 Снизу").clicked() {
-                self.dock_mode = TypesetterDockMode::DockBottom;
-                self.auto_save();
-            }
+            ui.label(RichText::new("Положение:").color(t.text));
+            let dock_str = match self.dock_mode {
+                TypesetterDockMode::Floating => "Плавающее окно",
+                TypesetterDockMode::DockRight => "Закрепить справа",
+                TypesetterDockMode::DockLeft => "Закрепить слева",
+                TypesetterDockMode::DockBottom => "Закрепить снизу",
+            };
+            egui::ComboBox::from_id_salt("settings_dock_mode")
+                .selected_text(dock_str)
+                .width(160.0)
+                .show_ui(ui, |ui| {
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::Floating, "Плавающее окно").clicked() {
+                        self.dock_mode = TypesetterDockMode::Floating;
+                        self.auto_save();
+                    }
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockRight, "Закрепить справа").clicked() {
+                        self.dock_mode = TypesetterDockMode::DockRight;
+                        self.auto_save();
+                    }
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockLeft, "Закрепить слева").clicked() {
+                        self.dock_mode = TypesetterDockMode::DockLeft;
+                        self.auto_save();
+                    }
+                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockBottom, "Закрепить снизу").clicked() {
+                        self.dock_mode = TypesetterDockMode::DockBottom;
+                        self.auto_save();
+                    }
+                });
         });
 
-        ui.separator();
+        widgets::hairline(ui);
+        ui.add_space(4.0);
 
-        ui.label(RichText::new("Поведение тайпсеттера (TypeR)").strong());
+        ui.label(RichText::new("ПОВЕДЕНИЕ ТАЙПСЕТТЕРА").size(11.0).color(t.text_dim).strong());
 
-        if ui.checkbox(&mut self.state.options.auto_page_switch, "Автоматический переход на следующую страницу скрипта").changed() {
+        if ui.checkbox(
+            &mut self.state.options.auto_page_switch,
+            "Автопереход на след. страницу",
+        ).on_hover_text("Автоматический переход на следующую страницу скрипта").changed() {
             self.auto_save();
         }
 
         if ui.checkbox(
             &mut self.state.options.line_spacing_sync,
-            "Line Spacing Sync (синхронизация интерлиньяжа с размером шрифта)",
-        ).changed() {
+            "Синхронизация интерлиньяжа",
+        ).on_hover_text("Синхронизация интерлиньяжа (Line Spacing) с кеглем шрифта").changed() {
             self.auto_save();
         }
 
-        if ui.checkbox(&mut self.state.options.strip_character_names, "Очищать имена персонажей в начале строки ('ГЕРОЙ: Текст')").changed() {
+        if ui.checkbox(
+            &mut self.state.options.strip_character_names,
+            "Очищать имена персонажей",
+        ).on_hover_text("Очищать имена персонажей в начале строки ('ГЕРОЙ: Текст')").changed() {
             self.auto_save();
         }
 
-        if ui.checkbox(&mut self.state.options.strip_dash_prefix, "Очищать тире в начале реплик ('- Текст', '— Текст')").changed() {
+        if ui.checkbox(
+            &mut self.state.options.strip_dash_prefix,
+            "Очищать тире в начале реплик",
+        ).on_hover_text("Очищать тире в начале реплик ('- Текст', '— Текст')").changed() {
             self.auto_save();
         }
 
-        ui.separator();
+        widgets::hairline(ui);
+        ui.add_space(4.0);
 
-        ui.label(RichText::new("Геометрия и центрирование текста").strong());
+        ui.label(RichText::new("ГЕОМЕТРИЯ И ЦЕНТРИРОВАНИЕ").size(11.0).color(t.text_dim).strong());
 
         ui.horizontal(|ui| {
-            ui.label("Оптический сдвиг базовой линии:");
+            ui.label(RichText::new("Сдвиг базовой линии:").color(t.text));
             if ui.add(
                 egui::Slider::new(&mut self.state.options.optical_baseline_factor, 0.0..=0.6)
-                    .text("× font_size"),
+                    .show_value(true)
+                    .suffix(" ×"),
             ).changed() {
                 self.auto_save();
             }
         });
         ui.label(
-            RichText::new("Сдвиг базовой линии вниз (по умолчанию 0.35) обеспечивает точное визуальное центрирование текста по высоте внутри баббла.")
-                .weak()
+            RichText::new("Сдвиг базовой линии вниз обеспечивает точное визуальное центрирование текста внутри баббла.")
+                .color(t.text_faint)
                 .small(),
         );
 
-        ui.separator();
+        widgets::hairline(ui);
+        ui.add_space(4.0);
 
-        ui.label(RichText::new("Хранилище пресетов и автосохранение").strong());
+        ui.label(RichText::new("ХРАНИЛИЩЕ ПРЕСЕТОВ").size(11.0).color(t.text_dim).strong());
         if let Some(path) = typesetter_storage_path() {
-            ui.label(RichText::new(format!("Файл сохранения: {}", path.display())).weak().small());
+            ui.add(
+                egui::Label::new(
+                    RichText::new(format!("Файл: {}", path.display()))
+                        .color(t.text_faint)
+                        .small(),
+                ).truncate(),
+            ).on_hover_text(path.display().to_string());
         }
 
         ui.horizontal(|ui| {
-            if ui.button("💾 Сохранить пресеты сейчас").clicked() {
+            if ui.button("Сохранить сейчас").clicked() {
                 self.auto_save();
                 self.status_message = Some("Пресеты сохранены".into());
+                self.status_error = false;
             }
-            if ui.button("↺ Перезагрузить из файла").clicked() {
+            if ui.button("Загрузить из файла").clicked() {
                 self.auto_load();
                 self.status_message = Some("Пресеты загружены из файла".into());
+                self.status_error = false;
             }
         });
     }
