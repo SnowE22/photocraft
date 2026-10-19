@@ -1114,7 +1114,7 @@ impl PhotocraftApp {
             &action.preset.font_family
         };
 
-        let _ = self.run(
+        let res = self.run(
             "type.create",
             serde_json::json!({
                 "x": x,
@@ -1129,6 +1129,29 @@ impl PhotocraftApp {
                 "leading": action.preset.leading
             }),
         );
+
+        if let Ok(v) = res {
+            if let Some(layer_id) = v.get("layer").and_then(serde_json::Value::as_u64) {
+                if action.preset.stroke_width > 0.0 {
+                    let hex_color = format!(
+                        "#{:02x}{:02x}{:02x}",
+                        action.preset.stroke_color[0],
+                        action.preset.stroke_color[1],
+                        action.preset.stroke_color[2]
+                    );
+                    let _ = self.run(
+                        "layer.layerStyle.stroke",
+                        serde_json::json!({
+                            "layer": layer_id,
+                            "size": action.preset.stroke_width,
+                            "position": "outside",
+                            "color": hex_color,
+                            "opacity": (action.preset.stroke_color[3] as f32 / 2.55).round() as u32
+                        }),
+                    );
+                }
+            }
+        }
     }
 
     /// Run an engine command, reporting errors in the status bar.
