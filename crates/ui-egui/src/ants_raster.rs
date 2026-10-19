@@ -34,6 +34,9 @@ const DASH: i64 = 4;
 /// Device pixels rasterized past each side of the canvas shown, so a pan moves the texture until
 /// it has gone this far (the canvas re-traces a zoomed-out outline every 256 to 512).
 const MARGIN: i64 = 512;
+/// An outline whose reach is at most this many device pixels is rasterized whole (8 MB of mask,
+/// a 32 MB texture).
+const WHOLE_PIXELS: i64 = 8 << 20;
 /// Seconds a view rests after a pan by a fraction of a pixel before its ants are rasterized
 /// again exactly where it puts them.
 const SETTLE: f64 = 0.2;
@@ -236,7 +239,7 @@ pub fn draw(ctx: &egui::Context, painter: &egui::Painter, view: egui::Id, xf: &V
     let shift = match cache.raster.as_mut().and_then(|r| r.shift_for(&map, need, time)) {
         Some(shift) => shift,
         None => {
-            let rect = need.expand(MARGIN.min((side - need.w()) / 2).max(0), MARGIN.min((side - need.h()) / 2).max(0)).intersect(reach);
+            let rect = raster_rect(need, reach, side);
             let mask = rasterize(&map, segs, rect);
             cache.raster = Some(Raster { map, rect, mask, uploaded: false, phase: 0, fresh: Px::default(), seen: map.offset, moved: time });
             [0, 0]
@@ -261,12 +264,15 @@ pub fn draw(ctx: &egui::Context, painter: &egui::Painter, view: egui::Id, xf: &V
             }
         }
         t => {
-            let image = colour(&r.mask, size[0], whole, origin, phase);
+            // Only the part shown is coloured now; a pan colours the rest as it comes into view
+            // (the texture's other pixels are never shown before that).
+            let part = colour(&r.mask, size[0], on_canvas, origin, phase);
             match t {
-                Some(t) => t.set(image, TextureOptions::NEAREST),
-                None => cache.texture = Some(ctx.load_texture("pc-ants-raster", image, TextureOptions::NEAREST)),
+                Some(t) if t.size() == size => t.set_partial([on_canvas.x0 as usize, on_canvas.y0 as usize], part, TextureOptions::NEAREST),
+                Some(t) => t.set(blank_with(size, on_canvas, part), TextureOptions::NEAREST),
+                None => cache.texture = Some(ctx.load_texture("pc-ants-raster", blank_with(size, on_canvas, part), TextureOptions::NEAREST)),
             }
-            (r.uploaded, r.phase, r.fresh) = (true, phase, whole);
+            (r.uploaded, r.phase, r.fresh) = (true, phase, on_canvas);
         }
     }
     if let Some(t) = &cache.texture {
@@ -276,6 +282,32 @@ pub fn draw(ctx: &egui::Context, painter: &egui::Painter, view: egui::Id, xf: &V
         painter.image(t.id(), rect, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
     }
     true
+}
+
+/// The device pixels to rasterize for an outline that can mark `reach` with `need` shown: all of
+/// `reach` when it fits [`WHOLE_PIXELS`] and a texture, so a pan never rasterizes it again;
+/// otherwise `need` plus [`MARGIN`] on each side (as far as a texture allows), within `reach`.
+fn raster_rect(need: Px, reach: Px, side: i64) -> Px {
+    if reach.w() <= side && reach.h() <= side && reach.w().saturating_mul(reach.h()) <= WHOLE_PIXELS {
+        return reach;
+    }
+    need.expand(MARGIN.min((side - need.w()) / 2).max(0), MARGIN.min((side - need.h()) / 2).max(0)).intersect(reach)
+}
+
+/// A transparent image of `size` with `image` at `part`.
+fn blank_with(size: [usize; 2], part: Px, image: ColorImage) -> ColorImage {
+    let mut out = ColorImage::new(size, vec![Color32::TRANSPARENT; size[0].saturating_mul(size[1])]);
+    let w = image.size[0];
+    if w == 0 {
+        return out;
+    }
+    for (row, src) in image.pixels.chunks_exact(w).enumerate() {
+        let start = (part.y0 as usize).saturating_add(row).saturating_mul(size[0]).saturating_add(part.x0 as usize);
+        if let Some(dst) = out.pixels.get_mut(start..start.saturating_add(w)) {
+            dst.copy_from_slice(src);
+        }
+    }
+    out
 }
 
 /// Forget `view`'s texture (no outline shown any more), freeing its memory.
@@ -541,6 +573,40 @@ mod tests {
         assert_eq!(bounds(&[]), None);
     }
 
+    /// An outline whose whole reach fits [`WHOLE_PIXELS`] is rasterized whole once: pans of any
+    /// length only move it and colour what they bring into view (user report: panning with a
+    /// big selection still stuttered as it rasterized again every few hundred pixels).
+    #[test]
+    fn an_outline_that_fits_is_rasterized_whole_and_pans_never_rasterize_it() {
+        let ctx = egui::Context::default();
+        let canvas = Rect::from_min_size(Pos2::ZERO, egui::vec2(200.0, 100.0));
+        let painter = egui::Painter::new(ctx.clone(), egui::LayerId::background(), canvas);
+        let segs = Arc::new(speckle(1500, 1000));
+        let id = egui::Id::new("ants-whole");
+        let mut v = ViewXform { rect: canvas, zoom: 1.0, center: [100.0, 50.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let rect = || ctx.data_mut(|d| d.get_temp::<Shared>(cache_id(id))).unwrap().lock().unwrap().raster.as_ref().map(|r| r.rect);
+        uploads(&ctx);
+        assert!(draw(&ctx, &painter, id, &v, &segs, 0.0));
+        let whole = rect().unwrap();
+        assert!(whole.w() >= 1500 && whole.h() >= 1000, "the outline's whole reach: {whole:?}");
+        assert_eq!(uploads(&ctx).0, 1);
+        // Across the whole outline, by whole pixels, well past MARGIN: never rasterized again.
+        for i in 1..=13 {
+            v.center = [100.0 + i as f32 * 97.0, 50.0 + i as f32 * 61.0];
+            assert!(draw(&ctx, &painter, id, &v, &segs, 0.001 * f64::from(i)));
+            let (whole_uploads, part) = uploads(&ctx);
+            assert_eq!(whole_uploads, 0, "pan {i}");
+            assert!(part <= 200 * 100, "pan {i} coloured {part} px, more than the canvas");
+            assert_eq!(rect(), Some(whole), "pan {i}: the same mask");
+        }
+        // What it shows equals a mask rasterized at that view.
+        let shared = ctx.data_mut(|d| d.get_temp::<Shared>(cache_id(id))).unwrap();
+        let c = shared.lock().unwrap();
+        let r = c.raster.as_ref().unwrap();
+        let fresh = rasterize(&map(&v, 1.0), &segs, r.rect.shift([-(97 * 13), -(61 * 13)]));
+        assert_eq!(fresh, r.mask);
+    }
+
     /// Uploads to `ctx`'s textures since the last call: (whole textures, pixels of partial ones).
     fn uploads(ctx: &egui::Context) -> (usize, usize) {
         let mut delta = ctx.tex_manager().write().take_delta();
@@ -564,7 +630,12 @@ mod tests {
         let ctx = egui::Context::default();
         let canvas = Rect::from_min_size(Pos2::ZERO, egui::vec2(200.0, 100.0));
         let painter = egui::Painter::new(ctx.clone(), egui::LayerId::background(), canvas);
-        let segs = Arc::new(speckle(2000, 1400));
+        // Two far ends make its reach too big to rasterize whole: the canvas and margins only.
+        let wide = |mut s: Vec<Segment>| {
+            s.extend([([-1000, -1000], [-999, -1000]), ([3000, 2400], [3001, 2400])]);
+            s
+        };
+        let segs = Arc::new(wide(speckle(2000, 1400)));
         let id = egui::Id::new("ants-test");
         let mut v = ViewXform { rect: canvas, zoom: 1.0, center: [1000.0, 700.0], flip: false, rotation: 0.0, aspect: 1.0 };
         let raster = || {
@@ -572,15 +643,24 @@ mod tests {
             let c = shared.lock().unwrap();
             c.raster.as_ref().map(|r| (r.rect, r.map))
         };
+        // Whether the mask was rasterized again since the last call (a new mask buffer: the old
+        // one is still alive when it is allocated, so the address differs).
+        let last = std::cell::Cell::new(std::ptr::null::<u8>());
+        let remade = || {
+            let shared = ctx.data_mut(|d| d.get_temp::<Shared>(cache_id(id))).unwrap();
+            let p = shared.lock().unwrap().raster.as_ref().map_or(std::ptr::null(), |r| r.mask.as_ptr());
+            p != last.replace(p)
+        };
         uploads(&ctx); // egui's own (the font atlas)
         assert!(draw(&ctx, &painter, id, &v, &segs, 0.0));
         assert_eq!(uploads(&ctx).0, 1, "the first frame uploads the mask");
+        assert!(remade());
         let (rect, m0) = raster().unwrap();
         assert_eq!((rect.w(), rect.h()), (200 + 2 * MARGIN, 100 + 2 * MARGIN), "the canvas and the margins");
         // Three whole pixels right: the texture moves.
         v.center[0] -= 3.0;
         assert!(draw(&ctx, &painter, id, &v, &segs, 0.01));
-        assert_eq!(uploads(&ctx), (0, 0), "the margins were coloured with the mask");
+        assert_eq!(uploads(&ctx), (0, 3 * 100), "the band of margin the pan brought in");
         assert_eq!(raster().unwrap().1, m0, "the same mask");
         // The march recolours only the canvas shown.
         assert!(draw(&ctx, &painter, id, &v, &segs, 0.15));
@@ -594,16 +674,20 @@ mod tests {
         v.center[0] -= 0.5;
         assert!(draw(&ctx, &painter, id, &v, &segs, 0.18));
         assert_eq!(uploads(&ctx).0, 0);
+        assert!(!remade(), "moved while panning");
         assert!(draw(&ctx, &painter, id, &v, &segs, 0.18 + SETTLE / 2.0));
-        assert_eq!(uploads(&ctx).0, 0, "not at rest yet");
+        uploads(&ctx);
+        assert!(!remade(), "not at rest yet");
         assert!(draw(&ctx, &painter, id, &v, &segs, 0.18 + SETTLE * 1.5));
-        assert_eq!(uploads(&ctx).0, 1, "at rest: rasterized where the view puts it");
+        uploads(&ctx);
+        assert!(remade(), "at rest: rasterized where the view puts it");
         let (_, m1) = raster().unwrap();
         assert!((m1.offset[0] - m0.offset[0] - 3.5).abs() < 1e-6);
         // Past the margin.
         v.center[0] += MARGIN as f32 + 10.0;
         assert!(draw(&ctx, &painter, id, &v, &segs, 1.0));
-        assert_eq!(uploads(&ctx).0, 1, "a pan past the margin");
+        uploads(&ctx);
+        assert!(remade(), "a pan past the margin");
         // Zoom, rotation, flip and aspect each make a new mask, which the next frame reuses.
         for change in 0..4 {
             let mut w = v;
@@ -614,16 +698,20 @@ mod tests {
                 _ => w.aspect = 0.5,
             }
             assert!(draw(&ctx, &painter, id, &w, &segs, 1.01));
-            assert_eq!(uploads(&ctx).0, 1, "change {change}");
+            uploads(&ctx);
+            assert!(remade(), "change {change}");
             assert!(draw(&ctx, &painter, id, &w, &segs, 1.02));
-            assert_eq!(uploads(&ctx).0, 0, "change {change}, then reused");
+            uploads(&ctx);
+            assert!(!remade(), "change {change}, then reused");
         }
-        let retraced = Arc::new(speckle(2000, 1400));
+        let retraced = Arc::new(wide(speckle(2000, 1400)));
         assert!(draw(&ctx, &painter, id, &v, &retraced, 1.03));
-        assert_eq!(uploads(&ctx).0, 1, "a new outline");
+        uploads(&ctx);
+        assert!(remade(), "a new outline");
         ctx.input_mut(|i| i.pixels_per_point = 1.25);
         assert!(draw(&ctx, &painter, id, &v, &retraced, 1.04));
-        assert_eq!(uploads(&ctx).0, 1, "another display scale");
+        uploads(&ctx);
+        assert!(remade(), "another display scale");
         // A canvas bigger than a texture can be keeps the mesh; an outline out of view draws nothing.
         ctx.input_mut(|i| i.max_texture_side = 100);
         assert!(!draw(&ctx, &painter, id, &v, &retraced, 1.05));

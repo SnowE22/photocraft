@@ -135,6 +135,7 @@ pub mod menu_catalog;
 pub mod menu_keys;
 pub mod menu_nav;
 pub mod menus;
+mod merged_ahead;
 pub mod monitor_status;
 pub mod move_box;
 pub mod move_hover;
@@ -2893,6 +2894,9 @@ impl PhotocraftApp {
 
 #[cfg(test)]
 mod navigator_gpu_tests;
+
+#[cfg(test)]
+mod pan_bench_tests;
 
 #[cfg(test)]
 mod color_swatch_tests;

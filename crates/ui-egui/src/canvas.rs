@@ -3302,32 +3302,19 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 )
             };
             let bounds_key = if k > 1 { u64::MAX / 2 - doc.id.0 } else { u64::MAX - doc.id.0 };
-            let carried_bounds = carried.then(|| app.cached_bounds(bounds_key, sel).intersect(&vis));
-            let step = carried_bounds.map_or(step, |b| crate::outline::bounded_step(b, step));
-            let key = crate::surface_fingerprint(sel)
-                ^ u64::from(step).rotate_left(56)
-                ^ doc.id.0.rotate_left(17)
-                ^ (vis.x0 as u64) << 8
-                ^ (vis.y0 as u64) << 24
-                ^ (vis.x1 as u64) << 36
-                ^ (vis.y1 as u64) << 48
-                ^ u64::from(k).rotate_left(5);
-            let fresh = matches!(&app.outline_cache, Some((d, k, _)) if *d == doc.id && *k == key);
-            if !fresh {
-                let t0 = crate::gpu_canvas::now_ms();
-                let b = carried_bounds.unwrap_or_else(|| app.cached_bounds(bounds_key, sel).intersect(&vis));
-                // Filters can occupy every worker in Rayon's global pool. A parallel scan here would
-                // block the UI thread waiting for those workers, preventing job cancellation (#1554).
-                let mut segs =
-                    if app.session.has_jobs() { crate::outline::outline_scaled_serial(sel, b, step) } else { crate::outline::outline_scaled(sel, b, step) };
-                if k > 1 {
-                    let s = i32::try_from(k).unwrap_or(1);
-                    let up = |p: [i32; 2]| [p[0].saturating_mul(s), p[1].saturating_mul(s)];
-                    segs.iter_mut().for_each(|(a, b)| (*a, *b) = (up(*a), up(*b)));
-                }
-                app.perf.span("outline", crate::gpu_canvas::now_ms() - t0);
-                app.outline_cache = Some((doc.id, key, std::sync::Arc::new(segs)));
-            }
+            // What is traced: the whole selection when its trace is small enough, so a pan never
+            // traces it again and its ants texture only moves (user report: panning still
+            // stuttered every 256 · step pixels, re-tracing and re-rasterizing the outline);
+            // otherwise its (cached) bounds within the padded view.
+            let whole = app.cached_bounds(bounds_key, sel);
+            let b = if crate::outline::cells(whole, step) <= WHOLE_TRACE_CELLS { whole } else { whole.intersect(&vis) };
+            let step = if carried { crate::outline::bounded_step(b, step) } else { step };
+            // Keyed by `b`, not `vis`: with the whole selection in view (at fit) a pan moves `vis`
+            // across quanta but traces the same outline, so it keeps the same `Arc` (and the
+            // ants texture made from it, ants_raster.rs).
+            let base = crate::surface_fingerprint(sel) ^ u64::from(step).rotate_left(56) ^ doc.id.0.rotate_left(17) ^ u64::from(k).rotate_left(5);
+            let key = outline_key(base, b);
+            retrace_outline(app, &ctx, doc.id, sel, OutlineTrace { b, step, k, base, key });
             // Under Content-Aware Move's Transform On Drop box the ants are drawn where it puts them.
             if let Some((_, _, segs)) = app.outline_cache.as_ref().filter(|_| !crate::cam_transform::active(app)) {
                 let time = ui.input(|i| i.time);
@@ -3340,10 +3327,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 if !(carried && crate::transform_tool::draw_selection(app, &painter, &xf, doc.id, segs, time)) {
                     // A big outline (a speckled or detailed selection) from a texture made once per
                     // view: as a mesh it slowed every frame (ants_raster.rs).
+                    let t0 = crate::gpu_canvas::now_ms();
                     raster_ants = segs.len() > crate::ants_raster::MIN_SEGMENTS && crate::ants_raster::draw(&ctx, &painter, ants_id, &shown, segs, time);
                     if !raster_ants {
                         marching_ants_segments(&painter, &shown, segs, time);
                     }
+                    app.perf.span("ants", crate::gpu_canvas::now_ms() - t0);
                 }
                 ctx.request_repaint_after(std::time::Duration::from_millis(100));
             }
@@ -4403,6 +4392,156 @@ fn paint_mapped_quad(painter: &egui::Painter, xf: &ViewXform, size: [f32; 2], co
     let [w, h] = size;
     let pts = vec![xf.to_screen(0.0, 0.0), xf.to_screen(w, 0.0), xf.to_screen(w, h), xf.to_screen(0.0, h)];
     painter.add(egui::Shape::convex_polygon(pts, color, Stroke::NONE));
+}
+
+/// Selections whose whole outline traces in at most this many grid cells are traced whole, not
+/// over the view (about 21 ms for a 2374 × 3000 ⌘-clicked composite at 100 %).
+const WHOLE_TRACE_CELLS: u64 = 8 << 20;
+
+/// One selection outline trace: region `b` of the mask at `step` mask pixels per cell, on a Select
+/// and Mask proxy reduced by `k`. `base` keys the mask, step, document and `k`; `key` adds `b`
+/// ([`outline_key`]).
+#[derive(Clone, Copy, Debug)]
+struct OutlineTrace {
+    b: DRect,
+    step: u32,
+    k: u32,
+    base: u64,
+    key: u64,
+}
+
+/// The outline cache key: `base` plus the traced bounds.
+fn outline_key(base: u64, b: DRect) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (b.x0, b.y0, b.x1, b.y1).hash(&mut h);
+    base ^ h.finish()
+}
+
+/// The segments of `t`, in document pixels.
+fn trace_outline(sel: &photocraft_raster::Surface, t: OutlineTrace, serial: bool) -> Vec<crate::outline::Segment> {
+    let mut segs = if serial { crate::outline::outline_scaled_serial(sel, t.b, t.step) } else { crate::outline::outline_scaled(sel, t.b, t.step) };
+    if t.k > 1 {
+        let s = i32::try_from(t.k).unwrap_or(1);
+        let up = |p: [i32; 2]| [p[0].saturating_mul(s), p[1].saturating_mul(s)];
+        segs.iter_mut().for_each(|(a, b)| (*a, *b) = (up(*a), up(*b)));
+    }
+    segs
+}
+
+/// A finished background trace: the segments and how long the trace took (ms).
+type TracedOutline = (Vec<crate::outline::Segment>, f64);
+
+/// Where a background trace puts its result.
+type TraceSlot = std::sync::Arc<std::sync::Mutex<Option<TracedOutline>>>;
+
+/// Background outline traces ([`retrace_outline`]), kept in the context's temp data.
+#[derive(Clone, Default)]
+struct OutlineJob {
+    /// The key of the outline in `app.outline_cache` and the `base` it was traced with.
+    shown: Option<(u64, u64)>,
+    /// The trace running: its document, what it traces, and its result once done.
+    running: Option<(photocraft_doc::DocId, OutlineTrace, TraceSlot)>,
+}
+
+/// Bring `app.outline_cache` up to `t`. A new selection (or step, document, proxy) is traced here
+/// at once. A pan that only changes the bounds traced of the outline shown is traced on a
+/// background thread, one at a time, and the outline shown stays up until it lands: that one was
+/// traced 256 · step mask pixels past the view, so a pan doesn't outrun it in a frame or two.
+fn retrace_outline(app: &mut PhotocraftApp, ctx: &egui::Context, doc: photocraft_doc::DocId, sel: &photocraft_raster::Surface, t: OutlineTrace) {
+    use std::sync::{Arc, PoisonError};
+    let shown_key = |app: &PhotocraftApp| app.outline_cache.as_ref().filter(|(d, _, _)| *d == doc).map(|(_, key, _)| *key);
+    if shown_key(app) == Some(t.key) {
+        return;
+    }
+    let id = egui::Id::new("pc-outline-job");
+    let mut job = ctx.data(|d| d.get_temp::<OutlineJob>(id)).unwrap_or_default();
+    // The outline shown is this selection's, traced over other bounds.
+    let shows_selection = |app: &PhotocraftApp, job: &OutlineJob| {
+        let key = shown_key(app);
+        key.is_some() && job.shown.is_some_and(|(k, base)| Some(k) == key && base == t.base)
+    };
+    if let Some((jdoc, jt, result)) = job.running.clone() {
+        let done = result.lock().unwrap_or_else(PoisonError::into_inner).take();
+        if let Some((segs, ms)) = done {
+            job.running = None;
+            // Taken even when the view has moved on meanwhile: it is nearer the view than the
+            // outline shown, so a fast pan isn't left with that one.
+            if jdoc == doc && jt.base == t.base && shows_selection(app, &job) {
+                app.perf.span("outline-bg", ms);
+                app.outline_cache = Some((doc, jt.key, Arc::new(segs)));
+                job.shown = Some((jt.key, jt.base));
+            }
+        }
+    }
+    let shows = shows_selection(app, &job);
+    if shown_key(app) != Some(t.key) {
+        match &job.running {
+            // Wait for it; the next trace starts once it lands.
+            Some((jdoc, jt, _)) if shows && *jdoc == doc && jt.base == t.base => {}
+            // A trace of something else is still running: trace this one here.
+            Some(_) => trace_here(app, &mut job, doc, sel, t),
+            None if shows => {
+                if !trace_in_background(app, ctx, &mut job, doc, sel, t) {
+                    trace_here(app, &mut job, doc, sel, t);
+                }
+            }
+            None => trace_here(app, &mut job, doc, sel, t),
+        }
+    }
+    ctx.data_mut(|d| d.insert_temp(id, job));
+}
+
+/// Trace `t` on the UI thread.
+fn trace_here(app: &mut PhotocraftApp, job: &mut OutlineJob, doc: photocraft_doc::DocId, sel: &photocraft_raster::Surface, t: OutlineTrace) {
+    let t0 = crate::gpu_canvas::now_ms();
+    // Filters can occupy every worker in Rayon's global pool. A parallel scan here would block
+    // the UI thread waiting for those workers, preventing job cancellation (#1554).
+    let segs = trace_outline(sel, t, app.session.has_jobs());
+    app.perf.span("outline", crate::gpu_canvas::now_ms() - t0);
+    app.outline_cache = Some((doc, t.key, std::sync::Arc::new(segs)));
+    job.shown = Some((t.key, t.base));
+}
+
+/// Start tracing `t` on a background thread; false when there are no threads (the web build) or
+/// one couldn't be started.
+#[cfg(not(target_arch = "wasm32"))]
+fn trace_in_background(
+    app: &PhotocraftApp,
+    ctx: &egui::Context,
+    job: &mut OutlineJob,
+    doc: photocraft_doc::DocId,
+    sel: &photocraft_raster::Surface,
+    t: OutlineTrace,
+) -> bool {
+    use std::sync::{Arc, Mutex, PoisonError};
+    let result = Arc::new(Mutex::new(None));
+    // The mask's tiles are shared, not copied.
+    let (out, mask, ctx2, serial) = (result.clone(), sel.clone(), ctx.clone(), app.session.has_jobs());
+    let spawned = std::thread::Builder::new().name("selection-outline".into()).spawn(move || {
+        let t0 = crate::gpu_canvas::now_ms();
+        // A panic leaves no outline over the region, not a dead UI.
+        let segs = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| trace_outline(&mask, t, serial))).unwrap_or_default();
+        *out.lock().unwrap_or_else(PoisonError::into_inner) = Some((segs, crate::gpu_canvas::now_ms() - t0));
+        ctx2.request_repaint();
+    });
+    if spawned.is_err() {
+        return false;
+    }
+    job.running = Some((doc, t, result));
+    true
+}
+
+#[cfg(target_arch = "wasm32")]
+fn trace_in_background(
+    _: &PhotocraftApp,
+    _: &egui::Context,
+    _: &mut OutlineJob,
+    _: photocraft_doc::DocId,
+    _: &photocraft_raster::Surface,
+    _: OutlineTrace,
+) -> bool {
+    false
 }
 
 /// Draw boundary segments as marching ants: white base, black dashes phased along x + y.
@@ -7948,6 +8087,137 @@ mod tests {
         assert_eq!(app.ppp, 2.0, "the primary canvas records the display scale");
         let segs = app.outline_cache.as_ref().map_or(0, |(_, _, s)| s.len());
         assert!(segs > 0, "a 1 px selection traces at 100 % on a 2x display");
+    }
+
+    /// One canvas frame of `app` (a `w` × `h` canvas) at `centre` and `zoom`; the outline shown.
+    fn outline_frame(
+        app: &mut PhotocraftApp,
+        ctx: &egui::Context,
+        size: [f32; 2],
+        centre: [f64; 2],
+        zoom: f64,
+    ) -> Option<std::sync::Arc<Vec<crate::outline::Segment>>> {
+        let (req, _rx) = crate::control::ControlRequest::new("ui.set", json!({ "center": centre, "zoom": zoom }));
+        let _ = crate::control::handle(app, ctx, &req);
+        let view = app.ui.views[0].clone();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            canvas_view(app, ui, 0, Rect::from_min_size(Pos2::ZERO, vec2(size[0], size[1])), view.clone(), true);
+        });
+        out.textures_delta.clear();
+        app.outline_cache.as_ref().map(|(_, _, s)| s.clone())
+    }
+
+    #[test]
+    fn panning_with_the_whole_selection_in_view_keeps_its_outline() {
+        // Big-selection lag report: the outline was keyed by the quantised view, so at fit a pan
+        // across a 256 · step quantum re-traced the same outline (23–36 ms) and re-rasterized its
+        // ants. Keyed by what is traced (the selection's bounds in the padded view), it stays.
+        let ctx = egui::Context::default();
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 2000, "height": 1500})).unwrap();
+        app.run("select.rect", json!({"x": 800, "y": 600, "width": 400, "height": 300, "ellipse": true})).unwrap();
+        app.sync_views();
+        // Zoom 0.4: step 2, so the quantum is 512 document pixels; the sweep moves 600.
+        let size = [1200.0, 800.0];
+        let first = outline_frame(&mut app, &ctx, size, [1000.0, 750.0], 0.4).expect("traced");
+        assert!(!first.is_empty());
+        for i in 1..=24 {
+            let dx = f64::from(i) * 25.0;
+            let segs = outline_frame(&mut app, &ctx, size, [1000.0 + dx, 750.0 - dx / 2.0], 0.4).expect("traced");
+            assert!(std::sync::Arc::ptr_eq(&first, &segs), "a pan of {dx} px re-traced the outline");
+        }
+    }
+
+    #[test]
+    fn a_pan_that_moves_the_traced_region_retraces_it_in_the_background() {
+        // At 100 % a selection bigger than the view is traced over the view only, so a pan past a
+        // quantum traces a new region: off the UI thread, with the old outline shown until the new
+        // one lands. A new selection is traced at once.
+        let ctx = egui::Context::default();
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 3000, "height": 3000})).unwrap();
+        app.run("select.rect", json!({"x": 0, "y": 0, "width": 3000, "height": 3000, "ellipse": true})).unwrap();
+        app.sync_views();
+        let size = [400.0, 400.0];
+        let first = outline_frame(&mut app, &ctx, size, [300.0, 300.0], 1.0).expect("traced");
+        let moved = [300.0, 1500.0];
+        let kept = outline_frame(&mut app, &ctx, size, moved, 1.0).expect("traced");
+        assert!(std::sync::Arc::ptr_eq(&first, &kept), "the old outline stays up while the new one is traced");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        let new = loop {
+            let segs = outline_frame(&mut app, &ctx, size, moved, 1.0).expect("traced");
+            if !std::sync::Arc::ptr_eq(&first, &segs) {
+                break segs;
+            }
+            assert!(std::time::Instant::now() < deadline, "the background trace never landed");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        // The same segments as a trace made on the UI thread at that view.
+        let mut fresh = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        fresh.run("file.new", json!({"width": 3000, "height": 3000})).unwrap();
+        fresh.run("select.rect", json!({"x": 0, "y": 0, "width": 3000, "height": 3000, "ellipse": true})).unwrap();
+        fresh.sync_views();
+        let here = outline_frame(&mut fresh, &egui::Context::default(), size, moved, 1.0).expect("traced");
+        assert_eq!(*new, *here);
+        assert_ne!(*new, *first);
+        // Settled: further frames at that view keep it.
+        let again = outline_frame(&mut app, &ctx, size, moved, 1.0).expect("traced");
+        assert!(std::sync::Arc::ptr_eq(&new, &again));
+        // A new selection is outlined in the same frame, not after a background trace.
+        app.run("select.rect", json!({"x": 200, "y": 1400, "width": 200, "height": 200})).unwrap();
+        let rect = outline_frame(&mut app, &ctx, size, moved, 1.0).expect("traced");
+        assert!(rect.len() < 1000 && !rect.is_empty(), "the rectangle's outline at once ({} segments)", rect.len());
+    }
+
+    /// Pan timings with a ⌘-clicked composite selection on a real file (no GPU):
+    /// `PHOTOCRAFT_BENCH_PSD=<file> cargo test --release -p photocraft-ui-egui --lib pan_bench -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "benchmark on a real file"]
+    fn pan_bench_with_a_loaded_composite_selection() {
+        let Ok(path) = std::env::var("PHOTOCRAFT_BENCH_PSD") else { return };
+        let bytes = std::fs::read(&path).expect("read");
+        let doc = photocraft_io::import(&path, &bytes).expect("import").document;
+        let (w, h) = (f64::from(doc.size.width), f64::from(doc.size.height));
+        let ctx = egui::Context::default();
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.session.add_document(doc, None);
+        app.sync_views();
+        let size = [1600.0, 1000.0];
+        let ms = |t: std::time::Instant| t.elapsed().as_secs_f64() * 1e3;
+        let run = |app: &mut PhotocraftApp, label: &str, zoom: f64, step: f64| {
+            let mut times = Vec::new();
+            let mut spans = std::collections::BTreeMap::<&str, f64>::new();
+            for i in 0..60 {
+                let d = f64::from(i) * step;
+                let t = std::time::Instant::now();
+                app.perf.spans.clear();
+                outline_frame(app, &ctx, size, [w / 2.0 + d, h / 2.0 + d / 2.0], zoom);
+                times.push(ms(t));
+                for (k, v) in &app.perf.spans {
+                    *spans.entry(k).or_default() += v;
+                }
+            }
+            let segs = app.outline_cache.as_ref().map_or(0, |(_, _, s)| s.len());
+            times.sort_by(f64::total_cmp);
+            let avg = times.iter().sum::<f64>() / times.len() as f64;
+            println!("{label:32} avg {avg:6.1} ms  p50 {:6.1}  max {:6.1}  segs {segs:8}  spans {spans:?}", times[30], times[59]);
+        };
+        // Warm the canvas up first.
+        for _ in 0..3 {
+            outline_frame(&mut app, &ctx, size, [w / 2.0, h / 2.0], 0.3);
+        }
+        run(&mut app, "no selection, fit", 0.3, 3.0);
+        run(&mut app, "no selection, 100 %", 1.0, 3.0);
+        let t = std::time::Instant::now();
+        app.run("select.loadSelection", json!({"channel": "composite"})).expect("load");
+        println!("load composite: {:.0} ms", ms(t));
+        let t = std::time::Instant::now();
+        outline_frame(&mut app, &ctx, size, [w / 2.0, h / 2.0], 0.3);
+        println!("first frame after: {:.0} ms ({:?})", ms(t), app.perf.spans);
+        run(&mut app, "selection, fit", 0.3, 3.0);
+        run(&mut app, "selection, 100 %", 1.0, 3.0);
+        run(&mut app, "selection, 100 %, fast", 1.0, 20.0);
+        run(&mut app, "selection, 50 %", 0.5, 6.0);
     }
 
     #[test]

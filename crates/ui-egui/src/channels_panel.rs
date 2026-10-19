@@ -64,6 +64,8 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let quick = doc.quick_mask.is_some();
     let ctx = ui.ctx().clone();
     let thumbs = app.channel_thumbs(&ctx);
+    // What a ⌘-click on the composite or a colour channel loads, rendered ahead.
+    crate::merged_ahead::prepare(&ctx, &doc);
     // The active layer's mask (Photoshop lists it, in italics, below the colour channels).
     let masked = active_layer.and_then(|id| doc.layer(id)).filter(|l| l.mask.is_some());
     let mask_tex = masked.as_ref().and_then(|l| Some(app.mask_thumb(&ctx, &doc, l.id, l.mask.as_ref()?)));

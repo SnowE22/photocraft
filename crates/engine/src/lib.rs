@@ -627,6 +627,7 @@ impl Session {
             self.cancel_jobs_on(id);
             self.subject_cache.forget_doc(id);
             self.object_finder.forget_doc(id);
+            channel_cmds::forget_merged(id);
         }
         let d = self.docs.remove(index);
         self.active = if self.docs.is_empty() {
