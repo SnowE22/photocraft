@@ -1,7 +1,10 @@
 //! LaMa inpainting on ONNX Runtime: finding the model, one session per process, and a run.
 //!
-//! The model file is the Carve export of big-lama (`lama_fp32.onnx`, Apache-2.0: 512 × 512,
-//! opset 17; inputs `image`, RGB 0–1, and `mask`, 1 = fill; output RGB 0–255). Loading takes
+//! The model file is the Carve export of big-lama (`lama_fp32.onnx`, Apache-2.0: declared 512 ×
+//! 512, opset 17; inputs `image`, RGB 0–1, and `mask`, 1 = fill; output RGB 0–255). Its Fourier
+//! units build their DFT matrices from the tensors' shapes, so once [`crate::onnx_edit::symbolic_size`]
+//! frees the declared size it runs at any square side ([`SIDES`]): 1024 for the Quality mode
+//! ([`crate::inpaint::LAMA_QUALITY`]). Loading takes
 //! seconds (DirectML compiles the network for the GPU), so [`preload`] starts it in the background
 //! when the Remove tool is picked, and the session then serves every removal of the run.
 
@@ -18,6 +21,15 @@ pub const FILES: &[&str] = &[FILE, "lama_fp32_dml.onnx"];
 
 /// The model's name in messages.
 pub const NAME: &str = "LaMa";
+
+/// The square sides the model is run at: the standard crop and the Quality mode's.
+pub const SIDES: [usize; 2] = [crate::inpaint::SIDE, 1024];
+
+/// The square side of planar RGB `rgb` and its `mask`, when it is one of [`SIDES`].
+pub fn side_of(rgb: &[f32], mask: &[f32]) -> Option<usize> {
+    SIDES.into_iter().find(|s| mask.len() == s * s && rgb.len() == 3 * s * s)
+}
+
 
 /// What the model is doing, for the UI.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,7 +63,7 @@ mod native {
     use ort::session::Session;
     use ort::value::Tensor;
 
-    use super::{NAME, State};
+    use super::{NAME, SIDES, State, side_of};
     use crate::inpaint::SIDE;
     use crate::{Device, MlError, runtime};
 
@@ -67,6 +79,10 @@ mod native {
     /// The load's progress, readable while the slot is locked for a load.
     static PHASE: AtomicU8 = AtomicU8::new(IDLE);
     static FAILURE: Mutex<Option<MlError>> = Mutex::new(None);
+    /// Its last use; unloaded after [`IDLE_AFTER`] without one (`crate::idle`).
+    static KEEP: crate::idle::Keeper = crate::idle::Keeper::new();
+    /// LaMa holds about 1.2 GB of GPU memory while loaded and loads again in seconds.
+    const IDLE_AFTER: std::time::Duration = std::time::Duration::from_secs(300);
     const IDLE: u8 = 0;
     const LOADING: u8 = 1;
     const READY_GPU: u8 = 2;
@@ -101,7 +117,8 @@ mod native {
     /// Start loading in the background, when the model and the runtime are installed and nothing
     /// has started yet.
     pub fn preload() {
-        if PHASE.load(Ordering::Acquire) != IDLE || availability().is_err() {
+        // Unloaded for being idle: not again until it is used.
+        if PHASE.load(Ordering::Acquire) != IDLE || KEEP.released() || availability().is_err() {
             return;
         }
         let started = std::thread::Builder::new().name("lama-load".into()).spawn(|| {
@@ -114,21 +131,37 @@ mod native {
         }
     }
 
-    /// Run the model on planar RGB (`SIDE × SIDE`, 0–1) and its mask (1 = fill); the fill comes
-    /// back as planar RGB 0–1. Loads the model first if it isn't loaded (seconds, once).
+    /// Run the model on planar RGB (a square of one of [`SIDES`], 0–1) and its mask (1 = fill);
+    /// the fill comes back as planar RGB 0–1. Loads the model first if it isn't loaded (seconds,
+    /// once).
     pub fn inpaint(rgb: &[f32], mask: &[f32]) -> Result<(Vec<f32>, Device), MlError> {
-        let n = SIDE * SIDE;
-        if rgb.len() != 3 * n || mask.len() != n {
-            return Err(MlError::BadInput(format!("{NAME} takes {SIDE} × {SIDE} pixels")));
-        }
+        let Some(side) = side_of(rgb, mask) else {
+            return Err(MlError::BadInput(format!("{NAME} takes a square of {SIDES:?} pixels")));
+        };
         let mut slot = SLOT.lock().unwrap_or_else(PoisonError::into_inner);
-        let out = run_in(&mut slot, |l| run(l, rgb, mask).map(|v| (v, l.device)));
+        KEEP.touch();
+        let out = run_in(&mut slot, |l| run(l, rgb, mask, side).map(|v| (v, l.device)));
+        KEEP.touch();
         if matches!(out, Err(MlError::Inference(_))) {
             // A lost device (driver reset) or a broken session: load again next time.
             *slot = None;
             PHASE.store(IDLE, Ordering::Release);
         }
         out
+    }
+
+    /// Drop the session when it has been idle for [`IDLE_AFTER`] (see `crate::idle`).
+    fn release_idle() -> crate::idle::Check {
+        let Ok(mut slot) = SLOT.try_lock() else { return crate::idle::Check::Kept };
+        if !matches!(*slot, Some(Ok(_))) {
+            return crate::idle::Check::Gone;
+        }
+        if KEEP.idle_for() < IDLE_AFTER {
+            return crate::idle::Check::Kept;
+        }
+        *slot = None;
+        PHASE.store(IDLE, Ordering::Release);
+        crate::idle::Check::Released
     }
 
     fn with_session<R>(f: impl FnOnce(&mut Loaded) -> Result<R, MlError>) -> Result<R, MlError> {
@@ -155,7 +188,12 @@ mod native {
                     PHASE.store(FAILED, Ordering::Release);
                 }
             }
+            let ok = loaded.is_ok();
             *slot = Some(loaded);
+            if ok {
+                KEEP.touch();
+                KEEP.watch("lama", release_idle);
+            }
         }
         match slot.as_mut() {
             Some(Ok(l)) => f(l),
@@ -170,9 +208,15 @@ mod native {
         let model = super::model_file()?;
         let env = runtime::environment(&library)?;
         let started = std::time::Instant::now();
-        let bytes = std::fs::read(&model).map_err(|e| MlError::Load(format!("{}: {e}", model.display())))?;
+        let mut bytes = std::fs::read(&model).map_err(|e| MlError::Load(format!("{}: {e}", model.display())))?;
+        // Any square side, not just the declared 512 (the Quality mode runs it at 1024).
+        match crate::onnx_edit::symbolic_size(&bytes) {
+            Ok(Some(b)) => bytes = b,
+            Ok(None) => {}
+            Err(e) => log::warn!("[ml] {NAME}'s input size wasn't freed (only 512 will run): {e}"),
+        }
         #[cfg(windows)]
-        {
+        if !crate::cpu_only() {
             let rewritten = match crate::onnx_edit::for_directml(&bytes) {
                 Ok(Some((b, n))) => {
                     log::info!("[ml] {NAME}: {n} Fourier MatMuls made 4-D for DirectML");
@@ -212,7 +256,7 @@ mod native {
         let output = session.outputs().first().map(|o| o.name().to_string()).ok_or_else(|| MlError::Load("the model has no output".into()))?;
         let mut l = Loaded { session, device, output };
         // The first run sets the GPU up (a second or two): do it now, not on the first stroke.
-        run(&mut l, &vec![0.0; 3 * SIDE * SIDE], &vec![0.0; SIDE * SIDE]).map_err(|e| MlError::Load(e.to_string()))?;
+        run(&mut l, &vec![0.0; 3 * SIDE * SIDE], &vec![0.0; SIDE * SIDE], SIDE).map_err(|e| MlError::Load(e.to_string()))?;
         Ok(l)
     }
 
@@ -231,15 +275,18 @@ mod native {
         Err("DirectML is Windows only".into())
     }
 
-    fn run(l: &mut Loaded, rgb: &[f32], mask: &[f32]) -> Result<Vec<f32>, MlError> {
+    fn run(l: &mut Loaded, rgb: &[f32], mask: &[f32], side: usize) -> Result<Vec<f32>, MlError> {
         let fail = |e: ort::Error| MlError::Inference(e.to_string());
-        let image = Tensor::from_array(([1usize, 3, SIDE, SIDE], rgb.to_vec().into_boxed_slice())).map_err(fail)?;
-        let mask = Tensor::from_array(([1usize, 1, SIDE, SIDE], mask.to_vec().into_boxed_slice())).map_err(fail)?;
+        if !SIDES.contains(&side) {
+            return Err(MlError::BadInput(format!("{NAME} takes a square of {SIDES:?} pixels")));
+        }
+        let image = Tensor::from_array(([1usize, 3, side, side], rgb.to_vec().into_boxed_slice())).map_err(fail)?;
+        let mask = Tensor::from_array(([1usize, 1, side, side], mask.to_vec().into_boxed_slice())).map_err(fail)?;
         let outputs = l.session.run(ort::inputs!["image" => image, "mask" => mask]).map_err(fail)?;
         let value = outputs.get(&l.output).ok_or_else(|| MlError::Inference("the model gave no output".into()))?;
         let (_, data) = value.try_extract_tensor::<f32>().map_err(fail)?;
-        if data.len() != 3 * SIDE * SIDE {
-            return Err(MlError::Inference(format!("the model gave {} values, not {}", data.len(), 3 * SIDE * SIDE)));
+        if data.len() != 3 * side * side {
+            return Err(MlError::Inference(format!("the model gave {} values, not {}", data.len(), 3 * side * side)));
         }
         // LaMa's output is 0–255.
         Ok(data.iter().map(|v| (v / 255.0).clamp(0.0, 1.0)).collect())
@@ -307,5 +354,20 @@ mod web {
 
     pub fn inpaint(_rgb: &[f32], _mask: &[f32]) -> Result<(Vec<f32>, Device), MlError> {
         Err(MlError::Unsupported)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sides_are_recognised_and_others_refused() {
+        let n = 512 * 512;
+        assert_eq!(side_of(&vec![0.0; 3 * n], &vec![0.0; n]), Some(512));
+        assert_eq!(side_of(&vec![0.0; 3 * 1024 * 1024], &vec![0.0; 1024 * 1024]), Some(1024));
+        assert_eq!(side_of(&[0.0; 3], &[0.0; 1]), None);
+        assert_eq!(side_of(&vec![0.0; 3 * n], &[0.0; 4]), None, "mask and image disagree");
+        assert!(matches!(inpaint(&[0.0; 3], &[0.0; 1]), Err(MlError::BadInput(_))));
     }
 }

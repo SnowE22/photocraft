@@ -3967,3 +3967,13 @@ cameraData	Lens	Lens
 	AI model not installed	YZ modeli yüklü değil
 	AI model failed to load	YZ modeli yüklenemedi
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx dosyasını ve ONNX Runtime'ı (onnxruntime.dll, DirectML.dll) şu klasörlerden birine koyun: {folders}. O zamana kadar "Otomatik" normal dolguyu kullanır.
+	Model:	Model:
+	LaMa (fast)	LaMa (hızlı)
+	Diffusion (detailed)	Difüzyon (ayrıntılı)
+	Prompt (optional)	İstem (isteğe bağlı)
+	What should be there. Empty: the model's own guess.	Orada ne olmalı. Boş: modelin kendi tahmini.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Difüzyon modelinin klasörünü ve ONNX Runtime'ı şunlardan birine koyun: {folders}. O zamana kadar Otomatik, LaMa kullanır.
+	Generative Fill…	Üretken Dolgu…
+	Center Canvas When Zoomed Out	Uzaklaştırınca Tuvali Ortala
+	High (slower)	Yüksek (daha yavaş)
+	Quality:	Kalite:

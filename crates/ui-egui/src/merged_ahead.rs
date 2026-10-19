@@ -123,7 +123,8 @@ mod tests {
                     modifiers: Default::default(),
                 });
             }
-            let _ = ctx.run_ui(input, |_| prepare(&ctx, &doc));
+            let mut out = ctx.run_ui(input, |_| prepare(&ctx, &doc));
+            out.textures_delta.clear();
         };
         let ahead = |ctx: &egui::Context| ctx.data(|d| d.get_temp::<Ahead>(id())).unwrap_or_default();
         frame(0.0, None);

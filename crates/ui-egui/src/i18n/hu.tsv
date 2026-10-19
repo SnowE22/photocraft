@@ -4156,3 +4156,13 @@ cameraRaw	Yellow	Sárga
 	AI model not installed	Az MI-modell nincs telepítve
 	AI model failed to load	Az MI-modellt nem sikerült betölteni
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Tegye a lama_fp32.onnx fájlt és az ONNX Runtime-ot (onnxruntime.dll, DirectML.dll) az alábbi mappák egyikébe: {folders}. Addig az „Automatikus” mód a hagyományos kitöltést használja.
+	Model:	Modell:
+	LaMa (fast)	LaMa (gyors)
+	Diffusion (detailed)	Diffúzió (részletes)
+	Prompt (optional)	Utasítás (nem kötelező)
+	What should be there. Empty: the model's own guess.	Mi legyen ott. Üres: a modell saját becslése.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Tegye a diffúziós modell mappáját és az ONNX Runtime-ot ezek egyikébe: {folders}. Addig az Automatikus a LaMa-t használja.
+	Generative Fill…	Generatív kitöltés…
+	Center Canvas When Zoomed Out	Vászon középre igazítása kicsinyítéskor
+	High (slower)	Magas (lassabb)
+	Quality:	Minőség:

@@ -3845,3 +3845,13 @@ navigator	Zoom	Zvětšení
 	AI model not installed	Model AI není nainstalován
 	AI model failed to load	Model AI se nepodařilo načíst
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Umístěte lama_fp32.onnx a ONNX Runtime (onnxruntime.dll, DirectML.dll) do jedné ze složek: {folders}. Do té doby režim „Automaticky“ používá běžnou výplň.
+	Model:	Model:
+	LaMa (fast)	LaMa (rychlý)
+	Diffusion (detailed)	Difuze (podrobná)
+	Prompt (optional)	Pokyn (nepovinný)
+	What should be there. Empty: the model's own guess.	Co tam má být. Prázdné: vlastní odhad modelu.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Vložte složku difuzního modelu a ONNX Runtime do jedné z: {folders}. Do té doby režim Auto používá LaMa.
+	Generative Fill…	Generativní výplň…
+	Center Canvas When Zoomed Out	Vycentrovat plátno při oddálení
+	High (slower)	Vysoká (pomalejší)
+	Quality:	Kvalita:

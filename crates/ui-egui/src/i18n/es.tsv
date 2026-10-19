@@ -4199,3 +4199,13 @@ navigator	Zoom	Zoom
 	AI model not installed	Modelo de IA no instalado
 	AI model failed to load	No se pudo cargar el modelo de IA
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Coloque lama_fp32.onnx y ONNX Runtime (onnxruntime.dll, DirectML.dll) en una de estas carpetas: {folders}. Hasta entonces, «Automático» usa el relleno convencional.
+	Model:	Modelo:
+	LaMa (fast)	LaMa (rápido)
+	Diffusion (detailed)	Difusión (detallado)
+	Prompt (optional)	Indicación (opcional)
+	What should be there. Empty: the model's own guess.	Lo que debería haber. Vacío: lo que el modelo suponga.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Ponga la carpeta del modelo de difusión y ONNX Runtime en una de: {folders}. Hasta entonces, Auto usa LaMa.
+	Generative Fill…	Relleno generativo…
+	Center Canvas When Zoomed Out	Centrar lienzo al alejar
+	High (slower)	Alta (más lenta)
+	Quality:	Calidad:

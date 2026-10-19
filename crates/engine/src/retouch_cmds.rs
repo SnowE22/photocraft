@@ -24,6 +24,7 @@ use crate::commands::{CommandSpec, blend_from_str};
 use crate::{EngineError, Result, Session};
 
 mod content_aware_move;
+mod generative_fill;
 mod patch;
 mod pattern_stamp;
 mod periodic;
@@ -1221,6 +1222,16 @@ macro_rules! brush_params {
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec {
+            id: "edit.generativeFill",
+            label: "Generative Fill…",
+            menu: &["Edit"],
+            shortcut: None,
+            params: r#"{"prompt":string? (what should be there; empty: the model's best guess),"negativePrompt":string?,"model":"diffusion|lama"="diffusion" (diffusion: Stable Diffusion inpainting, seconds; lama: fast, no prompt),"quality":"standard|high"="standard" (lama only, as paint.remove's)} → {"damage","layer","device"} (a background job). Fills the selection from every visible layer onto a new layer above the active one; transparent pixels around it are unknown to the model, so a selected empty area past a panel's edge is outpainted"#,
+            enabled: generative_fill::enabled,
+            run: generative_fill::generative_fill,
+            journal: true,
+        },
+        CommandSpec {
             id: "paint.cloneStamp",
             label: "Clone Stamp",
             menu: &[],
@@ -1292,7 +1303,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: brush_params!(
-                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":"auto|on|off"="auto" (Photoshop's Mode: the local generative model, LaMa, makes up new detail; auto uses it when it is installed and suits the stroke, else the patch fill; on uses it or fails; masks and channels always get the patch fill) → {"damage","layer"?,"fill":"generative|patch","device"?,"note"?} (a background job)"#
+                r#","strokes":[[[x,y,pressure?],…],…]? (several strokes removed together, as one job and one undo step; else "points"),"closeLoops":bool=true (a stroke around an object removes what it encloses),"sampleAllLayers":bool=false,"newLayer":bool=false (the fill goes to a new layer above the target, which stays as it was),"generative":"auto|on|off"="auto" (Photoshop's Mode: the local generative model, LaMa, makes up new detail; auto uses it when it is installed and suits the stroke, else the patch fill; on uses it or fails; masks and channels always get the patch fill),"model":"lama|diffusion"="lama" (the generative model: lama is fast; diffusion, Stable Diffusion inpainting, takes seconds but draws what was most likely behind, e.g. the rest of a face under a speech bubble; with auto and no diffusion model installed, lama),"quality":"standard|high"="standard" (lama only: high runs the model at 1024 instead of 512, so a hole up to 896 px is filled 1:1 and a larger one shrunk half as much: sharper large removals; each run is about four times the work),"prompt":string? (diffusion only: what should be there),"negativePrompt":string? (diffusion only) → {"damage","layer"?,"fill":"generative|patch","device"?,"note"?} (a background job)"#
             ),
             enabled: has_pixel_layer,
             run: remove::remove,

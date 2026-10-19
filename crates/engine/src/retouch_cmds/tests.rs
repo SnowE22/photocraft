@@ -1739,6 +1739,13 @@ fn remove_bad_params_are_errors() {
     assert!(err.contains("too large"), "{err}");
     let err = s.execute("paint.remove", json!({"points": [[48, 32]], "size": 3000})).unwrap_err().to_string();
     assert!(err.contains("nothing is left"), "{err}");
+    // LaMa's Quality mode: "standard" or "high", anything else is refused before any work.
+    for q in [json!("ultra"), json!(3), json!(true)] {
+        let err = s.execute("paint.remove", json!({"points": [[4, 4]], "size": 2, "quality": q})).unwrap_err().to_string();
+        assert!(err.contains("`quality`"), "{q}: {err}");
+    }
+    assert!(remove::high_quality(&json!({"quality": "high"}), "paint.remove").unwrap());
+    assert!(!remove::high_quality(&json!({"quality": null}), "paint.remove").unwrap());
 }
 
 /// Flat (150, 120, 100) with Gaussian film grain of σ 12 levels (the #2104 test image).
@@ -1799,7 +1806,7 @@ fn remove_several_strokes_apply_as_one_job_and_one_undo_step() {
 }
 
 /// The generative model's stand-in: every masked cell gets the mean colour of what it can see.
-fn mean_model(rgb: &[f32], mask: &[f32]) -> std::result::Result<Vec<f32>, photocraft_ml::MlError> {
+fn mean_model(rgb: &[f32], mask: &[f32], _hint: Option<&[f32]>) -> std::result::Result<Vec<f32>, photocraft_ml::MlError> {
     let n = mask.len();
     let mut out = rgb.to_vec();
     for c in 0..3 {
@@ -1822,7 +1829,9 @@ fn generative_fill(s: &Session, p: &Value) -> (std::result::Result<Vec<f32>, pho
         let (surf, _) = crate::channel_cmds::target_surface(&mut doc, plan.id, p).unwrap();
         Region::read(surf, plan.window)
     };
-    let out = remove::fill_generative(&mut doc, &plan, p, &img, &hole, &photocraft_raster::Interrupt::NONE, &mut mean_model);
+    let out = remove::fill_generative(&mut doc, &plan, p, &img, &hole, &photocraft_raster::Interrupt::NONE, &mut |req, read, ctl| {
+        photocraft_ml::inpaint::fill(req, read, &mut mean_model, ctl)
+    });
     (out, img, hole)
 }
 
@@ -2197,4 +2206,51 @@ fn periodic_clone_interior_matches_ordinary_brush_masks_and_transparency() {
             assert!(error <= tolerance, "depth={depth}, brush={brush}, max native-channel error={error}");
         }
     }
+}
+
+#[test]
+fn remove_model_and_prompt_are_checked() {
+    let mut s = square_session(8, "rgb");
+    let p = |extra: Value| {
+        let mut base = json!({"points": [[38, 30], [54, 30]], "size": 16, "generative": "off"});
+        if let (Some(b), Some(e)) = (base.as_object_mut(), extra.as_object()) {
+            b.extend(e.clone());
+        }
+        base
+    };
+    for bad_model in [json!("sdxl"), json!(3), json!(true)] {
+        assert!(s.execute("paint.remove", p(json!({"model": bad_model}))).is_err());
+    }
+    // Off ignores the model: the patch fill runs whatever it is.
+    let r = s.execute("paint.remove", p(json!({"model": "diffusion", "prompt": "x".repeat(10_000)}))).unwrap();
+    assert_eq!(r["fill"], "patch", "{r}");
+    // On with a model that isn't installed fails before the job, saying why.
+    if std::env::var_os("PHOTOCRAFT_MODEL_DIR").is_none() {
+        let e = s.execute("paint.remove", p(json!({"model": "diffusion", "generative": "on"}))).unwrap_err().to_string();
+        assert!(e.contains("Generative AI is on") && e.contains("isn't installed"), "{e}");
+        // Auto falls back to the patch fill, no error.
+        let r = s.execute("paint.remove", p(json!({"model": "diffusion", "generative": "auto"}))).unwrap();
+        assert_eq!(r["fill"], "patch", "{r}");
+    }
+}
+
+#[test]
+fn generative_fill_needs_a_selection_and_a_model_and_never_panics() {
+    let mut s = square_session(8, "rgb");
+    // No selection.
+    assert!(s.execute("edit.generativeFill", json!({})).is_err());
+    s.execute("select.rect", json!({"x": 30, "y": 20, "width": 30, "height": 20})).unwrap();
+    for p in [json!({"model": "nope"}), json!({"model": 1}), json!({"prompt": 5, "model": []})] {
+        assert!(s.execute("edit.generativeFill", p).is_err());
+    }
+    if std::env::var_os("PHOTOCRAFT_MODEL_DIR").is_none() {
+        let e = s.execute("edit.generativeFill", json!({"prompt": "a cat"})).unwrap_err().to_string();
+        assert!(e.contains("needs a local model"), "{e}");
+    }
+    // A selection off the canvas, and a CMYK document.
+    s.execute("select.rect", json!({"x": 500, "y": 500, "width": 10, "height": 10})).ok();
+    assert!(s.execute("edit.generativeFill", json!({})).is_err());
+    let mut c = square_session(8, "cmyk");
+    c.execute("select.all", json!({})).unwrap();
+    assert!(c.execute("edit.generativeFill", json!({})).is_err());
 }

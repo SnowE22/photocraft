@@ -546,6 +546,14 @@ pub struct ToolOptions {
     /// Remove tool: Photoshop's Mode, whether the local generative model fills the stroke
     /// (`paint.remove` `generative`): auto | on | off.
     pub remove_generative: String,
+    /// Remove tool: the generative model (`paint.remove` `model`): lama (fast) | diffusion
+    /// (Stable Diffusion inpainting: slower, draws what was most likely behind).
+    pub remove_model: String,
+    /// Remove tool with LaMa: standard | high (`paint.remove` `quality`: high runs the model at
+    /// 1024 instead of 512, sharper on large removals).
+    pub remove_quality: String,
+    /// Remove tool with the diffusion model: what should be there (`paint.remove` `prompt`).
+    pub remove_prompt: String,
     /// Remove tool: the fill goes to a new layer above the target (Photoshop's Create a new layer).
     pub remove_new_layer: bool,
     /// Remove tool: each stroke is filled when released (Photoshop's default). Off, the strokes
@@ -802,6 +810,9 @@ impl Default for ToolOptions {
             sample_all_layers: false,
             object_finder: true,
             remove_generative: "auto".into(),
+            remove_model: "lama".into(),
+            remove_quality: "standard".into(),
+            remove_prompt: String::new(),
             remove_new_layer: false,
             remove_after_each_stroke: true,
             feather: 0.0,

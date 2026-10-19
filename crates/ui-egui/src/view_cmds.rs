@@ -609,6 +609,7 @@ fn wraps(id: &str) -> bool {
             | "image.calculations"
             | "select.saveSelection"
             | "select.loadSelection"
+            | "edit.generativeFill"
     )
 }
 
@@ -1316,6 +1317,8 @@ fn front(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Value)
             let scope = if selected_adjustments { "selected" } else { "all" };
             dialog(app, json!({"path": format!("{dir}/{stem}.cube"), "size": 33, "title": stem, "scope": scope}), json!({"scope": ["all", "selected"]}))
         }
+        // Generative Fill: what should be there (empty: the model's guess) and the model.
+        "edit.generativeFill" => dialog(app, json!({"prompt": "", "model": "diffusion"}), json!({"model": ["diffusion", "lama"]})),
         "file.scripts.loadFilesIntoStack" => Some(Ok(json!({"dialog": crate::stack_dialog::open(app)}))),
         // Photography automation (photo_cmds / lens_cmds): a folder (or the open documents).
         "file.automate.photomerge" => dialog(

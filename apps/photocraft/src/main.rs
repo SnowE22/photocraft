@@ -2,7 +2,7 @@
 //!
 //! Usage: `photocraft [--control <port>] [--control-token <64-hex> |
 //! --control-token-file <path>] [--automation-read-root <dir>]
-//! [--automation-write-root <dir>] [--safe-gpu] [--in-window-menus] [--present-mode <mode>]
+//! [--automation-write-root <dir>] [--safe-gpu] [--device-loss-notice <text>] [--in-window-menus] [--present-mode <mode>]
 //! [--frame-latency <n>] [--stroke-trace <stderr|file.csv>] [--new-instance] [--] [files…]`
 //! (`photocraft --help` prints [`USAGE`]; `--version` prints the version).
 //!
@@ -174,6 +174,8 @@ Options:
   -h, --help                       Print this help and exit
       --version                    Print the version, commit and build date and exit
       --safe-gpu                   Start with the CPU renderer for this launch (after a graphics driver crash)
+      --device-loss-notice <text>  Show why PhotoCraft restarted (passed by PhotoCraft itself after a
+                                   graphics driver reset closed the window)
       --in-window-menus            macOS: keep the menus inside the window instead of the menu bar
       --new-instance               Windows and Linux: start a separate PhotoCraft instead of opening
                                    the files in the one already running
@@ -263,6 +265,8 @@ fn main() -> eframe::Result {
     let mut unreadable_paths: Vec<String> = Vec::new();
     let mut safe_gpu = false;
     let mut new_instance = false;
+    // Set by PhotoCraft relaunching itself after the window's graphics device was lost.
+    let mut device_loss_notice: Option<String> = None;
     // Options that apply only to the process they're given to; a launch with any keeps its own.
     let mut launch_options: Vec<&'static str> = Vec::new();
     let (mut present_mode_arg, mut frame_latency_arg, mut stroke_trace_arg): (Option<String>, Option<String>, Option<String>) = (None, None, None);
@@ -331,6 +335,10 @@ fn main() -> eframe::Result {
                 in_window_menus = true;
             }
             Some("--new-instance") => new_instance = true,
+            Some("--device-loss-notice") => {
+                launch_options.push("--device-loss-notice");
+                device_loss_notice = args.next().map(|v| v.to_string_lossy().into_owned());
+            }
             Some("--version") => {
                 print_stdout(&format!("photocraft {}\n", photocraft_engine::build_info::long_version()));
                 return Ok(());
@@ -551,6 +559,10 @@ fn main() -> eframe::Result {
     let keep_marker = gpu_startup::keep_marker_after_error(&plan, os);
     let app_created = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let created_in_callback = app_created.clone();
+    // The window's graphics device was lost: what to start again with once it has closed
+    // (`gpu_status::DeviceLossRestart`).
+    let device_loss: std::sync::Arc<std::sync::Mutex<Option<photocraft_ui_egui::gpu_status::DeviceLossRestart>>> = Default::default();
+    let device_loss_in_callback = device_loss.clone();
     let started_sentinel = sentinel.clone();
     let result = eframe::run_native(
         "PhotoCraft",
@@ -636,8 +648,9 @@ fn main() -> eframe::Result {
                 {
                     app.set_wgpu(rs);
                 } else {
-                    // The window still draws with wgpu: record its errors instead of panicking.
-                    let _ = photocraft_ui_egui::gpu_canvas::DeviceHealth::watch(&rs.device);
+                    // The window still draws with wgpu: record its errors instead of panicking,
+                    // and restart when the device is lost (see `gpu_status`).
+                    app.watch_window_device(photocraft_ui_egui::gpu_canvas::DeviceHealth::watch(&rs.device));
                 }
             }
             let fallback_reason = std::env::var("PHOTOCRAFT_GPU_STARTUP_FAILURE").ok().or_else(|| {
@@ -706,8 +719,17 @@ fn main() -> eframe::Result {
             }
             #[cfg(target_os = "linux")]
             tablet::spawn_x11(&app.stylus.feed, display);
+            // A lost window device (a driver reset) closes the window; this process then starts
+            // PhotoCraft again (below, after the event loop).
+            let restart_slot = device_loss_in_callback.clone();
+            app.services.restart_after_device_loss = Some(Box::new(move |restart| {
+                *restart_slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(restart);
+            }));
             // Paths on the command line (Linux/Windows file associations, `photocraft a.psd`).
             app.open_paths(&files);
+            if let Some(text) = &device_loss_notice {
+                photocraft_ui_egui::notices::post(&mut app, "PhotoCraft restarted after a graphics driver reset", vec![text.clone()], true, None);
+            }
             if !unreadable_paths.is_empty() {
                 use photocraft_ui_egui::i18n;
                 let line = i18n::t("{path}: the path is not valid Unicode; rename the file and open it again.");
@@ -747,6 +769,22 @@ fn main() -> eframe::Result {
         } else {
             s.finish();
         }
+    }
+    // The window closed because its graphics device was lost: start again, reopening the saved
+    // documents (the unsaved ones are in crash recovery, which the new start offers).
+    let lost = device_loss.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
+    if let Some(restart) = lost {
+        log::error!("restarting after the graphics device was lost: {}", restart.reason);
+        match std::env::current_exe() {
+            Ok(exe) => {
+                let launched = std::process::Command::new(exe).arg("--device-loss-notice").arg(restart.notice()).arg("--").args(&restart.reopen).spawn();
+                if let Err(error) = launched {
+                    log::error!("could not restart PhotoCraft after the graphics device was lost: {error}");
+                }
+            }
+            Err(error) => log::error!("could not find PhotoCraft to restart it: {error}"),
+        }
+        return Ok(());
     }
     // Retry in a fresh process: winit event loops cannot be recreated reliably in-process.
     // Only renderer initialization failures qualify; never restart after editing has begun.

@@ -3937,3 +3937,13 @@ curves	Smooth	Εξομάλυνση
 	AI model not installed	Το μοντέλο ΤΝ δεν είναι εγκατεστημένο
 	AI model failed to load	Η φόρτωση του μοντέλου ΤΝ απέτυχε
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Τοποθετήστε τα lama_fp32.onnx και ONNX Runtime (onnxruntime.dll, DirectML.dll) σε έναν από τους φακέλους: {folders}. Μέχρι τότε το «Αυτόματα» χρησιμοποιεί το συνηθισμένο γέμισμα.
+	Model:	Μοντέλο:
+	LaMa (fast)	LaMa (γρήγορο)
+	Diffusion (detailed)	Διάχυση (λεπτομερής)
+	Prompt (optional)	Οδηγία (προαιρετική)
+	What should be there. Empty: the model's own guess.	Τι πρέπει να υπάρχει εκεί. Κενό: η εκτίμηση του μοντέλου.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Τοποθετήστε τον φάκελο του μοντέλου διάχυσης και το ONNX Runtime σε έναν από: {folders}. Μέχρι τότε το Αυτόματο χρησιμοποιεί LaMa.
+	Generative Fill…	Γενετική γέμιση…
+	Center Canvas When Zoomed Out	Κεντράρισμα καμβά κατά τη σμίκρυνση
+	High (slower)	Υψηλή (πιο αργή)
+	Quality:	Ποιότητα:

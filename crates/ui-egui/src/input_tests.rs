@@ -1125,3 +1125,23 @@ fn move_tool_controls_rotate_from_just_outside_the_box() {
     let tilt = (end[1][1] - end[0][1]).atan2(end[1][0] - end[0][0]).to_degrees();
     assert!((tilt - 90.0).abs() < 8.0 || (tilt + 270.0).abs() < 8.0, "rotated about a quarter turn, got {tilt}° (zoom {zoom})");
 }
+
+/// A user report: the Pen's pointer felt less smooth than the brush's. The icon cursors (Pen,
+/// Eyedropper, Paint Bucket) are painted straight onto a top layer now, as the brush's is onto the
+/// canvas, not through an `egui::Area`: hovering with the Pen paints its icon at the pointer.
+#[test]
+fn the_pen_cursor_is_painted_at_the_pointer_without_an_area() {
+    let mut h = harness();
+    h.state_mut().ui.tool = crate::state::Tool::Pen;
+    h.run_steps(2);
+    let r = h.state().last_canvas_rect;
+    let at = r.center();
+    for _ in 0..4 {
+        h.event(egui::Event::PointerMoved(at));
+        h.run_steps(2);
+    }
+    let textured = |s: &egui::Shape| matches!(s, egui::Shape::Mesh(m) if m.texture_id != egui::TextureId::default() && m.calc_bounds().expand(24.0).contains(at));
+    let n = h.output().shapes.iter().filter(|c| textured(&c.shape)).count();
+    assert!(n >= 9, "the icon and its 8-way outline at the pointer ({n} textured shapes there)");
+    assert!(!h.ctx.memory(|m| m.areas().visible_layer_ids().iter().any(|l| l.id == egui::Id::new("pc-icon-cursor"))), "no Area for the cursor");
+}

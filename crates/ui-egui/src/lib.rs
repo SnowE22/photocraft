@@ -201,6 +201,7 @@ pub mod stack_dialog;
 pub mod state;
 pub mod stroke_constraint;
 pub mod stroke_trace;
+pub mod screen_sample;
 pub mod stroke_trail;
 pub mod stroke_ui;
 pub mod stylus;
@@ -440,6 +441,9 @@ pub type AppendTextFn = Box<dyn FnMut(&str, &str) -> Result<(), String>>;
 pub type OsEventsFn = Box<dyn FnMut() -> Vec<OsEvent>>;
 /// Ends the app the platform's own way (see [`Services::quit`]).
 pub type QuitFn = Box<dyn FnMut()>;
+/// Start PhotoCraft again once this window has closed after its graphics device was lost (see
+/// [`gpu_status::DeviceLossRestart`]).
+pub type DeviceLossRestartFn = Box<dyn FnMut(gpu_status::DeviceLossRestart)>;
 /// Where the OS pointer is now, in egui points within the window; `None` when unknown.
 pub type CursorPosFn = Box<dyn FnMut(&egui::Context) -> Option<egui::Pos2>>;
 /// Whether Caps Lock is toggled on, read from the OS. `None` where the platform cannot
@@ -555,6 +559,10 @@ pub struct Services {
     /// while AppKit's run loop is still going crashes or hangs Touch Bar Macs (#1575, #1458).
     /// Without one, eframe closes the window and the app ends with it.
     pub quit: Option<QuitFn>,
+    /// The window's graphics device was lost (driver reset): the window can't draw any more, so
+    /// unsaved documents go to crash recovery and the shell starts PhotoCraft again once the
+    /// window has closed. Without one, the window stays open but blank (see `gpu_status`).
+    pub restart_after_device_loss: Option<DeviceLossRestartFn>,
 }
 
 /// A document histogram being computed off the UI thread: (document, revision, receiver of
@@ -605,6 +613,9 @@ pub struct PhotocraftApp {
     pub(crate) remove_pending: Vec<Vec<[f64; 3]>>,
     pub(crate) remove_pending_doc: Option<photocraft_doc::DocId>,
     pub(crate) remove_trail: Option<stroke_trail::Trail>,
+    /// A Remove stroke applied on release is running as a job on this document: its trail
+    /// (`remove_trail`, enclosed area filled) stays until the job ends.
+    pub(crate) remove_running_doc: Option<photocraft_doc::DocId>,
     /// The Remove tool's generative model as its options bar last saw it, and when (egui time).
     /// Looked up at most once a second: finding the model touches the disk (`retouch_ui`).
     pub(crate) generative_probe: Option<(f64, photocraft_engine::generative::State)>,
@@ -812,6 +823,9 @@ pub struct PhotocraftApp {
     gpu: Option<gpu_canvas::GpuCanvas>,
     /// Run once the first frames have rendered (see [`Self::on_started`]).
     started: Option<gpu_status::StartedHook>,
+    /// The window's own graphics device (eframe's, shared with the GPU canvas) and whether it was
+    /// lost (see `gpu_status::WindowGpu`).
+    window_gpu: gpu_status::WindowGpu,
     /// Frame and canvas-upload timings (exposed via `ui.inspect`).
     pub perf: gpu_canvas::Perf,
     /// Per-frame stroke timings for latency reports (`PHOTOCRAFT_STROKE_TRACE`, see `stroke_trace`).
@@ -880,6 +894,7 @@ impl PhotocraftApp {
             remove_pending: Vec::new(),
             remove_pending_doc: None,
             remove_trail: None,
+            remove_running_doc: None,
             generative_probe: None,
             menu_cache: None,
             move_preview: None,
@@ -977,6 +992,7 @@ impl PhotocraftApp {
             hist_job: None,
             gpu: None,
             started: None,
+            window_gpu: Default::default(),
             perf: Default::default(),
             stroke_trace: stroke_trace::StrokeTrace::from_env(),
             prefs_rt: Default::default(),
@@ -1017,6 +1033,8 @@ impl PhotocraftApp {
         let gpu = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| gpu_canvas::GpuCanvas::with_tile(&rs, Some(tile)))) {
             Ok(gpu) => gpu,
             Err(payload) => {
+                // The window still draws on this device: watch it for a loss (see `gpu_status`).
+                self.watch_window_device(gpu_canvas::DeviceHealth::watch(&rs.device));
                 let detail = payload
                     .downcast_ref::<String>()
                     .cloned()
@@ -1029,6 +1047,8 @@ impl PhotocraftApp {
             }
         };
         self.perf.gpu_info.canvas = "gpu".into();
+        // The canvas shares eframe's device, so its health flag is the window's too.
+        self.watch_window_device(gpu.health().clone());
         self.gpu = Some(gpu);
         self.prefs_rt.gpu_style = None;
     }
@@ -1042,6 +1062,19 @@ impl PhotocraftApp {
     /// The GPU canvas's device health flag (tests inject faults through it).
     pub fn gpu_health(&self) -> Option<photocraft_gpu::DeviceHealth> {
         self.gpu.as_ref().map(|g| g.health().clone())
+    }
+
+    /// Watch the device eframe draws the window with (`cc.wgpu_render_state`): once it is lost,
+    /// the window stops drawing and PhotoCraft restarts (see `gpu_status`). [`Self::set_wgpu`]
+    /// does this itself; a CPU canvas passes `DeviceHealth::watch(&render_state.device)`.
+    pub fn watch_window_device(&mut self, health: photocraft_gpu::DeviceHealth) {
+        self.window_gpu.watch(health);
+    }
+
+    /// The window device's health flag, once watched (tests inject a loss through it; the shell
+    /// reads it after a panic).
+    pub fn window_device_health(&self) -> Option<photocraft_gpu::DeviceHealth> {
+        self.window_gpu.health()
     }
 
     /// Run `hook` once the app has rendered its first frames (and a document opened at launch
@@ -1926,6 +1959,11 @@ impl eframe::App for PhotocraftApp {
         self.sync_views();
         crate::type_font_preview::follow_hover(self, ctx);
         self.check_gpu(ctx);
+        // The window's device is gone: nothing more may run that draws or prompts (the window is
+        // closing for a restart, see `gpu_status`).
+        if gpu_status::window_lost(self) {
+            return;
+        }
         #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
         if self.live_tokens.poll(ctx, self.ui.theme) {
             self.checker = None;
@@ -2028,6 +2066,18 @@ impl eframe::App for PhotocraftApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // After a window device loss egui-wgpu must get no meshes: it panics when it can't stage
+        // them on the lost device (see `gpu_status`).
+        if !gpu_status::window_lost(self) {
+            self.ui_frame(ui, frame);
+        }
+        gpu_status::discard_frame_if_lost(self, ui.ctx());
+    }
+}
+
+impl PhotocraftApp {
+    /// One frame of the window's interface (see [`eframe::App::ui`]).
+    fn ui_frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.hover_layer = None;
         i18n::set_current(i18n::Lang::from_pref(&self.session.prefs().interface.language));
@@ -2897,6 +2947,9 @@ mod navigator_gpu_tests;
 
 #[cfg(test)]
 mod pan_bench_tests;
+
+#[cfg(test)]
+mod device_loss_tests;
 
 #[cfg(test)]
 mod color_swatch_tests;

@@ -3836,3 +3836,13 @@ curves	Smooth	Wygładź
 	AI model not installed	Model SI nie jest zainstalowany
 	AI model failed to load	Nie udało się wczytać modelu SI
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Umieść lama_fp32.onnx i ONNX Runtime (onnxruntime.dll, DirectML.dll) w jednym z folderów: {folders}. Do tego czasu tryb „Automatycznie” używa zwykłego wypełnienia.
+	Model:	Model:
+	LaMa (fast)	LaMa (szybki)
+	Diffusion (detailed)	Dyfuzja (szczegółowa)
+	Prompt (optional)	Polecenie (opcjonalne)
+	What should be there. Empty: the model's own guess.	Co powinno tam być. Puste: własne przypuszczenie modelu.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Umieść folder modelu dyfuzyjnego i ONNX Runtime w jednym z: {folders}. Do tego czasu tryb Auto używa LaMa.
+	Generative Fill…	Wypełnienie generatywne…
+	Center Canvas When Zoomed Out	Wyśrodkuj obszar roboczy przy pomniejszaniu
+	High (slower)	Wysoka (wolniej)
+	Quality:	Jakość:

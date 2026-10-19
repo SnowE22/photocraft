@@ -283,9 +283,167 @@ pub fn for_directml(model: &[u8]) -> Result<Option<(Vec<u8>, usize)>, MlError> {
     Ok(Some((out, changed)))
 }
 
+// GraphProto
+const GRAPH_INPUT: u32 = 11;
+const GRAPH_OUTPUT: u32 = 12;
+// ValueInfoProto › TypeProto › TypeProto.Tensor › TensorShapeProto › Dimension
+const VALUE_TYPE: u32 = 2;
+const TYPE_TENSOR: u32 = 1;
+const TENSOR_TYPE_SHAPE: u32 = 2;
+const SHAPE_DIM: u32 = 1;
+const DIM_PARAM: u32 = 2;
+
+/// A field's new payload, or `None` to keep it.
+type Replace<'f> = dyn FnMut(&[u8]) -> Result<Option<Vec<u8>>, MlError> + 'f;
+
+/// `msg` with each length-delimited field `num` replaced by `f(payload)` (`None` keeps it); also
+/// whether any was replaced. Other fields are copied byte for byte.
+fn rewrite_field(msg: &[u8], num: u32, f: &mut Replace<'_>) -> Result<(Vec<u8>, bool), MlError> {
+    let mut out = Vec::with_capacity(msg.len().saturating_add(64));
+    let mut changed = false;
+    let mut r = Reader::new(msg);
+    while let Some(field) = r.next()? {
+        if field.num == num && field.wire == LEN
+            && let Some(new) = f(field.bytes)?
+        {
+            put_len(&mut out, num, &new);
+            changed = true;
+            continue;
+        }
+        out.extend_from_slice(field.raw);
+    }
+    Ok((out, changed))
+}
+
+/// A TensorShapeProto of 4 dimensions (N, C, H, W) with H and W named `h` and `w`.
+fn symbolic_shape(shape: &[u8]) -> Result<Option<Vec<u8>>, MlError> {
+    let mut dims = 0;
+    let mut r = Reader::new(shape);
+    while let Some(f) = r.next()? {
+        dims += usize::from(f.num == SHAPE_DIM);
+    }
+    if dims != 4 {
+        return Ok(None);
+    }
+    let mut i = 0;
+    let (out, changed) = rewrite_field(shape, SHAPE_DIM, &mut |_| {
+        i += 1;
+        let name: &[u8] = match i {
+            3 => b"h",
+            4 => b"w",
+            _ => return Ok(None),
+        };
+        let mut d = Vec::new();
+        put_len(&mut d, DIM_PARAM, name);
+        Ok(Some(d))
+    })?;
+    Ok(changed.then_some(out))
+}
+
+/// The model with its 4-D image inputs and outputs of any height and width (named `h` and `w`
+/// instead of fixed sizes); `None` when there were none. Carve's LaMa export declares 512 × 512
+/// but builds its Fourier matrices from the tensors' shapes, so it runs at any size: the Remove
+/// tool's Quality mode runs it at 1024.
+pub fn symbolic_size(model: &[u8]) -> Result<Option<Vec<u8>>, MlError> {
+    let mut any = false;
+    let (out, _) = rewrite_field(model, MODEL_GRAPH, &mut |graph| {
+        let mut value_info = |vi: &[u8]| -> Result<Option<Vec<u8>>, MlError> {
+            let (vi, changed) = rewrite_field(vi, VALUE_TYPE, &mut |ty| {
+                let (ty, changed) = rewrite_field(ty, TYPE_TENSOR, &mut |t| {
+                    let (t, changed) = rewrite_field(t, TENSOR_TYPE_SHAPE, &mut |s| symbolic_shape(s))?;
+                    Ok(changed.then_some(t))
+                })?;
+                Ok(changed.then_some(ty))
+            })?;
+            Ok(changed.then_some(vi))
+        };
+        let (g, a) = rewrite_field(graph, GRAPH_INPUT, &mut value_info)?;
+        let (g, b) = rewrite_field(&g, GRAPH_OUTPUT, &mut value_info)?;
+        any |= a || b;
+        Ok((a || b).then_some(g))
+    })?;
+    Ok(any.then_some(out))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A ValueInfoProto `name` of shape `dims` (a value, or a name).
+    fn value_info(name: &str, dims: &[Result<u64, &str>]) -> Vec<u8> {
+        let mut shape = Vec::new();
+        for d in dims {
+            let mut dim = Vec::new();
+            match d {
+                Ok(v) => put_uint(&mut dim, 1, *v),
+                Err(p) => put_len(&mut dim, DIM_PARAM, p.as_bytes()),
+            }
+            put_len(&mut shape, SHAPE_DIM, &dim);
+        }
+        let mut tensor = Vec::new();
+        put_uint(&mut tensor, 1, 1);
+        put_len(&mut tensor, TENSOR_TYPE_SHAPE, &shape);
+        let mut ty = Vec::new();
+        put_len(&mut ty, TYPE_TENSOR, &tensor);
+        let mut vi = Vec::new();
+        put_len(&mut vi, 1, name.as_bytes());
+        put_len(&mut vi, VALUE_TYPE, &ty);
+        vi
+    }
+
+    /// The dims of every graph input and output, as text.
+    fn io_dims(model: &[u8]) -> Vec<Vec<String>> {
+        let mut out = Vec::new();
+        let mut r = Reader::new(graph(model).unwrap());
+        while let Some(f) = r.next().unwrap() {
+            if f.num != GRAPH_INPUT && f.num != GRAPH_OUTPUT {
+                continue;
+            }
+            let mut dims = Vec::new();
+            let field = |b: &[u8], n: u32| {
+                let mut r = Reader::new(b);
+                std::iter::from_fn(move || r.next().unwrap()).find(|f| f.num == n).map(|f| f.bytes.to_vec()).unwrap()
+            };
+            let shape = field(&field(&field(f.bytes, VALUE_TYPE), TYPE_TENSOR), TENSOR_TYPE_SHAPE);
+            let mut r = Reader::new(&shape);
+            while let Some(d) = r.next().unwrap() {
+                let mut dr = Reader::new(d.bytes);
+                let x = dr.next().unwrap().unwrap();
+                dims.push(if x.num == DIM_PARAM {
+                    String::from_utf8(x.bytes.to_vec()).unwrap()
+                } else {
+                    let mut vr = Reader::new(x.raw);
+                    vr.varint().unwrap();
+                    vr.varint().unwrap().to_string()
+                });
+            }
+            out.push(dims);
+        }
+        out
+    }
+
+    #[test]
+    fn image_inputs_and_outputs_get_any_height_and_width() {
+        let mut g = Vec::new();
+        put_len(&mut g, GRAPH_INPUT, &value_info("image", &[Err("batch"), Ok(3), Ok(512), Ok(512)]));
+        put_len(&mut g, GRAPH_INPUT, &value_info("ids", &[Ok(1), Ok(77)]));
+        put_len(&mut g, GRAPH_OUTPUT, &value_info("output", &[Err("batch"), Ok(3), Ok(512), Ok(512)]));
+        let mut m = Vec::new();
+        put_uint(&mut m, 1, 8);
+        put_len(&mut m, MODEL_GRAPH, &g);
+        let out = symbolic_size(&m).unwrap().expect("changed");
+        assert_eq!(io_dims(&out), [vec!["batch", "3", "h", "w"], vec!["1", "77"], vec!["batch", "3", "h", "w"]]);
+        // Already symbolic: rewritten the same way (idempotent), and a model without 4-D values
+        // is left alone.
+        assert_eq!(io_dims(&symbolic_size(&out).unwrap().unwrap()), io_dims(&out));
+        let mut g = Vec::new();
+        put_len(&mut g, GRAPH_INPUT, &value_info("ids", &[Ok(1), Ok(77)]));
+        let mut m = Vec::new();
+        put_len(&mut m, MODEL_GRAPH, &g);
+        assert!(symbolic_size(&m).unwrap().is_none());
+        // Damaged bytes are an error, not a panic.
+        assert!(symbolic_size(&[0x3a, 0xff, 0xff]).is_err());
+    }
 
     fn node_bytes(op: &str, inputs: &[&str], outputs: &[&str], name: &str) -> Vec<u8> {
         let mut n = Vec::new();

@@ -3243,3 +3243,13 @@ curves	Smooth	Lisser
 	AI model not installed	Modèle d'IA non installé
 	AI model failed to load	Échec du chargement du modèle d'IA
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Placez lama_fp32.onnx et ONNX Runtime (onnxruntime.dll, DirectML.dll) dans l'un de ces dossiers : {folders}. D'ici là, « Auto » utilise le remplissage classique.
+	Model:	Modèle :
+	LaMa (fast)	LaMa (rapide)
+	Diffusion (detailed)	Diffusion (détaillée)
+	Prompt (optional)	Invite (facultative)
+	What should be there. Empty: the model's own guess.	Ce qui devrait s'y trouver. Vide : la supposition du modèle.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Placez le dossier du modèle de diffusion et ONNX Runtime dans l'un de : {folders}. D'ici là, Auto utilise LaMa.
+	Generative Fill…	Remplissage génératif…
+	Center Canvas When Zoomed Out	Centrer la zone de travail en zoom arrière
+	High (slower)	Élevée (plus lente)
+	Quality:	Qualité :

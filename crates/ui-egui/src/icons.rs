@@ -37,16 +37,22 @@ pub fn paint(ui: &egui::Ui, rect: Rect, name: &str, size: f32, tint: Color32) {
 /// An icon as the pointer, above every window: `name` with its hotspot `hot` (a fraction of the
 /// icon box) on `p`, white with a dark outline so it reads on any image. The caller hides the OS
 /// cursor (`CursorIcon::None`).
+///
+/// Painted straight onto a top layer, as the brush cursor is onto the canvas, not through an
+/// `egui::Area`: an Area keeps state, sizes itself on a first, invisible pass and fades in, which
+/// made the Pen's pointer feel less smooth than the brush's (user report).
 pub fn cursor(ctx: &egui::Context, name: &str, p: egui::Pos2, hot: Vec2, size: f32) {
     let rect = Rect::from_min_size(p - hot * size, Vec2::splat(size));
-    let area = egui::Area::new(egui::Id::new("pc-icon-cursor")).order(egui::Order::Tooltip).fixed_pos(rect.min).constrain(false).interactable(false);
-    area.show(ctx, |ui| {
-        let outline = image(name, size, Color32::from_black_alpha(200));
-        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)] {
-            outline.paint_at(ui, rect.translate(egui::vec2(dx, dy)));
+    let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("pc-icon-cursor")));
+    let paint = |tint: Color32, r: Rect| {
+        if let Some(tex) = image(name, size, tint).load_for_size(ctx, r.size()).ok().and_then(|t| t.texture_id()) {
+            painter.image(tex, r, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
         }
-        image(name, size, Color32::WHITE).paint_at(ui, rect);
-    });
+    };
+    for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)] {
+        paint(Color32::from_black_alpha(200), rect.translate(egui::vec2(dx, dy)));
+    }
+    paint(Color32::WHITE, rect);
 }
 
 /// A small icon beside the OS arrow pointer at `p` (Photoshop's cursor badges: scissors for

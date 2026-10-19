@@ -90,6 +90,7 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
                 remove_pending_add(app, points);
                 return true;
             }
+            remove_running_show(app, points);
             ("paint.remove", remove_params(&o))
         }
         Tool::MixerBrush => ("paint.mixerBrush", json!({})),
@@ -163,7 +164,35 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
 
 /// `paint.remove` params from the options bar (without the strokes).
 fn remove_params(o: &crate::state::ToolOptions) -> Value {
-    json!({"sampleAllLayers": o.sample_all_layers, "newLayer": o.remove_new_layer, "generative": o.remove_generative})
+    let mut p = json!({"sampleAllLayers": o.sample_all_layers, "newLayer": o.remove_new_layer, "generative": o.remove_generative, "model": remove_model(o)});
+    if remove_model(o) == "lama"
+        && o.remove_quality == "high"
+        && let Some(m) = p.as_object_mut()
+    {
+        m.insert("quality".into(), json!("high"));
+    }
+    if remove_model(o) == "diffusion"
+        && !o.remove_prompt.trim().is_empty()
+        && let Some(m) = p.as_object_mut()
+    {
+        m.insert("prompt".into(), json!(o.remove_prompt.trim()));
+    }
+    p
+}
+
+/// The Remove tool's model as `paint.remove` takes it (an unknown saved value is LaMa).
+fn remove_model(o: &crate::state::ToolOptions) -> &'static str {
+    if o.remove_model == "diffusion" { "diffusion" } else { "lama" }
+}
+
+/// The Remove tool's model choices (`paint.remove` `model`).
+fn generative_models() -> [(String, &'static str); 2] {
+    [("lama".into(), tl!("LaMa (fast)")), ("diffusion".into(), tl!("Diffusion (detailed)"))]
+}
+
+/// LaMa's Quality choices (`paint.remove` `quality`).
+fn lama_qualities() -> [(String, &'static str); 2] {
+    [("standard".into(), tl!("Standard")), ("high".into(), tl!("High (slower)"))]
 }
 
 /// The Remove tool's Mode choices (`paint.remove` `generative`).
@@ -181,10 +210,11 @@ pub(crate) fn generative_state(app: &mut PhotocraftApp, now: f64) -> photocraft_
     {
         return state.clone();
     }
+    let diffusion = remove_model(&app.ui.tool_options) == "diffusion";
     if app.ui.tool_options.remove_generative != "off" {
-        generative::preload();
+        if diffusion { generative::preload_diffusion() } else { generative::preload() }
     }
-    let state = generative::state();
+    let state = if diffusion { generative::diffusion_state() } else { generative::state() };
     app.generative_probe = Some((now, state.clone()));
     state
 }
@@ -209,10 +239,17 @@ fn generative_status(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
         State::Missing => {
             let dirs: Vec<String> = photocraft_engine::generative::search_dirs().iter().map(|d| d.display().to_string()).collect();
-            let tip = crate::i18n::fmt(
-                tl!("Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill."),
-                &[("folders", &dirs.join(", "))],
-            );
+            let tip = if remove_model(&app.ui.tool_options) == "diffusion" {
+                crate::i18n::fmt(
+                    tl!("Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa."),
+                    &[("folders", &dirs.join(", "))],
+                )
+            } else {
+                crate::i18n::fmt(
+                    tl!("Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill."),
+                    &[("folders", &dirs.join(", "))],
+                )
+            };
             (tl!("AI model not installed"), t.text_dim, Some(tip))
         }
         State::Failed(e) => (tl!("AI model failed to load"), t.danger, Some(e.clone())),
@@ -227,17 +264,42 @@ fn generative_status(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 /// until ↩ or the options bar's ✓ applies them all as one removal (Esc or ⊘ drops them).
 pub fn remove_pending_add(app: &mut PhotocraftApp, points: &[[f64; 3]]) {
     let Some(st) = app.session.active() else { return };
-    let (doc, size) = (st.doc.id, [st.doc.size.width, st.doc.size.height]);
+    let (doc, size, sel) = (st.doc.id, [st.doc.size.width, st.doc.size.height], st.doc.selection.clone());
     if app.remove_pending_doc != Some(doc) {
         app.remove_pending.clear();
         app.remove_trail = None;
         app.remove_pending_doc = Some(doc);
     }
+    app.remove_running_doc = None;
     let diameter = app.session.tools.brush.size;
-    app.remove_trail.get_or_insert_with(|| crate::stroke_trail::Trail::new(size)).feed(points, diameter);
+    let trail = app.remove_trail.get_or_insert_with(|| remove_trail_new(size, sel.as_ref()));
+    trail.feed_new_stroke(points, diameter);
+    trail.fill_enclosed();
     app.remove_pending.push(points.to_vec());
     app.ui.status = crate::i18n::fmt(tl!("Strokes to remove: {n} (Enter applies, Esc cancels)"), &[("n", &app.remove_pending.len().to_string())]);
     app.ui.status_error = false;
+}
+
+/// A Remove trail for a document of `size`, shown only inside the selection `sel`.
+fn remove_trail_new(size: [u32; 2], sel: Option<&photocraft_raster::Surface>) -> crate::stroke_trail::Trail {
+    let mut t = crate::stroke_trail::Trail::new(size);
+    if let Some(sel) = sel {
+        t.set_clip(sel);
+    }
+    t
+}
+
+/// Remove after each stroke on: the released stroke, with what it encloses, stays tinted while
+/// its removal runs (a user report: circling an object showed nothing of its inside going).
+fn remove_running_show(app: &mut PhotocraftApp, points: &[[f64; 3]]) {
+    let Some(st) = app.session.active() else { return };
+    let mut trail = remove_trail_new([st.doc.size.width, st.doc.size.height], st.doc.selection.as_ref());
+    trail.feed(points, app.session.tools.brush.size);
+    trail.fill_enclosed();
+    app.remove_running_doc = Some(st.doc.id);
+    app.remove_pending.clear();
+    app.remove_pending_doc = None;
+    app.remove_trail = Some(trail);
 }
 
 /// Apply the waiting strokes as one removal (one job, one undo step). False when none wait.
@@ -246,8 +308,8 @@ pub fn remove_pending_commit(app: &mut PhotocraftApp) -> bool {
         return false;
     }
     let strokes = std::mem::take(&mut app.remove_pending);
-    app.remove_trail = None;
-    app.remove_pending_doc = None;
+    // The tint stays while the removal runs.
+    app.remove_running_doc = app.remove_pending_doc.take();
     let mut p = remove_params(&app.ui.tool_options);
     p["strokes"] = json!(strokes);
     p["target"] = crate::canvas::paint_target(app);
@@ -286,9 +348,22 @@ pub fn remove_pending_live(app: &mut PhotocraftApp) -> bool {
     false
 }
 
-/// The tint of the waiting Remove strokes, drawn every frame.
+/// Is a removal applied from the trail still running? The trail goes when it ends.
+fn remove_running_live(app: &mut PhotocraftApp) -> bool {
+    let Some(doc) = app.remove_running_doc else { return false };
+    let running = app.session.active().is_some_and(|st| st.doc.id == doc) && app.session.job_on(doc).is_some_and(|j| j.command == "paint.remove");
+    if !running {
+        app.remove_running_doc = None;
+        if app.remove_pending.is_empty() {
+            app.remove_trail = None;
+        }
+    }
+    running
+}
+
+/// The tint of the waiting Remove strokes, and of a removal while it runs, drawn every frame.
 pub fn draw_remove_pending(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) {
-    if !remove_pending_live(app) {
+    if !remove_pending_live(app) && !remove_running_live(app) {
         return;
     }
     let Some(bounds) = app.session.active().map(|st| st.doc.bounds()) else { return };
@@ -521,6 +596,20 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             // them and ⊘ drops them.
             opt(ui, tl!("Mode:"));
             crate::widgets::dropdown(ui, "remove-generative", &mut o.remove_generative, &generative_modes(), 130.0);
+            if o.remove_generative != "off" {
+                // Which model: LaMa (fast) or diffusion (slower, draws what was behind), and
+                // for diffusion what should be there.
+                opt(ui, tl!("Model:"));
+                crate::widgets::dropdown(ui, "remove-model", &mut o.remove_model, &generative_models(), 140.0);
+                if o.remove_model == "diffusion" {
+                    crate::widgets::text_field_ex(ui, egui::Id::new("remove-prompt"), &mut o.remove_prompt, tl!("Prompt (optional)"), 180.0, false, Some(500))
+                        .on_hover_text(tl!("What should be there. Empty: the model's own guess."));
+                } else {
+                    // LaMa at 1024 instead of 512: sharper large removals.
+                    opt(ui, tl!("Quality:"));
+                    crate::widgets::dropdown(ui, "remove-quality", &mut o.remove_quality, &lama_qualities(), 120.0);
+                }
+            }
             generative_status(app, ui);
             crate::widgets::vline(ui, 22.0);
             let o = &mut app.ui.tool_options;

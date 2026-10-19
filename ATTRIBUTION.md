@@ -83,6 +83,9 @@ without them (the Remove tool then uses its patch fill).
 | `lama_fp32.onnx` | LaMa inpainting (Suvorov et al., WACV 2022), big-lama exported to ONNX | Samsung AI Center (LaMa); Carve (ONNX export) | <https://github.com/advimman/lama>, <https://huggingface.co/Carve/LaMa-ONNX> | Apache-2.0 |
 | `onnxruntime.dll`, `onnxruntime_providers_shared.dll` | ONNX Runtime, loaded at run time by the `ort` crate (`load-dynamic`) | Microsoft Corporation | <https://github.com/microsoft/onnxruntime> (`onnxruntime-directml` package) | MIT |
 | `DirectML.dll` | DirectML, ONNX Runtime's GPU provider on Windows | Microsoft Corporation | <https://github.com/microsoft/DirectML> (same package) | Microsoft DirectML License (redistributable) |
+| `anything-4.0-inpainting/` (exported by `packaging/models/export_sd_inpaint.py`) | Anything 4.0 inpainting, a Stable Diffusion 1.5 inpainting model trained on anime art (Rombach et al., CVPR 2022) | Stability AI, RunwayML, CompVis (Stable Diffusion); the Anything authors; Sanster (inpainting merge) | <https://huggingface.co/Sanster/anything-4.0-inpainting> | CreativeML OpenRAIL-M |
+| `sdxl-inpainting/` (exported by `packaging/models/export_sdxl_inpaint.py`): text encoders and UNet | Stable Diffusion XL 1.0 inpainting 0.1, the Generative Fill default (Podell et al., 2023) | Stability AI (SDXL); Hugging Face diffusers team (inpainting fine-tune) | <https://huggingface.co/diffusers/stable-diffusion-xl-1.0-inpainting-0.1> | CreativeML OpenRAIL++-M |
+| `sdxl-inpainting/vae*_encoder.onnx`, `vae*_decoder.onnx` | SDXL's VAE fine-tuned to run in fp16 (the same latent space) | Ollin Boer Bohan (madebyollin) | <https://huggingface.co/madebyollin/sdxl-vae-fp16-fix> | MIT |
 
 The other built-in ICC profiles and the generated LUT looks are produced by code at runtime
 (`crates/cms/src/builtin.rs`, `crates/cms/src/lutfile.rs`) and dedicated to the public domain

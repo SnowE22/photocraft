@@ -650,24 +650,10 @@ fn autosave(app: &mut PhotocraftApp) {
     }
     // A successful queue operation is not a successful disk write. Poll each frame,
     // including frames before the next autosave interval, so failures are visible.
-    if let Some(results) = app.services.autosave_results.as_mut() {
-        for (raw_id, revision, result) in results() {
-            let id = DocId(raw_id);
-            if app.prefs_rt.autosave_pending.get(&id) != Some(&revision) {
-                continue;
-            }
-            app.prefs_rt.autosave_pending.remove(&id);
-            match result {
-                Ok(()) => {
-                    app.prefs_rt.autosaved.insert(id, revision);
-                }
-                Err(e) => {
-                    let template = "Autosave failed: {error}";
-                    app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
-                    app.ui.status_error = true;
-                }
-            }
-        }
+    for (_, e) in collect_autosave_results(app) {
+        let template = "Autosave failed: {error}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
+        app.ui.status_error = true;
     }
     let now = crate::gpu_canvas::now_ms();
     // Saved or closed documents drop their recovery data.
@@ -719,6 +705,81 @@ fn autosave(app: &mut PhotocraftApp) {
             }
         }
     }
+}
+
+/// Record finished background autosaves; returns the failed ones as (document, error).
+fn collect_autosave_results(app: &mut PhotocraftApp) -> Vec<(DocId, String)> {
+    let mut failed = Vec::new();
+    let Some(results) = app.services.autosave_results.as_mut() else { return failed };
+    for (raw_id, revision, result) in results() {
+        let id = DocId(raw_id);
+        if app.prefs_rt.autosave_pending.get(&id) != Some(&revision) {
+            continue;
+        }
+        app.prefs_rt.autosave_pending.remove(&id);
+        match result {
+            Ok(()) => {
+                app.prefs_rt.autosaved.insert(id, revision);
+            }
+            Err(e) => failed.push((id, e)),
+        }
+    }
+    failed
+}
+
+/// Write every document with unsaved changes to crash recovery now and wait (up to `timeout`)
+/// until the files are on disk, whatever the autosave preference: the window is about to close
+/// (its graphics device was lost, see `gpu_status`). Returns the documents that could not be
+/// saved, as "name: reason" lines; empty when everything unsaved is in crash recovery.
+pub(crate) fn save_recovery_now(app: &mut PhotocraftApp, timeout: std::time::Duration) -> Vec<String> {
+    let names: HashMap<DocId, String> = app.session.documents().iter().map(|d| (d.doc.id, d.doc.name.clone())).collect();
+    let name = |id: &DocId| names.get(id).cloned().unwrap_or_else(|| format!("document {}", id.0));
+    let mut failed: Vec<String> = Vec::new();
+    // Earlier autosaves that finished meanwhile count; a failed one is written again below.
+    let _ = collect_autosave_results(app);
+    let jobs: Vec<_> = app
+        .session
+        .documents()
+        .iter()
+        .filter(|d| {
+            d.is_dirty() && app.prefs_rt.autosaved.get(&d.doc.id) != Some(&d.revision) && app.prefs_rt.autosave_pending.get(&d.doc.id) != Some(&d.revision)
+        })
+        .map(|d| (d.doc.clone(), d.revision, d.path.clone()))
+        .collect();
+    if !jobs.is_empty() && app.services.autosave.is_none() {
+        return jobs.iter().map(|(doc, ..)| format!("{}: crash recovery is not available", doc.name)).collect();
+    }
+    for (doc, rev, path) in jobs {
+        let Some(save) = app.services.autosave.as_mut() else { break };
+        match save(&doc, rev, path.as_deref()) {
+            Ok(()) if app.services.autosave_results.is_some() => {
+                app.prefs_rt.autosave_pending.insert(doc.id, rev);
+            }
+            Ok(()) => {
+                app.prefs_rt.autosaved.insert(doc.id, rev);
+            }
+            Err(e) => failed.push(format!("{}: {e}", doc.name)),
+        }
+    }
+    // The documents still open, so a pending write of a closed one isn't waited for.
+    let open: Vec<DocId> = names.keys().copied().collect();
+    let waiting = |app: &PhotocraftApp| open.iter().any(|id| app.prefs_rt.autosave_pending.contains_key(id));
+    let deadline = crate::gpu_canvas::now_ms() + timeout.as_secs_f64() * 1000.0;
+    loop {
+        failed.extend(collect_autosave_results(app).iter().map(|(id, e)| format!("{}: {e}", name(id))));
+        if !waiting(app) || crate::gpu_canvas::now_ms() >= deadline {
+            break;
+        }
+        // The web has no blocking wait (and no crash recovery service).
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        #[cfg(target_arch = "wasm32")]
+        break;
+    }
+    failed.extend(
+        open.iter().filter(|id| app.prefs_rt.autosave_pending.contains_key(id)).map(|id| format!("{}: the recovery file was still being written", name(id))),
+    );
+    failed
 }
 
 /// Force the autosave timer to fire on the next tick (tests, `prefs` changes).
@@ -1115,6 +1176,10 @@ fn humanize(key: &str) -> String {
     }
     if key == "notificationDurationSeconds" {
         return "Notification Duration (seconds)".into();
+    }
+    // The pasteboard menu's row of the same name toggles it too.
+    if key == "centerWhenZoomedOut" {
+        return "Center Canvas When Zoomed Out".into();
     }
     // Tools: arrow-key nudges bundle into one History state (#2259).
     if key == "bundleNudges" {

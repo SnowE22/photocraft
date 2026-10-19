@@ -1,5 +1,5 @@
-//! The menu bar from the keyboard (#4988): Alt / F10 focus the bar, Alt+letter opens a menu,
-//! letters run rows, and the shortcuts wait while the bar has the keyboard.
+//! The menu bar from the keyboard (#4988): F10 focuses the bar, letters run rows, the shortcuts
+//! wait while the bar has the keyboard, and Alt does nothing to the menus.
 use crate::PhotocraftApp;
 use crate::menu_keys::Keys;
 use crate::menu_nav::{Nav, is_open};
@@ -49,11 +49,11 @@ fn rows(h: &Harness<'static, PhotocraftApp>, level: usize) -> Vec<crate::menu_na
 }
 
 #[test]
-fn alt_focuses_the_bar_arrows_move_and_down_opens_the_lit_menu() {
+fn f10_focuses_the_bar_arrows_move_and_down_opens_the_lit_menu() {
     let mut h = bar();
     assert_eq!(Keys::current(&h.ctx).focus, None);
-    alt_tap(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "Alt puts the keyboard on File");
+    key(&mut h, egui::Key::F10);
+    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "F10 puts the keyboard on File");
     assert!(crate::menu_keys::is_focused(&h.ctx), "the shortcuts wait for the bar");
     assert!(!is_open(&h.ctx), "no menu opens yet");
     key(&mut h, egui::Key::ArrowRight);
@@ -77,14 +77,14 @@ fn alt_focuses_the_bar_arrows_move_and_down_opens_the_lit_menu() {
 }
 
 #[test]
-fn a_second_alt_or_esc_or_a_click_takes_the_keyboard_off_the_bar() {
+fn a_second_f10_or_esc_or_a_click_takes_the_keyboard_off_the_bar() {
     let mut h = bar();
-    alt_tap(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0));
-    alt_tap(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, None, "a second tap leaves");
     key(&mut h, egui::Key::F10);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "F10 focuses the bar too");
+    assert_eq!(Keys::current(&h.ctx).focus, Some(0));
+    key(&mut h, egui::Key::F10);
+    assert_eq!(Keys::current(&h.ctx).focus, None, "a second F10 leaves");
+    key(&mut h, egui::Key::F10);
+    assert_eq!(Keys::current(&h.ctx).focus, Some(0));
     key(&mut h, egui::Key::Escape);
     assert_eq!(Keys::current(&h.ctx).focus, None);
     assert!(!crate::menu_keys::is_focused(&h.ctx));
@@ -98,16 +98,13 @@ fn a_second_alt_or_esc_or_a_click_takes_the_keyboard_off_the_bar() {
 }
 
 #[test]
-fn alt_with_a_letter_opens_that_menu_and_enter_opens_the_lit_one() {
+fn alt_does_nothing_to_the_menus_and_enter_opens_the_lit_one() {
     let mut h = bar();
+    alt_tap(&mut h);
+    assert_eq!(Keys::current(&h.ctx).focus, None, "an Alt tap leaves the bar alone");
     alt_key(&mut h, egui::Key::E);
     h.run_steps(2);
-    assert!(is_open(&h.ctx) && h.query_by_label_contains("Undo").is_some(), "Alt+E opens Edit");
-    alt_key(&mut h, egui::Key::F);
-    h.run_steps(2);
-    assert!(h.query_by_label_contains("Open…").is_some(), "Alt+F switches to File while a menu is open");
-    key(&mut h, egui::Key::Escape);
-    assert!(!is_open(&h.ctx));
+    assert!(!is_open(&h.ctx), "Alt+E opens no menu");
     key(&mut h, egui::Key::F10);
     key(&mut h, egui::Key::Enter);
     h.run_steps(2);
@@ -122,7 +119,8 @@ fn alt_with_a_letter_opens_that_menu_and_enter_opens_the_lit_one() {
 #[test]
 fn a_letter_in_an_open_menu_runs_the_row_with_that_mnemonic_or_opens_its_submenu() {
     let mut h = bar();
-    alt_key(&mut h, egui::Key::V);
+    key(&mut h, egui::Key::F10);
+    key(&mut h, egui::Key::V);
     h.run_steps(2);
     assert!(h.query_by_label_contains("Zoom In").is_some(), "View is open");
     let level = rows(&h, 0);
@@ -135,7 +133,8 @@ fn a_letter_in_an_open_menu_runs_the_row_with_that_mnemonic_or_opens_its_submenu
     assert!(h.state().ui.views[0].zoom > zoom, "the letter ran Zoom In ({letter})");
     assert!(!is_open(&h.ctx), "and closed the menu");
     // A submenu's letter opens it, with its first row lit.
-    alt_key(&mut h, egui::Key::V);
+    key(&mut h, egui::Key::F10);
+    key(&mut h, egui::Key::V);
     h.run_steps(2);
     let level = rows(&h, 0);
     let sub = level.iter().find(|r| r.command.is_none() && r.enabled && r.mnemonic.is_some()).expect("an enabled submenu with a mnemonic");
@@ -147,7 +146,7 @@ fn a_letter_in_an_open_menu_runs_the_row_with_that_mnemonic_or_opens_its_submenu
 }
 
 #[test]
-fn mnemonics_are_underlined_only_with_alt_or_a_keyboard_opened_menu() {
+fn mnemonics_are_underlined_only_in_a_keyboard_opened_menu() {
     let mut h = bar();
     h.get_by_label("File").click();
     h.run_steps(4);
@@ -155,12 +154,13 @@ fn mnemonics_are_underlined_only_with_alt_or_a_keyboard_opened_menu() {
     assert!(!Nav::current(&h.ctx).underline, "a menu opened with the mouse shows no underlines");
     h.key_down(egui::Key::AltLeft);
     h.run_steps(3);
-    assert!(Nav::current(&h.ctx).underline, "while Alt is held they show");
+    assert!(!Nav::current(&h.ctx).underline, "holding Alt shows none either");
     h.key_up(egui::Key::AltLeft);
     h.run_steps(3);
-    // The tap closed the menu (as on Windows); opening from the keyboard underlines.
-    assert!(!is_open(&h.ctx), "an Alt tap closes an open menu");
-    alt_key(&mut h, egui::Key::F);
+    assert!(is_open(&h.ctx), "an Alt tap leaves an open menu open");
+    key(&mut h, egui::Key::Escape);
+    key(&mut h, egui::Key::F10);
+    key(&mut h, egui::Key::F);
     h.run_steps(2);
     assert!(is_open(&h.ctx) && Nav::current(&h.ctx).underline);
     assert!(rows(&h, 0).iter().any(|r| r.mnemonic.is_some()), "rows carry their letters");

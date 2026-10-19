@@ -648,8 +648,10 @@ mod tests {
                 } else {
                     assert!((x - w / 2.0).abs() < 1e-3, "clamped to the left edge: {x}");
                 }
-                // Zoomed out below fit (Photoshop): the image is not re-centred, it stays where it
-                // is while it fits in the view, and is pushed back in at the view's edge.
+                // Zoomed out below fit with Center When Zoomed Out off: the image is not re-centred,
+                // it stays where it is while it fits in the view, and is pushed back in at the
+                // view's edge. (On, the default, a zoom-out to a fit centres it: canvas tests.)
+                h.state_mut().run("prefs.set", json!({"path": "interface.centerWhenZoomedOut", "value": false})).unwrap();
                 set_view(&mut h, 0.1, [-50.0, 9000.0]);
                 if !overscroll {
                     let r = h.state().last_canvas_rect;

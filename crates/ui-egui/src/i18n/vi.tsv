@@ -3724,3 +3724,13 @@ curves	Smooth	Làm mượt
 	AI model not installed	Chưa cài mô hình AI
 	AI model failed to load	Không tải được mô hình AI
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Hãy đặt lama_fp32.onnx và ONNX Runtime (onnxruntime.dll, DirectML.dll) vào một trong các thư mục sau: {folders}. Cho đến lúc đó, "Tự động" dùng cách tô thông thường.
+	Model:	Mô hình:
+	LaMa (fast)	LaMa (nhanh)
+	Diffusion (detailed)	Khuếch tán (chi tiết)
+	Prompt (optional)	Lời nhắc (tùy chọn)
+	What should be there. Empty: the model's own guess.	Thứ nên có ở đó. Để trống: mô hình tự đoán.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Đặt thư mục mô hình khuếch tán và ONNX Runtime vào một trong: {folders}. Cho đến khi đó, Tự động dùng LaMa.
+	Generative Fill…	Tô màu tạo sinh…
+	Center Canvas When Zoomed Out	Căn giữa khung vẽ khi thu nhỏ
+	High (slower)	Cao (chậm hơn)
+	Quality:	Chất lượng:

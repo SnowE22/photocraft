@@ -12,7 +12,11 @@ use egui::{Color32, ColorImage, Rect, TextureHandle, TextureOptions, pos2};
 use photocraft_paint::{BrushSettings, StrokePoint, StrokeRenderer};
 
 /// Longest side of the mask, in mask pixels (big documents are stamped at a reduced scale).
-const MAX_SIDE: u32 = 1024;
+const MAX_SIDE: u32 = 8192;
+/// Most mask pixels (16 MB of coverage, a 64 MB texture). Documents up to this size get a mask
+/// pixel per document pixel: at 1024 pixels a side a 2400 × 3000 page drew the Remove tool's
+/// stroke from 3 × 3 document-pixel blocks, blurry and imprecise (user report).
+const MAX_PIXELS: u64 = 16 << 20;
 
 /// A drag's footprint mask.
 pub struct Trail {
@@ -28,6 +32,11 @@ pub struct Trail {
     fed: usize,
     /// Mask pixels changed since the last upload (x0, y0, x1, y1), if any.
     dirty: Option<[usize; 4]>,
+    /// Every mask pixel stamped so far (x0, y0, x1, y1), if any.
+    covered: Option<[usize; 4]>,
+    /// The selection's coverage per mask pixel: the trail shows only inside it, as the tool
+    /// changes only what is selected ([`Self::set_clip`]).
+    clip: Option<Vec<u8>>,
     tex: Option<TextureHandle>,
     /// The stroke's dabs, when the trail shows their coverage ([`Self::feed_dabs`]).
     dabs: Option<Dabs>,
@@ -42,9 +51,12 @@ struct Dabs {
 
 impl Trail {
     pub fn new(doc: [u32; 2]) -> Self {
-        let k = doc[0].max(doc[1]).div_ceil(MAX_SIDE).max(1);
+        let mut k = doc[0].max(doc[1]).div_ceil(MAX_SIDE).max(1);
+        while u64::from(doc[0].div_ceil(k).max(1)) * u64::from(doc[1].div_ceil(k).max(1)) > MAX_PIXELS {
+            k = k.saturating_add(1);
+        }
         let (w, h) = (doc[0].div_ceil(k).max(1) as usize, doc[1].div_ceil(k).max(1) as usize);
-        Self { doc, k: k as f32, w, h, cov: vec![0; w * h], fed: 0, dirty: None, tex: None, dabs: None }
+        Self { doc, k: k as f32, w, h, cov: vec![0; w * h], fed: 0, dirty: None, covered: None, clip: None, tex: None, dabs: None }
     }
 
     /// Coverage at a mask pixel (tests).
@@ -72,6 +84,12 @@ impl Trail {
             self.capsule(a, b, r);
         }
         self.fed = points.len();
+    }
+
+    /// Stamp a stroke of its own (not the continuation of the last one): all of `points`.
+    pub fn feed_new_stroke(&mut self, points: &[[f64; 3]], diameter: f32) {
+        self.fed = 0;
+        self.feed(points, diameter);
     }
 
     /// Show the coverage the brush's own dabs leave along the drag, as the stroke commit renders
@@ -127,8 +145,7 @@ impl Trail {
                 }
             }
         }
-        let d = self.dirty.get_or_insert([x0, y0, x1, y1]);
-        *d = [d[0].min(x0), d[1].min(y0), d[2].max(x1), d[3].max(y1)];
+        self.mark([x0, y0, x1, y1]);
     }
 
     fn capsule(&mut self, a: [f64; 2], b: [f64; 2], r: f64) {
@@ -159,8 +176,65 @@ impl Trail {
                 }
             }
         }
-        let d = self.dirty.get_or_insert([x0, y0, x1, y1]);
-        *d = [d[0].min(x0), d[1].min(y0), d[2].max(x1), d[3].max(y1)];
+        self.mark([x0, y0, x1, y1]);
+    }
+
+    /// Mask pixels `r` changed: upload them, and they are part of the stroke.
+    fn mark(&mut self, r: [usize; 4]) {
+        let [x0, y0, x1, y1] = r;
+        for b in [&mut self.dirty, &mut self.covered] {
+            let d = b.get_or_insert(r);
+            *d = [d[0].min(x0), d[1].min(y0), d[2].max(x1), d[3].max(y1)];
+        }
+    }
+
+    /// Show the trail only where `sel` (the document's selection, one channel) selects: the
+    /// Remove tool and the retouching tools change nothing outside it (a user report: the trail
+    /// looked like it painted outside the selection).
+    pub fn set_clip(&mut self, sel: &photocraft_raster::Surface) {
+        let k = f64::from(self.k);
+        let width = i32::try_from(self.doc[0]).unwrap_or(i32::MAX);
+        let ch = sel.channels().max(1);
+        let mut clip = vec![0u8; self.w.saturating_mul(self.h)];
+        let mut row = Vec::new();
+        for y in 0..self.h {
+            let dy = ((y as f64 + 0.5) * k).floor() as i32;
+            sel.read_region_into(photocraft_geom::Rect::new(0, dy, width, dy.saturating_add(1)), &mut row);
+            for x in 0..self.w {
+                let dx = ((x as f64 + 0.5) * k).floor() as usize;
+                let c = row.get(dx.saturating_mul(ch)).copied().unwrap_or(0.0);
+                if let Some(v) = clip.get_mut(y * self.w + x) {
+                    *v = if c.is_finite() { (c.clamp(0.0, 1.0) * 255.0).round() as u8 } else { 0 };
+                }
+            }
+        }
+        self.clip = Some(clip);
+        self.dirty = Some([0, 0, self.w, self.h]);
+    }
+
+    /// Fill what the stroke encloses, as the Remove tool removes it too (`closeLoops`,
+    /// `photocraft_algo::remove::close_loops`): shown on release, so circling an object shows
+    /// the whole object going.
+    pub fn fill_enclosed(&mut self) {
+        let Some([x0, y0, x1, y1]) = self.covered else { return };
+        // One mask pixel of margin, so the outside is connected around the stroke.
+        let (x0, y0, x1, y1) = (x0.saturating_sub(1), y0.saturating_sub(1), (x1 + 1).min(self.w), (y1 + 1).min(self.h));
+        let (bw, bh) = (x1 - x0, y1 - y0);
+        let at = |x: usize, y: usize| (y0 + y) * self.w + x0 + x;
+        let mask: Vec<bool> = (0..bw * bh).map(|i| self.cov.get(at(i % bw, i / bw)).is_some_and(|c| *c > 0)).collect();
+        let filled = photocraft_algo::remove::close_loops(bw, bh, &mask);
+        let mut changed = false;
+        for (i, (&was, &now)) in mask.iter().zip(&filled).enumerate() {
+            if now && !was
+                && let Some(v) = self.cov.get_mut(at(i % bw, i / bw))
+            {
+                *v = 255;
+                changed = true;
+            }
+        }
+        if changed {
+            self.mark([x0, y0, x1, y1]);
+        }
     }
 
     fn image(&self, r: [usize; 4], color: Color32) -> ColorImage {
@@ -168,7 +242,10 @@ impl Trail {
         let mut px = Vec::with_capacity((x1 - x0) * (y1 - y0));
         for y in y0..y1 {
             for x in x0..x1 {
-                let c = self.coverage(x, y);
+                let mut c = self.coverage(x, y);
+                if let Some(clip) = &self.clip {
+                    c = ((u16::from(c) * u16::from(clip.get(y * self.w + x).copied().unwrap_or(0))) / 255) as u8;
+                }
                 px.push(Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), ((u16::from(c) * u16::from(color.a())) / 255) as u8));
             }
         }
@@ -181,9 +258,12 @@ impl Trail {
         let opts = TextureOptions::LINEAR;
         let dirty = self.dirty.take();
         if self.tex.is_none() {
-            let img = self.image([0, 0, self.w, self.h], color);
-            self.tex = Some(painter.ctx().load_texture("stroke-trail", img, opts));
-        } else if let Some(r) = dirty {
+            // Blank, then what is stamped so far: colouring every pixel of a page-sized mask
+            // would make the press wait.
+            let blank = ColorImage::new([self.w, self.h], vec![Color32::TRANSPARENT; self.w.saturating_mul(self.h)]);
+            self.tex = Some(painter.ctx().load_texture("stroke-trail", blank, opts));
+        }
+        if let Some(r) = dirty {
             let img = self.image(r, color);
             if let Some(t) = self.tex.as_mut() {
                 t.set_partial([r[0], r[1]], img, opts);
@@ -228,10 +308,54 @@ mod tests {
     fn hostile_points_and_huge_documents_are_safe() {
         let mut t = Trail::new([300_000, 2]);
         assert!(t.scale() > 1.0 && t.w <= MAX_SIDE as usize);
+        // A page stays at full resolution; a huge one is reduced to the pixel budget.
+        assert_eq!(Trail::new([2374, 3000]).scale(), 1.0);
+        let big = Trail::new([8000, 6000]);
+        assert!(big.scale() >= 2.0 && (big.w * big.h) as u64 <= MAX_PIXELS);
         t.feed(&[[f64::NAN, 1.0, 1.0], [f64::INFINITY, -1e300, 1.0], [-5.0, -5.0, 1.0], [1e12, 1.0, 1.0]], 1e9);
         t.feed(&[], 10.0);
         let mut e = Trail::new([0, 0]);
         e.feed(&[[0.0, 0.0, 1.0]], 0.0);
         assert!(e.coverage(0, 0) > 0 && e.coverage(5, 5) == 0);
+        e.fill_enclosed();
+        e.set_clip(&photocraft_raster::Surface::new(photocraft_color::PixelFormat::GRAY8));
+    }
+
+    /// A user report: with a selection the Remove trail showed outside it, where nothing changes.
+    #[test]
+    fn the_trail_shows_only_inside_the_selection() {
+        let mut t = Trail::new([100, 100]);
+        let mut sel = photocraft_raster::Surface::new(photocraft_color::PixelFormat::GRAY8);
+        sel.fill_rect(photocraft_geom::Rect::new(0, 0, 50, 100), &[1.0]);
+        t.set_clip(&sel);
+        t.feed(&[[20.0, 50.0, 1.0], [80.0, 50.0, 1.0]], 10.0);
+        let img = t.image([0, 0, 100, 100], Color32::from_rgba_unmultiplied(255, 0, 0, 200));
+        assert!(img.pixels[50 * 100 + 30].a() > 150, "inside the selection the trail shows");
+        assert_eq!(img.pixels[50 * 100 + 70].a(), 0, "outside it, nothing");
+        assert!(t.coverage(70, 50) > 0, "the coverage itself is kept");
+    }
+
+    /// A user report: circling an object removes its inside too, so the released trail fills it.
+    #[test]
+    fn a_closed_loop_fills_its_inside_and_an_open_stroke_does_not() {
+        let ring: Vec<[f64; 3]> = (0..=64)
+            .map(|i| {
+                let a = f64::from(i) / 64.0 * std::f64::consts::TAU;
+                [50.0 + 30.0 * a.cos(), 50.0 + 30.0 * a.sin(), 1.0]
+            })
+            .collect();
+        let mut t = Trail::new([100, 100]);
+        t.feed(&ring, 6.0);
+        assert_eq!(t.coverage(50, 50), 0);
+        t.fill_enclosed();
+        assert_eq!(t.coverage(50, 50), 255, "the inside is filled");
+        assert_eq!(t.coverage(5, 5), 0, "the outside isn't");
+        let mut open = Trail::new([100, 100]);
+        open.feed(&ring[..40], 6.0);
+        open.fill_enclosed();
+        assert_eq!(open.coverage(50, 50), 0, "an open arc encloses nothing");
+        // A second, shorter stroke is stamped whole.
+        open.feed_new_stroke(&[[10.0, 90.0, 1.0], [12.0, 90.0, 1.0]], 4.0);
+        assert!(open.coverage(10, 90) > 0);
     }
 }

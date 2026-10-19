@@ -3,6 +3,14 @@
 //! textures for the rest of the session, with a recovery warning. Also runs the desktop app's
 //! "started" hook once the first frames have rendered (the crash-safe startup marker), and
 //! provides the Help › System Info text (including the monitor profile in use).
+//!
+//! The window itself draws with eframe's wgpu device, the one the GPU canvas shares. When that
+//! device is lost (a driver reset, Windows TDR) the CPU canvas can't help: egui-wgpu 0.36 panics
+//! staging the next frame's meshes on it ("Failed to create staging buffer for index data",
+//! [OBSERVED 2026-10-18, NVIDIA TDR], the app died). So once [`WindowGpu`] sees the loss, the
+//! app draws nothing more (no meshes reach egui-wgpu), writes every unsaved document to crash
+//! recovery, hides and closes the window, and asks the shell to start PhotoCraft again
+//! ([`DeviceLossRestart`]), which reopens the saved documents and recovers the unsaved ones.
 
 use serde_json::json;
 
@@ -14,6 +22,67 @@ pub const LOST_MESSAGE: &str = "GPU device was lost; using the CPU renderer.";
 pub const ERROR_MESSAGE: &str = "GPU error; using the CPU renderer.";
 /// Frames after which startup counts as done even if a document never drew.
 const STARTED_MAX_FRAMES: u64 = 120;
+/// How long a window whose device was lost waits for crash-recovery files before it closes.
+const RECOVERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// The device eframe draws the window with, and whether it was lost.
+#[derive(Default)]
+pub(crate) struct WindowGpu {
+    health: Option<photocraft_gpu::DeviceHealth>,
+    /// Set once the loss was handled: the restart that was asked for.
+    lost: Option<DeviceLossRestart>,
+}
+
+impl WindowGpu {
+    pub(crate) fn watch(&mut self, health: photocraft_gpu::DeviceHealth) {
+        self.health = Some(health);
+    }
+
+    pub(crate) fn health(&self) -> Option<photocraft_gpu::DeviceHealth> {
+        self.health.clone()
+    }
+}
+
+/// What the shell needs to start PhotoCraft again after the window's device was lost.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DeviceLossRestart {
+    /// The fault, as the log and the next launch's notice name it.
+    pub reason: String,
+    /// Files of the open documents without unsaved changes, in tab order, to open again. The
+    /// unsaved ones are in crash recovery, which the next launch reopens.
+    pub reopen: Vec<String>,
+    /// Unsaved documents that could not be written to crash recovery ("name: reason").
+    pub not_saved: Vec<String>,
+}
+
+impl DeviceLossRestart {
+    /// The next launch's "Switched to CPU rendering" details (English, like the log).
+    pub fn notice(&self) -> String {
+        let mut text = format!(
+            "The graphics driver stopped responding ({}). PhotoCraft restarted, reopened your saved documents and recovered the unsaved ones from crash recovery.",
+            self.reason
+        );
+        if !self.not_saved.is_empty() {
+            text.push_str(" Could not be saved for recovery: ");
+            text.push_str(&self.not_saved.join("; "));
+            text.push('.');
+        }
+        text
+    }
+}
+
+/// Whether the window's device was lost: from then on the app draws nothing (see the module).
+pub fn window_lost(app: &PhotocraftApp) -> bool {
+    app.window_gpu.lost.is_some()
+}
+
+/// Drop everything this frame painted once the window's device is lost (the loss can be noticed
+/// at the end of a frame that drew the whole interface): egui-wgpu gets no meshes to stage.
+pub fn discard_frame_if_lost(app: &PhotocraftApp, ctx: &egui::Context) {
+    if window_lost(app) {
+        ctx.graphics_mut(|g| *g = egui::layers::GraphicLayers::default());
+    }
+}
 
 /// Hook run once the app has rendered its first frames (see [`PhotocraftApp::on_started`]).
 pub type StartedHook = Box<dyn FnOnce(&mut PhotocraftApp)>;
@@ -23,6 +92,17 @@ pub fn check(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if let Some(fault) = app.gpu.as_ref().and_then(|g| g.fault()) {
         fall_back(app, &fault);
         ctx.request_repaint();
+    }
+    // An uncaptured error leaves the window drawing (the canvas fell back above); only a loss
+    // takes the window's device with it.
+    if !window_lost(app)
+        && let Some(fault) = app.window_gpu.health.as_ref().and_then(photocraft_gpu::DeviceHealth::fault).filter(photocraft_gpu::Fault::is_lost)
+    {
+        window_device_lost(app, ctx, &fault);
+        return;
+    }
+    if window_lost(app) {
+        return;
     }
     if app.started.is_some() {
         // Frames 1–2 set up fonts; by frame 3 the window has presented, and a document open at
@@ -36,6 +116,34 @@ pub fn check(app: &mut PhotocraftApp, ctx: &egui::Context) {
             ctx.request_repaint();
         }
     }
+}
+
+/// The window's device is gone: save, stop drawing, close and ask for a restart (see the module).
+/// Without a restart service (the web, tests), the window stays open and blank.
+fn window_device_lost(app: &mut PhotocraftApp, ctx: &egui::Context, fault: &photocraft_gpu::Fault) {
+    log::error!("{fault}: the window can't draw any more; saving unsaved documents to crash recovery and restarting PhotoCraft");
+    let not_saved = crate::prefs_ui::save_recovery_now(app, RECOVERY_TIMEOUT);
+    for line in &not_saved {
+        log::error!("not in crash recovery: {line}");
+    }
+    let reopen = app.session.documents().iter().filter(|d| !d.is_dirty()).filter_map(|d| d.path.clone()).collect();
+    let restart = DeviceLossRestart { reason: fault.to_string(), reopen, not_saved };
+    app.window_gpu.lost = Some(restart.clone());
+    app.ui.status = tl!(LOST_MESSAGE).to_string();
+    app.ui.status_error = true;
+    let Some(request) = app.services.restart_after_device_loss.as_mut() else {
+        log::error!("no restart service: the window stays blank (unsaved documents are in crash recovery)");
+        return;
+    };
+    request(restart);
+    // eframe paints no hidden window (it runs only `logic`), so the lost device gets nothing more
+    // before the window closes. No unsaved-changes prompt: `logic` stops before it.
+    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+    match app.services.quit.as_mut() {
+        Some(quit) => quit(),
+        None => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+    }
+    ctx.request_repaint();
 }
 
 /// Drop the GPU canvas after `fault`: free its resources, send every view through the CPU

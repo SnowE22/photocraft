@@ -13,6 +13,7 @@ workspace = true
 photocraft-geom = { workspace = true }
 photocraft-raster = { workspace = true }
 thiserror = { workspace = true }
+serde_json = { workspace = true }
 log = { workspace = true }
 
 # ONNX Runtime (MIT OR Apache-2.0), loaded at run time (`load-dynamic`): nothing links at build

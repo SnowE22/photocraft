@@ -3417,3 +3417,13 @@ curves	Smooth	매끄럽게
 	AI model not installed	AI 모델이 설치되지 않음
 	AI model failed to load	AI 모델을 불러오지 못했습니다
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx와 ONNX Runtime(onnxruntime.dll, DirectML.dll)을 다음 폴더 중 하나에 넣으세요: {folders}. 그 전까지 '자동'은 일반 채우기를 사용합니다.
+	Model:	모델:
+	LaMa (fast)	LaMa(빠름)
+	Diffusion (detailed)	디퓨전(정밀)
+	Prompt (optional)	프롬프트(선택 사항)
+	What should be there. Empty: the model's own guess.	그 자리에 있어야 할 것. 비우면 모델이 추측합니다.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	디퓨전 모델 폴더와 ONNX Runtime을 다음 중 한 곳에 넣으십시오: {folders}. 그때까지 자동은 LaMa를 사용합니다.
+	Generative Fill…	생성형 채우기…
+	Center Canvas When Zoomed Out	축소 시 캔버스 가운데 정렬
+	High (slower)	높음 (느림)
+	Quality:	품질:

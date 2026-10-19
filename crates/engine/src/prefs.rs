@@ -257,6 +257,10 @@ pub struct Interface {
     /// Show the repeating dot pattern on the canvas surround (including the empty workspace).
     /// Disable for a uniform background, for example on OLED displays (#2264).
     pub show_canvas_dots: bool,
+    /// Zooming out until the whole canvas fits centres it in the window (Photoshop), once: the
+    /// view can still be panned afterwards, where Photoshop holds it there. Not for a rotated
+    /// view. The pasteboard's right-click menu toggles it.
+    pub center_when_zoomed_out: bool,
     /// List recent files on the Home screen (the empty workspace). Off hides the list; the
     /// recent files themselves are kept and File > Open Recent still shows them.
     pub show_home_recent_files: bool,
@@ -306,6 +310,7 @@ impl Default for Interface {
             canvas_color: CanvasColor::Default,
             canvas_custom_color: "#282828".into(),
             show_canvas_dots: true,
+            center_when_zoomed_out: true,
             show_home_recent_files: true,
             canvas_border: CanvasBorder::DropShadow,
             ui_scale: UiScale::Auto,

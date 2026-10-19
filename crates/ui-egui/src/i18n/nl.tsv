@@ -3997,3 +3997,13 @@ curves	Smooth	Vloeiend maken
 	AI model not installed	AI-model niet geïnstalleerd
 	AI model failed to load	AI-model kon niet worden geladen
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Zet lama_fp32.onnx en ONNX Runtime (onnxruntime.dll, DirectML.dll) in een van deze mappen: {folders}. Tot die tijd gebruikt 'Automatisch' de gewone vulling.
+	Model:	Model:
+	LaMa (fast)	LaMa (snel)
+	Diffusion (detailed)	Diffusie (gedetailleerd)
+	Prompt (optional)	Prompt (optioneel)
+	What should be there. Empty: the model's own guess.	Wat er moet staan. Leeg: de eigen inschatting van het model.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Zet de map van het diffusiemodel en ONNX Runtime in een van: {folders}. Tot dan gebruikt Auto LaMa.
+	Generative Fill…	Generatieve vulling…
+	Center Canvas When Zoomed Out	Canvas centreren bij uitzoomen
+	High (slower)	Hoog (langzamer)
+	Quality:	Kwaliteit:

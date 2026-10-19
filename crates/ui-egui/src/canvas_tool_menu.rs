@@ -96,6 +96,8 @@ pub const PASTEBOARD_MENU: &[Row] = &[
     Some(("Custom", "pasteboard.custom")),
     None,
     Some(("Select Custom Color…", PASTEBOARD_PICK)),
+    None,
+    Some(("Center Canvas When Zoomed Out", PASTEBOARD_ZOOM_FIT)),
 ];
 
 /// Photoshop's right-click menu inside text being edited: the edit rows act on the text (its
@@ -147,6 +149,9 @@ const ENDS_TYPE_EDIT: [&str; 5] =
 
 /// The pasteboard menu's Select Custom Color… row.
 pub const PASTEBOARD_PICK: &str = "pasteboard.selectCustomColor";
+
+/// The pasteboard menu's toggle for Interface › `center_when_zoomed_out`.
+pub const PASTEBOARD_ZOOM_FIT: &str = "pasteboard.centerWhenZoomedOut";
 
 /// The guide menu's Edit Selected Guides row: New Guide's dialog on the selected guide.
 pub const GUIDE_EDIT: &str = "guides.editSelected";
@@ -342,6 +347,9 @@ pub(crate) fn mode_checked(app: &PhotocraftApp, menu: &CanvasToolMenu, command: 
         return command == "view.lockGuides" && app.ui.extras.lock_guides;
     }
     if menu.pasteboard {
+        if command == PASTEBOARD_ZOOM_FIT {
+            return app.session.prefs().interface.center_when_zoomed_out;
+        }
         return pasteboard_choice(command) == Some(app.session.prefs().interface.canvas_color);
     }
     if menu.text {
@@ -456,6 +464,9 @@ pub fn engine_call(app: &PhotocraftApp, menu: &CanvasToolMenu, command: &str) ->
     }
     match pasteboard_choice(command) {
         Some(c) if menu.pasteboard => ("prefs.set".into(), json!({"values": {"interface.canvasColor": c.name()}})),
+        _ if menu.pasteboard && command == PASTEBOARD_ZOOM_FIT => {
+            ("prefs.set".into(), json!({"values": {"interface.centerWhenZoomedOut": !app.session.prefs().interface.center_when_zoomed_out}}))
+        }
         _ if menu.pasteboard => ("prefs.set".into(), json!({})),
         _ if menu.text && matches!(command, FAUX_BOLD | FAUX_ITALIC) => ("type.setStyle".into(), json!({})),
         _ if is_spelling(menu, command) => spelling_call(menu, command),

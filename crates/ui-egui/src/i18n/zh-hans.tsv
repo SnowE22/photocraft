@@ -2855,3 +2855,13 @@ curves	Smooth	平滑
 	AI model not installed	未安装 AI 模型
 	AI model failed to load	AI 模型加载失败
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	请将 lama_fp32.onnx 和 ONNX Runtime（onnxruntime.dll、DirectML.dll）放到以下任一文件夹：{folders}。在此之前，“自动”使用常规填充。
+	Model:	模型：
+	LaMa (fast)	LaMa（快速）
+	Diffusion (detailed)	扩散（精细）
+	Prompt (optional)	提示词（可选）
+	What should be there. Empty: the model's own guess.	那里应该是什么。留空：由模型自行推测。
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	请将扩散模型文件夹和 ONNX Runtime 放到以下任一位置：{folders}。在此之前，自动模式使用 LaMa。
+	Generative Fill…	创成式填充…
+	Center Canvas When Zoomed Out	缩小时将画布居中
+	High (slower)	高 (较慢)
+	Quality:	品质:

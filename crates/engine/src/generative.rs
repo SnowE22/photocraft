@@ -22,6 +22,17 @@ pub fn preload() {
     photocraft_ml::lama::preload();
 }
 
+/// The diffusion model's state (`paint.remove` `model: "diffusion"`, Edit › Generative Fill), as
+/// [`state`].
+pub fn diffusion_state() -> State {
+    photocraft_ml::diffusion::state()
+}
+
+/// Load the diffusion model in the background (tens of seconds, once per run), as [`preload`].
+pub fn preload_diffusion() {
+    photocraft_ml::diffusion::preload();
+}
+
 /// Also look for the model and ONNX Runtime in `dir` (the app adds its settings folder's `models`).
 pub fn add_search_dir(dir: PathBuf) {
     photocraft_ml::add_search_dir(dir);

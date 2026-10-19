@@ -18,6 +18,10 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod clip_tokenizer;
+pub mod diffusion;
+#[cfg(not(target_arch = "wasm32"))]
+mod idle;
 pub mod inpaint;
 pub mod lama;
 pub mod onnx_edit;
@@ -73,6 +77,12 @@ impl Device {
             Device::Cpu => "CPU",
         }
     }
+}
+
+/// `PHOTOCRAFT_ML_DEVICE=cpu`: run the models on the CPU only, never on the GPU (tests, and a
+/// machine whose graphics driver resets under load).
+pub fn cpu_only() -> bool {
+    std::env::var("PHOTOCRAFT_ML_DEVICE").is_ok_and(|v| v.eq_ignore_ascii_case("cpu"))
 }
 
 static EXTRA_DIRS: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());

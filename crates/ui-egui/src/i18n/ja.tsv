@@ -3914,3 +3914,13 @@ curves	Smooth	スムーズ
 	AI model not installed	AI モデルが未インストール
 	AI model failed to load	AI モデルの読み込みに失敗しました
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx と ONNX Runtime（onnxruntime.dll、DirectML.dll）を次のいずれかのフォルダーに置いてください：{folders}。それまでは「自動」で従来の塗りつぶしを使います。
+	Model:	モデル:
+	LaMa (fast)	LaMa（高速）
+	Diffusion (detailed)	拡散（高精細）
+	Prompt (optional)	プロンプト（任意）
+	What should be there. Empty: the model's own guess.	そこにあるべきもの。空欄: モデル自身の推測。
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	拡散モデルのフォルダーと ONNX Runtime を次のいずれかに置いてください: {folders}。それまでは自動で LaMa を使います。
+	Generative Fill…	生成塗りつぶし…
+	Center Canvas When Zoomed Out	ズームアウト時にカンバスを中央に配置
+	High (slower)	高 (低速)
+	Quality:	画質:

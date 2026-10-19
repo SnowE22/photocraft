@@ -19,13 +19,19 @@
 //! around: *Auto* uses it when it is installed and the stroke suits it (layer pixels of an RGB or
 //! Grayscale image with opaque surroundings) and the patch fill otherwise, *On* uses it or fails
 //! saying why, *Off* always uses the patch fill. Masks and channels always get the patch fill.
+//!
+//! `model` picks the generative model: `lama` (fast, a fraction of a second on a GPU) or
+//! `diffusion` (Stable Diffusion inpainting, `photocraft_ml::diffusion`: seconds, but it draws what
+//! was most likely behind, such as the rest of a face under a speech bubble). `prompt` tells the
+//! diffusion model what should be there. When the diffusion model isn't installed, Auto uses
+//! LaMa and says so.
 
 use super::content_aware_move::{Target, replace};
 use super::patch::coverage;
 use super::*;
 use photocraft_color::ColorMode;
 use photocraft_doc::Layer;
-use photocraft_ml::inpaint::{Colours, Model, Request};
+use photocraft_ml::inpaint::{Colours, Request};
 use photocraft_ml::{Device, MlError};
 use photocraft_raster::Interrupt;
 
@@ -72,6 +78,91 @@ fn generative(p: &Value) -> Result<Generative> {
     }
 }
 
+/// Which generative model fills the hole (`model`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AiModel {
+    /// LaMa: fast.
+    Lama,
+    /// Stable Diffusion inpainting: slow, draws what was most likely there.
+    Diffusion,
+}
+
+impl AiModel {
+    /// `model`: "lama" (the default) or "diffusion".
+    pub(crate) fn parse(p: &Value, cmd: &str) -> Result<Self> {
+        match p.get("model") {
+            None | Some(Value::Null) => Ok(AiModel::Lama),
+            Some(Value::String(v)) if v == "lama" => Ok(AiModel::Lama),
+            Some(Value::String(v)) if v == "diffusion" => Ok(AiModel::Diffusion),
+            Some(v) => Err(bad(cmd, format!("`model` is \"lama\" or \"diffusion\", not {v}"))),
+        }
+    }
+
+    /// Whether this model can run (installed, loading or loaded), else why not.
+    pub(crate) fn availability(self) -> std::result::Result<(), MlError> {
+        match self {
+            AiModel::Lama => photocraft_ml::lama::availability(),
+            AiModel::Diffusion => photocraft_ml::diffusion::availability(),
+        }
+    }
+
+    pub(crate) fn ready(self) -> bool {
+        let state = match self {
+            AiModel::Lama => photocraft_ml::lama::state(),
+            AiModel::Diffusion => photocraft_ml::diffusion::state(),
+        };
+        matches!(state, photocraft_ml::lama::State::Ready(_))
+    }
+}
+
+/// The diffusion model's settings from `prompt` and `negativePrompt` (the rest stay at their
+/// defaults).
+pub(crate) fn diffusion_settings(p: &Value) -> photocraft_ml::diffusion::Settings {
+    let text = |k: &str| p.get(k).and_then(Value::as_str).map(|s| s.chars().take(500).collect::<String>()).unwrap_or_default();
+    photocraft_ml::diffusion::Settings { prompt: text("prompt"), negative: text("negativePrompt"), ..Default::default() }
+}
+
+/// `quality`: `"standard"` (the default) or `"high"`, LaMa's Quality mode
+/// ([`photocraft_ml::inpaint::LAMA_QUALITY`]: LaMa at 1024 instead of 512).
+pub(crate) fn high_quality(p: &Value, cmd: &str) -> Result<bool> {
+    match p.get("quality") {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::String(v)) if v == "standard" => Ok(false),
+        Some(Value::String(v)) if v == "high" => Ok(true),
+        Some(v) => Err(bad(cmd, format!("`quality` is \"standard\" or \"high\", not {v}"))),
+    }
+}
+
+/// Fill the hole of a [`Request`] with `model` (`read` gives the source's pixels), LaMa in its
+/// Quality mode when `high`; the device it ran on goes to `device`.
+pub(crate) fn fill_with_model(
+    model: AiModel,
+    high: bool,
+    settings: &photocraft_ml::diffusion::Settings,
+    req: &Request,
+    read: &mut dyn FnMut(Rect) -> Vec<f32>,
+    ctl: &Interrupt,
+    device: &mut Option<Device>,
+) -> std::result::Result<Vec<f32>, MlError> {
+    match model {
+        AiModel::Lama => photocraft_ml::inpaint::fill_with(
+            req,
+            read,
+            &mut |rgb, mask, _hint| {
+                let (out, d) = photocraft_ml::lama::inpaint(rgb, mask)?;
+                *device = Some(d);
+                Ok(out)
+            },
+            ctl,
+            if high { &photocraft_ml::inpaint::LAMA_QUALITY } else { &photocraft_ml::inpaint::LAMA },
+        ),
+        AiModel::Diffusion => photocraft_ml::diffusion::fill(req, read, settings, ctl).map(|(out, d)| {
+            *device = Some(d);
+            out
+        }),
+    }
+}
+
 /// Which fill made the result.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Filled {
@@ -101,6 +192,11 @@ pub(super) struct Plan {
     new_layer: bool,
     /// Whether the generative model fills the hole (Off for masks and channels).
     pub(super) generative: Generative,
+    /// Which model, and what the diffusion model is asked for.
+    pub(super) model: AiModel,
+    /// LaMa's Quality mode (`quality: "high"`).
+    pub(super) high: bool,
+    settings: photocraft_ml::diffusion::Settings,
 }
 
 /// The stroke's bounding box (points ± the brush radius), before any coverage is rendered.
@@ -142,6 +238,8 @@ fn parse_strokes(s: &Session, p: &Value) -> Result<(Vec<Stroke>, Option<LayerId>
 
 pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     let mode = generative(p)?;
+    let model = AiModel::parse(p, CMD)?;
+    let high = high_quality(p, CMD)?;
     let (strokes, id) = parse_strokes(s, p)?;
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
@@ -162,11 +260,11 @@ pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     let generative = if targets_pixels(p) { mode } else { Generative::Off };
     // On without a usable model fails now, before the job starts.
     if generative == Generative::On
-        && let Err(e) = photocraft_ml::lama::availability()
+        && let Err(e) = model.availability()
     {
         return Err(bad(CMD, format!("Generative AI is on, but {e}")));
     }
-    Ok(Plan { id, strokes, window, close_loops, all_layers, new_layer, generative })
+    Ok(Plan { id, strokes, window, close_loops, all_layers, new_layer, generative, model, high, settings: diffusion_settings(p) })
 }
 
 /// The hole over the plan's window: the strokes' footprints, their enclosed areas and a margin,
@@ -210,9 +308,12 @@ fn model_colours(mode: ColorMode) -> std::result::Result<Colours, MlError> {
     }
 }
 
+/// What fills a [`Request`]: the request, its source and the interrupt; the window filled.
+pub(crate) type Filler<'a> = dyn FnMut(&Request, &mut dyn FnMut(Rect) -> Vec<f32>, &Interrupt) -> std::result::Result<Vec<f32>, MlError> + 'a;
+
 /// The generative fill of `hole` over the plan's window: `img` is the window as the patch fill
 /// sees it (the target, or with Sample All Layers the composite), and the model's crops around
-/// each part of the hole are read from the same source. `model` runs the network on the crops.
+/// each part of the hole are read from the same source. `fill` runs the model on the request.
 pub(super) fn fill_generative(
     doc: &mut Document,
     plan: &Plan,
@@ -220,7 +321,7 @@ pub(super) fn fill_generative(
     img: &Region,
     hole: &[bool],
     ctl: &Interrupt,
-    model: &mut Model<'_>,
+    fill: &mut Filler<'_>,
 ) -> std::result::Result<Vec<f32>, MlError> {
     let canvas = doc.bounds();
     let (fmt, source) = {
@@ -238,13 +339,14 @@ pub(super) fn fill_generative(
         alpha: alpha_index(&fmt),
         // 32-bit documents hold linear light.
         linear: fmt.sample == SampleType::F32,
+        transparent_unknown: false,
     };
     let doc = &*doc;
     let mut read = |r: Rect| match &source {
         Some(surf) => surf.read_region(r),
         None => composite_region(doc, None, SampleLayers::All, r, fmt).data,
     };
-    photocraft_ml::inpaint::fill(&req, &mut read, model, ctl)
+    fill(&req, &mut read, ctl)
 }
 
 /// The filled window and the hole it fills, computed on `doc` (a snapshot), and which fill made
@@ -271,11 +373,20 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
         return Ok(None);
     }
     let mut note = None;
+    let mut model = plan.model;
+    // Auto with the diffusion model missing: LaMa, saying so.
+    if plan.generative == Generative::Auto
+        && model == AiModel::Diffusion
+        && let Err(e @ (MlError::ModelMissing { .. } | MlError::RuntimeMissing { .. } | MlError::Unsupported)) = model.availability()
+    {
+        note = Some(format!("{e}; used LaMa"));
+        model = AiModel::Lama;
+    }
     let use_model = match plan.generative {
         Generative::Off => false,
         Generative::On => true,
         // Auto stays quiet when the model isn't installed, and says why when it is but failed.
-        Generative::Auto => match photocraft_ml::lama::availability() {
+        Generative::Auto => match model.availability() {
             Ok(()) => true,
             Err(MlError::ModelMissing { .. } | MlError::RuntimeMissing { .. } | MlError::Unsupported) => false,
             Err(e) => {
@@ -285,16 +396,15 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
         },
     };
     if use_model {
-        let ready = matches!(photocraft_ml::lama::state(), photocraft_ml::lama::State::Ready(_));
-        let message = if ready { "Remove (Generative AI)" } else { "Remove: loading the Generative AI model (the first time takes a few seconds)" };
+        let message = match (model, model.ready()) {
+            (AiModel::Lama, true) => "Remove (Generative AI)",
+            (AiModel::Diffusion, true) => "Remove (Generative AI, diffusion)",
+            (AiModel::Lama, false) => "Remove: loading the Generative AI model (the first time takes a few seconds)",
+            (AiModel::Diffusion, false) => "Remove: loading the diffusion model (the first time takes up to a minute)",
+        };
         let mut device = None;
         let filled = ctx.stage(0.0, 1.0, message, |ctl| {
-            fill_generative(doc, plan, p, &img, &hole, ctl, &mut |rgb, mask| {
-                let (out, d) = photocraft_ml::lama::inpaint(rgb, mask)?;
-                device = Some(d);
-                ctx.progress(f32::NAN, "Remove (Generative AI)");
-                Ok(out)
-            })
+            fill_generative(doc, plan, p, &img, &hole, ctl, &mut |req, read, ctl| fill_with_model(model, plan.high, &plan.settings, req, read, ctl, &mut device))
         });
         match filled {
             Ok(mut data) => {

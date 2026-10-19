@@ -987,6 +987,27 @@ pub fn doc_point_at(app: &PhotocraftApp, pos: Pos2) -> Option<[f64; 2]> {
     xf.rect.contains(pos).then(|| xf.to_doc(pos))
 }
 
+/// Zoomed out from `before` to where the whole canvas fits in `area` (egui points): centre it
+/// (Preferences › Interface `center_when_zoomed_out`, as Photoshop does). Only on the zoom-out
+/// itself, so the view can be panned freely afterwards, where Photoshop holds it; a rotated view
+/// keeps its place. True when it moved the view.
+pub fn center_after_zoom_out(view: &mut View, before: f32, size: [u32; 2], area: Vec2, ppp: f32, aspect: f32) -> bool {
+    let ppp = if ppp.is_finite() && ppp > 0.0 { ppp } else { 1.0 };
+    let aspect = if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.0 };
+    if !(view.zoom.is_finite() && before.is_finite() && view.zoom < before) || view.rotation.abs() > 0.01 || size[0] == 0 || size[1] == 0 {
+        return false;
+    }
+    let z = view.zoom / ppp;
+    let (w, h) = (size[0] as f32 * aspect * z, size[1] as f32 * z);
+    if w > area.x + 0.5 || h > area.y + 0.5 {
+        return false;
+    }
+    let c = [size[0] as f32 / 2.0, size[1] as f32 / 2.0];
+    let moved = view.center != c;
+    view.center = c;
+    moved
+}
+
 /// Fit the document into `area` (egui points) for a display with `ppp` physical pixels per
 /// point; `View::zoom` is stored in physical pixels per document pixel. `aspect` is the
 /// displayed pixel aspect ratio ([`ViewXform::aspect`]): the image is that much wider on screen.
@@ -3077,6 +3098,16 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     if view.fill_pending && rect.width() > 50.0 {
         fill_view(&mut view, &doc, rect.size(), ppp, aspect);
     }
+    // Zoomed out since the last frame (a menu, shortcut or command): centre a canvas that fits.
+    let center_fit = app.session.prefs().interface.center_when_zoomed_out;
+    let last_zoom_id = egui::Id::new(("pc-canvas-last-zoom", primary, idx));
+    if center_fit
+        && let Some(last) = ctx.data(|d| d.get_temp::<f32>(last_zoom_id))
+        && center_after_zoom_out(&mut view, last, size, rect.size(), ppp, aspect)
+    {
+        ctx.request_repaint();
+    }
+    let frame_zoom = view.zoom;
     // Preferences › Tools › Overscroll: clamp before anything is drawn (scrollbars.rs). Off, the
     // image can't leave its edges; on, the view stops once the image has just left it.
     if crate::scrollbars::limit_view(&mut view, rect.size(), ppp, aspect, app.session.prefs().tools.overscroll) {
@@ -4263,6 +4294,11 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         crate::rulers::draw_rulers(app, ui, full, &xf);
     }
     crate::rotate_view::overlay(app, &ctx, &painter, &xf, &mut view, &response);
+    // Zoomed out this frame (the wheel, the Zoom tool, a pinch): centre a canvas that fits.
+    if center_fit && center_after_zoom_out(&mut view, frame_zoom, size, rect.size(), ppp, aspect) {
+        ctx.request_repaint();
+    }
+    ctx.data_mut(|d| d.insert_temp(last_zoom_id, view.zoom));
     if primary {
         // Tool input can change the stored camera while navigation edits the local view.
         // Merge changed camera values so write-back preserves tool-driven pan and rotation.
@@ -5180,7 +5216,16 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
             let Some(st) = app.session.active() else { return };
             let size = [st.doc.size.width, st.doc.size.height];
             let doc_rect = xf.doc_rect(st.doc.bounds());
-            let trail = app.trail.get_or_insert_with(|| crate::stroke_trail::Trail::new(size));
+            // The retouching tools change nothing outside the selection: neither does their trail
+            // (Quick Selection's trail is the selection being made, so it isn't clipped).
+            let clip = if t == Tool::QuickSelection { None } else { st.doc.selection.as_ref() };
+            let trail = app.trail.get_or_insert_with(|| {
+                let mut trail = crate::stroke_trail::Trail::new(size);
+                if let Some(sel) = clip {
+                    trail.set_clip(sel);
+                }
+                trail
+            });
             if t == Tool::SpotHealing {
                 // What the heal covers, dab by dab: soft edges, pressure and shape dynamics (#2364).
                 trail.feed_dabs(&d.points, || photocraft_engine::retouch_cmds::stroke_brush(&app.session.tools.brush, &json!({})));
@@ -5310,14 +5355,20 @@ fn alt_eyedropper(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
     }
     match ev {
         // Without ⌥: the sample sets the foreground colour, whatever the Eyedropper would do.
-        ToolEvent::Down { x, y, .. } | ToolEvent::Move { x, y, .. } => sample_eyedropper(app, x, y, egui::Modifiers::NONE),
+        ToolEvent::Down { x, y, .. } => sample_eyedropper(app, x, y, egui::Modifiers::NONE, false),
+        ToolEvent::Move { x, y, .. } => sample_eyedropper(app, x, y, egui::Modifiers::NONE, true),
         ToolEvent::Up { .. } => app.alt_sampling = false,
     }
     true
 }
 
-fn sample_eyedropper(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifiers) {
-    if let Some([r, g, b]) = eyedropper_color(app, x, y) {
+/// Sample at document point (x, y); `dragging` (a press that started on the canvas, moving): off
+/// the image, onto the pasteboard, a panel or another application, the screen's colour under the
+/// pointer is picked, as in Photoshop.
+fn sample_eyedropper(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifiers, dragging: bool) {
+    let on_image = app.session.active().is_some_and(|st| x >= 0.0 && y >= 0.0 && x < f64::from(st.doc.size.width) && y < f64::from(st.doc.size.height));
+    let colour = if on_image || !dragging { eyedropper_color(app, x, y) } else { crate::screen_sample::under_cursor(app.ui.tool_options.eyedropper_size) };
+    if let Some([r, g, b]) = colour {
         let key = if mods.alt { "background" } else { "foreground" };
         let _ = app.run("tools.setColors", json!({ key: [r, g, b, 1.0] }));
     }
@@ -5512,8 +5563,12 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
     let tool = event_tool(app, mods);
     if tool == Tool::Eyedropper {
         match ev {
-            ToolEvent::Down { x, y, .. } | ToolEvent::Move { x, y, .. } => {
-                sample_eyedropper(app, x, y, mods);
+            ToolEvent::Down { x, y, .. } => {
+                sample_eyedropper(app, x, y, mods, false);
+                return;
+            }
+            ToolEvent::Move { x, y, .. } => {
+                sample_eyedropper(app, x, y, mods, true);
                 return;
             }
             ToolEvent::Up { .. } => return,
@@ -8650,6 +8705,37 @@ mod tests {
         let p = pos2(5.0, 5.0);
         let xf = ViewXform { rect, zoom: 1.0, center: [400.0, 300.0], flip: false, rotation: 0.0, aspect: 1.0 };
         assert_eq!(wheel_anchor(&xf, p, [0, 0]), p, "no document: the pointer");
+    }
+
+    /// A user request: zooming out until the canvas fits centres it, as Photoshop does, but only
+    /// on the zoom-out, so it can still be panned; not when it doesn't fit or the view is rotated.
+    #[test]
+    fn zooming_out_to_a_fit_centres_the_canvas_once() {
+        let area = vec2(800.0, 600.0);
+        let size = [1000, 500];
+        let off = [100.0, 40.0];
+        // 0.5: 500 × 250 points fits; from 2.0, a zoom-out.
+        let mut v = View { zoom: 0.5, center: off, ..View::default() };
+        assert!(center_after_zoom_out(&mut v, 2.0, size, area, 1.0, 1.0));
+        assert_eq!(v.center, [500.0, 250.0]);
+        // Panned afterwards at the same zoom: left alone.
+        v.center = off;
+        assert!(!center_after_zoom_out(&mut v, 0.5, size, area, 1.0, 1.0));
+        assert_eq!(v.center, off);
+        // Zooming in, or out to a size that still doesn't fit: no change.
+        let mut v = View { zoom: 1.0, center: off, ..View::default() };
+        assert!(!center_after_zoom_out(&mut v, 0.5, size, area, 1.0, 1.0), "zoom in");
+        assert!(!center_after_zoom_out(&mut v, 2.0, size, area, 1.0, 1.0), "1000 points doesn't fit 800");
+        // On a 2× display 1.0 is 500 points: fits.
+        assert!(center_after_zoom_out(&mut v, 2.0, size, area, 2.0, 1.0));
+        // A rotated view keeps its place; a wide pixel aspect counts.
+        let mut v = View { zoom: 0.5, center: off, rotation: 30.0, ..View::default() };
+        assert!(!center_after_zoom_out(&mut v, 2.0, size, area, 1.0, 1.0));
+        let mut v = View { zoom: 0.5, center: off, ..View::default() };
+        assert!(!center_after_zoom_out(&mut v, 2.0, size, area, 1.0, 2.0), "1000 points wide on screen");
+        // Hostile numbers are refused, not a panic.
+        assert!(!center_after_zoom_out(&mut v, f32::NAN, size, area, f32::NAN, f32::INFINITY));
+        assert!(!center_after_zoom_out(&mut v, 2.0, [0, 0], area, 1.0, 1.0));
     }
 
     #[test]

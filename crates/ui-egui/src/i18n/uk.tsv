@@ -3937,3 +3937,13 @@ curves	Smooth	Згладити
 	AI model not installed	Модель ШІ не встановлено
 	AI model failed to load	Не вдалося завантажити модель ШІ
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Помістіть lama_fp32.onnx і ONNX Runtime (onnxruntime.dll, DirectML.dll) в одну з тек: {folders}. Доти режим «Авто» використовує звичайну заливку.
+	Model:	Модель:
+	LaMa (fast)	LaMa (швидко)
+	Diffusion (detailed)	Дифузія (детально)
+	Prompt (optional)	Підказка (необов'язково)
+	What should be there. Empty: the model's own guess.	Що там має бути. Порожньо: здогадка самої моделі.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Покладіть теку дифузійної моделі та ONNX Runtime в одну з: {folders}. Доти «Авто» використовує LaMa.
+	Generative Fill…	Генеративна заливка…
+	Center Canvas When Zoomed Out	Центрувати полотно під час зменшення
+	High (slower)	Висока (повільніше)
+	Quality:	Якість:

@@ -520,8 +520,11 @@ fn layer_via(s: &mut Session, cut: bool) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let id = active_id(s)?;
     let has_sel = d.doc.selection.is_some();
-    if !has_sel && !cut && crate::layer_multi_cmds::multi(s, &Value::Null) {
-        // No selection, several layers selected: copy every one of them (Photoshop, #2777).
+    // Several layers selected, or a group: there are no single layer's pixels to copy, so every
+    // selected layer (or the group, children and all) is duplicated whole, with or without a
+    // pixel selection, which stays (Photoshop, #2777; a user report for the selection case).
+    let on_group = d.doc.layer(id).is_some_and(Layer::is_group);
+    if !cut && (crate::layer_multi_cmds::multi(s, &Value::Null) || on_group) {
         return crate::layer_multi_cmds::duplicate_selected(s, true, "Layer Via Copy");
     }
     if !has_sel && !cut {
@@ -1668,7 +1671,8 @@ mod tests {
     /// #2777: with several layers selected and no pixel selection, Layer via Copy (Cmd+J) copies
     /// every selected layer in one step, the copies stacked above the topmost original in their
     /// order (Photoshop) and selected.
-    /// With a pixel selection it still copies the active layer's selected pixels only.
+    /// With a pixel selection it duplicates them all too (there is no one layer's pixels to copy),
+    /// and the selection stays.
     #[test]
     fn layer_via_copy_duplicates_every_selected_layer() {
         let mut s = session();
@@ -1694,7 +1698,28 @@ mod tests {
         s.execute("layer.select", json!({"layer": a.0, "mode": "toggle"})).unwrap();
         s.execute("select.rect", json!({"x": 10, "y": 10, "width": 10, "height": 10})).unwrap();
         s.execute("layer.new.layerViaCopy", json!({})).unwrap();
-        assert_eq!(s.active().unwrap().doc.layers.len(), 4, "a pixel selection copies one layer's pixels");
+        let st = s.active().unwrap();
+        assert_eq!(st.doc.layers.len(), 5, "with a pixel selection both layers are duplicated");
+        assert!(st.doc.selection.is_some(), "and the selection stays");
+    }
+
+    /// A user report: with a selection active and a group selected, ⌘J duplicated nothing (a
+    /// group has no pixels of its own). It duplicates the group, its children too.
+    #[test]
+    fn layer_via_copy_of_a_group_with_a_selection_duplicates_the_group() {
+        let mut s = session();
+        let a = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.select", json!({"layer": a.0})).unwrap();
+        s.execute("layer.groupLayers", json!({})).unwrap();
+        let group = s.active().unwrap().active_layer.unwrap();
+        assert!(s.active().unwrap().doc.layer(group).unwrap().is_group());
+        let before = s.active().unwrap().doc.layers.len();
+        s.execute("select.rect", json!({"x": 10, "y": 10, "width": 10, "height": 10})).unwrap();
+        s.execute("layer.new.layerViaCopy", json!({})).unwrap();
+        let st = s.active().unwrap();
+        assert_eq!(st.doc.layers.len(), before * 2 - 1, "the group and its child copied (the background isn't)");
+        assert_eq!(st.doc.layers.iter().filter(|l| l.is_group()).count(), 2);
+        assert!(st.doc.selection.is_some(), "the selection stays");
     }
 
     fn active_content(s: &Session) -> LayerContent {

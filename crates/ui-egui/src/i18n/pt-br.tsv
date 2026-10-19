@@ -4027,3 +4027,13 @@ layerLabel	No Color	Sem cor
 	AI model not installed	Modelo de IA não instalado
 	AI model failed to load	Falha ao carregar o modelo de IA
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Coloque lama_fp32.onnx e o ONNX Runtime (onnxruntime.dll, DirectML.dll) em uma destas pastas: {folders}. Até lá, "Automático" usa o preenchimento comum.
+	Model:	Modelo:
+	LaMa (fast)	LaMa (rápido)
+	Diffusion (detailed)	Difusão (detalhado)
+	Prompt (optional)	Prompt (opcional)
+	What should be there. Empty: the model's own guess.	O que deveria estar ali. Vazio: o palpite do próprio modelo.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Coloque a pasta do modelo de difusão e o ONNX Runtime em uma de: {folders}. Até lá, o Automático usa o LaMa.
+	Generative Fill…	Preenchimento generativo…
+	Center Canvas When Zoomed Out	Centralizar tela ao reduzir o zoom
+	High (slower)	Alta (mais lenta)
+	Quality:	Qualidade:

@@ -4968,6 +4968,7 @@ dependencies = [
  "ort",
  "photocraft-geom",
  "photocraft-raster",
+ "serde_json",
  "thiserror 2.0.21",
 ]
 
@@ -5118,6 +5119,7 @@ dependencies = [
  "toml",
  "unicode-bidi",
  "winsafe",
+ "xcap",
 ]
 
 [[package]]

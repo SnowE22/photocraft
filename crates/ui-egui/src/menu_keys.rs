@@ -1,10 +1,11 @@
-//! The menu bar from the keyboard (#4988), as Photoshop's on Windows: a tap on Alt (or F10)
-//! puts the keyboard on the bar (File lit; ← / → move along it, ↓ / ↩ / Space open the lit menu,
-//! Esc or a click leaves), Alt+letter opens the menu with that mnemonic straight away, and in an
-//! open menu a letter runs the row with that mnemonic (or opens its submenu).
+//! The menu bar from the keyboard (#4988): F10 puts the keyboard on the bar (File lit; ← / →
+//! move along it, ↓ / ↩ / Space open the lit menu, Esc or a click leaves), and in an open menu a
+//! letter runs the row with that mnemonic (or opens its submenu).
 //!
-//! Mnemonics are underlined while Alt is held, the bar is focused or a menu was opened from the
-//! keyboard; a menu opened with the mouse shows none until Alt is pressed, as Windows does.
+//! Alt does nothing here (a user request): it is the eyedropper, duplicate-drag and
+//! subtract-selection modifier on the canvas, and a tap or Alt+letter taking the keyboard to the
+//! menu bar got in the way. Mnemonics are underlined while the bar is focused or a menu was
+//! opened from the keyboard.
 //! They are assigned per menu level from the labels as shown (so translated), unique within
 //! the level: Photoshop's letters for the top menus where the label has them (F E I L Y S T V
 //! W H), else the first unused letter, word starts first. Only ASCII letters and digits are keys
@@ -38,10 +39,6 @@ pub struct Keys {
     pub focus: Option<usize>,
     /// Underline the mnemonics: the bar is focused or a menu was opened from the keyboard.
     pub underline: bool,
-    /// Alt is down (from its key events, whatever the platform reports as modifiers).
-    alt_down: bool,
-    /// Alt went down and nothing else was pressed since: releasing it is a tap.
-    alt_tap: bool,
     /// A menu was just opened from the keyboard: light its first row once it is drawn.
     first_row: bool,
 }
@@ -142,8 +139,8 @@ impl Keys {
     }
 
     /// Underline the mnemonics this frame?
-    pub fn show_underlines(&self, ctx: &egui::Context) -> bool {
-        self.underline || self.focus.is_some() || self.alt_down || ctx.input(|i| i.modifiers.alt)
+    pub fn show_underlines(&self, _ctx: &egui::Context) -> bool {
+        self.underline || self.focus.is_some()
     }
 
     /// A menu just opened from the keyboard: light its first row (once, when it is drawn).
@@ -162,21 +159,6 @@ impl Keys {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
-        let mut tap = false;
-        for e in &events {
-            match e {
-                Event::Key { key: Key::AltLeft | Key::AltRight, pressed: true, .. } => {
-                    self.alt_down = true;
-                    self.alt_tap = true;
-                }
-                Event::Key { key: Key::AltLeft | Key::AltRight, pressed: false, .. } => {
-                    self.alt_down = false;
-                    tap |= std::mem::take(&mut self.alt_tap);
-                }
-                Event::Key { pressed: true, .. } | Event::Text(_) | Event::PointerButton { pressed: true, .. } => self.alt_tap = false,
-                _ => {}
-            }
-        }
         if events.iter().any(|e| matches!(e, Event::PointerButton { pressed: true, .. })) {
             self.focus = None;
             self.underline = false;
@@ -193,19 +175,6 @@ impl Keys {
             }
         };
         let consume = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
-        // Alt+letter opens that menu, open or not (an open one switches), as on Windows.
-        let alt_letter = events.iter().find_map(|e| match e {
-            Event::Key { key, pressed: true, modifiers, .. } if modifiers.alt && !modifiers.command && !modifiers.ctrl => key_char(*key).map(|c| (*key, c)),
-            _ => None,
-        });
-        if let Some((key, c)) = alt_letter
-            && let Some(i) = mnemonics.iter().position(|m| *m == Some(c))
-        {
-            consume(Modifiers::ALT, key);
-            self.alt_tap = false;
-            open_top(i, self);
-            return;
-        }
         if open {
             // A letter runs the row with that mnemonic in the level the arrows are in.
             let letter = events.iter().find_map(|e| match e {
@@ -227,16 +196,10 @@ impl Keys {
                 }
                 ctx.request_repaint();
             }
-            if tap {
-                egui::Popup::close_all(ctx);
-                self.underline = false;
-                ctx.request_repaint();
-            }
             return;
         }
-        // No menu open: Alt (tapped) or F10 puts the keyboard on the bar or takes it off again.
-        let f10 = consume(Modifiers::NONE, Key::F10);
-        if tap || f10 {
+        // No menu open: F10 puts the keyboard on the bar or takes it off again.
+        if consume(Modifiers::NONE, Key::F10) {
             self.focus = if self.focus.is_some() { None } else { Some(0) };
             self.underline = false;
             ctx.request_repaint();
