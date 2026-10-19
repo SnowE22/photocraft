@@ -190,8 +190,10 @@ impl TypesetterUi {
                     .open(&mut open_flag)
                     .default_width(380.0)
                     .default_height(620.0)
-                    .min_width(300.0)
+                    .min_width(320.0)
+                    .max_width(450.0)
                     .min_height(350.0)
+                    .collapsible(false)
                     .resizable(true)
                     .show(&ctx, |ui| {
                         self.render_header_toolbar(ui);
@@ -201,8 +203,9 @@ impl TypesetterUi {
             TypesetterDockMode::DockRight => {
                 egui::Panel::right("typesetter_dock_right")
                     .resizable(true)
-                    .default_size(360.0)
-                    .size_range(280.0..=650.0)
+                    .default_size(340.0)
+                    .size_range(280.0..=450.0)
+                    .frame(egui::Frame::NONE.fill(Color32::from_rgb(26, 28, 34)).inner_margin(Margin::same(6)))
                     .show(ui, |ui| {
                         self.render_dock_title_bar(ui, &mut open_flag);
                         self.render_header_toolbar(ui);
@@ -212,8 +215,9 @@ impl TypesetterUi {
             TypesetterDockMode::DockLeft => {
                 egui::Panel::left("typesetter_dock_left")
                     .resizable(true)
-                    .default_size(360.0)
-                    .size_range(280.0..=650.0)
+                    .default_size(340.0)
+                    .size_range(280.0..=450.0)
+                    .frame(egui::Frame::NONE.fill(Color32::from_rgb(26, 28, 34)).inner_margin(Margin::same(6)))
                     .show(ui, |ui| {
                         self.render_dock_title_bar(ui, &mut open_flag);
                         self.render_header_toolbar(ui);
@@ -223,8 +227,9 @@ impl TypesetterUi {
             TypesetterDockMode::DockBottom => {
                 egui::Panel::bottom("typesetter_dock_bottom")
                     .resizable(true)
-                    .default_size(280.0)
-                    .size_range(180.0..=550.0)
+                    .default_size(240.0)
+                    .size_range(160.0..=340.0)
+                    .frame(egui::Frame::NONE.fill(Color32::from_rgb(26, 28, 34)).inner_margin(Margin::same(6)))
                     .show(ui, |ui| {
                         self.render_dock_title_bar(ui, &mut open_flag);
                         self.render_header_toolbar(ui);
@@ -905,25 +910,25 @@ impl TypesetterUi {
         // --- 1. Папки как вкладки ---
         let folders = self.state.folders();
 
-        ui.horizontal(|ui| {
-            if ui.selectable_label(self.selected_folder.is_none(), "📁 Все").clicked() {
-                self.selected_folder = None;
-            }
-
-            for folder in &folders {
-                let is_sel = self.selected_folder.as_deref() == Some(folder.as_str());
-                if ui.selectable_label(is_sel, format!("📁 {}", folder)).clicked() {
-                    self.selected_folder = Some(folder.clone());
+        ScrollArea::horizontal().auto_shrink([false, false]).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                if ui.selectable_label(self.selected_folder.is_none(), "📁 Все").clicked() {
+                    self.selected_folder = None;
                 }
-            }
 
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                for folder in &folders {
+                    let is_sel = self.selected_folder.as_deref() == Some(folder.as_str());
+                    if ui.selectable_label(is_sel, format!("📁 {}", folder)).clicked() {
+                        self.selected_folder = Some(folder.clone());
+                    }
+                }
+
                 if ui.small_button("➕ Папка").on_hover_text("Создать новую папку стилей").clicked() {
                     self.creating_new_folder = true;
                     self.new_folder_name_buffer = "Новая папка".into();
                 }
                 if let Some(f) = &self.selected_folder {
-                    if ui.small_button("📋 Копия папки").on_hover_text("Дублировать текущую папку").clicked() {
+                    if ui.small_button("📋 Копия").on_hover_text("Дублировать текущую папку").clicked() {
                         self.duplicating_folder = Some(f.clone());
                         self.duplicate_folder_name_buffer = format!("{} (Копия)", f);
                     }
@@ -1000,13 +1005,16 @@ impl TypesetterUi {
         ui.add_space(4.0);
 
         // --- 2. СТИЛИ ШРИФТОВ В ВИДЕ ОТДЕЛЬНЫХ КНОПОК ---
+        let max_content_w = ui.available_width().max(280.0);
         ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+            ui.set_max_width(max_content_w);
             let filter = self.style_filter.to_lowercase();
             let mut to_select = None;
             let mut to_edit = None;
             let active_preset_idx = self.state.selected_preset_idx;
 
             ui.horizontal_wrapped(|ui| {
+                ui.set_max_width(max_content_w);
                 for (idx, preset) in self.state.presets.iter().enumerate() {
                     if let Some(selected_f) = &self.selected_folder {
                         if preset.folder.as_ref() != Some(selected_f) {

@@ -33,6 +33,9 @@ Implement and maintain full feature and visual parity with TypeR (Photoshop CEP 
 - [x] Full text script window with scroll, pagination, search filter, read-ahead counter, and quick-jump
 - [x] Individual font style buttons grid with instant selection and modal typography settings (`⚙`)
 - [x] Panel ordering integration before `CentralPanel` in `PhotocraftApp::ui`
+- [x] Fix styles tab window width expansion bug (bound `Window` width to 450px and wrap button grid within container)
+- [x] Bound dock panel sizes and frame styling to prevent layout conflicts
+- [x] Auto-deselect bubble selection (`select.deselect`) after typesetting for fast sequential workflow
 
 ### Phase 4: Extended Typesetting Workflow (UPCOMING)
 - [ ] Font picker dropdown from system font database in style editor

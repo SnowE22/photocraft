@@ -26,6 +26,9 @@
   - Implemented automatic persistence to `%APPDATA%/Photocraft/typesetter_state.json` (auto-saves on changes, auto-loads on startup)
   - Added full text script reader view (`TypesetterTab::FullText`) and detached window with pagination, search, read-ahead counter, and quick jump
   - Restructured font styles into compact clickable button grid with dedicated `⚙` settings modal
+  - Fixed full-screen window width stretching by constraining `Window` width (max 450px) and wrapping style buttons within container
+  - Added bounded dock panel sizing and frames to prevent panel disappearance/conflicts
+  - Added automatic deselection (`select.deselect`) after typesetting to allow immediate subsequent bubble selections
 
 ### Verification Commands
 - `cargo test -p photocraft-engine --lib typesetter` (9/9 pass)

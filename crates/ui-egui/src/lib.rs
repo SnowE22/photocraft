@@ -1191,6 +1191,8 @@ impl PhotocraftApp {
                     );
                 }
             }
+            // Снимаем активное выделение (Deselect / Ctrl+D), чтобы сразу можно было выделить следующий баббл
+            let _ = self.run("select.deselect", serde_json::json!({}));
         }
     }
 
