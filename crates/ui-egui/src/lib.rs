@@ -2201,6 +2201,7 @@ impl eframe::App for PhotocraftApp {
         if chrome && self.ui.panels.dock {
             panels::right_dock(self, ui);
         }
+        let typesetter_action = self.typesetter.show(ui);
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
@@ -2211,7 +2212,7 @@ impl eframe::App for PhotocraftApp {
         preset_panels::windows(self, &ctx);
         gradient_ui::editor_window(self, &ctx);
         type_panels_ui::windows(self, &ctx);
-        if let Some(action) = self.typesetter.show(&ctx) {
+        if let Some(action) = typesetter_action {
             self.handle_typesetter_action(action);
         }
         analysis_ui::windows(self, &ctx);

@@ -20,6 +20,12 @@
   - Added `autoLeadingPercentage` calculation for leading
   - Handled stroke object (`enabled`, `size`, `color`, `opacity`) without unwanted 2px default stroke
   - Added `test_import_typer_export_json_sample` and `test_import_real_file_if_present` (all 9 unit tests passing)
+- `Phase 3`: `feat(typesetter): dockable interface, auto-persistence, full script window and style buttons grid`
+  - Added Photoshop-like panel docking (`Floating`, `DockRight`, `DockLeft`, `DockBottom`) using `egui::Panel`
+  - Integrated `typesetter.show(ui)` before `CentralPanel` for proper layout space allocation
+  - Implemented automatic persistence to `%APPDATA%/Photocraft/typesetter_state.json` (auto-saves on changes, auto-loads on startup)
+  - Added full text script reader view (`TypesetterTab::FullText`) and detached window with pagination, search, read-ahead counter, and quick jump
+  - Restructured font styles into compact clickable button grid with dedicated `⚙` settings modal
 
 ### Verification Commands
 - `cargo test -p photocraft-engine --lib typesetter` (9/9 pass)

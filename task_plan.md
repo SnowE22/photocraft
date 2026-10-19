@@ -27,8 +27,15 @@ Implement and maintain full feature and visual parity with TypeR (Photoshop CEP 
 - [x] Pass real family, `fontStyle`, `weight`, `fauxBold`, `fauxItalic`, and `postscriptName` to `type.create`
 - [x] Commit & push `e9d4825e`
 
-### Phase 3: UX & Workflow Enhancements (UPCOMING / IN PROGRESS)
-- [ ] Font picker integration / dropdown with system fonts in style editor
+### Phase 3: Photoshop Docking, Auto-Persistence & Enhanced Script Navigation (COMPLETED)
+- [x] Dockable panel layout: `Floating`, `DockRight`, `DockLeft`, `DockBottom` using `egui::Panel`
+- [x] Auto-persistence of presets, active script, queue position, options, and dock mode (`%APPDATA%/Photocraft/typesetter_state.json`)
+- [x] Full text script window with scroll, pagination, search filter, read-ahead counter, and quick-jump
+- [x] Individual font style buttons grid with instant selection and modal typography settings (`⚙`)
+- [x] Panel ordering integration before `CentralPanel` in `PhotocraftApp::ui`
+
+### Phase 4: Extended Typesetting Workflow (UPCOMING)
+- [ ] Font picker dropdown from system font database in style editor
 - [ ] Direct text replacement / queue advancement hotkeys (Ctrl+Enter / F4)
 - [ ] Batch bubble assignment and selection bounds auto-positioning verification
 - [ ] Localization and i18n support for typesetter UI (RU / EN)
