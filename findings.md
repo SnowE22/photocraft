@@ -32,3 +32,9 @@
 - **Leading / Auto Leading**:
   - In TypeR exports, `leading` is often omitted in `textStyleRange`. Instead, `autoLeadingPercentage: 1.2` is in `paragraphStyleRange`.
   - Formula: `leading = (font_size * autoLeadingPercentage).round()`.
+
+## 4. Windows rustc Compilation Quirks
+- **`STATUS_ACCESS_VIOLATION` (`0xc0000005`)**:
+  - Occurs on Windows when `rustc.exe` crashes due to corrupted `target/debug/incremental` cache, file locks from antivirus / background `cargo check` (rust-analyzer), or memory limits during heavy multi-crate parallel compilation.
+  - Solution: Re-running `cargo build -p photocraft` or clearing the incremental cache (`Remove-Item -Recurse target\debug\incremental`) resolves it cleanly.
+
