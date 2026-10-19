@@ -4166,3 +4166,25 @@ cameraRaw	Yellow	Sárga
 	Center Canvas When Zoomed Out	Vászon középre igazítása kicsinyítéskor
 	High (slower)	Magas (lassabb)
 	Quality:	Minőség:
+	There is no such Topaz Gigapixel preset	Nincs ilyen Topaz Gigapixel-készlet
+	Saved Topaz Gigapixel preset “{name}”	„{name}” Topaz Gigapixel-készlet mentve
+	New Preset	Új készlet
+	Upscale:	Felskálázás:
+	With these settings	Ezekkel a beállításokkal
+	With two presets	Két készlettel
+	Save two presets with their own settings first; then this one can run them together.	Előbb mentsen két saját beállítású készletet; ez aztán együtt futtatja őket.
+	First:	Először:
+	Then:	Majd:
+	Results:	Eredmények:
+	One after the other	Egymás után
+	Each on its own layer	Mindegyik külön rétegen
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Mindkét készlet felskálázza a képet; mindegyik eredmény egy réteg lesz, összehasonlításhoz vagy keveréshez.
+	The second preset upscales the first one's result.	A második készlet az első eredményét skálázza fel.
+	Topaz Gigapixel Presets	Topaz Gigapixel-készletek
+	Manage Presets…	Készletek kezelése…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Mentett készletet a Fájl › Automatizálás › Topaz Gigapixel-készletek menüből futtathat.
+	Auto lets Gigapixel choose.	Az Automatikus a Gigapixelre bízza a választást.
+	Denoise:	Zajcsökkentés:
+	Sharpen:	Élesítés:
+	Fix Compression:	Tömörítés javítása:
+	Face Recovery:	Arc-helyreállítás:

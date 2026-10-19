@@ -176,3 +176,197 @@ fn only_rgb_and_gray_8_and_16_bit_documents_go() {
     assert_eq!(safe_stem("My photo: v2?.psd"), "My photo v2");
     assert_eq!(safe_stem("***"), "image");
 }
+
+/// A stand-in for Gigapixel's command-line tool in `dir`: it copies its input (`-i`) into its
+/// output folder (`-o`) and appends its arguments to `dir/args.txt`.
+fn fake_cli(dir: &Path) -> PathBuf {
+    script(
+        dir,
+        "fake-gigapixel",
+        "@echo off\r\nmkdir \"%~4\"\r\ncopy /y \"%~2\" \"%~4\\\" >nul\r\necho %* >> \"%~dp0args.txt\"\r\n",
+        "#!/bin/sh\nmkdir -p \"$4\"\ncp \"$2\" \"$4/\"\necho \"$@\" >> \"$(dirname \"$0\")/args.txt\"\n",
+    )
+}
+
+/// An executable script in `dir`: `windows` as a `.cmd` file there, `unix` elsewhere.
+fn script(dir: &Path, name: &str, windows: &str, unix: &str) -> PathBuf {
+    if cfg!(windows) {
+        let p = dir.join(format!("{name}.cmd"));
+        std::fs::write(&p, windows).unwrap();
+        p
+    } else {
+        let p = dir.join(name);
+        std::fs::write(&p, unix).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        p
+    }
+}
+
+/// The runs the stand-in saw, one line of arguments each.
+fn runs(dir: &Path) -> Vec<String> {
+    std::fs::read_to_string(dir.join("args.txt")).unwrap_or_default().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+}
+
+fn save_preset(s: &mut Session, name: &str, settings: Value) -> Result<Value> {
+    s.execute(presets::SAVE_ID, json!({"name": name, "settings": settings}))
+}
+
+#[test]
+fn presets_are_saved_checked_renamed_and_deleted() {
+    let mut s = Session::new();
+    save_preset(&mut s, "Faces 2x", json!({"model": "std", "scale": 2, "faceRecovery": 60, "denoise": null})).unwrap();
+    save_preset(&mut s, "Art 4x", json!({"model": "art", "scale": 4})).unwrap();
+    save_preset(&mut s, "Both", json!({"presets": ["Faces 2x", "art 4X"], "combine": "layers"})).unwrap();
+    let list = s.execute(presets::LIST_ID, json!({})).unwrap();
+    assert_eq!(list["presets"][0], json!({"name": "Faces 2x", "settings": {"model": "std", "scale": 2, "faceRecovery": 60}}), "nulls dropped");
+    assert_eq!(list["presets"][2]["settings"], json!({"presets": ["Faces 2x", "art 4X"], "combine": "layers"}));
+    // Overwriting by name keeps the place.
+    save_preset(&mut s, "faces 2X", json!({"model": "std", "scale": 3})).unwrap();
+    assert_eq!(s.presets.gigapixel_presets[0].settings["scale"], json!(3));
+    assert_eq!(s.presets.gigapixel_presets.len(), 3);
+    for (name, bad) in [
+        ("x", json!({})),
+        ("x", json!({"scale": 0})),
+        ("x", json!({"scale": 2, "colour": 1})),
+        ("x", json!({"presets": ["Faces 2x"]})),
+        ("x", json!({"presets": ["Faces 2x", "Missing"]})),
+        ("x", json!({"presets": ["Faces 2x", "Both"]})),
+        ("x", json!({"presets": ["Faces 2x", "Art 4x"], "combine": "blend"})),
+        ("x", json!({"presets": ["Faces 2x", "Art 4x"], "scale": 2})),
+        ("x", json!({"presets": "Faces 2x"})),
+        ("x", json!({"presets": [1, 2]})),
+        ("Self", json!({"presets": ["Self", "Art 4x"]})),
+        ("  ", json!({"scale": 2})),
+        ("x", json!([1])),
+    ] {
+        assert!(save_preset(&mut s, name, bad.clone()).is_err(), "{name}: {bad}");
+    }
+    // A preset others combine stays one upscale.
+    assert!(save_preset(&mut s, "Art 4x", json!({"presets": ["Faces 2x", "Faces 2x"]})).is_err());
+    // Renaming follows into the presets combining it; renaming onto another name is refused.
+    s.execute(presets::SAVE_ID, json!({"name": "Painting 4x", "settings": {"model": "art", "scale": 4}, "replace": "art 4x"})).unwrap();
+    assert_eq!(s.presets.gigapixel_presets[1].name, "Painting 4x");
+    assert_eq!(s.presets.gigapixel_presets[2].settings["presets"], json!(["Faces 2x", "Painting 4x"]));
+    assert!(s.execute(presets::SAVE_ID, json!({"name": "Both", "settings": {"scale": 2}, "replace": "Painting 4x"})).is_err());
+    assert!(s.execute(presets::SAVE_ID, json!({"name": "New", "settings": {"scale": 2}, "replace": "Nothing"})).is_err());
+    // They persist with the other presets, and a damaged entry drops alone.
+    let mut saved = s.presets.to_json(&s);
+    saved["gigapixel_presets"].as_array_mut().unwrap().push(json!({"name": "Bad", "settings": {"scale": 99}}));
+    let mut t = Session::new();
+    t.load_presets_json(saved);
+    assert_eq!(t.presets.gigapixel_presets, s.presets.gigapixel_presets);
+    s.execute(presets::DELETE_ID, json!({"name": "both"})).unwrap();
+    assert!(s.execute(presets::DELETE_ID, json!({"name": "both"})).is_err());
+    assert!(s.execute(presets::DELETE_ID, json!({})).is_err());
+    assert_eq!(s.presets.gigapixel_presets.len(), 2);
+}
+
+/// Unknown presets and bad combinations fail before anything is exported or started.
+#[test]
+fn bad_preset_runs_fail_first() {
+    let mut s = Session::new();
+    red_document(&mut s);
+    save_preset(&mut s, "A", json!({"scale": 2})).unwrap();
+    save_preset(&mut s, "B", json!({"scale": 2})).unwrap();
+    save_preset(&mut s, "AB", json!({"presets": ["A", "B"]})).unwrap();
+    for bad in [
+        json!({"preset": "Nope"}),
+        json!({"preset": 3}),
+        json!({"presets": []}),
+        json!({"presets": ["A", "Nope"]}),
+        json!({"presets": ["A", "AB"]}),
+        json!({"presets": ["A", "B", "A", "B", "A"]}),
+        json!({"presets": ["A", 2]}),
+        json!({"presets": "A"}),
+        json!({"presets": ["A", "B"], "combine": "stack"}),
+    ] {
+        let e = run(&mut s, &bad).unwrap_err().to_string();
+        assert!(!e.contains("disabled"), "{bad}: {e}");
+    }
+}
+
+/// A preset runs Gigapixel's command-line tool with its settings; two presets either chain (the
+/// second upscales the first's result: one layer) or each make a layer.
+#[test]
+fn presets_run_one_after_the_other_or_side_by_side() {
+    let dir = temp_dir("fake-cli");
+    let cli = fake_cli(&dir);
+    FAKE_CLI.with(|f| *f.borrow_mut() = Some(cli));
+    let mut s = Session::new();
+    red_document(&mut s);
+    save_preset(&mut s, "Faces", json!({"model": "std", "scale": 2, "faceRecovery": 60})).unwrap();
+    save_preset(&mut s, "Art", json!({"model": "art", "width": 4000})).unwrap();
+    save_preset(&mut s, "Faces then Art", json!({"presets": ["Faces", "Art"]})).unwrap();
+
+    let r = s.execute(ID, json!({"preset": "faces"})).unwrap();
+    assert_eq!(r["presets"], json!(["Faces"]));
+    let calls = runs(&dir);
+    assert_eq!(calls.len(), 1);
+    assert!(calls[0].contains("-m std --mv 2 --scale 2 --fr 60"), "{}", calls[0]);
+    let st = s.active().unwrap();
+    assert_eq!(st.doc.layers.last().unwrap().name, format!("{LAYER_NAME} (Faces)"));
+    assert_eq!(st.history.undo_label(), Some(LABEL));
+
+    let before = s.active().unwrap().doc.layers.len();
+    s.execute(ID, json!({"preset": "Faces then Art"})).unwrap();
+    let calls = runs(&dir);
+    assert_eq!(calls.len(), 3);
+    assert!(calls[1].contains("-m std") && calls[2].contains("-m art --width 4000"), "{calls:?}");
+    assert!(calls[2].contains("step1"), "the second run reads the first one's result: {}", calls[2]);
+    let st = s.active().unwrap();
+    assert_eq!(st.doc.layers.len(), before + 1, "one result");
+    assert_eq!(st.doc.layers.last().unwrap().name, format!("{LAYER_NAME} (Faces → Art)"));
+
+    let before = st.doc.layers.len();
+    let r = s.execute(ID, json!({"presets": ["Faces", "Art"], "combine": "layers"})).unwrap();
+    assert_eq!(r["layers"].as_array().map(Vec::len), Some(2));
+    let calls = runs(&dir);
+    assert_eq!(calls.len(), 5);
+    assert!(!calls[4].contains("step1"), "each reads the image: {}", calls[4]);
+    let st = s.active().unwrap();
+    let names: Vec<&str> = st.doc.layers.iter().skip(before).map(|l| l.name.as_str()).collect();
+    assert_eq!(names.len(), 2);
+    assert!(names.contains(&format!("{LAYER_NAME} (Faces)").as_str()) && names.contains(&format!("{LAYER_NAME} (Art)").as_str()), "{names:?}");
+    FAKE_CLI.with(|f| *f.borrow_mut() = None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A tool that makes no image is an error naming what it said; the document is unchanged and
+/// the work folder is removed.
+#[test]
+fn a_run_that_makes_nothing_is_an_error() {
+    let dir = temp_dir("fake-cli-fails");
+    let cli = script(&dir, "fails", "@echo off\r\necho \"Could not load model\"\r\nexit /b 1\r\n", "#!/bin/sh\necho '\"Could not load model\"'\nexit 1\n");
+    FAKE_CLI.with(|f| *f.borrow_mut() = Some(cli));
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 8, "height": 8, "name": "fails-test"})).unwrap();
+    let layers = s.active().unwrap().doc.layers.len();
+    let e = s.execute(ID, json!({"scale": 2})).unwrap_err().to_string();
+    assert!(e.contains("made no image") && e.contains("Could not load model"), "{e}");
+    assert_eq!(s.active().unwrap().doc.layers.len(), layers);
+    let base = std::env::temp_dir().join("PhotoCraft").join("Gigapixel");
+    let left: Vec<String> = std::fs::read_dir(&base).map(|d| d.flatten().map(|e| e.file_name().to_string_lossy().into_owned()).collect()).unwrap_or_default();
+    assert!(!left.iter().any(|n| n.starts_with("fails-test")), "{left:?}");
+    FAKE_CLI.with(|f| *f.borrow_mut() = None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// With the real Gigapixel installed: two presets chained, then side by side, on a small image.
+/// `cargo test -p photocraft-engine --lib gigapixel_cmds::tests::real_gigapixel -- --ignored`
+#[test]
+#[ignore = "needs Topaz Gigapixel AI with its command-line tool"]
+fn real_gigapixel_chains_two_presets() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    s.execute("edit.fill", json!({"contents": "color", "color": "#3080c0"})).unwrap();
+    save_preset(&mut s, "Std 2x", json!({"model": "std", "scale": 2})).unwrap();
+    save_preset(&mut s, "Art 2x", json!({"model": "art", "scale": 2})).unwrap();
+    let r = s.execute(ID, json!({"presets": ["Std 2x", "Art 2x"], "combine": "chain"})).unwrap();
+    assert_eq!((r["width"].as_u64(), r["height"].as_u64()), (Some(256), Some(192)), "{r}");
+    let r = s.execute(ID, json!({"presets": ["Std 2x", "Art 2x"], "combine": "layers"})).unwrap();
+    assert_eq!(r["layers"].as_array().map(Vec::len), Some(2), "{r}");
+}

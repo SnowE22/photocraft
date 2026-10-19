@@ -3977,3 +3977,25 @@ cameraData	Lens	Lens
 	Center Canvas When Zoomed Out	Uzaklaştırınca Tuvali Ortala
 	High (slower)	Yüksek (daha yavaş)
 	Quality:	Kalite:
+	There is no such Topaz Gigapixel preset	Böyle bir Topaz Gigapixel hazır ayarı yok
+	Saved Topaz Gigapixel preset “{name}”	“{name}” Topaz Gigapixel hazır ayarı kaydedildi
+	New Preset	Yeni Hazır Ayar
+	Upscale:	Büyütme:
+	With these settings	Bu ayarlarla
+	With two presets	İki hazır ayarla
+	Save two presets with their own settings first; then this one can run them together.	Önce kendi ayarları olan iki hazır ayar kaydedin; bu hazır ayar ardından ikisini birlikte çalıştırabilir.
+	First:	Önce:
+	Then:	Sonra:
+	Results:	Sonuçlar:
+	One after the other	Art arda
+	Each on its own layer	Her biri kendi katmanında
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	İki hazır ayar da görüntüyü büyütür; her sonuç karşılaştırmak veya karıştırmak için bir katman olur.
+	The second preset upscales the first one's result.	İkinci hazır ayar, ilkinin sonucunu büyütür.
+	Topaz Gigapixel Presets	Topaz Gigapixel Hazır Ayarları
+	Manage Presets…	Hazır Ayarları Yönet…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Kayıtlı bir hazır ayarı Dosya › Otomatikleştir › Topaz Gigapixel Hazır Ayarları menüsünden çalıştırın.
+	Auto lets Gigapixel choose.	Otomatik, seçimi Gigapixel'e bırakır.
+	Denoise:	Gürültü Giderme:
+	Sharpen:	Keskinleştir:
+	Fix Compression:	Sıkıştırmayı Düzelt:
+	Face Recovery:	Yüz Kurtarma:

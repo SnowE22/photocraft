@@ -3240,3 +3240,25 @@ curves	Smooth	Haluskan
 	Center Canvas When Zoomed Out	Tengahkan Kanvas Saat Diperkecil
 	High (slower)	Tinggi (lebih lambat)
 	Quality:	Kualitas:
+	There is no such Topaz Gigapixel preset	Prasetel Topaz Gigapixel itu tidak ada
+	Saved Topaz Gigapixel preset “{name}”	Prasetel Topaz Gigapixel “{name}” disimpan
+	New Preset	Prasetel Baru
+	Upscale:	Perbesar:
+	With these settings	Dengan pengaturan ini
+	With two presets	Dengan dua prasetel
+	Save two presets with their own settings first; then this one can run them together.	Simpan dua prasetel dengan pengaturannya sendiri terlebih dahulu; lalu prasetel ini dapat menjalankan keduanya bersama.
+	First:	Pertama:
+	Then:	Lalu:
+	Results:	Hasil:
+	One after the other	Satu demi satu
+	Each on its own layer	Masing-masing di lapisannya sendiri
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Kedua prasetel memperbesar gambar; setiap hasil menjadi lapisan, untuk dibandingkan atau dipadukan.
+	The second preset upscales the first one's result.	Prasetel kedua memperbesar hasil prasetel pertama.
+	Topaz Gigapixel Presets	Prasetel Topaz Gigapixel
+	Manage Presets…	Kelola Prasetel…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Jalankan prasetel tersimpan dari Berkas › Otomatisasi › Prasetel Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Otomatis membiarkan Gigapixel memilih.
+	Denoise:	Kurangi Noise:
+	Sharpen:	Pertajam:
+	Fix Compression:	Perbaiki Kompresi:
+	Face Recovery:	Pemulihan Wajah:

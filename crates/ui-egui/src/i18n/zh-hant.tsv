@@ -2850,3 +2850,25 @@ curves	Smooth	平滑
 	Center Canvas When Zoomed Out	縮小時將畫布置中
 	High (slower)	高 (較慢)
 	Quality:	品質:
+	There is no such Topaz Gigapixel preset	沒有這個 Topaz Gigapixel 預設集
+	Saved Topaz Gigapixel preset “{name}”	已儲存 Topaz Gigapixel 預設集「{name}」
+	New Preset	新增預設集
+	Upscale:	放大:
+	With these settings	使用這些設定
+	With two presets	使用兩個預設集
+	Save two presets with their own settings first; then this one can run them together.	請先儲存兩個具有各自設定的預設集；然後此預設集即可將它們一起執行。
+	First:	首先:
+	Then:	然後:
+	Results:	結果:
+	One after the other	依序
+	Each on its own layer	各自位於單獨圖層
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	兩個預設集都會放大影像；每個結果成為一個圖層，便於比較或混合。
+	The second preset upscales the first one's result.	第二個預設集放大第一個預設集的結果。
+	Topaz Gigapixel Presets	Topaz Gigapixel 預設集
+	Manage Presets…	管理預設集…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	從「檔案 › 自動 › Topaz Gigapixel 預設集」執行儲存的預設集。
+	Auto lets Gigapixel choose.	選擇「自動」時由 Gigapixel 決定。
+	Denoise:	降噪：
+	Sharpen:	銳利化：
+	Fix Compression:	修正壓縮：
+	Face Recovery:	臉部復原：

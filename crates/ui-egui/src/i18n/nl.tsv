@@ -4007,3 +4007,25 @@ curves	Smooth	Vloeiend maken
 	Center Canvas When Zoomed Out	Canvas centreren bij uitzoomen
 	High (slower)	Hoog (langzamer)
 	Quality:	Kwaliteit:
+	There is no such Topaz Gigapixel preset	Deze Topaz Gigapixel-voorinstelling bestaat niet
+	Saved Topaz Gigapixel preset “{name}”	Topaz Gigapixel-voorinstelling ‘{name}’ opgeslagen
+	New Preset	Nieuwe voorinstelling
+	Upscale:	Opschalen:
+	With these settings	Met deze instellingen
+	With two presets	Met twee voorinstellingen
+	Save two presets with their own settings first; then this one can run them together.	Sla eerst twee voorinstellingen met eigen instellingen op; deze kan ze daarna samen uitvoeren.
+	First:	Eerst:
+	Then:	Daarna:
+	Results:	Resultaten:
+	One after the other	Na elkaar
+	Each on its own layer	Elk op een eigen laag
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Beide voorinstellingen schalen de afbeelding op; elk resultaat wordt een laag, om te vergelijken of te mengen.
+	The second preset upscales the first one's result.	De tweede voorinstelling schaalt het resultaat van de eerste op.
+	Topaz Gigapixel Presets	Topaz Gigapixel-voorinstellingen
+	Manage Presets…	Voorinstellingen beheren…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Voer een opgeslagen voorinstelling uit via Bestand › Automatiseren › Topaz Gigapixel-voorinstellingen.
+	Auto lets Gigapixel choose.	Automatisch laat Gigapixel kiezen.
+	Denoise:	Ruis verwijderen:
+	Sharpen:	Verscherpen:
+	Fix Compression:	Compressie herstellen:
+	Face Recovery:	Gezichtsherstel:

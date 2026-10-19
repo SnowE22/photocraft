@@ -3924,3 +3924,25 @@ curves	Smooth	スムーズ
 	Center Canvas When Zoomed Out	ズームアウト時にカンバスを中央に配置
 	High (slower)	高 (低速)
 	Quality:	画質:
+	There is no such Topaz Gigapixel preset	その Topaz Gigapixel プリセットはありません
+	Saved Topaz Gigapixel preset “{name}”	Topaz Gigapixel プリセット「{name}」を保存しました
+	New Preset	新規プリセット
+	Upscale:	アップスケール:
+	With these settings	この設定で
+	With two presets	2 つのプリセットで
+	Save two presets with their own settings first; then this one can run them together.	まず独自の設定を持つプリセットを 2 つ保存してください。このプリセットでそれらをまとめて実行できます。
+	First:	最初:
+	Then:	次に:
+	Results:	結果:
+	One after the other	順番に
+	Each on its own layer	それぞれ別のレイヤーに
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	両方のプリセットで画像をアップスケールし、それぞれの結果をレイヤーにします (比較や合成用)。
+	The second preset upscales the first one's result.	2 つ目のプリセットで 1 つ目の結果をアップスケールします。
+	Topaz Gigapixel Presets	Topaz Gigapixel プリセット
+	Manage Presets…	プリセットを管理…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	保存したプリセットは ファイル › 自動処理 › Topaz Gigapixel プリセット から実行します。
+	Auto lets Gigapixel choose.	自動にすると Gigapixel が決めます。
+	Denoise:	ノイズ除去:
+	Sharpen:	シャープ:
+	Fix Compression:	圧縮を修正:
+	Face Recovery:	顔の復元:

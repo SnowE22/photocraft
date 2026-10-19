@@ -1008,6 +1008,16 @@ pub fn center_after_zoom_out(view: &mut View, before: f32, size: [u32; 2], area:
     moved
 }
 
+/// A view set as it is (a zoom and centre from the control channel): the next frame must not
+/// read the new zoom as a zoom-out and centre it ([`center_after_zoom_out`]).
+pub fn keep_view_as_set(ctx: &egui::Context, idx: usize, zoom: f32) {
+    ctx.data_mut(|d| {
+        for primary in [true, false] {
+            d.insert_temp(egui::Id::new(("pc-canvas-last-zoom", primary, idx)), zoom);
+        }
+    });
+}
+
 /// Fit the document into `area` (egui points) for a display with `ppp` physical pixels per
 /// point; `View::zoom` is stored in physical pixels per document pixel. `aspect` is the
 /// displayed pixel aspect ratio ([`ViewXform::aspect`]): the image is that much wider on screen.

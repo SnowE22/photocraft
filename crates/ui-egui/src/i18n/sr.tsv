@@ -4310,13 +4310,35 @@ shape	Appearance	Izgled
 	AI model not installed	AI model nije instaliran
 	AI model failed to load	Učitavanje AI modela nije uspelo
 	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Stavite lama_fp32.onnx i ONNX Runtime (onnxruntime.dll, DirectML.dll) u jednu od fascikli: {folders}. Do tada „Automatski“ koristi uobičajenu popunu.
-	Model:	Модел:
-	LaMa (fast)	LaMa (брзо)
-	Diffusion (detailed)	Дифузија (детаљно)
-	Prompt (optional)	Упутство (необавезно)
-	What should be there. Empty: the model's own guess.	Шта треба да буде ту. Празно: процена самог модела.
-	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Ставите фасциклу дифузионог модела и ONNX Runtime у једну од: {folders}. Дотле Аутоматски користи LaMa.
-	Generative Fill…	Генеративна попуна…
-	Center Canvas When Zoomed Out	Центрирај платно при умањењу
-	High (slower)	Висок (спорије)
-	Quality:	Квалитет:
+	Model:	Model:
+	LaMa (fast)	LaMa (brzo)
+	Diffusion (detailed)	Difuzija (detaljno)
+	Prompt (optional)	Uputstvo (neobavezno)
+	What should be there. Empty: the model's own guess.	Šta treba da bude tu. Prazno: procena samog modela.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Stavite fasciklu difuzionog modela i ONNX Runtime u jednu od: {folders}. Dotle Automatski koristi LaMa.
+	Generative Fill…	Generativna popuna…
+	Center Canvas When Zoomed Out	Centriraj platno pri umanjenju
+	High (slower)	Visok (sporije)
+	Quality:	Kvalitet:
+	There is no such Topaz Gigapixel preset	Takva Topaz Gigapixel postavka ne postoji
+	Saved Topaz Gigapixel preset “{name}”	Topaz Gigapixel postavka „{name}” je sačuvana
+	New Preset	Nova postavka
+	Upscale:	Uvećanje:
+	With these settings	Sa ovim podešavanjima
+	With two presets	Sa dve postavke
+	Save two presets with their own settings first; then this one can run them together.	Prvo sačuvajte dve postavke sa sopstvenim podešavanjima; ova ih onda može pokrenuti zajedno.
+	First:	Prvo:
+	Then:	Zatim:
+	Results:	Rezultati:
+	One after the other	Jedan za drugim
+	Each on its own layer	Svaki na svom sloju
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Obe postavke uvećavaju sliku; svaki rezultat postaje sloj, za poređenje ili stapanje.
+	The second preset upscales the first one's result.	Druga postavka uvećava rezultat prve.
+	Topaz Gigapixel Presets	Topaz Gigapixel postavke
+	Manage Presets…	Upravljaj postavkama…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Sačuvanu postavku pokrenite iz Datoteka › Automatizacija › Topaz Gigapixel postavke.
+	Auto lets Gigapixel choose.	Automatski prepušta izbor Gigapixelu.
+	Denoise:	Uklanjanje šuma:
+	Sharpen:	Izoštravanje:
+	Fix Compression:	Ispravi kompresiju:
+	Face Recovery:	Oporavak lica:

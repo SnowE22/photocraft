@@ -3253,3 +3253,25 @@ curves	Smooth	Lisser
 	Center Canvas When Zoomed Out	Centrer la zone de travail en zoom arrière
 	High (slower)	Élevée (plus lente)
 	Quality:	Qualité :
+	There is no such Topaz Gigapixel preset	Ce paramètre prédéfini Topaz Gigapixel n’existe pas
+	Saved Topaz Gigapixel preset “{name}”	Paramètre prédéfini Topaz Gigapixel « {name} » enregistré
+	New Preset	Nouveau paramètre prédéfini
+	Upscale:	Agrandissement :
+	With these settings	Avec ces paramètres
+	With two presets	Avec deux paramètres prédéfinis
+	Save two presets with their own settings first; then this one can run them together.	Enregistrez d’abord deux paramètres prédéfinis avec leurs propres réglages ; celui-ci pourra ensuite les exécuter ensemble.
+	First:	D’abord :
+	Then:	Puis :
+	Results:	Résultats :
+	One after the other	L’un après l’autre
+	Each on its own layer	Chacun sur son propre calque
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Les deux paramètres prédéfinis agrandissent l’image ; chaque résultat devient un calque, à comparer ou à fusionner.
+	The second preset upscales the first one's result.	Le second paramètre prédéfini agrandit le résultat du premier.
+	Topaz Gigapixel Presets	Paramètres prédéfinis Topaz Gigapixel
+	Manage Presets…	Gérer les paramètres prédéfinis…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Exécutez un paramètre enregistré depuis Fichier › Automatisation › Paramètres prédéfinis Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Auto laisse Gigapixel choisir.
+	Denoise:	Débruitage :
+	Sharpen:	Netteté :
+	Fix Compression:	Corriger la compression :
+	Face Recovery:	Restauration des visages :

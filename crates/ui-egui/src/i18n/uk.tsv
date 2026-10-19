@@ -3947,3 +3947,25 @@ curves	Smooth	Згладити
 	Center Canvas When Zoomed Out	Центрувати полотно під час зменшення
 	High (slower)	Висока (повільніше)
 	Quality:	Якість:
+	There is no such Topaz Gigapixel preset	Такого набору Topaz Gigapixel немає
+	Saved Topaz Gigapixel preset “{name}”	Набір Topaz Gigapixel «{name}» збережено
+	New Preset	Новий набір
+	Upscale:	Збільшення:
+	With these settings	З цими параметрами
+	With two presets	Двома наборами
+	Save two presets with their own settings first; then this one can run them together.	Спершу збережіть два набори з власними параметрами; потім цей набір зможе запускати їх разом.
+	First:	Спершу:
+	Then:	Потім:
+	Results:	Результати:
+	One after the other	Один за одним
+	Each on its own layer	Кожен на власному шарі
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Обидва набори збільшують зображення; кожен результат стає шаром для порівняння чи змішування.
+	The second preset upscales the first one's result.	Другий набір збільшує результат першого.
+	Topaz Gigapixel Presets	Набори Topaz Gigapixel
+	Manage Presets…	Керування наборами…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Збережений набір запускається з меню Файл › Автоматизація › Набори Topaz Gigapixel.
+	Auto lets Gigapixel choose.	«Авто» залишає вибір за Gigapixel.
+	Denoise:	Шумозаглушення:
+	Sharpen:	Різкість:
+	Fix Compression:	Виправити стиснення:
+	Face Recovery:	Відновлення облич:

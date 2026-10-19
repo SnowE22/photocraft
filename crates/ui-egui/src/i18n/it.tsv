@@ -4368,3 +4368,25 @@ shape	Appearance	Aspetto
 	Center Canvas When Zoomed Out	Centra quadro quando si riduce lo zoom
 	High (slower)	Alta (più lenta)
 	Quality:	Qualità:
+	There is no such Topaz Gigapixel preset	Questo predefinito Topaz Gigapixel non esiste
+	Saved Topaz Gigapixel preset “{name}”	Predefinito Topaz Gigapixel “{name}” salvato
+	New Preset	Nuovo predefinito
+	Upscale:	Ingrandimento:
+	With these settings	Con queste impostazioni
+	With two presets	Con due predefiniti
+	Save two presets with their own settings first; then this one can run them together.	Salva prima due predefiniti con impostazioni proprie; poi questo potrà eseguirli insieme.
+	First:	Prima:
+	Then:	Poi:
+	Results:	Risultati:
+	One after the other	Uno dopo l’altro
+	Each on its own layer	Ciascuno sul proprio livello
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Entrambi i predefiniti ingrandiscono l’immagine; ogni risultato diventa un livello, da confrontare o fondere.
+	The second preset upscales the first one's result.	Il secondo predefinito ingrandisce il risultato del primo.
+	Topaz Gigapixel Presets	Predefiniti Topaz Gigapixel
+	Manage Presets…	Gestisci predefiniti…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Esegui un predefinito salvato da File › Automatizza › Predefiniti Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Automatico lascia scegliere a Gigapixel.
+	Denoise:	Riduzione rumore:
+	Sharpen:	Contrasta:
+	Fix Compression:	Correggi compressione:
+	Face Recovery:	Recupero volti:

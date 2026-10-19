@@ -3427,3 +3427,25 @@ curves	Smooth	매끄럽게
 	Center Canvas When Zoomed Out	축소 시 캔버스 가운데 정렬
 	High (slower)	높음 (느림)
 	Quality:	품질:
+	There is no such Topaz Gigapixel preset	해당 Topaz Gigapixel 사전 설정이 없습니다
+	Saved Topaz Gigapixel preset “{name}”	Topaz Gigapixel 사전 설정 “{name}” 저장됨
+	New Preset	새 사전 설정
+	Upscale:	업스케일:
+	With these settings	이 설정으로
+	With two presets	두 사전 설정으로
+	Save two presets with their own settings first; then this one can run them together.	먼저 자체 설정이 있는 사전 설정 두 개를 저장하십시오. 그러면 이 사전 설정이 둘을 함께 실행합니다.
+	First:	먼저:
+	Then:	그다음:
+	Results:	결과:
+	One after the other	차례로
+	Each on its own layer	각각 별도 레이어에
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	두 사전 설정이 모두 이미지를 업스케일하며 각 결과는 비교하거나 혼합할 수 있도록 레이어가 됩니다.
+	The second preset upscales the first one's result.	두 번째 사전 설정이 첫 번째 결과를 업스케일합니다.
+	Topaz Gigapixel Presets	Topaz Gigapixel 사전 설정
+	Manage Presets…	사전 설정 관리…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	저장된 사전 설정은 파일 › 자동화 › Topaz Gigapixel 사전 설정에서 실행합니다.
+	Auto lets Gigapixel choose.	자동이면 Gigapixel이 정합니다.
+	Denoise:	노이즈 제거:
+	Sharpen:	선명 효과:
+	Fix Compression:	압축 보정:
+	Face Recovery:	얼굴 복원:

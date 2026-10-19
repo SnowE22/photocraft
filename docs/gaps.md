@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-18 · **Change:** minor (G15: the Remove tool's Generative AI mode, LaMa inpainting on a local ONNX Runtime (DirectML on Windows), PhotoCraft's first ML runtime; G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-19 · **Change:** minor (G16: Topaz Gigapixel presets, one click or two presets combined; G15: the Remove tool's Generative AI mode, LaMa inpainting on a local ONNX Runtime (DirectML on Windows), PhotoCraft's first ML runtime; G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -176,6 +176,10 @@ what an agent can't finish alone.
   TIFF (or exports next to it) the result comes back as "Topaz Gigapixel layer" over the
   document resized to it (`gigapixel_cmds`, `gigapixel_ui`); with a model or scale the command
   uses Gigapixel's command-line tool instead (actions, batch). Checked with Gigapixel Pro 8.4.4.
+- **2026-10-19 evidence:** File › Automate › Topaz Gigapixel Presets runs saved settings with one
+  click through the command-line tool, as a background job (Esc stops Gigapixel); a preset can
+  also run two presets, one after the other or each on its own layer
+  (`file.automate.topazGigapixel.presets.*`, `{"preset"}` / `{"presets","combine"}`).
 - **Missing:** hosting Photoshop .8BF filters (#2647), UXP panels, CEP. PhotoCraft has its own
   sandboxed WebAssembly plug-in ABI v1 (`docs/plugins.md`), but ABI v2 (panels, progress, other
   layers) is missing (AUTO-219-6).
@@ -323,6 +327,7 @@ what an agent can't finish alone.
 | 2026-10-13 | minor | G4: Hue Jitter amount-track appearance (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-13 | minor | G4: minimum inputs in Shape Dynamics and Transfer follow their Control (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
+| 2026-10-19 | minor | G16: Topaz Gigapixel presets (one click, or two presets chained or side by side), no plug-in hosting needed |
 | 2026-10-18 | minor | G16: Topaz Gigapixel AI round trip in File › Automate (app or command-line tool), no plug-in hosting needed |
 | 2026-10-18 | minor | G15: the Remove tool's Generative AI mode (Auto / On / Off): LaMa on a local ONNX Runtime, DirectML on Windows, model installed separately; estimate unchanged |
 | 2026-10-18 | minor | G11: Photoshop's Actions palette loads whole; 96 % of a Photoshop 2026 user's 1,457 steps map (string ids, HSB colours, Blend If, masks, clipping, Color Range, Camera Raw, Curves files, Move to index, …) |

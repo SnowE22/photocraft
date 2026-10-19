@@ -3855,3 +3855,25 @@ navigator	Zoom	Zvětšení
 	Center Canvas When Zoomed Out	Vycentrovat plátno při oddálení
 	High (slower)	Vysoká (pomalejší)
 	Quality:	Kvalita:
+	There is no such Topaz Gigapixel preset	Takové přednastavení Topaz Gigapixel neexistuje
+	Saved Topaz Gigapixel preset “{name}”	Přednastavení Topaz Gigapixel „{name}“ uloženo
+	New Preset	Nové přednastavení
+	Upscale:	Zvětšení:
+	With these settings	S tímto nastavením
+	With two presets	Dvěma přednastaveními
+	Save two presets with their own settings first; then this one can run them together.	Nejprve uložte dvě přednastavení s vlastním nastavením; toto je pak spustí společně.
+	First:	První:
+	Then:	Potom:
+	Results:	Výsledky:
+	One after the other	Jeden po druhém
+	Each on its own layer	Každý na vlastní vrstvě
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Obě přednastavení zvětší obraz; každý výsledek se stane vrstvou, kterou lze porovnat nebo prolnout.
+	The second preset upscales the first one's result.	Druhé přednastavení zvětší výsledek prvního.
+	Topaz Gigapixel Presets	Přednastavení Topaz Gigapixel
+	Manage Presets…	Spravovat přednastavení…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Uložené přednastavení spustíte z nabídky Soubor › Automatizace › Přednastavení Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Automaticky nechává volbu na Gigapixelu.
+	Denoise:	Odšumění:
+	Sharpen:	Doostření:
+	Fix Compression:	Opravit kompresi:
+	Face Recovery:	Obnova tváří:

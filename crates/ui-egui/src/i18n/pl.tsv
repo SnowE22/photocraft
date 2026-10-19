@@ -3846,3 +3846,25 @@ curves	Smooth	Wygładź
 	Center Canvas When Zoomed Out	Wyśrodkuj obszar roboczy przy pomniejszaniu
 	High (slower)	Wysoka (wolniej)
 	Quality:	Jakość:
+	There is no such Topaz Gigapixel preset	Nie ma takiego ustawienia Topaz Gigapixel
+	Saved Topaz Gigapixel preset “{name}”	Zapisano ustawienie Topaz Gigapixel „{name}”
+	New Preset	Nowe ustawienie
+	Upscale:	Powiększanie:
+	With these settings	Z tymi ustawieniami
+	With two presets	Dwoma ustawieniami
+	Save two presets with their own settings first; then this one can run them together.	Najpierw zapisz dwa ustawienia z własnymi parametrami; to ustawienie uruchomi je razem.
+	First:	Najpierw:
+	Then:	Następnie:
+	Results:	Wyniki:
+	One after the other	Jedno po drugim
+	Each on its own layer	Każdy na osobnej warstwie
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Oba ustawienia powiększają obraz; każdy wynik staje się warstwą do porównania lub zmieszania.
+	The second preset upscales the first one's result.	Drugie ustawienie powiększa wynik pierwszego.
+	Topaz Gigapixel Presets	Ustawienia Topaz Gigapixel
+	Manage Presets…	Zarządzaj ustawieniami…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Zapisane ustawienie uruchomisz z menu Plik › Automatyzacja › Ustawienia Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Automatycznie zostawia wybór Gigapixelowi.
+	Denoise:	Odszumianie:
+	Sharpen:	Wyostrzanie:
+	Fix Compression:	Napraw kompresję:
+	Face Recovery:	Odtwarzanie twarzy:

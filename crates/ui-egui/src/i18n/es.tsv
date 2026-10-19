@@ -4209,3 +4209,25 @@ navigator	Zoom	Zoom
 	Center Canvas When Zoomed Out	Centrar lienzo al alejar
 	High (slower)	Alta (más lenta)
 	Quality:	Calidad:
+	There is no such Topaz Gigapixel preset	No existe ese ajuste preestablecido de Topaz Gigapixel
+	Saved Topaz Gigapixel preset “{name}”	Ajuste preestablecido de Topaz Gigapixel «{name}» guardado
+	New Preset	Nuevo ajuste preestablecido
+	Upscale:	Escalar:
+	With these settings	Con estos ajustes
+	With two presets	Con dos ajustes preestablecidos
+	Save two presets with their own settings first; then this one can run them together.	Guarde primero dos ajustes preestablecidos con sus propios ajustes; después este podrá ejecutarlos juntos.
+	First:	Primero:
+	Then:	Después:
+	Results:	Resultados:
+	One after the other	Uno tras otro
+	Each on its own layer	Cada uno en su propia capa
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Ambos ajustes preestablecidos escalan la imagen; cada resultado se convierte en una capa, para comparar o fusionar.
+	The second preset upscales the first one's result.	El segundo ajuste preestablecido escala el resultado del primero.
+	Topaz Gigapixel Presets	Ajustes preestablecidos de Topaz Gigapixel
+	Manage Presets…	Gestionar ajustes preestablecidos…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Ejecute un ajuste guardado desde Archivo › Automatizar › Ajustes preestablecidos de Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Automático deja que Gigapixel elija.
+	Denoise:	Reducir ruido:
+	Sharpen:	Enfocar:
+	Fix Compression:	Corregir compresión:
+	Face Recovery:	Recuperación de caras:

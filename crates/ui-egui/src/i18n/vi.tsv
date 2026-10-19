@@ -3734,3 +3734,25 @@ curves	Smooth	Làm mượt
 	Center Canvas When Zoomed Out	Căn giữa khung vẽ khi thu nhỏ
 	High (slower)	Cao (chậm hơn)
 	Quality:	Chất lượng:
+	There is no such Topaz Gigapixel preset	Không có thiết lập sẵn Topaz Gigapixel này
+	Saved Topaz Gigapixel preset “{name}”	Đã lưu thiết lập sẵn Topaz Gigapixel “{name}”
+	New Preset	Thiết lập sẵn mới
+	Upscale:	Phóng to:
+	With these settings	Với các thiết lập này
+	With two presets	Với hai thiết lập sẵn
+	Save two presets with their own settings first; then this one can run them together.	Hãy lưu trước hai thiết lập sẵn có thiết lập riêng; sau đó thiết lập sẵn này có thể chạy chúng cùng nhau.
+	First:	Trước:
+	Then:	Sau đó:
+	Results:	Kết quả:
+	One after the other	Lần lượt
+	Each on its own layer	Mỗi cái trên một lớp riêng
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Cả hai thiết lập sẵn đều phóng to ảnh; mỗi kết quả thành một lớp, để so sánh hoặc hòa trộn.
+	The second preset upscales the first one's result.	Thiết lập sẵn thứ hai phóng to kết quả của thiết lập thứ nhất.
+	Topaz Gigapixel Presets	Thiết lập sẵn Topaz Gigapixel
+	Manage Presets…	Quản lý thiết lập sẵn…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Chạy thiết lập sẵn đã lưu từ Tệp › Tự động hóa › Thiết lập sẵn Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Tự động để Gigapixel tự chọn.
+	Denoise:	Khử nhiễu:
+	Sharpen:	Làm nét:
+	Fix Compression:	Sửa nén:
+	Face Recovery:	Khôi phục khuôn mặt:

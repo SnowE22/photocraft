@@ -4037,3 +4037,25 @@ layerLabel	No Color	Sem cor
 	Center Canvas When Zoomed Out	Centralizar tela ao reduzir o zoom
 	High (slower)	Alta (mais lenta)
 	Quality:	Qualidade:
+	There is no such Topaz Gigapixel preset	Essa predefinição do Topaz Gigapixel não existe
+	Saved Topaz Gigapixel preset “{name}”	Predefinição do Topaz Gigapixel “{name}” salva
+	New Preset	Nova predefinição
+	Upscale:	Ampliar:
+	With these settings	Com estas configurações
+	With two presets	Com duas predefinições
+	Save two presets with their own settings first; then this one can run them together.	Salve primeiro duas predefinições com suas próprias configurações; depois esta poderá executá-las juntas.
+	First:	Primeiro:
+	Then:	Depois:
+	Results:	Resultados:
+	One after the other	Um após o outro
+	Each on its own layer	Cada um em sua própria camada
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Ambas as predefinições ampliam a imagem; cada resultado vira uma camada, para comparar ou mesclar.
+	The second preset upscales the first one's result.	A segunda predefinição amplia o resultado da primeira.
+	Topaz Gigapixel Presets	Predefinições do Topaz Gigapixel
+	Manage Presets…	Gerenciar predefinições…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Execute uma predefinição salva em Arquivo › Automatizar › Predefinições do Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Automático deixa o Gigapixel escolher.
+	Denoise:	Reduzir ruído:
+	Sharpen:	Nitidez:
+	Fix Compression:	Corrigir compressão:
+	Face Recovery:	Recuperação de rostos:

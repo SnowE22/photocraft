@@ -1439,6 +1439,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::background_cmds::specs());
     v.extend(crate::file_cmds::specs());
     v.extend(crate::gigapixel_cmds::specs());
+    v.extend(crate::gigapixel_cmds::presets::specs());
     v.extend(crate::exr_cmds::specs());
     v.extend(crate::type_extra_cmds::specs());
     v.extend(crate::type_styles_cmds::specs());

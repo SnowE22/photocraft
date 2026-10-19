@@ -768,6 +768,8 @@ fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, req: &ControlRequest) 
                         app.ui.views[i].center = c;
                         app.ui.views[i].fit_pending = false;
                         app.ui.views[i].fill_pending = false;
+                        // An explicit centre stays where it was put, even with a smaller zoom.
+                        crate::canvas::keep_view_as_set(ctx, i, app.ui.views[i].zoom);
                     }
                     if fit {
                         app.ui.views[i].fit_pending = true;

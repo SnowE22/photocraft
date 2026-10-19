@@ -10,8 +10,16 @@
 //!   TIFF, where the shell watches for it ([`Pending::poll`]) and then applies it with
 //!   `file.automate.topazGigapixel.apply {"result": path}`.
 //! - `{"model"?, "scale" | "width" | "height", …}`: upscale with Gigapixel's command-line tool
-//!   (`gigapixel.exe`, Gigapixel 7.3 and later, as licensed) and apply the result at once, for
-//!   actions, batch and agents.
+//!   (`gigapixel.exe`, Gigapixel 7.3 and later, as licensed) and apply the result, for actions,
+//!   batch and agents.
+//! - `{"preset": name}` or `{"presets": [a, b], "combine": "chain" | "layers"}`: the same with
+//!   saved settings ([`presets`], File › Automate › Topaz Gigapixel Presets). `chain` upscales the
+//!   first preset's result again with the second; `layers` upscales the image with each and keeps
+//!   every result as a layer.
+//!
+//! The command-line forms run as a background job (progress, Esc cancels and stops Gigapixel):
+//! the image is exported on the calling thread, Gigapixel runs and its results are read on a
+//! worker, and they are applied on the calling thread.
 //!
 //! Gigapixel is never bundled: the installed app is found at its default place (Windows
 //! `%ProgramFiles%\Topaz Labs LLC\Topaz Gigapixel AI`, macOS `/Applications/Topaz Gigapixel
@@ -25,6 +33,9 @@ use serde_json::{Value, json};
 
 use crate::commands::CommandSpec;
 use crate::{EngineError, Result, Session};
+
+pub mod presets;
+use presets::Combine;
 
 pub const ID: &str = "file.automate.topazGigapixel";
 /// Applies an upscaled image (needs no Gigapixel: any upscaled copy of the image will do).
@@ -310,62 +321,231 @@ pub fn cli_args(p: &Value, input: &Path, out: &Path) -> Result<Vec<String>> {
     Ok(a)
 }
 
-/// `{"model", "scale" | …}`: upscale with the command-line tool, then apply.
+/// One Gigapixel run: the preset it comes from (if any) and its command-line settings.
+#[derive(Clone, Debug)]
+struct Step {
+    preset: Option<String>,
+    params: Value,
+}
+
+/// The upscales `p` asks for and how to combine their results; params are checked here, before
+/// anything is written or started.
+fn plan(s: &Session, p: &Value) -> Result<(Vec<Step>, Combine)> {
+    let named = |steps: Vec<(String, Value)>| steps.into_iter().map(|(n, params)| Step { preset: Some(n), params }).collect::<Vec<_>>();
+    let (steps, combine) = if let Some(v) = p.get("preset").filter(|v| !v.is_null()) {
+        let name = v.as_str().ok_or_else(|| bad("`preset` must be a preset name"))?;
+        let preset = presets::find(s, name).ok_or_else(|| bad(format!("there is no Topaz Gigapixel preset {name:?}")))?;
+        match preset.combined() {
+            Some(names) => (named(presets::steps_of(s, &names, ID)?), Combine::parse(preset.settings.get("combine"), ID)?),
+            None => (named(vec![(preset.name.clone(), preset.settings.clone())]), Combine::Chain),
+        }
+    } else if let Some(v) = p.get("presets").filter(|v| !v.is_null()) {
+        let list = v.as_array().ok_or_else(|| bad("`presets` must be a list of preset names"))?;
+        let names: Vec<&str> = list.iter().filter_map(Value::as_str).collect();
+        if names.is_empty() || names.len() > presets::MAX_STEPS || names.len() != list.len() {
+            return Err(bad(format!("`presets` must name 1 to {} presets", presets::MAX_STEPS)));
+        }
+        (named(presets::steps_of(s, &names, ID)?), Combine::parse(p.get("combine"), ID)?)
+    } else {
+        (vec![Step { preset: None, params: p.clone() }], Combine::Chain)
+    };
+    for step in &steps {
+        cli_args(&step.params, Path::new("in.tif"), Path::new("out"))?;
+    }
+    Ok((steps, combine))
+}
+
+/// The folder a run works in, removed when the run's result is dropped (applied, failed or
+/// cancelled).
 #[cfg(not(target_arch = "wasm32"))]
-fn upscale_with_cli(s: &mut Session, p: &Value) -> Result<Value> {
-    // Bad params fail before anything is written or started.
-    cli_args(p, Path::new("in.tif"), Path::new("out"))?;
+struct Scratch(PathBuf);
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A stand-in for Gigapixel's command-line tool (tests).
+    static FAKE_CLI: std::cell::RefCell<Option<PathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Gigapixel's command-line tool, when it may be started.
+#[cfg(not(target_arch = "wasm32"))]
+fn cli_path() -> Result<PathBuf> {
+    #[cfg(test)]
+    if let Some(p) = FAKE_CLI.with(|f| f.borrow().clone()) {
+        return Ok(p);
+    }
     launching_allowed()?;
     let gp = installed().ok_or_else(|| bad("Topaz Gigapixel AI is not installed (or set PHOTOCRAFT_GIGAPIXEL to its executable)"))?;
-    let cli = gp.cli.ok_or_else(|| bad("this Gigapixel has no command-line tool (Gigapixel 7.3 or later has gigapixel.exe beside the app)"))?;
-    let (folder, input) = export(s)?;
-    let out = folder.join("out");
-    let args = cli_args(p, &input, &out)?;
-    let run = std::process::Command::new(&cli).args(&args).output().map_err(|e| EngineError::Other(format!("{}: {e}", cli.display())));
-    let result = run.and_then(|o| {
-        let made = out.join(input.file_name().unwrap_or_default());
-        if made.is_file() {
-            Ok(made)
-        } else {
-            let said = String::from_utf8_lossy(if o.stderr.is_empty() { &o.stdout } else { &o.stderr })
-                .lines()
-                .rev()
-                .find(|l| !l.trim().is_empty())
-                .unwrap_or("")
-                .to_string();
-            Err(EngineError::Other(format!("Topaz Gigapixel AI's command-line tool made no image (exit {}): {said}", o.status)))
+    gp.cli.ok_or_else(|| bad("this Gigapixel has no command-line tool (Gigapixel 7.3 or later has gigapixel.exe beside the app)"))
+}
+
+/// Run the command-line tool on `input`, writing into `out`; the image it made. Cancelling the
+/// job stops Gigapixel.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_cli(cli: &Path, params: &Value, input: &Path, out: &Path, ctx: &crate::jobs::JobCtx) -> Result<PathBuf> {
+    let args = cli_args(params, input, out)?;
+    let log_path = out.with_extension("log");
+    let log = std::fs::File::create(&log_path).map_err(|e| EngineError::Other(format!("{}: {e}", log_path.display())))?;
+    let log2 = log.try_clone().map_err(|e| EngineError::Other(format!("{}: {e}", log_path.display())))?;
+    let mut cmd = std::process::Command::new(cli);
+    cmd.args(&args).stdin(std::process::Stdio::null()).stdout(log).stderr(log2);
+    #[cfg(target_os = "windows")]
+    {
+        // No console window over the app.
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    let mut child = cmd.spawn().map_err(|e| EngineError::Other(format!("{}: {e}", cli.display())))?;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if ctx.cancelled() => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(EngineError::Cancelled);
+            }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Err(e) => {
+                let _ = child.kill();
+                return Err(EngineError::Other(format!("{}: {e}", cli.display())));
+            }
         }
-    });
-    let applied = result.and_then(|made| apply(s, &json!({"result": made.to_string_lossy()})));
-    let applied = applied.map(|mut v| {
-        v["model"] = p.get("model").cloned().unwrap_or(Value::Null);
-        v
-    });
-    let _ = std::fs::remove_dir_all(&folder);
-    applied
+    };
+    let made = std::fs::read_dir(out)
+        .ok()
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|e| e.path())
+        .find(|p| p.is_file() && p.extension().is_some_and(|e| IMAGE_EXTENSIONS.contains(&e.to_string_lossy().to_lowercase().as_str())));
+    made.ok_or_else(|| {
+        let said = std::fs::read_to_string(&log_path).unwrap_or_default();
+        let said = said.lines().rev().map(|l| l.trim().trim_matches('"')).find(|l| !l.is_empty()).unwrap_or("").to_string();
+        EngineError::Other(format!("Topaz Gigapixel AI's command-line tool made no image (exit {status}): {said}"))
+    })
+}
+
+/// The layer name for a result: the name Photoshop's plug-in gives it, plus the presets that
+/// made it.
+fn layer_name(presets: &[&str]) -> String {
+    if presets.is_empty() { LAYER_NAME.to_string() } else { format!("{LAYER_NAME} ({})", presets.join(" → ")) }
+}
+
+/// Upscale with the command-line tool, in the background, then apply the results.
+#[cfg(not(target_arch = "wasm32"))]
+fn upscale(s: &mut Session, p: &Value) -> Result<Value> {
+    let (steps, combine) = plan(s, p)?;
+    let cli = cli_path()?;
+    let document = s.active().ok_or(EngineError::NoDocument)?.doc.id.0;
+    let (folder, input) = export(s)?;
+    let scratch = Scratch(folder.clone());
+    let names: Vec<String> = steps.iter().filter_map(|st| st.preset.clone()).collect();
+    let label = if names.is_empty() { LABEL.to_string() } else { format!("{LABEL}: {}", names.join(if combine == Combine::Chain { " → " } else { " + " })) };
+    let model = p.get("model").cloned().unwrap_or(Value::Null);
+    crate::jobs::run(
+        s,
+        &label,
+        true,
+        move |ctx| {
+            let n = steps.len();
+            let mut source = input.clone();
+            let mut made: Vec<(Vec<&str>, PathBuf)> = Vec::new();
+            for (i, step) in steps.iter().enumerate() {
+                ctx.check()?;
+                let what = step.preset.as_deref().unwrap_or(LABEL);
+                let message = if n > 1 { format!("Upscaling with {what} ({} of {n})", i + 1) } else { format!("Upscaling with {what}") };
+                ctx.progress(i as f32 / n as f32 * 0.9, &message);
+                let from = if combine == Combine::Chain { source.clone() } else { input.clone() };
+                let result = run_cli(&cli, &step.params, &from, &folder.join(format!("step{}", i + 1)), ctx)?;
+                let by: Vec<&str> = match combine {
+                    Combine::Chain => steps.iter().take(i + 1).filter_map(|st| st.preset.as_deref()).collect(),
+                    Combine::Layers => step.preset.as_deref().into_iter().collect(),
+                };
+                if combine == Combine::Chain {
+                    made.clear();
+                }
+                made.push((by, result.clone()));
+                source = result;
+            }
+            ctx.progress(0.9, "Reading the upscaled image");
+            let mut images: Vec<(String, photocraft_doc::Document)> = Vec::new();
+            for (by, path) in made {
+                ctx.check()?;
+                images.push((layer_name(&by), import_result(&path)?));
+            }
+            // Smallest first: the document ends at the largest size, and only smaller results
+            // are resampled to it.
+            images.sort_by_key(|(_, d)| u64::from(d.size.width) * u64::from(d.size.height));
+            Ok((scratch, images))
+        },
+        move |s, (scratch, images)| {
+            let mut layers = Vec::new();
+            let mut last = Value::Null;
+            for (name, image) in images {
+                last = apply_image(s, Some(document), image, &name)?;
+                layers.push(last["layer"].clone());
+            }
+            drop(scratch);
+            let mut r = last;
+            r["layers"] = json!(layers);
+            r["model"] = model;
+            if !names.is_empty() {
+                r["presets"] = json!(names);
+            }
+            Ok(r)
+        },
+    )
 }
 
 #[cfg(target_arch = "wasm32")]
-fn upscale_with_cli(_: &mut Session, _: &Value) -> Result<Value> {
+fn upscale(s: &mut Session, p: &Value) -> Result<Value> {
+    plan(s, p)?;
     Err(EngineError::Other("Topaz Gigapixel AI needs the desktop app".into()))
+}
+
+/// An upscaled image file, read.
+fn import_result(path: &Path) -> Result<photocraft_doc::Document> {
+    let name = path.to_string_lossy().into_owned();
+    let bytes = crate::file_cmds::read_file(&name)?;
+    let imported = photocraft_io::import(&name, &bytes).map_err(|e| EngineError::Other(format!("{name}: {e}")))?;
+    let src = imported.document;
+    if src.size.width == 0 || src.size.height == 0 {
+        return Err(bad(format!("{name} is empty")));
+    }
+    Ok(src)
 }
 
 /// `{"result": path, "document": id?}`: the document (by id; default the active one) resized to
 /// the upscaled image, and the image added on top as [`LAYER_NAME`].
 fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     let path = crate::file_cmds::str_param(p, "result", APPLY_ID)?.to_string();
-    if let Some(v) = p.get("document").filter(|v| !v.is_null()) {
-        let id = v.as_u64().ok_or_else(|| bad("`document` must be a document id"))?;
+    let document = match p.get("document").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => Some(v.as_u64().ok_or_else(|| bad("`document` must be a document id"))?),
+    };
+    if let Some(id) = document
+        && !s.documents().iter().any(|d| d.doc.id.0 == id)
+    {
+        return Err(bad("the document the image came from is closed"));
+    }
+    let image = import_result(Path::new(&path))?;
+    apply_image(s, document, image, LAYER_NAME)
+}
+
+/// Resize document `document` (default the active one) to `src` and add `src` on top as `name`.
+fn apply_image(s: &mut Session, document: Option<u64>, src: photocraft_doc::Document, name: &str) -> Result<Value> {
+    if let Some(id) = document {
         let i = s.documents().iter().position(|d| d.doc.id.0 == id).ok_or_else(|| bad("the document the image came from is closed"))?;
         s.set_active(i);
     }
-    let bytes = crate::file_cmds::read_file(&path)?;
-    let imported = photocraft_io::import(&path, &bytes).map_err(|e| EngineError::Other(format!("{path}: {e}")))?;
-    let src = imported.document;
     let (w, h) = (src.size.width, src.size.height);
-    if w == 0 || h == 0 {
-        return Err(bad(format!("{path} is empty")));
-    }
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let (cw, ch) = (st.doc.size.width, st.doc.size.height);
     if (w, h) != (cw, ch) {
@@ -374,9 +554,10 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let fmt = s.active().ok_or(EngineError::NoDocument)?.doc.pixel_format();
     let px = crate::file_cmds::flattened(&src, fmt);
+    let name = name.to_string();
     let layer = s.edit(LABEL, |doc, active| {
         let top = doc.layers.last().map(|l| l.id);
-        let id = doc.insert_above(top, Layer::new(LAYER_NAME, LayerContent::Raster(px)));
+        let id = doc.insert_above(top, Layer::new(name, LayerContent::Raster(px)));
         *active = Some(id);
         Ok(id)
     })?;
@@ -387,8 +568,8 @@ fn run(s: &mut Session, p: &Value) -> Result<Value> {
     if p.get("result").is_some() {
         return Err(bad(format!("an upscaled image is applied with `{APPLY_ID}`")));
     }
-    if ["model", "modelVersion", "scale", "width", "height"].iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
-        return upscale_with_cli(s, p);
+    if ["preset", "presets", "model", "modelVersion", "scale", "width", "height"].iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
+        return upscale(s, p);
     }
     open_in_app(s)
 }
@@ -400,7 +581,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Topaz Gigapixel AI…",
             menu: &["File", "Automate"],
             shortcut: None,
-            params: r##"{} (open the flattened image in Topaz Gigapixel AI; returns {"waiting":true,"document","folder","input"} and the app brings the export back when it appears, with file.automate.topazGigapixel.apply) | {"model":"std|hf|lowres|art|lines|text|vc|redefine|recovery"? (default: Gigapixel's choice),"modelVersion":n?,"scale":1..16|"width":px|"height":px,"denoise":0..100?,"sharpen":0..100?,"compression":0..100?,"faceRecovery":0..100?} (upscale with Gigapixel's command-line tool and apply)"##,
+            params: r##"{} (open the flattened image in Topaz Gigapixel AI; returns {"waiting":true,"document","folder","input"} and the app brings the export back when it appears, with file.automate.topazGigapixel.apply) | {"preset":name} | {"presets":[name,…] (1..4),"combine":"chain|layers"?} (saved settings: file.automate.topazGigapixel.presets.*; chain upscales each result again, layers keeps one layer per preset) | {"model":"std|hf|lowres|art|lines|text|vc|redefine|recovery"? (default: Gigapixel's choice),"modelVersion":n?,"scale":1..16|"width":px|"height":px,"denoise":0..100?,"sharpen":0..100?,"compression":0..100?,"faceRecovery":0..100?} (upscale with Gigapixel's command-line tool and apply, as a background job) → {layer,layers,width,height,scale,presets?}"##,
             enabled,
             run,
             journal: true,

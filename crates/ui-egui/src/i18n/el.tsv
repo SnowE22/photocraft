@@ -3947,3 +3947,25 @@ curves	Smooth	Εξομάλυνση
 	Center Canvas When Zoomed Out	Κεντράρισμα καμβά κατά τη σμίκρυνση
 	High (slower)	Υψηλή (πιο αργή)
 	Quality:	Ποιότητα:
+	There is no such Topaz Gigapixel preset	Δεν υπάρχει τέτοια προρύθμιση Topaz Gigapixel
+	Saved Topaz Gigapixel preset “{name}”	Η προρύθμιση Topaz Gigapixel «{name}» αποθηκεύτηκε
+	New Preset	Νέα προρύθμιση
+	Upscale:	Μεγέθυνση:
+	With these settings	Με αυτές τις ρυθμίσεις
+	With two presets	Με δύο προρυθμίσεις
+	Save two presets with their own settings first; then this one can run them together.	Αποθηκεύστε πρώτα δύο προρυθμίσεις με δικές τους ρυθμίσεις· έπειτα αυτή μπορεί να τις εκτελέσει μαζί.
+	First:	Πρώτα:
+	Then:	Έπειτα:
+	Results:	Αποτελέσματα:
+	One after the other	Το ένα μετά το άλλο
+	Each on its own layer	Το καθένα σε δική του στρώση
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Και οι δύο προρυθμίσεις μεγεθύνουν την εικόνα· κάθε αποτέλεσμα γίνεται στρώση, για σύγκριση ή ανάμειξη.
+	The second preset upscales the first one's result.	Η δεύτερη προρύθμιση μεγεθύνει το αποτέλεσμα της πρώτης.
+	Topaz Gigapixel Presets	Προρυθμίσεις Topaz Gigapixel
+	Manage Presets…	Διαχείριση προρυθμίσεων…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Εκτελέστε μια αποθηκευμένη προρύθμιση από Αρχείο › Αυτοματοποίηση › Προρυθμίσεις Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Το Αυτόματα αφήνει την επιλογή στο Gigapixel.
+	Denoise:	Αποθορυβοποίηση:
+	Sharpen:	Όξυνση:
+	Fix Compression:	Διόρθωση συμπίεσης:
+	Face Recovery:	Αποκατάσταση προσώπων:
