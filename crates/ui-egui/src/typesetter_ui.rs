@@ -301,90 +301,100 @@ impl TypesetterUi {
 
     /// Верхняя панель вкладок и переключения режимов закрепления/импорта/экспорта.
     fn render_header_toolbar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
+        // Ряд 1: Вкладки навигации (с переносом при сжатии панели)
+        ui.horizontal_wrapped(|ui| {
             ui.selectable_value(&mut self.current_tab, TypesetterTab::Queue, "⚡ Очередь");
             ui.selectable_value(&mut self.current_tab, TypesetterTab::FullText, "📜 Текст");
             ui.selectable_value(&mut self.current_tab, TypesetterTab::Styles, "🎨 Стили");
             ui.selectable_value(&mut self.current_tab, TypesetterTab::Settings, "⚙ Опции");
+        });
 
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // Переключатель закрепления в интерфейсе
-                ui.menu_button("📌 Док", |ui| {
-                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::Floating, "🪟 Плавающее окно").clicked() {
-                        self.dock_mode = TypesetterDockMode::Floating;
-                        self.auto_save();
-                        ui.close();
-                    }
-                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockRight, "📌 Закрепить справа").clicked() {
-                        self.dock_mode = TypesetterDockMode::DockRight;
-                        self.auto_save();
-                        ui.close();
-                    }
-                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockLeft, "📌 Закрепить слева").clicked() {
-                        self.dock_mode = TypesetterDockMode::DockLeft;
-                        self.auto_save();
-                        ui.close();
-                    }
-                    if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockBottom, "📌 Закрепить снизу").clicked() {
-                        self.dock_mode = TypesetterDockMode::DockBottom;
-                        self.auto_save();
-                        ui.close();
-                    }
-                });
+        ui.add_space(2.0);
 
-                // Экспорт стилей TypeR JSON
-                if ui.button("💾 Экспорт").on_hover_text("Экспортировать стили в TypeR JSON").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("TypeR JSON (*.json)", &["json"])
-                        .set_title("Экспорт стилей TypeR")
-                        .save_file()
-                    {
-                        match self.state.export_styles_json(self.selected_folder.as_deref()) {
-                            Ok(json_content) => match std::fs::write(&path, json_content) {
-                                Ok(_) => {
-                                    self.status_message = Some("Стили успешно экспортированы".into());
-                                    self.status_error = false;
-                                }
-                                Err(err) => {
-                                    self.status_message = Some(format!("Ошибка записи: {}", err));
-                                    self.status_error = true;
-                                }
-                            },
-                            Err(err) => {
-                                self.status_message = Some(format!("Ошибка экспорта: {}", err));
-                                self.status_error = true;
-                            }
-                        }
-                    }
+        // Ряд 2: Вспомогательные действия (Док, Импорт, Экспорт)
+        ui.horizontal_wrapped(|ui| {
+            // Переключатель закрепления в интерфейсе
+            let dock_title = match self.dock_mode {
+                TypesetterDockMode::Floating => "📌 Док: Окно",
+                TypesetterDockMode::DockRight => "📌 Док: Справа",
+                TypesetterDockMode::DockLeft => "📌 Док: Слева",
+                TypesetterDockMode::DockBottom => "📌 Док: Снизу",
+            };
+            ui.menu_button(dock_title, |ui| {
+                if ui.selectable_label(self.dock_mode == TypesetterDockMode::Floating, "🪟 Плавающее окно").clicked() {
+                    self.dock_mode = TypesetterDockMode::Floating;
+                    self.auto_save();
+                    ui.close();
                 }
-
-                // Импорт стилей TypeR JSON
-                if ui.button("📁 Импорт").on_hover_text("Загрузить стили из TypeR JSON").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("TypeR JSON (*.json)", &["json"])
-                        .set_title("Выберите файл стилей TypeR")
-                        .pick_file()
-                    {
-                        match std::fs::read_to_string(&path) {
-                            Ok(content) => match self.state.import_styles_json(&content) {
-                                Ok(count) => {
-                                    self.status_message = Some(format!("Загружено стилей: {}", count));
-                                    self.status_error = false;
-                                    self.auto_save();
-                                }
-                                Err(err) => {
-                                    self.status_message = Some(format!("Ошибка: {}", err));
-                                    self.status_error = true;
-                                }
-                            },
-                            Err(err) => {
-                                self.status_message = Some(format!("Ошибка чтения: {}", err));
-                                self.status_error = true;
-                            }
-                        }
-                    }
+                if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockRight, "📌 Закрепить справа").clicked() {
+                    self.dock_mode = TypesetterDockMode::DockRight;
+                    self.auto_save();
+                    ui.close();
+                }
+                if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockLeft, "📌 Закрепить слева").clicked() {
+                    self.dock_mode = TypesetterDockMode::DockLeft;
+                    self.auto_save();
+                    ui.close();
+                }
+                if ui.selectable_label(self.dock_mode == TypesetterDockMode::DockBottom, "📌 Закрепить снизу").clicked() {
+                    self.dock_mode = TypesetterDockMode::DockBottom;
+                    self.auto_save();
+                    ui.close();
                 }
             });
+
+            // Импорт стилей TypeR JSON
+            if ui.button("📁 Импорт").on_hover_text("Загрузить стили из TypeR JSON").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("TypeR JSON (*.json)", &["json"])
+                    .set_title("Выберите файл стилей TypeR")
+                    .pick_file()
+                {
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) => match self.state.import_styles_json(&content) {
+                            Ok(count) => {
+                                self.status_message = Some(format!("Загружено стилей: {}", count));
+                                self.status_error = false;
+                                self.auto_save();
+                            }
+                            Err(err) => {
+                                self.status_message = Some(format!("Ошибка: {}", err));
+                                self.status_error = true;
+                            }
+                        },
+                        Err(err) => {
+                            self.status_message = Some(format!("Ошибка чтения: {}", err));
+                            self.status_error = true;
+                        }
+                    }
+                }
+            }
+
+            // Экспорт стилей TypeR JSON
+            if ui.button("💾 Экспорт").on_hover_text("Экспортировать стили в TypeR JSON").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("TypeR JSON (*.json)", &["json"])
+                    .set_title("Экспорт стилей TypeR")
+                    .save_file()
+                {
+                    match self.state.export_styles_json(self.selected_folder.as_deref()) {
+                        Ok(json_content) => match std::fs::write(&path, json_content) {
+                            Ok(_) => {
+                                self.status_message = Some("Стили успешно экспортированы".into());
+                                self.status_error = false;
+                            }
+                            Err(err) => {
+                                self.status_message = Some(format!("Ошибка записи: {}", err));
+                                self.status_error = true;
+                            }
+                        },
+                        Err(err) => {
+                            self.status_message = Some(format!("Ошибка экспорта: {}", err));
+                            self.status_error = true;
+                        }
+                    }
+                }
+            }
         });
 
         // Статусное сообщение
