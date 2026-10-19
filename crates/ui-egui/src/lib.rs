@@ -1107,28 +1107,68 @@ impl PhotocraftApp {
             action.text
         };
 
-        // Предпочитаем PostScript-имя для точного начертания (например KuraiVoice2-Italic)
-        let resolved_font = if !action.preset.font_postscript.is_empty() {
-            &action.preset.font_postscript
-        } else {
-            &action.preset.font_family
+        // Разрешаем семейство шрифта: проверяем наличие на машине, иначе пробуем разрешить через PostScript
+        let resolved_family = {
+            let mut shared = photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner());
+            if !action.preset.font_family.is_empty() && shared.fonts.has_family(&action.preset.font_family) {
+                action.preset.font_family.clone()
+            } else if !action.preset.font_postscript.is_empty() {
+                let r = shared.fonts.resolve_postscript(&action.preset.font_postscript);
+                if shared.fonts.has_family(&r.family) {
+                    r.family
+                } else if !action.preset.font_family.is_empty() {
+                    action.preset.font_family.clone()
+                } else {
+                    "Kurai Voice 2".to_string()
+                }
+            } else if !action.preset.font_family.is_empty() {
+                action.preset.font_family.clone()
+            } else {
+                "Kurai Voice 2".to_string()
+            }
         };
 
-        let res = self.run(
-            "type.create",
-            serde_json::json!({
-                "x": x,
-                "y": y,
-                "text": final_text,
-                "size": action.preset.font_size,
-                "font": resolved_font,
-                "align": "center",
-                "italic": action.preset.italic,
-                "bold": action.preset.bold,
-                "tracking": action.preset.tracking,
-                "leading": action.preset.leading
-            }),
-        );
+        let is_bold_style = action.preset.font_style.to_lowercase().contains("bold");
+        let is_italic_style = action.preset.font_style.to_lowercase().contains("italic")
+            || action.preset.font_style.to_lowercase().contains("oblique");
+
+        let style_name = if !action.preset.font_style.is_empty() && action.preset.font_style != "Regular" {
+            action.preset.font_style.clone()
+        } else if action.preset.bold && action.preset.italic {
+            "Bold Italic".to_string()
+        } else if action.preset.bold {
+            "Bold".to_string()
+        } else if action.preset.italic {
+            "Italic".to_string()
+        } else {
+            "Regular".to_string()
+        };
+
+        let faux_bold = action.preset.bold && !is_bold_style;
+        let faux_italic = action.preset.italic && !is_italic_style;
+        let weight = if action.preset.bold { 700 } else { 400 };
+
+        let mut type_params = serde_json::json!({
+            "x": x,
+            "y": y,
+            "text": final_text,
+            "size": action.preset.font_size,
+            "font": resolved_family,
+            "fontStyle": style_name,
+            "weight": weight,
+            "italic": action.preset.italic,
+            "fauxBold": faux_bold,
+            "fauxItalic": faux_italic,
+            "align": "center",
+            "tracking": action.preset.tracking,
+            "leading": action.preset.leading
+        });
+
+        if !action.preset.font_postscript.is_empty() {
+            type_params["postscriptName"] = serde_json::Value::String(action.preset.font_postscript.clone());
+        }
+
+        let res = self.run("type.create", type_params);
 
         if let Ok(v) = res {
             if let Some(layer_id) = v.get("layer").and_then(serde_json::Value::as_u64) {

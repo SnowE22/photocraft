@@ -198,11 +198,16 @@ impl TypesetterState {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(24.0) as f32;
 
+            let auto_leading_pct = item.pointer("/textProps/layerText/paragraphStyleRange/0/paragraphStyle/autoLeadingPercentage")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(1.2) as f32;
+
             let leading = text_style
                 .and_then(|ts| ts.get("leading"))
                 .or_else(|| item.get("leading"))
                 .and_then(|v| v.as_f64())
-                .unwrap_or((font_size * 1.15) as f64) as f32;
+                .map(|v| v as f32)
+                .unwrap_or_else(|| (font_size * auto_leading_pct).round());
 
             let tracking = text_style
                 .and_then(|ts| ts.get("tracking"))
@@ -215,36 +220,57 @@ impl TypesetterState {
                 .and_then(|v| v.as_f64())
                 .unwrap_or(100.0) as f32;
 
-            let bold = text_style
+            let synthetic_bold = text_style
                 .and_then(|ts| ts.get("syntheticBold"))
                 .and_then(|v| v.as_bool())
-                .unwrap_or_else(|| font_style.to_lowercase().contains("bold"));
+                .unwrap_or(false);
 
-            let italic = text_style
+            let synthetic_italic = text_style
                 .and_then(|ts| ts.get("syntheticItalic"))
                 .and_then(|v| v.as_bool())
-                .unwrap_or_else(|| font_style.to_lowercase().contains("italic"));
+                .unwrap_or(false);
+
+            let is_bold_style = font_style.to_lowercase().contains("bold");
+            let is_italic_style = font_style.to_lowercase().contains("italic") || font_style.to_lowercase().contains("oblique");
+
+            let bold = synthetic_bold || is_bold_style;
+            let italic = synthetic_italic || is_italic_style;
 
             let all_caps = text_style
                 .and_then(|ts| ts.get("fontCaps"))
                 .and_then(|v| v.as_str())
-                .map(|caps| caps == "allCaps")
+                .map(|caps| caps == "allCaps" || caps == "all")
                 .unwrap_or(false);
 
-            let stroke_width = if let Some(stroke_val) = item.get("stroke_width").or_else(|| item.get("stroke")) {
-                stroke_val.as_f64().unwrap_or(2.0) as f32
+            let (stroke_width, stroke_color) = if let Some(stroke_obj) = item.get("stroke").and_then(|v| v.as_object()) {
+                let enabled = stroke_obj.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                let size = stroke_obj.get("size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
+                let width = if enabled { size } else { 0.0 };
+                let color = if let Some(c) = stroke_obj.get("color") {
+                    let r = c.get("r").or_else(|| c.get("red")).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
+                    let g = c.get("g").or_else(|| c.get("green")).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
+                    let b = c.get("b").or_else(|| c.get("blue")).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
+                    let opacity = stroke_obj.get("opacity").and_then(|v| v.as_f64()).unwrap_or(100.0);
+                    let a = ((opacity / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+                    [r, g, b, a]
+                } else {
+                    [255, 255, 255, 255]
+                };
+                (width, color)
+            } else if let Some(stroke_val) = item.get("stroke_width").or_else(|| item.get("stroke")) {
+                let width = stroke_val.as_f64().unwrap_or(0.0) as f32;
+                let color = if let Some(color_arr) = item.get("strokeColor").and_then(|c| c.as_array()) {
+                    let r = color_arr.first().and_then(|v| v.as_u64()).unwrap_or(255) as u8;
+                    let g = color_arr.get(1).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
+                    let b = color_arr.get(2).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
+                    let a = color_arr.get(3).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
+                    [r, g, b, a]
+                } else {
+                    [255, 255, 255, 255]
+                };
+                (width, color)
             } else {
-                2.0
-            };
-
-            let stroke_color = if let Some(color_arr) = item.get("strokeColor").and_then(|c| c.as_array()) {
-                let r = color_arr.first().and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                let g = color_arr.get(1).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                let b = color_arr.get(2).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                let a = color_arr.get(3).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                [r, g, b, a]
-            } else {
-                [255, 255, 255, 255]
+                (0.0, [255, 255, 255, 255])
             };
 
             self.presets.push(TextStylePreset {
@@ -319,15 +345,34 @@ impl TypesetterState {
                                     "leading": preset.leading,
                                     "tracking": preset.tracking,
                                     "horizontalScale": preset.horizontal_scale,
-                                    "syntheticBold": preset.bold,
-                                    "syntheticItalic": preset.italic,
+                                    "syntheticBold": preset.bold && !preset.font_style.to_lowercase().contains("bold"),
+                                    "syntheticItalic": preset.italic && !preset.font_style.to_lowercase().contains("italic"),
                                     "fontCaps": if preset.all_caps { "allCaps" } else { "normal" }
+                                }
+                            }
+                        ],
+                        "paragraphStyleRange": [
+                            {
+                                "paragraphStyle": {
+                                    "alignment": "center",
+                                    "autoLeadingPercentage": 1.2
                                 }
                             }
                         ]
                     }
                 },
-                "stroke": preset.stroke_width,
+                "stroke": {
+                    "enabled": preset.stroke_width > 0.0,
+                    "size": preset.stroke_width,
+                    "opacity": (preset.stroke_color[3] as f32 / 2.55).round() as u32,
+                    "position": "outer",
+                    "color": {
+                        "r": preset.stroke_color[0],
+                        "g": preset.stroke_color[1],
+                        "b": preset.stroke_color[2]
+                    }
+                },
+                "stroke_width": preset.stroke_width,
                 "strokeColor": preset.stroke_color
             }));
         }
@@ -645,5 +690,128 @@ mod tests {
         };
         let imported = new_state.import_styles_json(&json).unwrap();
         assert_eq!(imported, state.presets.len());
+    }
+
+    #[test]
+    fn test_import_typer_export_json_sample() {
+        let json_data = r#"{
+            "folders": [{"name": "Манга", "id": "zbtrk7i9"}],
+            "styles": [
+                {
+                    "name": "Мысли",
+                    "folder": "zbtrk7i9",
+                    "textProps": {
+                        "layerText": {
+                            "textStyleRange": [{
+                                "textStyle": {
+                                    "fontName": "Kurai Voice 2",
+                                    "fontPostScriptName": "KuraiVoice2-Italic",
+                                    "fontStyleName": "Italic",
+                                    "size": 26,
+                                    "syntheticBold": false,
+                                    "syntheticItalic": false,
+                                    "fontCaps": "allCaps"
+                                }
+                            }],
+                            "paragraphStyleRange": [{
+                                "paragraphStyle": {
+                                    "autoLeadingPercentage": 1.2
+                                }
+                            }]
+                        }
+                    },
+                    "stroke": {"enabled": false, "size": 0, "color": {"r": 255, "g": 255, "b": 255}}
+                },
+                {
+                    "name": "Обычный выделенный",
+                    "folder": "zbtrk7i9",
+                    "textProps": {
+                        "layerText": {
+                            "textStyleRange": [{
+                                "textStyle": {
+                                    "fontName": "Kurai Voice 2",
+                                    "fontPostScriptName": "KuraiVoice2-Bold",
+                                    "fontStyleName": "Bold",
+                                    "size": 36,
+                                    "syntheticBold": false,
+                                    "syntheticItalic": false,
+                                    "fontCaps": "allCaps"
+                                }
+                            }]
+                        }
+                    }
+                },
+                {
+                    "name": "Жёсткий Крик",
+                    "folder": "zbtrk7i9",
+                    "textProps": {
+                        "layerText": {
+                            "textStyleRange": [{
+                                "textStyle": {
+                                    "fontName": "v_CCWiccanSansInt",
+                                    "fontPostScriptName": "v_CCWiccanSansInt",
+                                    "fontStyleName": "Regular",
+                                    "size": 26,
+                                    "syntheticBold": true,
+                                    "syntheticItalic": true,
+                                    "fontCaps": "allCaps"
+                                }
+                            }]
+                        }
+                    },
+                    "stroke": {"enabled": false, "size": 0}
+                }
+            ]
+        }"#;
+
+        let mut state = TypesetterState {
+            presets: Vec::new(),
+            ..TypesetterState::default()
+        };
+        let count = state.import_styles_json(json_data).unwrap();
+        assert_eq!(count, 3);
+
+        // Мысли
+        assert_eq!(state.presets[0].name, "Мысли");
+        assert_eq!(state.presets[0].font_family, "Kurai Voice 2");
+        assert_eq!(state.presets[0].font_postscript, "KuraiVoice2-Italic");
+        assert_eq!(state.presets[0].font_style, "Italic");
+        assert!(!state.presets[0].bold);
+        assert!(state.presets[0].italic);
+        assert_eq!(state.presets[0].stroke_width, 0.0);
+        assert_eq!(state.presets[0].leading, 31.0); // 26 * 1.2 = 31.2 -> 31.0
+
+        // Обычный выделенный
+        assert_eq!(state.presets[1].name, "Обычный выделенный");
+        assert_eq!(state.presets[1].font_style, "Bold");
+        assert!(state.presets[1].bold);
+        assert!(!state.presets[1].italic);
+        assert_eq!(state.presets[1].leading, 43.0); // 36 * 1.2 = 43.2 -> 43.0
+
+        // Жёсткий Крик
+        assert_eq!(state.presets[2].name, "Жёсткий Крик");
+        assert!(state.presets[2].bold);
+        assert!(state.presets[2].italic);
+        assert_eq!(state.presets[2].stroke_width, 0.0);
+    }
+
+    #[test]
+    fn test_import_real_file_if_present() {
+        if let Ok(content) = std::fs::read_to_string(r"d:\Work\umamusume\TypeR_Export.json") {
+            let mut state = TypesetterState {
+                presets: Vec::new(),
+                ..TypesetterState::default()
+            };
+            let count = state.import_styles_json(&content).unwrap();
+            assert!(count > 0);
+            for p in &state.presets {
+                if p.font_style.to_lowercase().contains("bold") {
+                    assert!(p.bold, "Preset '{}' with style '{}' must be bold", p.name, p.font_style);
+                }
+                if p.font_style.to_lowercase().contains("italic") {
+                    assert!(p.italic, "Preset '{}' with style '{}' must be italic", p.name, p.font_style);
+                }
+            }
+        }
     }
 }

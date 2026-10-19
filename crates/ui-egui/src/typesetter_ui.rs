@@ -264,13 +264,18 @@ impl TypesetterUi {
                 };
 
                 let active_style_info = if let Some(preset) = self.state.active_preset() {
-                    let variant = format!(
-                        "{}{}{}",
-                        preset.font_style,
-                        if preset.bold { " Bold" } else { "" },
-                        if preset.italic { " Italic" } else { "" }
-                    );
-                    format!("{} | {} | {}pt / L:{}pt | Trk:{}", preset.font_family, variant.trim(), preset.font_size, preset.leading, preset.tracking)
+                    let variant = if !preset.font_style.is_empty() && preset.font_style != "Regular" {
+                        preset.font_style.clone()
+                    } else if preset.bold && preset.italic {
+                        "Bold Italic".to_string()
+                    } else if preset.bold {
+                        "Bold".to_string()
+                    } else if preset.italic {
+                        "Italic".to_string()
+                    } else {
+                        "Regular".to_string()
+                    };
+                    format!("{} | {} | {}pt / L:{}pt | Trk:{}", preset.font_family, variant, preset.font_size, preset.leading, preset.tracking)
                 } else {
                     "Стиль не выбран".into()
                 };
@@ -598,12 +603,17 @@ impl TypesetterUi {
                         });
 
                         // Параметры типографики
-                        let variant = format!(
-                            "{}{}{}",
-                            preset.font_style,
-                            if preset.bold { " Bold" } else { "" },
-                            if preset.italic { " Italic" } else { "" }
-                        );
+                        let variant = if !preset.font_style.is_empty() && preset.font_style != "Regular" {
+                            preset.font_style.clone()
+                        } else if preset.bold && preset.italic {
+                            "Bold Italic".to_string()
+                        } else if preset.bold {
+                            "Bold".to_string()
+                        } else if preset.italic {
+                            "Italic".to_string()
+                        } else {
+                            "Regular".to_string()
+                        };
                         let stroke_desc = if preset.stroke_width > 0.0 {
                             format!("Обводка: {}px", preset.stroke_width)
                         } else {
@@ -614,7 +624,7 @@ impl TypesetterUi {
                             RichText::new(format!(
                                 "Шрифт: {} ({}) | {}pt / L:{}pt | Trk:{} | {}",
                                 preset.font_family,
-                                variant.trim(),
+                                variant,
                                 preset.font_size,
                                 preset.leading,
                                 preset.tracking,
@@ -646,6 +656,8 @@ impl TypesetterUi {
                                 ui.text_edit_singleline(&mut preset.font_family);
                                 ui.label("PostScript:");
                                 ui.text_edit_singleline(&mut preset.font_postscript);
+                                ui.label("Начертание:");
+                                ui.text_edit_singleline(&mut preset.font_style);
                             });
 
                             ui.horizontal(|ui| {
@@ -660,8 +672,20 @@ impl TypesetterUi {
                             ui.horizontal(|ui| {
                                 ui.label("Обводка (px):");
                                 ui.add(egui::DragValue::new(&mut preset.stroke_width).speed(0.2).range(0.0..=30.0));
-                                ui.checkbox(&mut preset.bold, "Жирный");
-                                ui.checkbox(&mut preset.italic, "Курсив");
+                                if ui.checkbox(&mut preset.bold, "Жирный").changed() {
+                                    if preset.bold && !preset.font_style.to_lowercase().contains("bold") {
+                                        preset.font_style = if preset.italic { "Bold Italic".into() } else { "Bold".into() };
+                                    } else if !preset.bold && preset.font_style.to_lowercase().contains("bold") {
+                                        preset.font_style = if preset.italic { "Italic".into() } else { "Regular".into() };
+                                    }
+                                }
+                                if ui.checkbox(&mut preset.italic, "Курсив").changed() {
+                                    if preset.italic && !preset.font_style.to_lowercase().contains("italic") {
+                                        preset.font_style = if preset.bold { "Bold Italic".into() } else { "Italic".into() };
+                                    } else if !preset.italic && preset.font_style.to_lowercase().contains("italic") {
+                                        preset.font_style = if preset.bold { "Bold".into() } else { "Regular".into() };
+                                    }
+                                }
                                 ui.checkbox(&mut preset.all_caps, "ALL CAPS");
                             });
                         }
