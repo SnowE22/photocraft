@@ -509,15 +509,16 @@ impl TypesetterUi {
                     });
                 });
 
-                // Поле предпросмотра текущей фразы
+                // Поле предпросмотра текущей фразы (белое контрастное окошко с построчным отображением как в TypeR)
                 let current_text = self.state.active_line().map(|l| l.text.as_str()).unwrap_or("");
                 Frame::NONE
-                    .fill(t.field)
-                    .stroke(Stroke::new(1.0, t.field_border))
-                    .corner_radius(CornerRadius::same(t.radius_sm as u8))
-                    .inner_margin(Margin::symmetric(6, 4))
+                    .fill(Color32::WHITE)
+                    .stroke(Stroke::new(1.0, Color32::from_rgb(170, 175, 185)))
+                    .corner_radius(CornerRadius::same(3))
+                    .inner_margin(Margin::symmetric(8, 6))
                     .show(ui, |ui| {
-                        ui.set_width(ui.available_width());
+                        let avail_w = ui.available_width();
+                        ui.set_width(avail_w);
                         let display = if current_text.is_empty() {
                             if total_lines == 0 {
                                 "(сценарий не загружен — вкладка 'Сценарий')"
@@ -527,14 +528,29 @@ impl TypesetterUi {
                         } else {
                             current_text
                         };
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(display)
-                                    .color(if current_text.is_empty() { t.text_faint } else { t.text })
-                                    .strong(),
-                            )
-                            .truncate(),
-                        );
+
+                        let text_color = if current_text.is_empty() {
+                            Color32::from_rgb(140, 145, 155)
+                        } else {
+                            Color32::from_rgb(20, 25, 35)
+                        };
+
+                        ScrollArea::vertical()
+                            .id_salt("current_phrase_box_scroll")
+                            .max_height(60.0)
+                            .auto_shrink([false, true])
+                            .show(ui, |ui| {
+                                ui.set_width(avail_w);
+                                ui.add(
+                                    egui::Label::new(
+                                        RichText::new(display)
+                                            .color(text_color)
+                                            .size(12.5)
+                                            .strong(),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Wrap),
+                                );
+                            });
                     });
             });
         });
@@ -588,53 +604,62 @@ impl TypesetterUi {
 
                         let row_resp = row_frame.show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                // Номер строки
+                                let avail = ui.available_width();
+                                let num_w = 20.0;
+                                let target_w = 22.0;
+                                let btn_w = 24.0;
+                                let spacing = 4.0;
+                                ui.spacing_mut().item_spacing.x = spacing;
+
+                                let text_w = (avail - num_w - target_w - btn_w - spacing * 4.0).max(40.0);
+
+                                // 1. Номер строки
                                 let num_color = if is_active {
                                     Color32::from_rgb(20, 25, 35)
                                 } else {
                                     t.text_dim
                                 };
-                                ui.label(RichText::new(format!("{:2}", idx + 1)).color(num_color).monospace().small());
+                                ui.add_sized(
+                                    vec2(num_w, 18.0),
+                                    egui::Label::new(RichText::new(format!("{:2}", idx + 1)).color(num_color).monospace().small()),
+                                );
 
-                                // Иконка прицела: ● если активна, ◎ если неактивна
+                                // 2. Иконка прицела: ● если активна, ◎ если неактивна
                                 let target_icon = if is_active { "●" } else { "◎" };
                                 if ui.small_button(target_icon).on_hover_text("Сделать эту строку текущей").clicked() {
                                     line_to_set = Some(idx);
                                 }
 
-                                // Размещаем правую кнопку быстрой вставки ПЕРВОЙ, чтобы длинный текст ее не выталкивал
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let btn_fill = if is_active { Color32::from_rgb(120, 180, 240) } else { t.accent };
-                                    let btn_text = if is_active { Color32::from_rgb(20, 25, 35) } else { t.accent_text };
-                                    let insert_btn = egui::Button::new(
-                                        RichText::new("▶").color(btn_text).strong()
-                                    )
-                                    .fill(btn_fill)
-                                    .min_size(vec2(22.0, 16.0));
+                                // 3. Текст строки — выравнивание ВЛЕВО (Left-aligned)
+                                let text_color = if is_active {
+                                    Color32::from_rgb(15, 20, 30)
+                                } else if line.is_applied {
+                                    t.text_faint
+                                } else {
+                                    t.text
+                                };
+                                let text_label = egui::Label::new(
+                                    RichText::new(&line.text)
+                                        .color(text_color)
+                                        .strong(),
+                                ).truncate();
+                                let text_resp = ui.add_sized(vec2(text_w, 18.0), text_label.sense(Sense::click()));
+                                if text_resp.clicked() {
+                                    line_to_set = Some(idx);
+                                }
 
-                                    if ui.add(insert_btn).on_hover_text("Вставить эту строку в баббл").clicked() {
-                                        line_to_insert = Some((idx, line.clone()));
-                                    }
+                                // 4. Кнопка быстрой вставки ▶ на правом краю
+                                let btn_fill = if is_active { Color32::from_rgb(120, 180, 240) } else { t.accent };
+                                let btn_text = if is_active { Color32::from_rgb(20, 25, 35) } else { t.accent_text };
+                                let insert_btn = egui::Button::new(
+                                    RichText::new("▶").color(btn_text).strong()
+                                )
+                                .fill(btn_fill)
+                                .min_size(vec2(22.0, 16.0));
 
-                                    // Текст строки занимает середину и корректно усекается
-                                    let text_color = if is_active {
-                                        Color32::from_rgb(15, 20, 30)
-                                    } else if line.is_applied {
-                                        t.text_faint
-                                    } else {
-                                        t.text
-                                    };
-                                    let text_resp = ui.add(
-                                        egui::Label::new(
-                                            RichText::new(&line.text)
-                                                .color(text_color)
-                                                .strong(),
-                                        ).truncate(),
-                                    );
-                                    if text_resp.clicked() {
-                                        line_to_set = Some(idx);
-                                    }
-                                });
+                                if ui.add(insert_btn).on_hover_text("Вставить эту строку в баббл").clicked() {
+                                    line_to_insert = Some((idx, line.clone()));
+                                }
                             });
                         });
 
@@ -1063,40 +1088,49 @@ impl TypesetterUi {
                         .inner_margin(Margin::symmetric(8, 6))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
+                                let avail = ui.available_width();
+                                let tag_w = 26.0;
+                                let btn_w = if is_active { 26.0 } else { 52.0 };
+                                let spacing = 4.0;
+                                ui.spacing_mut().item_spacing.x = spacing;
+                                let text_w = (avail - tag_w - btn_w - spacing * 3.0).max(40.0);
+
                                 if is_active {
-                                    ui.label(RichText::new("▶").color(t.accent).strong().small());
+                                    ui.add_sized(vec2(tag_w, 18.0), egui::Label::new(RichText::new("▶").color(t.accent).strong().small()));
                                 } else if line.is_applied {
-                                    ui.label(RichText::new("✓").color(t.text_faint).small());
+                                    ui.add_sized(vec2(tag_w, 18.0), egui::Label::new(RichText::new("✓").color(t.text_faint).small()));
                                 } else {
-                                    ui.label(RichText::new(format!("{:2}", idx + 1)).color(t.text_dim).small());
+                                    ui.add_sized(vec2(tag_w, 18.0), egui::Label::new(RichText::new(format!("{:2}", idx + 1)).color(t.text_dim).small()));
                                 }
 
-                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let btn_fill = if is_active { Color32::from_rgb(120, 180, 240) } else { t.accent };
-                                    let btn_text = if is_active { Color32::from_rgb(20, 25, 35) } else { t.accent_text };
-                                    let insert_btn = egui::Button::new(
-                                        RichText::new("▶").color(btn_text).strong()
-                                    )
-                                    .fill(btn_fill)
-                                    .min_size(vec2(22.0, 16.0));
+                                let text_color = if is_active {
+                                    t.text
+                                } else if line.is_applied {
+                                    t.text_faint
+                                } else {
+                                    t.text
+                                };
+                                let label = egui::Label::new(RichText::new(&line.text).color(text_color).strong()).truncate();
+                                let text_resp = ui.add_sized(vec2(text_w, 18.0), label.sense(Sense::click()));
+                                if text_resp.clicked() {
+                                    line_to_set = Some(idx);
+                                }
 
-                                    if ui.add(insert_btn).on_hover_text("Вставить эту реплику в текущее выделение").clicked() {
-                                        line_to_insert = Some((idx, line.clone()));
-                                    }
-                                    if !is_active && ui.small_button("◎").on_hover_text("Сделать эту реплику текущей").clicked() {
-                                        line_to_set = Some(idx);
-                                    }
+                                if !is_active && ui.small_button("◎").on_hover_text("Сделать эту реплику текущей").clicked() {
+                                    line_to_set = Some(idx);
+                                }
 
-                                    let text_color = if is_active {
-                                        t.text
-                                    } else if line.is_applied {
-                                        t.text_faint
-                                    } else {
-                                        t.text
-                                    };
-                                    let label = egui::Label::new(RichText::new(&line.text).color(text_color).strong()).truncate();
-                                    ui.add(label);
-                                });
+                                let btn_fill = if is_active { Color32::from_rgb(120, 180, 240) } else { t.accent };
+                                let btn_text = if is_active { Color32::from_rgb(20, 25, 35) } else { t.accent_text };
+                                let insert_btn = egui::Button::new(
+                                    RichText::new("▶").color(btn_text).strong()
+                                )
+                                .fill(btn_fill)
+                                .min_size(vec2(22.0, 16.0));
+
+                                if ui.add(insert_btn).on_hover_text("Вставить эту реплику в текущее выделение").clicked() {
+                                    line_to_insert = Some((idx, line.clone()));
+                                }
                             });
                         });
                     ui.add_space(2.0);
