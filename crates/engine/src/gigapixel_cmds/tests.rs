@@ -343,7 +343,12 @@ fn presets_run_one_after_the_other_or_side_by_side() {
     assert_eq!(r["layers"].as_array().map(Vec::len), Some(2));
     let calls = runs(&dir);
     assert_eq!(calls.len(), 5);
-    assert!(!calls[4].contains("step1"), "each reads the image: {}", calls[4]);
+    // Side by side the runs finish in either order, and one writes to a `step1` folder: only the
+    // input (`-i`, before `-o`) says what each read.
+    for call in &calls[3..5] {
+        let input = call.split(" -o ").next().unwrap_or_default();
+        assert!(!input.contains("step"), "each reads the image: {call}");
+    }
     let st = s.active().unwrap();
     let names: Vec<&str> = st.doc.layers.iter().skip(before).map(|l| l.name.as_str()).collect();
     assert_eq!(names.len(), 2);

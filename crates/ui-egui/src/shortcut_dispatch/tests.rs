@@ -760,12 +760,15 @@ fn action_function_key_checks_automation_authorization() {
 }
 
 #[test]
-fn fit_shortcut_records_and_f6_fits_the_resized_canvas() {
+fn inserted_fit_step_and_f6_fit_the_resized_canvas() {
     let mut h = harness();
     h.state_mut().run("actions.record", json!({"name": "Resize and fit"})).unwrap();
     h.state_mut().run("image.canvasSize", json!({"width": 1800, "height": 1080})).unwrap();
+    // Photoshop doesn't record View commands; Insert Menu Item adds the step.
     press(&mut h, "Cmd+0");
     h.state_mut().run("actions.stop", json!({})).unwrap();
+    assert_eq!(h.state().session.actions.list[0].steps.len(), 1);
+    h.state_mut().run("actions.insert", json!({"action": 0, "id": "view.fitOnScreen"})).unwrap();
     assert_eq!(h.state().session.actions.list[0].steps.iter().map(|s| s.0.as_str()).collect::<Vec<_>>(), ["image.canvasSize", "view.fitOnScreen"]);
     let item = crate::menus::menu_items(h.state()).into_iter().find(|i| i.id == "view.fitOnScreen").unwrap();
     assert_eq!(item.shortcut.as_deref(), Some("Cmd+0"));

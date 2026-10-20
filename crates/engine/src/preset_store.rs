@@ -571,6 +571,8 @@ pub struct Opened {
     pub warnings: Vec<String>,
     /// Recorded actions (`actions.json`). Empty when the file is missing or unreadable.
     pub actions: Vec<crate::actions_cmds::Action>,
+    /// The Actions panel's saved sets and options, from the same file.
+    pub action_prefs: crate::actions_cmds::ActionPrefs,
 }
 
 /// Load a store (any thread; the desktop app does this in the background at start).
@@ -646,7 +648,7 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
 
     let loaded_actions = load_actions(backend.as_ref(), &mut warnings);
     let actions_skipped = loaded_actions.is_none();
-    let actions = loaded_actions.unwrap_or_default();
+    let (actions, action_prefs) = loaded_actions.unwrap_or_default();
     let mut store = PresetStore {
         backend,
         synced_rev: None,
@@ -714,22 +716,22 @@ pub fn open(backend: Box<dyn PresetBackend>) -> Opened {
     let hidden_builtins = index.as_ref().map(|i| i.hidden_builtins.clone()).unwrap_or_default();
     let order = index.as_ref().map(|i| i.order.clone()).unwrap_or_default();
     store.index = index;
-    Opened { store, presets, hidden_builtins, order, warnings, actions }
+    Opened { store, presets, hidden_builtins, order, warnings, actions, action_prefs }
 }
 
 /// `actions.json`: a missing file is an empty list. Anything else unreadable is a warning.
 /// The saved actions; `None` when `actions.json` exists but could not be loaded.
-fn load_actions(backend: &dyn PresetBackend, warnings: &mut Vec<String>) -> Option<Vec<crate::actions_cmds::Action>> {
+fn load_actions(backend: &dyn PresetBackend, warnings: &mut Vec<String>) -> Option<(Vec<crate::actions_cmds::Action>, crate::actions_cmds::ActionPrefs)> {
     let bytes = match backend.read(ACTIONS_FILE, MAX_ACTIONS_BYTES) {
         Ok(b) => b,
-        Err(e) if missing_file(&e) => return Some(Vec::new()),
+        Err(e) if missing_file(&e) => return Some(Default::default()),
         Err(e) => {
             warnings.push(format!("actions: {ACTIONS_FILE} skipped: {e}"));
             return None;
         }
     };
     match serde_json::from_slice::<crate::actions_cmds::ActionsFile>(&bytes) {
-        Ok(file) if file.version == 1 => Some(file.actions),
+        Ok(file) if file.version == 1 => Some((file.actions, file.prefs)),
         Ok(file) => {
             warnings.push(format!("actions: {ACTIONS_FILE} skipped: unsupported version {}", file.version));
             None
@@ -1053,7 +1055,7 @@ impl PresetStore {
     /// Write the Actions list when `rev` differs from the last load or write.
     /// An oversized list is warned once and not retried. An I/O error is warned and retried
     /// on the next command.
-    pub fn sync_actions(&mut self, list: &[crate::actions_cmds::Action], rev: u64) {
+    pub fn sync_actions(&mut self, list: &[crate::actions_cmds::Action], prefs: &crate::actions_cmds::ActionPrefs, rev: u64) {
         if self.actions_rev == rev {
             return;
         }
@@ -1062,7 +1064,7 @@ impl PresetStore {
             self.actions_rev = rev;
             return;
         }
-        let file = crate::actions_cmds::ActionsFile { version: 1, actions: list.to_vec() };
+        let file = crate::actions_cmds::ActionsFile { version: 1, actions: list.to_vec(), prefs: prefs.clone() };
         let bytes = match serde_json::to_vec_pretty(&file) {
             Ok(b) => b,
             Err(e) => {
@@ -1099,7 +1101,7 @@ impl Session {
     /// built-in of the same name; presets created before the store finished loading win), hide
     /// deleted built-ins, then sync. Returns the load warnings.
     pub fn attach_preset_store(&mut self, opened: Opened) -> Vec<String> {
-        let Opened { store, presets, hidden_builtins, order, mut warnings, actions: disk } = opened;
+        let Opened { store, presets, hidden_builtins, order, mut warnings, actions: disk, action_prefs } = opened;
         let lib = &mut self.tools.presets;
         lib.retain(|p| !(p.builtin && hidden_builtins.iter().any(|h| h.eq_ignore_ascii_case(&p.name))));
         for p in presets {
@@ -1119,6 +1121,10 @@ impl Session {
         // names are appended. An empty session takes the disk list and does not rewrite it.
         if self.actions.list.is_empty() {
             self.actions.list = disk;
+            // The saved sets and options, unless they were changed before the store loaded.
+            if self.actions.prefs == Default::default() {
+                self.actions.prefs = action_prefs;
+            }
             self.actions.rev = 1;
             if let Some(st) = self.preset_store.as_mut() {
                 st.actions_rev = 1;
@@ -1158,7 +1164,7 @@ impl Session {
                     self.tools.brush_changed();
                 }
             }
-            st.sync_actions(&self.actions.list, actions_rev);
+            st.sync_actions(&self.actions.list, &self.actions.prefs, actions_rev);
         }
     }
 

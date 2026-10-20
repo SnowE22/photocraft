@@ -3128,3 +3128,67 @@ curves	Smooth	平滑
 	Save as:	另存为：
 	Save Preset	存储预设
 	Keep these two presets as one, listed with the others	将这两个预设存为一个，与其他预设列在一起
+	Stop recording first	请先停止记录
+	Select a step first	请先选择一个步骤
+	This step has no dialog to record again	此步骤没有可重新记录的对话框
+	New Action…	新建动作…
+	Duplicate	复制
+	Record Again…	再次记录…
+	Insert Menu Item…	插入菜单项目…
+	Insert Conditional…	插入条件…
+	Set Options…	组选项…
+	Action Options…	动作选项…
+	Playback Options…	回放选项…
+	Allow Tool Recording	允许工具记录
+	Record brush and other painting strokes, and the brush settings they use	记录画笔及其他绘画描边，以及它们使用的画笔设置
+	Clear All Actions	清除全部动作
+	Replace Actions…	替换动作…
+	Create new set	创建新组
+	Delete the set “{name}”?	要删除组“{name}”吗？
+	Delete the action “{name}”?	要删除动作“{name}”吗？
+	Delete the selection?	要删除所选内容吗？
+	Function Key:	功能键：
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	此动作已有其他快捷键（设置快捷键…）；在此选择按键将替换它。
+	Accelerated	加速
+	Step by Step	逐步
+	Pause For:	暂停：
+	seconds	秒
+	None Selected	未选择
+	Menu Item:	菜单项目：
+	Type part of a menu item's name, then pick it below.	输入菜单项目名称的一部分，然后在下方选择。
+	If Current:	如果当前：
+	Then Play Action:	则播放动作：
+	Else Play Action:	否则播放动作：
+	Document Is Open	文档已打开
+	Document Is Landscape	文档为横向
+	Document Is Square	文档为正方形
+	Document Is Portrait	文档为纵向
+	Document Mode Is RGB	文档模式为 RGB
+	Document Mode Is CMYK	文档模式为 CMYK
+	Document Mode Is Grayscale	文档模式为灰度
+	Document Mode Is Lab	文档模式为 Lab
+	Document Mode Is Bitmap	文档模式为位图
+	Document Mode Is Indexed	文档模式为索引颜色
+	Document Mode Is Duotone	文档模式为双色调
+	Document Mode Is Multichannel	文档模式为多通道
+	Document Is 8 Bits/Channel	文档为 8 位/通道
+	Document Is 16 Bits/Channel	文档为 16 位/通道
+	Document Is 32 Bits/Channel	文档为 32 位/通道
+	Document Has Unsaved Changes	文档有未存储的更改
+	Document Has a Selection	文档有选区
+	Document Has Layers	文档有图层
+	Document Has Alpha Channels	文档有 Alpha 通道
+	Layer Is Background	图层是背景
+	Layer Is a Pixel Layer	图层是像素图层
+	Layer Is an Adjustment Layer	图层是调整图层
+	Layer Is a Shape Layer	图层是形状图层
+	Layer Is a Type Layer	图层是文字图层
+	Layer Is a Smart Object	图层是智能对象
+	Layer Is a Group	图层是组
+	Layer Is Locked	图层已锁定
+	Layer Is Visible	图层可见
+	Layer Has Pixel Mask	图层有像素蒙版
+	Layer Has Vector Mask	图层有矢量蒙版
+	Layer Has Effects	图层有效果
+	Pick a menu item first	请先选择一个菜单项目
+	Find	查找

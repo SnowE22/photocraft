@@ -4571,3 +4571,64 @@ shape	Appearance	Izgled
 	Save as:	Sačuvaj kao:
 	Save Preset	Sačuvaj postavku
 	Keep these two presets as one, listed with the others	Sačuvaj ove dve postavke kao jednu, uz ostale
+	Stop recording first	Прво зауставите снимање
+	Select a step first	Прво изаберите корак
+	This step has no dialog to record again	Овај корак нема дијалог за поновно снимање
+	New Action…	Нова радња…
+	Record Again…	Сними поново…
+	Insert Menu Item…	Уметни ставку менија…
+	Insert Conditional…	Уметни услов…
+	Set Options…	Опције скупа…
+	Action Options…	Опције радње…
+	Playback Options…	Опције репродукције…
+	Allow Tool Recording	Дозволи снимање алатки
+	Record brush and other painting strokes, and the brush settings they use	Снимај потезе четкицом и другим алатима за сликање, као и подешавања четкице која користе
+	Clear All Actions	Обриши све радње
+	Replace Actions…	Замени радње…
+	Delete the set “{name}”?	Обрисати скуп „{name}”?
+	Delete the action “{name}”?	Обрисати радњу „{name}”?
+	Delete the selection?	Обрисати избор?
+	Function Key:	Функцијски тастер:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Радња има другу пречицу (Постави пречицу…); тастер изабран овде је замењује.
+	Accelerated	Убрзано
+	Step by Step	Корак по корак
+	Pause For:	Пауза од:
+	seconds	секунди
+	None Selected	Ништа није изабрано
+	Menu Item:	Ставка менија:
+	Type part of a menu item's name, then pick it below.	Унесите део назива ставке менија, па је изаберите испод.
+	If Current:	Ако тренутни:
+	Then Play Action:	Онда пусти радњу:
+	Else Play Action:	Иначе пусти радњу:
+	Document Is Open	Документ је отворен
+	Document Is Landscape	Документ је положен
+	Document Is Square	Документ је квадратан
+	Document Is Portrait	Документ је усправан
+	Document Mode Is RGB	Режим документа је RGB
+	Document Mode Is CMYK	Режим документа је CMYK
+	Document Mode Is Grayscale	Режим документа је Нијансе сиве
+	Document Mode Is Lab	Режим документа је Lab
+	Document Mode Is Bitmap	Режим документа је Битмапа
+	Document Mode Is Indexed	Режим документа је Индексиране боје
+	Document Mode Is Duotone	Режим документа је Двотонски
+	Document Mode Is Multichannel	Режим документа је Вишеканални
+	Document Is 8 Bits/Channel	Документ има 8 бита/каналу
+	Document Is 16 Bits/Channel	Документ има 16 бита/каналу
+	Document Is 32 Bits/Channel	Документ има 32 бита/каналу
+	Document Has Unsaved Changes	Документ има несачуване измене
+	Document Has a Selection	Документ има избор
+	Document Has Layers	Документ има слојеве
+	Document Has Alpha Channels	Документ има алфа канале
+	Layer Is Background	Слој је позадина
+	Layer Is a Pixel Layer	Слој је пикселски слој
+	Layer Is an Adjustment Layer	Слој је слој подешавања
+	Layer Is a Shape Layer	Слој је слој облика
+	Layer Is a Type Layer	Слој је текстуални слој
+	Layer Is a Smart Object	Слој је паметни објекат
+	Layer Is a Group	Слој је група
+	Layer Is Locked	Слој је закључан
+	Layer Is Visible	Слој је видљив
+	Layer Has Pixel Mask	Слој има пикселску маску
+	Layer Has Vector Mask	Слој има векторску маску
+	Layer Has Effects	Слој има ефекте
+	Pick a menu item first	Прво изаберите ставку менија

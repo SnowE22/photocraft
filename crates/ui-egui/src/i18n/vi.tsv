@@ -3989,3 +3989,66 @@ curves	Smooth	Làm mượt
 	Save as:	Lưu thành:
 	Save Preset	Lưu thiết lập sẵn
 	Keep these two presets as one, listed with the others	Giữ hai thiết lập sẵn này thành một, liệt kê cùng các thiết lập khác
+	Stop recording first	Hãy dừng ghi trước
+	Select a step first	Hãy chọn một bước trước
+	This step has no dialog to record again	Bước này không có hộp thoại để ghi lại
+	New Action…	Hành động mới…
+	Record Again…	Ghi lại…
+	Insert Menu Item…	Chèn mục menu…
+	Insert Conditional…	Chèn điều kiện…
+	Set Options…	Tùy chọn bộ…
+	Action Options…	Tùy chọn hành động…
+	Playback Options…	Tùy chọn phát lại…
+	Allow Tool Recording	Cho phép ghi công cụ
+	Record brush and other painting strokes, and the brush settings they use	Ghi các nét cọ và nét vẽ khác, cùng các thiết lập cọ mà chúng dùng
+	Clear All Actions	Xóa tất cả hành động
+	Replace Actions…	Thay thế hành động…
+	Create new set	Tạo bộ mới
+	Delete the set “{name}”?	Xóa bộ “{name}”?
+	Delete the action “{name}”?	Xóa hành động “{name}”?
+	Delete the selection?	Xóa vùng chọn?
+	Function Key:	Phím chức năng:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Hành động có phím tắt khác (Đặt phím tắt…); chọn phím ở đây sẽ thay thế nó.
+	Accelerated	Tăng tốc
+	Step by Step	Từng bước
+	Pause For:	Tạm dừng:
+	seconds	giây
+	None Selected	Chưa chọn
+	Menu Item:	Mục menu:
+	Type part of a menu item's name, then pick it below.	Nhập một phần tên mục menu, rồi chọn nó bên dưới.
+	If Current:	Nếu hiện tại:
+	Then Play Action:	Thì phát hành động:
+	Else Play Action:	Nếu không thì phát hành động:
+	Document Is Open	Tài liệu đang mở
+	Document Is Landscape	Tài liệu nằm ngang
+	Document Is Square	Tài liệu vuông
+	Document Is Portrait	Tài liệu thẳng đứng
+	Document Mode Is RGB	Chế độ tài liệu là RGB
+	Document Mode Is CMYK	Chế độ tài liệu là CMYK
+	Document Mode Is Grayscale	Chế độ tài liệu là Thang xám
+	Document Mode Is Lab	Chế độ tài liệu là Lab
+	Document Mode Is Bitmap	Chế độ tài liệu là Bitmap
+	Document Mode Is Indexed	Chế độ tài liệu là Màu chỉ mục
+	Document Mode Is Duotone	Chế độ tài liệu là Hai tông
+	Document Mode Is Multichannel	Chế độ tài liệu là Đa kênh
+	Document Is 8 Bits/Channel	Tài liệu 8 bit/kênh
+	Document Is 16 Bits/Channel	Tài liệu 16 bit/kênh
+	Document Is 32 Bits/Channel	Tài liệu 32 bit/kênh
+	Document Has Unsaved Changes	Tài liệu có thay đổi chưa lưu
+	Document Has a Selection	Tài liệu có vùng chọn
+	Document Has Layers	Tài liệu có lớp
+	Document Has Alpha Channels	Tài liệu có kênh alpha
+	Layer Is Background	Lớp là nền
+	Layer Is a Pixel Layer	Lớp là lớp điểm ảnh
+	Layer Is an Adjustment Layer	Lớp là lớp điều chỉnh
+	Layer Is a Shape Layer	Lớp là lớp hình
+	Layer Is a Type Layer	Lớp là lớp chữ
+	Layer Is a Smart Object	Lớp là đối tượng thông minh
+	Layer Is a Group	Lớp là nhóm
+	Layer Is Locked	Lớp bị khóa
+	Layer Is Visible	Lớp hiển thị
+	Layer Has Pixel Mask	Lớp có mặt nạ điểm ảnh
+	Layer Has Vector Mask	Lớp có mặt nạ vectơ
+	Layer Has Effects	Lớp có hiệu ứng
+	Pick a menu item first	Hãy chọn một mục menu trước
+	Find	Tìm

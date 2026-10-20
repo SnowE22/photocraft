@@ -15,6 +15,7 @@ macro_rules! tl {
 }
 
 pub mod actions;
+pub mod actions_dialogs;
 pub mod adjust_dialog;
 pub mod adjust_editors;
 pub mod adjust_preview;
@@ -747,6 +748,8 @@ pub struct PhotocraftApp {
     /// makes shortcut- and dialog-triggered commands pass the same policy as
     /// direct control calls.
     pub(crate) automation_input: bool,
+    /// An action the Actions panel is playing step by step (Playback Options), one step a frame.
+    pub(crate) action_run: Option<actions::Run>,
     /// Levels/Curves histogram cache: (document, adjustment layer, revision it is valid for).
     pub(crate) tone_hist: Option<(DocId, photocraft_doc::LayerId, u64, std::sync::Arc<tone::Histograms>)>,
     /// The Levels/Curves histogram being computed on a worker thread (`tone::histograms`).
@@ -964,6 +967,7 @@ impl PhotocraftApp {
             adjust_preview: None,
             synthetic: Vec::new(),
             automation_input: false,
+            action_run: None,
             channel_thumbs: None,
             channel_views: HashMap::new(),
             type_layout: None,

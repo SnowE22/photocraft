@@ -26,11 +26,46 @@ pub struct ActionsUi {
     /// Photoshop's Button Mode: each action is a coloured button, and a click plays it.
     #[serde(default)]
     pub button_mode: bool,
+    /// The set folder selected (a click on its row), when no action is.
+    pub selected_set: Option<String>,
+    /// Steps picked together with Ctrl or Shift (with [`Self::selected_step`], the one picked
+    /// last): Delete removes them all.
+    pub selected_steps: std::collections::BTreeSet<usize>,
+    /// Steps opened to show their values, as (action, step).
+    #[serde(skip)]
+    pub open_steps: std::collections::BTreeSet<(usize, usize)>,
     #[serde(skip)]
     reveal_recording: Option<(usize, usize)>,
+    /// The action that just played, scrolled into view on the next frame.
+    #[serde(skip)]
+    reveal_action: Option<usize>,
     /// The action whose name is being edited in place (double-click on its name).
     #[serde(skip)]
     renaming: Option<RenameAction>,
+}
+
+impl ActionsUi {
+    /// No step picked.
+    pub fn clear_steps(&mut self) {
+        self.selected_step = None;
+        self.selected_steps.clear();
+    }
+
+    /// Only step `step` picked.
+    pub fn select_step(&mut self, step: usize) {
+        self.selected_step = Some(step);
+        self.selected_steps = std::iter::once(step).collect();
+    }
+
+    /// The picked steps of the selected action, in order.
+    pub fn step_selection(&self) -> Vec<usize> {
+        let mut steps: std::collections::BTreeSet<usize> = self.selected_steps.clone();
+        steps.extend(self.selected_step);
+        if self.selected_step.is_none() {
+            steps.clear();
+        }
+        steps.into_iter().collect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -197,11 +232,13 @@ pub(crate) fn assign_shortcut(app: &mut PhotocraftApp, name: &str, shortcut: &st
 /// Engine steps keep the headless action semantics (no dialogs or background jobs).
 pub(crate) fn play(app: &mut PhotocraftApp, params: &Value) -> Result<Value, String> {
     let (action, from) = actions_cmds::playback_plan(&app.session, params).map_err(|e| e.to_string())?;
+    let limit = actions_cmds::step_limit(params).map_err(|e| e.to_string())?;
+    let top = app.session.actions.playback_stack.is_empty();
     let recording = actions_cmds::begin_playback(&mut app.session, &action).map_err(|e| e.to_string())?;
     let mut ran = 0u64;
     let mut failed = None;
     let mut paused = None;
-    for (i, (id, p)) in action.enabled_steps().skip_while(|(i, _)| *i < from) {
+    for (i, (id, p)) in action.enabled_steps().skip_while(|(i, _)| *i < from).take(limit.unwrap_or(usize::MAX)) {
         // The dialog toggle: show the step's dialog with its recorded values and continue
         // from the next step when it is confirmed (`resume`). Agents play headlessly.
         if action.dialogs.contains(&i) && !app.automation_input && (crate::filter_dialog::has_dialog(id) || crate::adjust_dialog::has_dialog(id)) {
@@ -255,12 +292,33 @@ pub(crate) fn play(app: &mut PhotocraftApp, params: &Value) -> Result<Value, Str
             }
         }
     }
-    actions_cmds::finish_playback(&mut app.session, recording, &action, from);
+    actions_cmds::finish_playback(&mut app.session, recording, &action, from, limit);
+    if top {
+        show_played(app, &action.name);
+    }
     Ok(match (failed, paused) {
         (Some(f), _) => json!({"action": action.name, "ran": ran, "failed": f}),
         (None, Some(p)) => json!({"action": action.name, "ran": ran, "paused": p}),
         (None, None) => json!({"action": action.name, "ran": ran}),
     })
+}
+
+/// The action that just played is selected (its set opened and the row scrolled to), so the
+/// Actions panel shows which one ran however it was started: Play, its key, Button Mode, Batch.
+/// Steps picked in that action stay picked, so Play on a step can be repeated.
+fn show_played(app: &mut PhotocraftApp, name: &str) {
+    let list = &app.session.actions.list;
+    let Some(i) = list.iter().position(|a| a.name == name) else { return };
+    let a = &mut app.ui.actions;
+    if a.selected != Some(i) {
+        a.selected = Some(i);
+        a.clear_steps();
+    }
+    a.selected_set = None;
+    if let Some(set) = list.get(i).and_then(|x| x.set.as_ref()) {
+        a.collapsed_sets.retain(|c| c != set);
+    }
+    a.reveal_action = Some(i);
 }
 
 /// Execute the actual menu command, not a synthetic keystroke. Fit is deferred
@@ -290,19 +348,26 @@ pub(crate) fn run_view(app: &mut PhotocraftApp, id: &str, params: Value) -> Resu
     Ok(Value::Null)
 }
 
-fn begin_recording(app: &mut PhotocraftApp, append: bool) {
+/// The Record button: into the selected action, after its selected step (Photoshop records from
+/// the step that is selected), or at its end. With no action selected, New Action… asks first.
+fn begin_recording(app: &mut PhotocraftApp) {
     if app.session.actions.recording.is_some() {
         return;
     }
-    let params = if append { app.ui.actions.selected.map_or(json!({}), |i| json!({"action": i})) } else { json!({}) };
-    let Ok(v) = app.run("actions.record", params) else { return };
-    let Some(i) = v.get("index").and_then(Value::as_u64).and_then(|n| usize::try_from(n).ok()) else { return };
-    app.ui.actions.selected = Some(i);
-    app.ui.actions.selected_step = None;
-    if app.ui.actions.expanded.len() <= i {
-        app.ui.actions.expanded.resize(i + 1, false);
+    let Some(action) = app.ui.actions.selected.filter(|i| *i < app.session.actions.list.len()) else {
+        crate::actions_dialogs::new_action(app);
+        return;
+    };
+    let mut params = json!({"action": action});
+    if let Some(step) = app.ui.actions.selected_step {
+        params["at"] = json!(step + 1);
     }
-    app.ui.actions.expanded[i] = true;
+    if app.run("actions.record", params).is_err() {
+        return;
+    }
+    let a = &mut app.ui.actions;
+    a.expanded.resize(a.expanded.len().max(action + 1), false);
+    a.expanded[action] = true;
 }
 
 pub(crate) fn report_play(app: &mut PhotocraftApp, v: &Value) {
@@ -327,14 +392,37 @@ pub(crate) fn report_play(app: &mut PhotocraftApp, v: &Value) {
     app.ui.status_error = true;
 }
 
+fn report_error(app: &mut PhotocraftApp, e: String) {
+    if e != "cancelled" {
+        let template = "Action playback failed: {error}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
+        app.ui.status_error = true;
+    }
+}
+
 /// The height of a set, action or step row, rows flush: as dense as Photoshop's list (it fits
 /// about 9 rows where 24–26 pt rows with 6 pt gaps fitted 7, user report).
 const ROW_H: f32 = 23.0;
+/// A step's parameter line under an opened step.
+const PARAM_H: f32 = 17.0;
 /// An action's button in Button Mode (buttons keep their gaps).
 const BUTTON_H: f32 = 26.0;
+/// Photoshop's two toggle columns, then the tree: the check, the dialog toggle, the content.
+const CHECK_X: f32 = 11.0;
+const DIALOG_X: f32 = 31.0;
+const TREE_X: f32 = 44.0;
+/// Where the check column ends and the dialog column begins.
+const CHECK_SPLIT: f32 = 21.0;
 
-fn visible_steps(app: &PhotocraftApp, action: usize) -> Vec<(String, Value)> {
-    app.session.actions.list.get(action).into_iter().flat_map(|a| a.steps.iter()).chain(actions_cmds::pending_steps(&app.session, action)).cloned().collect()
+/// The steps the panel shows for `action`: its steps with the ones being recorded in place,
+/// where they will land.
+pub(crate) fn visible_steps(app: &PhotocraftApp, action: usize) -> Vec<(String, Value)> {
+    let Some(a) = app.session.actions.list.get(action) else { return Vec::new() };
+    let at = actions_cmds::pending_at(&app.session, action);
+    let mut steps: Vec<(String, Value)> = a.steps.clone();
+    let pending: Vec<_> = actions_cmds::pending_steps(&app.session, action).cloned().collect();
+    steps.splice(at.min(steps.len())..at.min(steps.len()), pending);
+    steps
 }
 
 /// "3 steps", or "2/3 steps" when some are switched off (Photoshop shows a red partial check).
@@ -365,13 +453,65 @@ fn button_label_color(color: &str, t: &Tokens) -> Color32 {
     if color.is_empty() { t.text } else { Color32::from_rgb(20, 20, 20) }
 }
 
-fn paint_check(ui: &egui::Ui, rect: Rect, on: bool, t: &Tokens) {
-    let b = Rect::from_center_size(rect.center(), vec2(11.0, 11.0));
-    ui.painter().rect_stroke(b, 2.0, Stroke::new(1.0, t.text_faint), egui::StrokeKind::Inside);
-    if on {
-        let pts = vec![pos2(b.left() + 2.5, b.center().y), pos2(b.left() + 4.5, b.bottom() - 3.0), pos2(b.right() - 2.5, b.top() + 2.5)];
-        ui.painter().add(egui::Shape::line(pts, Stroke::new(1.5, t.text)));
+/// A toggle column's state: everything below on, some (Photoshop draws it red), or none.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Tri {
+    On,
+    Partial,
+    Off,
+}
+
+impl Tri {
+    fn of(on: usize, of: usize) -> Tri {
+        if on == of {
+            Tri::On
+        } else if on == 0 {
+            Tri::Off
+        } else {
+            Tri::Partial
+        }
     }
+
+    fn merge(self, other: Tri) -> Tri {
+        if self == other { self } else { Tri::Partial }
+    }
+}
+
+const PARTIAL: Color32 = Color32::from_rgb(220, 60, 50);
+
+/// Photoshop's check column: a check mark when the item plays, red when only some of it does,
+/// nothing when it is switched off.
+fn paint_check(ui: &egui::Ui, rect: Rect, state: Tri, t: &Tokens) {
+    let b = Rect::from_center_size(rect.center(), vec2(11.0, 11.0));
+    let color = match state {
+        Tri::On => t.text,
+        Tri::Partial => PARTIAL,
+        Tri::Off => return,
+    };
+    let pts = vec![pos2(b.left() + 1.5, b.center().y), pos2(b.left() + 4.5, b.bottom() - 2.0), pos2(b.right() - 1.0, b.top() + 1.5)];
+    ui.painter().add(egui::Shape::line(pts, Stroke::new(1.6, color)));
+}
+
+/// The dialog column: `None` for an item with no dialog to show.
+fn paint_dialog(ui: &egui::Ui, rect: Rect, state: Option<Tri>, t: &Tokens) {
+    let color = match state {
+        None => return,
+        Some(Tri::On) => t.icon,
+        Some(Tri::Partial) => PARTIAL,
+        Some(Tri::Off) => t.text_faint.gamma_multiply(0.35),
+    };
+    crate::icons::paint(ui, rect, "message-square", 11.0, color);
+}
+
+fn paint_triangle(ui: &egui::Ui, center: egui::Pos2, open: bool, t: &Tokens) {
+    let tri = Rect::from_center_size(center, vec2(8.0, 8.0));
+    let pts = if open { vec![tri.left_top(), tri.right_top(), tri.center_bottom()] } else { vec![tri.left_top(), tri.right_center(), tri.left_bottom()] };
+    ui.painter().add(egui::Shape::convex_polygon(pts, t.text_dim, Stroke::NONE));
+}
+
+/// Whether playback can show `id`'s dialog (the dialog column has a toggle for it).
+fn has_dialog(id: &str) -> bool {
+    crate::filter_dialog::has_dialog(id) || crate::adjust_dialog::has_dialog(id)
 }
 
 fn step_label(id: &str, params: &Value) -> String {
@@ -400,6 +540,41 @@ fn step_label(id: &str, params: &Value) -> String {
     } else {
         label_of(id)
     }
+}
+
+/// A step's recorded values as Photoshop lists them under an opened step: "Name: Layer 1".
+fn param_lines(params: &Value) -> Vec<String> {
+    let Some(o) = params.as_object() else { return Vec::new() };
+    o.iter()
+        .filter(|(k, _)| !k.starts_with("__") && k.as_str() != "coalesce")
+        .map(|(k, v)| {
+            let value = match v {
+                Value::String(s) => s.clone(),
+                Value::Number(n) => n.as_f64().filter(|f| f.fract() != 0.0).map_or_else(|| n.to_string(), |f| format!("{f:.2}").trim_end_matches('0').to_string()),
+                other => other.to_string(),
+            };
+            let value: String = if value.chars().count() > 60 { value.chars().take(59).chain(std::iter::once('…')).collect() } else { value };
+            format!("{}: {value}", words(k))
+        })
+        .collect()
+}
+
+/// `blendMode` → "Blend Mode".
+fn words(key: &str) -> String {
+    let mut out = String::new();
+    for (i, c) in key.chars().enumerate() {
+        if i == 0 {
+            out.extend(c.to_uppercase());
+        } else if c.is_uppercase() {
+            out.push(' ');
+            out.push(c);
+        } else if c == '_' {
+            out.push(' ');
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Command params for a picked file: a real path keeps the journal small; browser files arrive
@@ -449,7 +624,8 @@ pub fn load_bytes(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Result<V
         && let Some(i) = list.iter().position(|a| a.name == first)
     {
         app.ui.actions.selected = Some(i);
-        app.ui.actions.selected_step = None;
+        app.ui.actions.selected_set = None;
+        app.ui.actions.clear_steps();
         app.ui.actions.expanded.resize(list.len(), false);
         if let Some(e) = app.ui.actions.expanded.get_mut(i) {
             *e = true;
@@ -459,9 +635,16 @@ pub fn load_bytes(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Result<V
     Ok(r)
 }
 
-fn load_dialog(app: &mut PhotocraftApp) -> Result<Value, String> {
+/// Load Actions… adds the file's sets; Replace Actions… (`replace`) clears the panel first.
+fn load_dialog(app: &mut PhotocraftApp, replace: bool) -> Result<Value, String> {
     // A `.psp` is Photoshop's Actions palette (`Actions Palette.psp`): every set at once.
-    app.pick_file_bytes_filtered(&["atn", "psp"], |app, name, bytes| load_bytes(app, &name, &bytes))
+    app.pick_file_bytes_filtered(&["atn", "psp"], move |app, name, bytes| {
+        if replace {
+            app.run("actions.clear", json!({}))?;
+            app.ui.actions = ActionsUi { button_mode: app.ui.actions.button_mode, ..Default::default() };
+        }
+        load_bytes(app, &name, &bytes)
+    })
 }
 
 /// The panel menu's Import Photoshop Actions: every set of the Actions panel of the newest
@@ -474,10 +657,10 @@ pub fn import_photoshop(app: &mut PhotocraftApp) -> Result<Value, String> {
     load_bytes(app, &path, &bytes)
 }
 
-/// Save Actions…: the selected action's set (every action of it), or every action when none
-/// came from a set, as a `.atn` file Photoshop loads.
+/// Save Actions…: the selected set (every action of it), or every action when none came from a
+/// set, as a `.atn` file Photoshop loads.
 fn save_dialog(app: &mut PhotocraftApp, set: Option<String>) -> Result<Value, String> {
-    let set = set.or_else(|| selected_action(app).and_then(|a| a.set.clone()));
+    let set = set.or_else(|| app.ui.actions.selected_set.clone()).or_else(|| selected_action(app).and_then(|a| a.set.clone()));
     let params = match &set {
         Some(set) => json!({"set": set, "skipUnsupported": true}),
         None => json!({"skipUnsupported": true}),
@@ -519,7 +702,7 @@ pub fn owns_insert_stop(fields: &serde_json::Map<String, Value>) -> bool {
 /// Insert Stop…: a message step after the selected step (or at the end of the selected action).
 fn insert_stop_dialog(app: &mut PhotocraftApp) -> Result<Value, String> {
     let action = app.ui.actions.selected.filter(|i| *i < app.session.actions.list.len()).ok_or_else(|| tl!("Select an action first").to_string())?;
-    let len = app.session.actions.list[action].steps.len() + actions_cmds::pending_steps(&app.session, action).count();
+    let len = visible_steps(app, action).len();
     let at = app.ui.actions.selected_step.map_or(len, |s| (s + 1).min(len));
     let fields =
         json!({INSERT_STOP: true, "__command": "actions.insert", "__label": "Insert Stop", "action": action, "at": at, "message": "", "allowContinue": false});
@@ -549,7 +732,7 @@ pub fn insert_stop_confirm(app: &mut PhotocraftApp, fields: &serde_json::Map<Str
     let r = app.run("actions.insert", params)?;
     if let (Some(a), Some(step)) = (usize::try_from(action).ok(), r["step"].as_u64().and_then(|s| usize::try_from(s).ok())) {
         app.ui.actions.selected = Some(a);
-        app.ui.actions.selected_step = Some(step);
+        app.ui.actions.select_step(step);
         app.ui.actions.expanded.resize(app.session.actions.list.len(), false);
         if let Some(e) = app.ui.actions.expanded.get_mut(a) {
             *e = true;
@@ -560,6 +743,8 @@ pub fn insert_stop_confirm(app: &mut PhotocraftApp, fields: &serde_json::Map<Str
 
 /// The key a paused playback leaves in its dialog's fields: `{action, from}`.
 pub const RESUME: &str = "__resumeAction";
+/// The key Record Again… leaves in a step's dialog: `{action, step}`.
+const RERECORD: &str = "__recordAgain";
 
 /// A step dialog confirmed: continue the action after it (`dialogs::confirm` calls this).
 pub fn resume(app: &mut PhotocraftApp, fields: &serde_json::Map<String, Value>) {
@@ -570,15 +755,9 @@ pub fn resume(app: &mut PhotocraftApp, fields: &serde_json::Map<String, Value>) 
     {
         let _ = app.session.wait_job(job.id);
     }
-    let params = json!({"action": r.get("action").cloned().unwrap_or(Value::Null), "from": r.get("from").cloned().unwrap_or(Value::Null)});
-    match play(app, &params) {
-        Ok(v) => report_play(app, &v),
-        Err(e) => {
-            let template = "Action playback failed: {error}";
-            app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
-            app.ui.status_error = true;
-        }
-    }
+    let name = r.get("action").and_then(Value::as_str).unwrap_or_default().to_string();
+    let from = r.get("from").and_then(Value::as_u64).and_then(|n| usize::try_from(n).ok()).unwrap_or(0);
+    start(app, vec![name], from, None);
 }
 
 /// A step dialog cancelled: the action stops there, as in Photoshop.
@@ -589,30 +768,273 @@ pub fn stopped(app: &mut PhotocraftApp, fields: &serde_json::Map<String, Value>)
     }
 }
 
-/// The Actions entries of the panel group's menu ("…").
+/// Record Again…: the selected step's dialog opens with its recorded values; OK runs it and
+/// stores the new values in the step (`rerecorded`).
+fn record_again(app: &mut PhotocraftApp, action: usize, step: usize) -> Result<Value, String> {
+    if app.session.actions.recording.is_some() {
+        return Err(tl!("Stop recording first").into());
+    }
+    let (id, params) = visible_steps(app, action).get(step).cloned().ok_or_else(|| tl!("Select a step first").to_string())?;
+    if !has_dialog(&id) {
+        return Err(tl!("This step has no dialog to record again").into());
+    }
+    let name = app.session.actions.list.get(action).map(|a| a.name.clone()).unwrap_or_default();
+    let dialog = crate::dialogs::open_command_dialog(app, &id, &label_of(&id));
+    if let Some(d) = app.ui.dialog_mut(dialog) {
+        if let Some(o) = params.as_object() {
+            d.fields.extend(o.iter().map(|(k, v)| (k.clone(), v.clone())));
+        }
+        d.fields.insert(RERECORD.into(), json!({"action": name, "step": step}));
+    }
+    Ok(json!({"dialog": dialog}))
+}
+
+/// Record Again's dialog confirmed with `params`: they become the step's values.
+pub fn rerecorded(app: &mut PhotocraftApp, fields: &serde_json::Map<String, Value>, params: &Value) {
+    let Some(r) = fields.get(RERECORD) else { return };
+    if let Err(e) = app.run("actions.setStep", json!({"action": r.get("action"), "step": r.get("step"), "params": params})) {
+        app.ui.status = e;
+        app.ui.status_error = true;
+    }
+}
+
+/// A playback the panel paces over frames (Playback Options › Step by Step or Pause For): the
+/// actions still to play, the next step, and when it is due.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Run {
+    queue: Vec<String>,
+    next: usize,
+    limit: Option<usize>,
+    ran: u64,
+    due: f64,
+}
+
+/// Play `names` in turn (a set plays all its actions), the first from step `from`: at once, or
+/// paced over frames as Playback Options ask. Recording plays at once, so the recorded call is
+/// one step.
+pub(crate) fn start(app: &mut PhotocraftApp, names: Vec<String>, from: usize, limit: Option<usize>) {
+    let delay = app.session.actions.prefs.playback.delay();
+    if delay.is_none() || app.session.actions.recording.is_some() || app.automation_input {
+        let mut from = from;
+        for name in names {
+            let mut params = json!({"action": name, "from": from});
+            if let Some(limit) = limit {
+                params["steps"] = json!(limit);
+            }
+            from = 0;
+            match app.run("actions.play", params) {
+                Ok(v) => {
+                    report_play(app, &v);
+                    if v.get("failed").is_some() || v.get("paused").is_some() {
+                        return;
+                    }
+                }
+                Err(e) => return report_error(app, e),
+            }
+        }
+        return;
+    }
+    app.action_run = Some(Run { queue: names, next: from, limit, ran: 0, due: 0.0 });
+}
+
+/// Each frame: a paced playback plays its next step when it is due, with the step selected so
+/// the panel shows where it is.
+pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    let Some(mut run) = app.action_run.take() else { return };
+    let now = ctx.input(|i| i.time);
+    if now < run.due {
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(run.due - now));
+        app.action_run = Some(run);
+        return;
+    }
+    let Some(name) = run.queue.first().cloned() else { return };
+    let Some(index) = app.session.actions.list.iter().position(|a| a.name == name) else {
+        app.ui.status = tl!("Action playback stopped").to_string();
+        return;
+    };
+    let action = &app.session.actions.list[index];
+    let next = action.enabled_steps().map(|(i, _)| i).find(|i| *i >= run.next);
+    let Some(step) = next.filter(|_| run.limit.is_none_or(|l| run.ran < l as u64)) else {
+        // This action is done: the next one in the queue, or the end.
+        run.queue.remove(0);
+        if run.queue.is_empty() {
+            report_play(app, &json!({"action": name, "ran": run.ran}));
+        } else {
+            run.next = 0;
+            app.action_run = Some(run);
+            ctx.request_repaint();
+        }
+        return;
+    };
+    let a = &mut app.ui.actions;
+    a.selected = Some(index);
+    a.select_step(step);
+    match app.run("actions.play", json!({"action": name, "from": step, "steps": 1})) {
+        Ok(v) if v.get("failed").is_some() || v.get("paused").is_some() => report_play(app, &v),
+        Ok(v) => {
+            run.ran += v.get("ran").and_then(Value::as_u64).unwrap_or(0);
+            run.next = step + 1;
+            // Played step by step, the document redraws before the next step.
+            run.due = now + app.session.actions.prefs.playback.delay().unwrap_or(0.0);
+            app.ui.actions.selected = Some(index);
+            app.ui.actions.select_step(step);
+            app.action_run = Some(run);
+            ctx.request_repaint();
+        }
+        Err(e) => report_error(app, e),
+    }
+}
+
+/// Stop: ends recording, or a paced playback.
+fn stop(app: &mut PhotocraftApp) {
+    if app.session.actions.recording.is_some() {
+        let _ = app.run("actions.stop", json!({}));
+    } else if app.action_run.take().is_some() {
+        app.ui.status = tl!("Action playback stopped").to_string();
+        app.ui.status_error = false;
+    }
+}
+
+/// The Play button: the selected set's actions, or the selected action from its selected step;
+/// with Ctrl, only that step (Photoshop). Nothing selected plays the first action.
+fn play_selection(app: &mut PhotocraftApp, only_step: bool) {
+    if app.action_run.is_some() {
+        return;
+    }
+    if let Some(set) = app.ui.actions.selected_set.clone().filter(|_| app.ui.actions.selected.is_none()) {
+        let names: Vec<String> = app.session.actions.list.iter().filter(|a| a.set.as_ref() == Some(&set)).map(|a| a.name.clone()).collect();
+        return start(app, names, 0, None);
+    }
+    let Some(i) = playback_selection(app) else { return };
+    let name = app.session.actions.list[i].name.clone();
+    let from = if app.ui.actions.selected == Some(i) { app.ui.actions.selected_step.unwrap_or(0) } else { 0 };
+    start(app, vec![name], from, (only_step && app.ui.actions.selected_step.is_some()).then_some(1));
+}
+
+/// The Actions entries of the panel group's menu ("…"), in Photoshop's order.
 pub fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let recording = app.session.actions.recording.is_some();
+    let list_len = app.session.actions.list.len();
+    let action = app.ui.actions.selected.filter(|i| *i < list_len);
+    let step = action.and(app.ui.actions.selected_step);
+    let set = app.ui.actions.selected_set.clone().filter(|_| action.is_none());
     let mut act: Option<&str> = None;
-    if ui.button(tl!("Load Actions…")).clicked() {
-        act = Some("load");
-    }
-    if app.services.photoshop_actions.is_some() && ui.button(tl!("Import Photoshop Actions")).clicked() {
-        act = Some("photoshop");
-    }
-    let any = !app.session.actions.list.is_empty();
-    if ui.add_enabled(any, egui::Button::new(tl!("Save Actions…"))).clicked() {
-        act = Some("save");
+    let entry = |ui: &mut egui::Ui, enabled: bool, label: &str| ui.add_enabled(enabled, egui::Button::new(label)).clicked();
+    let mut button_mode = app.ui.actions.button_mode;
+    if ui.add_enabled(!recording, egui::Checkbox::new(&mut button_mode, tl!("Button Mode"))).clicked() {
+        act = Some("buttons");
     }
     ui.separator();
-    let selected = app.ui.actions.selected.is_some_and(|i| i < app.session.actions.list.len());
-    if ui.add_enabled(selected, egui::Button::new(tl!("Insert Stop…"))).clicked() {
+    if entry(ui, !recording, tl!("New Action…")) {
+        act = Some("newAction");
+    }
+    if entry(ui, !recording, tl!("New Set…")) {
+        act = Some("newSet");
+    }
+    if entry(ui, action.is_some() || set.is_some(), tl!("Duplicate")) {
+        act = Some("duplicate");
+    }
+    if entry(ui, action.is_some() || set.is_some(), tl!("Delete")) {
+        act = Some("delete");
+    }
+    if entry(ui, list_len > 0, tl!("Play")) {
+        act = Some("play");
+    }
+    ui.separator();
+    if entry(ui, action.is_some() && !recording, tl!("Start Recording")) {
+        act = Some("record");
+    }
+    let again = step.is_some_and(|s| visible_steps(app, action.unwrap_or(0)).get(s).is_some_and(|(id, _)| has_dialog(id)));
+    if entry(ui, again && !recording, tl!("Record Again…")) {
+        act = Some("again");
+    }
+    if entry(ui, action.is_some(), tl!("Insert Menu Item…")) {
+        act = Some("menuItem");
+    }
+    if entry(ui, action.is_some(), tl!("Insert Stop…")) {
         act = Some("stop");
+    }
+    if entry(ui, action.is_some(), tl!("Insert Conditional…")) {
+        act = Some("conditional");
+    }
+    ui.separator();
+    let options = if set.is_some() { tl!("Set Options…") } else { tl!("Action Options…") };
+    if entry(ui, action.is_some() || set.is_some(), options) {
+        act = Some("options");
+    }
+    if entry(ui, true, tl!("Playback Options…")) {
+        act = Some("playback");
+    }
+    let mut tools = app.session.actions.prefs.allow_tool_recording;
+    if ui.checkbox(&mut tools, tl!("Allow Tool Recording")).on_hover_text(tl!("Record brush and other painting strokes, and the brush settings they use")).clicked() {
+        act = Some("tools");
+    }
+    ui.separator();
+    if entry(ui, list_len > 0 && !recording, tl!("Clear All Actions")) {
+        act = Some("clear");
+    }
+    if entry(ui, !recording, tl!("Load Actions…")) {
+        act = Some("load");
+    }
+    if entry(ui, !recording, tl!("Replace Actions…")) {
+        act = Some("replace");
+    }
+    if entry(ui, list_len > 0, tl!("Save Actions…")) {
+        act = Some("save");
+    }
+    if app.services.photoshop_actions.is_some() && entry(ui, !recording, tl!("Import Photoshop Actions")) {
+        act = Some("photoshop");
     }
     let Some(a) = act else { return };
     ui.close();
-    let r = match a {
-        "load" => load_dialog(app),
-        "photoshop" => import_photoshop(app),
+    let r: Result<Value, String> = match a {
+        "buttons" => {
+            app.ui.actions.button_mode = !app.ui.actions.button_mode;
+            Ok(Value::Null)
+        }
+        "newAction" => Ok(json!(crate::actions_dialogs::new_action(app))),
+        "newSet" => Ok(json!(crate::actions_dialogs::new_set(app))),
+        "duplicate" => match (&set, action) {
+            (Some(set), _) => app.run("actions.duplicate", json!({"set": set})),
+            (None, Some(i)) => app.run("actions.duplicate", json!({"action": i})),
+            _ => Ok(Value::Null),
+        },
+        "delete" => {
+            delete_selection(app, false);
+            Ok(Value::Null)
+        }
+        "play" => {
+            play_selection(app, false);
+            Ok(Value::Null)
+        }
+        "record" => {
+            begin_recording(app);
+            Ok(Value::Null)
+        }
+        "again" => match (action, step) {
+            (Some(a), Some(s)) => record_again(app, a, s),
+            _ => Ok(Value::Null),
+        },
+        "menuItem" => crate::actions_dialogs::insert_menu_item(app).map(Value::from),
         "stop" => insert_stop_dialog(app),
+        "conditional" => crate::actions_dialogs::insert_conditional(app).map(Value::from),
+        "options" => match (&set, action) {
+            (Some(set), _) => Ok(json!(crate::actions_dialogs::set_options(app, set))),
+            (None, Some(i)) => Ok(json!(crate::actions_dialogs::action_options(app, i))),
+            _ => Ok(Value::Null),
+        },
+        "playback" => Ok(json!(crate::actions_dialogs::playback_options(app))),
+        "tools" => app.run("actions.options", json!({"allowToolRecording": tools})),
+        "clear" => {
+            let r = app.run("actions.clear", json!({}));
+            if r.is_ok() {
+                app.ui.actions = ActionsUi { button_mode: app.ui.actions.button_mode, ..Default::default() };
+            }
+            r
+        }
+        "load" => load_dialog(app, false),
+        "replace" => load_dialog(app, true),
+        "photoshop" => import_photoshop(app),
         _ => save_dialog(app, None),
     };
     if let Err(e) = r
@@ -642,7 +1064,7 @@ fn drag_row(ui: &egui::Ui, response: &egui::Response, row: DragRow, t: &Tokens) 
     let slot = index.saturating_add(usize::from(after));
     let to = if from < slot { slot.saturating_sub(1) } else { slot };
     let y = if after { response.rect.bottom() } else { response.rect.top() };
-    ui.painter().line_segment([pos2(response.rect.left() + 22.0, y), pos2(response.rect.right(), y)], Stroke::new(2.0, t.accent));
+    ui.painter().line_segment([pos2(response.rect.left() + TREE_X, y), pos2(response.rect.right(), y)], Stroke::new(2.0, t.accent));
     response.dnd_release_payload::<DragRow>().map(|source| (*source, to))
 }
 
@@ -656,7 +1078,7 @@ fn move_row(app: &mut PhotocraftApp, source: DragRow, to: usize) {
     }
     if source.step.is_some() {
         app.ui.actions.selected = Some(source.action);
-        app.ui.actions.selected_step = Some(to);
+        app.ui.actions.select_step(to);
     } else {
         app.ui.actions.expanded.resize(app.session.actions.list.len(), false);
         if source.action < app.ui.actions.expanded.len() && to < app.ui.actions.expanded.len() {
@@ -664,7 +1086,7 @@ fn move_row(app: &mut PhotocraftApp, source: DragRow, to: usize) {
             app.ui.actions.expanded.insert(to, expanded);
         }
         app.ui.actions.selected = Some(to);
-        app.ui.actions.selected_step = None;
+        app.ui.actions.clear_steps();
         // Dropped among another set's actions: the action joins that set (the row above wins).
         let list = &app.session.actions.list;
         let neighbour = to.checked_sub(1).and_then(|j| list.get(j)).or_else(|| list.get(to + 1)).and_then(|a| a.set.clone());
@@ -674,22 +1096,31 @@ fn move_row(app: &mut PhotocraftApp, source: DragRow, to: usize) {
     }
 }
 
-fn delete_selection(app: &mut PhotocraftApp) {
-    let Some(action) = app.ui.actions.selected else { return };
-    let step = app.ui.actions.selected_step;
-    let mut params = json!({"action": action});
-    if let Some(step) = step {
-        params["step"] = json!(step);
-    }
-    if app.run("actions.delete", params).is_err() {
-        return;
-    }
-    // Clear selection after deletion so a second click cannot delete a different
-    // step or unexpectedly fall back to deleting the entire action.
-    app.ui.actions.selected = None;
-    app.ui.actions.selected_step = None;
-    if step.is_none() && action < app.ui.actions.expanded.len() {
-        app.ui.actions.expanded.remove(action);
+/// The trash button: the selected steps, action or set, after Photoshop's question (Alt
+/// deletes at once).
+fn delete_selection(app: &mut PhotocraftApp, at_once: bool) {
+    use crate::actions_dialogs::Target;
+    let a = &app.ui.actions;
+    let target = match (a.selected, a.selected_set.clone()) {
+        (Some(i), _) => {
+            let steps = a.step_selection();
+            if steps.is_empty() { Target::Action(i) } else { Target::Steps(i, steps) }
+        }
+        (None, Some(set)) => Target::Set(set),
+        (None, None) => return,
+    };
+    if at_once {
+        let params = match &target {
+            Target::Set(set) => json!({"set": set}),
+            Target::Action(i) => json!({"action": app.session.actions.list.get(*i).map(|a| a.name.clone())}),
+            Target::Steps(i, steps) => json!({"action": i, "steps": steps}),
+        };
+        if let Err(e) = crate::actions_dialogs::delete(app, &params) {
+            app.ui.status = e;
+            app.ui.status_error = true;
+        }
+    } else {
+        crate::actions_dialogs::confirm_delete(app, target);
     }
 }
 
@@ -740,26 +1171,178 @@ struct Row {
     color: String,
 }
 
-/// The panel's order: actions outside any set first, then each set folder (in order of first
-/// appearance) with its actions. Indices are into the engine's flat list.
-fn display_order(rows: &[Row]) -> Vec<usize> {
-    let mut order: Vec<usize> = rows.iter().enumerate().filter(|(_, r)| r.set.is_none()).map(|(i, _)| i).collect();
-    let mut sets: Vec<&str> = Vec::new();
-    for r in rows {
-        if let Some(set) = r.set.as_deref()
-            && !sets.contains(&set)
-        {
-            sets.push(set);
+impl Row {
+    fn check(&self) -> Tri {
+        let n = self.steps.len();
+        Tri::of(n - self.disabled.iter().filter(|i| **i < n).count(), n)
+    }
+
+    /// The dialog column over the steps that have a dialog; `None` when none has.
+    fn dialog(&self) -> Option<Tri> {
+        let with: Vec<usize> = self.steps.iter().enumerate().filter(|(_, (id, _))| has_dialog(id)).map(|(i, _)| i).collect();
+        (!with.is_empty()).then(|| Tri::of(with.iter().filter(|i| self.dialogs.contains(i)).count(), with.len()))
+    }
+}
+
+/// The panel's order: each set folder (in panel order) with its actions, then actions outside
+/// any set. Indices are into the engine's flat list.
+fn display_order(sets: &[String], rows: &[Row]) -> Vec<(Option<String>, Vec<usize>)> {
+    let mut out: Vec<(Option<String>, Vec<usize>)> =
+        sets.iter().map(|set| (Some(set.clone()), rows.iter().enumerate().filter(|(_, r)| r.set.as_ref() == Some(set)).map(|(i, _)| i).collect())).collect();
+    let loose: Vec<usize> = rows.iter().enumerate().filter(|(_, r)| r.set.is_none()).map(|(i, _)| i).collect();
+    if !loose.is_empty() {
+        out.push((None, loose));
+    }
+    out
+}
+
+/// What a click in the list asks for, applied once the list is drawn.
+enum Click {
+    ToggleSet(String),
+    SelectSet(String),
+    SetOptions(String),
+    CheckSet(String, Tri),
+    DialogSet(String, Option<Tri>),
+    SelectAction(usize),
+    ToggleAction(usize),
+    ActionOptions(usize),
+    CheckAction(usize),
+    DialogAction(usize, Option<Tri>),
+    Play(usize),
+    Step { action: usize, step: usize, ctrl: bool, shift: bool },
+    ToggleStep(usize, usize),
+    CheckStep(usize, usize),
+    DialogStep(usize, usize),
+    PlayStep(usize, usize),
+    RecordAgain(usize, usize),
+}
+
+fn apply(app: &mut PhotocraftApp, click: Click) {
+    let rows = app.session.actions.list.len();
+    match click {
+        Click::ToggleSet(set) => match app.ui.actions.collapsed_sets.iter().position(|c| *c == set) {
+            Some(i) => {
+                app.ui.actions.collapsed_sets.remove(i);
+            }
+            None => app.ui.actions.collapsed_sets.push(set),
+        },
+        Click::SelectSet(set) => {
+            app.ui.actions.selected = None;
+            app.ui.actions.clear_steps();
+            app.ui.actions.selected_set = Some(set);
+        }
+        Click::SetOptions(set) => {
+            crate::actions_dialogs::set_options(app, &set);
+        }
+        Click::CheckSet(set, state) => {
+            let on = state != Tri::On;
+            let idx: Vec<usize> = (0..rows).filter(|i| app.session.actions.list[*i].set.as_ref() == Some(&set)).collect();
+            for i in idx {
+                let _ = app.run("actions.toggle", json!({"action": i, "enabled": on}));
+            }
+        }
+        Click::DialogSet(set, state) => {
+            let on = state != Some(Tri::On);
+            let idx: Vec<usize> = (0..rows).filter(|i| app.session.actions.list[*i].set.as_ref() == Some(&set)).collect();
+            for i in idx {
+                set_dialogs(app, i, on);
+            }
+        }
+        Click::SelectAction(i) => {
+            app.ui.actions.selected = Some(i);
+            app.ui.actions.selected_set = None;
+            app.ui.actions.clear_steps();
+        }
+        Click::ToggleAction(i) => {
+            let a = &mut app.ui.actions;
+            a.expanded.resize(a.expanded.len().max(i + 1), false);
+            a.expanded[i] = !a.expanded[i];
+        }
+        Click::ActionOptions(i) => {
+            crate::actions_dialogs::action_options(app, i);
+        }
+        Click::CheckAction(i) => {
+            let _ = app.run("actions.toggle", json!({"action": i}));
+        }
+        Click::DialogAction(i, state) => set_dialogs(app, i, state != Some(Tri::On)),
+        Click::Play(i) => {
+            if let Some(name) = app.session.actions.list.get(i).map(|a| a.name.clone()) {
+                start(app, vec![name], 0, None);
+            }
+        }
+        Click::Step { action, step, ctrl, shift } => {
+            let a = &mut app.ui.actions;
+            a.selected_set = None;
+            if a.selected != Some(action) || !(ctrl || shift) {
+                a.selected = Some(action);
+                a.select_step(step);
+            } else if shift {
+                // Shift: every step from the one picked last to this one.
+                let anchor = a.selected_step.unwrap_or(step);
+                a.selected_steps = (anchor.min(step)..=anchor.max(step)).collect();
+                a.selected_step = Some(anchor);
+            } else {
+                // Ctrl (⌘): add or take out one step.
+                let mut steps: std::collections::BTreeSet<usize> = a.step_selection().into_iter().collect();
+                if !steps.remove(&step) {
+                    steps.insert(step);
+                }
+                a.selected_step = if steps.contains(&step) { Some(step) } else { steps.iter().next_back().copied() };
+                a.selected_steps = steps;
+            }
+        }
+        Click::ToggleStep(action, step) => {
+            let key = (action, step);
+            let open = &mut app.ui.actions.open_steps;
+            if !open.remove(&key) {
+                open.insert(key);
+            }
+        }
+        Click::CheckStep(action, step) => {
+            let _ = app.run("actions.toggle", json!({"action": action, "step": step}));
+        }
+        Click::DialogStep(action, step) => {
+            let _ = app.run("actions.dialog", json!({"action": action, "step": step}));
+        }
+        Click::PlayStep(action, step) => {
+            if let Some(name) = app.session.actions.list.get(action).map(|a| a.name.clone()) {
+                app.ui.actions.selected = Some(action);
+                app.ui.actions.select_step(step);
+                start(app, vec![name], step, Some(1));
+            }
+        }
+        Click::RecordAgain(action, step) => {
+            if let Err(e) = record_again(app, action, step) {
+                app.ui.status = e;
+                app.ui.status_error = true;
+            }
         }
     }
-    for set in sets {
-        order.extend(rows.iter().enumerate().filter(|(_, r)| r.set.as_deref() == Some(set)).map(|(i, _)| i));
+}
+
+/// Switch the dialogs of action `i`'s steps that have one on or off.
+fn set_dialogs(app: &mut PhotocraftApp, i: usize, on: bool) {
+    let steps: Vec<usize> = visible_steps(app, i).iter().enumerate().filter(|(_, (id, _))| has_dialog(id)).map(|(s, _)| s).collect();
+    for step in steps {
+        let _ = app.run("actions.dialog", json!({"action": i, "step": step, "enabled": on}));
     }
-    order
+}
+
+/// Actions outside any set (recorded by an agent, or saved by an older PhotoCraft) go into
+/// Default Actions: Photoshop keeps every action in a set.
+fn adopt_loose_actions(app: &mut PhotocraftApp) {
+    if app.session.actions.playing > 0 {
+        return;
+    }
+    let loose: Vec<usize> = app.session.actions.list.iter().enumerate().filter(|(_, a)| a.set.is_none()).map(|(i, _)| i).collect();
+    for i in loose {
+        let _ = app.run("actions.assignSet", json!({"action": i, "set": actions_cmds::DEFAULT_SET}));
+    }
 }
 
 pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
+    adopt_loose_actions(app);
     let recording = app.session.actions.recording;
     let rows: Vec<Row> = app
         .session
@@ -776,32 +1359,41 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             color: a.color.clone(),
         })
         .collect();
-    if app
-        .ui
-        .actions
-        .selected
-        .is_some_and(|i| i >= rows.len() || app.ui.actions.selected_step.is_some_and(|step| rows.get(i).is_none_or(|row| step >= row.steps.len())))
+    let sets = app.session.actions.sets();
     {
-        app.ui.actions.selected = None;
-        app.ui.actions.selected_step = None;
-    }
-    if app.ui.actions.expanded.len() > rows.len() {
-        app.ui.actions.expanded.truncate(rows.len());
-    }
-    if app.ui.actions.renaming.as_ref().is_some_and(|r| r.index >= rows.len()) {
-        app.ui.actions.renaming = None;
+        let a = &mut app.ui.actions;
+        if a.selected.is_some_and(|i| i >= rows.len()) {
+            a.selected = None;
+            a.clear_steps();
+        }
+        if let Some(n) = a.selected.and_then(|i| rows.get(i)).map(|r| r.steps.len()) {
+            a.selected_steps.retain(|s| *s < n);
+            if a.selected_step.is_some_and(|s| s >= n) {
+                a.clear_steps();
+            }
+        }
+        if a.selected_set.as_ref().is_some_and(|s| !sets.contains(s)) {
+            a.selected_set = None;
+        }
+        if a.expanded.len() > rows.len() {
+            a.expanded.truncate(rows.len());
+        }
+        if a.renaming.as_ref().is_some_and(|r| r.index >= rows.len()) {
+            a.renaming = None;
+        }
     }
     let mut renamed = None;
-    let mut toggled = None;
-    let mut dialog_toggled = None;
-    let mut set_toggled: Option<String> = None;
+    let mut clicks: Vec<Click> = Vec::new();
     let mut save_set: Option<String> = None;
     let max_h = (ui.available_height() - 38.0).max(0.0);
-    let mut play_idx = None;
     // Set Shortcut… in an action's menu: its dialog opens once the list is drawn.
     let mut open_key_for: Option<String> = None;
     let mut moved = None;
-    let recording_row = recording.and_then(|(_, i)| rows.get(i).map(|r| (i, r.steps.len())));
+    // While recording, the newest recorded step is scrolled into view.
+    let recording_row = recording.and_then(|(_, i)| {
+        let n = actions_cmds::pending_steps(&app.session, i).count();
+        rows.get(i).map(|_| (i, actions_cmds::pending_at(&app.session, i) + n))
+    });
     let reveal = recording_row.filter(|row| app.ui.actions.reveal_recording != Some(*row));
     app.ui.actions.reveal_recording = recording_row;
     if let Some((i, _)) = reveal {
@@ -809,14 +1401,21 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         if let Some(expanded) = app.ui.actions.expanded.get_mut(i) {
             *expanded = true;
         }
+        if let Some(set) = rows.get(i).and_then(|r| r.set.as_ref()) {
+            app.ui.actions.collapsed_sets.retain(|c| c != set);
+        }
     }
+    let reveal_action = app.ui.actions.reveal_action.take();
+    let playing_step = app.action_run.as_ref().map(|_| (app.ui.actions.selected, app.ui.actions.selected_step));
+    let (ctrl, shift, alt) = ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.modifiers.alt));
+    let button_mode = app.ui.actions.button_mode;
     egui::ScrollArea::vertical().id_salt("actions-rows").max_height(max_h).min_scrolled_height(max_h).auto_shrink([false, false]).show(ui, |ui| {
         // Rows flush and ROW_H tall, as dense as Photoshop's list (and the History panel's);
         // Button Mode keeps its buttons apart.
-        if !app.ui.actions.button_mode {
+        if !button_mode {
             ui.spacing_mut().item_spacing.y = 0.0;
         }
-        if rows.is_empty() {
+        if rows.is_empty() && sets.is_empty() {
             ui.label(egui::RichText::new(tl!("Record ● a sequence of edits, then play ▶ it on any document.")).color(t.text_faint).size(11.5));
         }
         if egui::DragAndDrop::has_payload_of_type::<DragRow>(ui.ctx()) {
@@ -835,201 +1434,211 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 }
             }
         }
-        let mut shown_set: Option<&str> = None;
-        for i in display_order(&rows) {
-            let Row { name, steps, disabled, dialogs, set, color: swatch } = &rows[i];
-            // A set folder row before the first of its actions; collapsed folders hide them.
-            if let Some(set) = set.as_deref()
-                && shown_set != Some(set)
-            {
-                shown_set = Some(set);
+        for (set, members) in display_order(&sets, &rows) {
+            // Button Mode shows the actions alone, as buttons; the list shows set folders.
+            if let Some(set) = set.as_deref().filter(|_| !button_mode) {
                 let collapsed = app.ui.actions.collapsed_sets.iter().any(|c| c == set);
                 let (hr, hresp) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click());
+                let selected = app.ui.actions.selected.is_none() && app.ui.actions.selected_set.as_deref() == Some(set);
                 hresp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, !collapsed, set));
-                if hresp.hovered() {
+                if selected {
+                    ui.painter().rect_filled(hr, 0.0, t.row_selected);
+                } else if hresp.hovered() {
                     ui.painter().rect_filled(hr, 0.0, t.hover.gamma_multiply(0.5));
                 }
-                let tri = Rect::from_center_size(pos2(hr.left() + 12.0, hr.center().y), vec2(8.0, 8.0));
-                let pts = if collapsed {
-                    vec![tri.left_top(), tri.right_center(), tri.left_bottom()]
-                } else {
-                    vec![tri.left_top(), tri.right_top(), tri.center_bottom()]
-                };
-                ui.painter().add(egui::Shape::convex_polygon(pts, t.text_dim, Stroke::NONE));
+                let check = members.iter().filter_map(|i| rows.get(*i)).map(Row::check).reduce(Tri::merge).unwrap_or(Tri::On);
+                let dialog = members.iter().filter_map(|i| rows.get(*i)).filter_map(Row::dialog).reduce(Tri::merge);
+                let x0 = hr.left();
+                paint_check(ui, Rect::from_center_size(pos2(x0 + CHECK_X, hr.center().y), vec2(16.0, 16.0)), check, &t);
+                paint_dialog(ui, Rect::from_center_size(pos2(x0 + DIALOG_X, hr.center().y), vec2(16.0, 16.0)), dialog, &t);
+                paint_triangle(ui, pos2(x0 + TREE_X + 6.0, hr.center().y), !collapsed, &t);
                 crate::icons::paint(
                     ui,
-                    Rect::from_center_size(pos2(hr.left() + 30.0, hr.center().y), vec2(16.0, 16.0)),
+                    Rect::from_center_size(pos2(x0 + TREE_X + 22.0, hr.center().y), vec2(16.0, 16.0)),
                     if collapsed { "folder" } else { "folder-open" },
                     12.0,
                     t.icon,
                 );
-                ui.painter().text(pos2(hr.left() + 44.0, hr.center().y), Align2::LEFT_CENTER, set, egui::FontId::proportional(12.0), t.text);
-                let count = rows.iter().filter(|r| r.set.as_deref() == Some(set)).count() as u64;
-                let summary = crate::i18n::trn(crate::i18n::current(), count, "{n} action", "{n} actions");
-                ui.painter().text(pos2(hr.right() - 8.0, hr.center().y), Align2::RIGHT_CENTER, summary, egui::FontId::proportional(11.0), t.text_faint);
-                if hresp.clicked() {
-                    set_toggled = Some(set.to_string());
+                ui.painter().text(pos2(x0 + TREE_X + 34.0, hr.center().y), Align2::LEFT_CENTER, set, egui::FontId::proportional(12.0), t.text);
+                let x = hresp.interact_pointer_pos().map(|p| p.x - x0);
+                // A double-click on the name opens Set Options; on the columns or the triangle it
+                // is two clicks, as in Photoshop.
+                if hresp.double_clicked() && x.is_some_and(|x| x >= TREE_X + 14.0) {
+                    clicks.push(Click::SetOptions(set.to_string()));
+                } else if hresp.clicked() {
+                    clicks.push(match x {
+                        Some(x) if x < CHECK_SPLIT => Click::CheckSet(set.to_string(), check),
+                        Some(x) if x < TREE_X && dialog.is_some() => Click::DialogSet(set.to_string(), dialog),
+                        Some(x) if (TREE_X..TREE_X + 14.0).contains(&x) => Click::ToggleSet(set.to_string()),
+                        _ => Click::SelectSet(set.to_string()),
+                    });
                 }
                 hresp.context_menu(|ui| {
+                    if ui.button(tl!("Set Options…")).clicked() {
+                        clicks.push(Click::SetOptions(set.to_string()));
+                        ui.close();
+                    }
                     if ui.button(tl!("Save Set…")).clicked() {
                         save_set = Some(set.to_string());
                         ui.close();
                     }
                 });
-            }
-            if set.as_deref().is_some_and(|set| app.ui.actions.collapsed_sets.iter().any(|c| c == set)) {
-                continue;
-            }
-            let indent = if set.is_some() { 14.0 } else { 0.0 };
-            let row_h = if app.ui.actions.button_mode { BUTTON_H } else { ROW_H };
-            let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click_and_drag());
-            let x0 = rect.left() + indent;
-            if reveal == Some((i, 0)) {
-                ui.scroll_to_rect(rect, Some(egui::Align::BOTTOM));
-            }
-            let button_mode = app.ui.actions.button_mode;
-            let sel = app.ui.actions.selected == Some(i) && app.ui.actions.selected_step.is_none();
-            resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, sel, name));
-            if button_mode {
-                ui.painter().rect_filled(rect, 3.0, button_fill(swatch, &t));
-            } else if sel {
-                ui.painter().rect_filled(rect, 0.0, t.row_selected);
-            } else if resp.hovered() {
-                ui.painter().rect_filled(rect, 0.0, t.hover.gamma_multiply(0.5));
-            }
-            if let Some(change) = drag_row(ui, &resp, DragRow { action: i, step: None }, &t) {
-                moved = Some(change);
-            }
-            let expanded = app.ui.actions.expanded.get(i).copied().unwrap_or(false) && !button_mode;
-            if !button_mode {
-                let tri = Rect::from_center_size(pos2(x0 + 12.0, rect.center().y), vec2(8.0, 8.0));
-                let pts = if expanded {
-                    vec![tri.left_top(), tri.right_top(), tri.center_bottom()]
-                } else {
-                    vec![tri.left_top(), tri.right_center(), tri.left_bottom()]
-                };
-                ui.painter().add(egui::Shape::convex_polygon(pts, t.text_dim, Stroke::NONE));
-                crate::icons::paint(ui, Rect::from_center_size(pos2(x0 + 30.0, rect.center().y), vec2(16.0, 16.0)), "play", 11.0, t.icon);
-            }
-            let recording_this = recording.is_some_and(|(_, r)| r == i);
-            let nsteps = steps.len();
-            let name_x = if button_mode { x0 + 8.0 } else { x0 + 44.0 };
-            let name_color = if button_mode { button_label_color(swatch, &t) } else { t.text };
-            let name_rect = if app.ui.actions.renaming.as_ref().is_some_and(|r| r.index == i) {
-                let field = Rect::from_min_max(pos2(x0 + 40.0, rect.top() + 3.0), pos2((rect.right() - 80.0).max(x0 + 120.0), rect.bottom() - 3.0));
-                if let Some(text) = rename_field(app, ui, i, field) {
-                    renamed = Some((i, text));
+                if collapsed {
+                    continue;
                 }
-                field
-            } else {
-                ui.painter().text(pos2(name_x, rect.center().y), Align2::LEFT_CENTER, name, egui::FontId::proportional(12.0), name_color)
-            };
-            if !button_mode {
-                ui.painter().text(
-                    pos2(rect.right() - 8.0, rect.center().y),
-                    Align2::RIGHT_CENTER,
-                    app.session
-                        .prefs()
-                        .shortcuts
-                        .get(&shortcut_id(name))
-                        .filter(|s| !s.is_empty())
-                        // The step count, then the shortcut at the right edge.
-                        .map_or_else(
-                            || step_count(nsteps, disabled.len()),
-                            |key| format!("{} · {}", step_count(nsteps, disabled.len()), crate::shortcuts::pretty(key)),
-                        ),
-                    egui::FontId::proportional(11.0),
-                    t.text_faint,
-                );
             }
-            if recording_this {
-                ui.painter().circle_filled(pos2(rect.right() - 64.0, rect.center().y), 4.0, Color32::from_rgb(230, 60, 60));
-            }
-            if resp.clicked() {
-                app.ui.actions.selected = Some(i);
-                app.ui.actions.selected_step = None;
+            for i in members {
+                let Some(row) = rows.get(i) else { continue };
+                let Row { name, steps, disabled, dialogs, color: swatch, .. } = row;
+                let indent = if set.is_some() && !button_mode { 14.0 } else { 0.0 };
+                let row_h = if button_mode { BUTTON_H } else { ROW_H };
+                let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click_and_drag());
+                let x0 = rect.left();
+                let cx = x0 + TREE_X + indent;
+                if reveal == Some((i, 0)) || reveal_action == Some(i) {
+                    ui.scroll_to_rect(rect, Some(egui::Align::Center));
+                }
+                let sel = app.ui.actions.selected == Some(i) && app.ui.actions.selected_step.is_none();
+                resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, sel, name));
                 if button_mode {
-                    if !resp.double_clicked() {
-                        play_idx = Some(i);
-                    }
-                } else if resp.interact_pointer_pos().is_some_and(|p| p.x < x0 + 20.0) {
-                    if app.ui.actions.expanded.len() <= i {
-                        app.ui.actions.expanded.resize(i + 1, false);
-                    }
-                    app.ui.actions.expanded[i] = !expanded;
+                    ui.painter().rect_filled(rect, 3.0, button_fill(swatch, &t));
+                } else if sel {
+                    ui.painter().rect_filled(rect, 0.0, t.row_selected);
+                } else if resp.hovered() {
+                    ui.painter().rect_filled(rect, 0.0, t.hover.gamma_multiply(0.5));
                 }
-            }
-            resp.context_menu(|ui| {
-                ui.label(tl!("Keyboard Shortcuts"));
-                // Photoshop's Action Options: a function key, with Shift and/or Control (⌘).
-                let current = app.session.prefs().shortcuts.get(&shortcut_id(name)).cloned().unwrap_or_default();
-                let assigned = actions_cmds::parse_action_key(&current);
-                // Modifiers picked before a key are kept for the key picked next.
-                let mods_id = egui::Id::new(("action-key-modifiers", name.as_str()));
-                let (mut shift, mut command) =
-                    assigned.map_or_else(|| ui.ctx().data(|d| d.get_temp::<(bool, bool)>(mods_id)).unwrap_or_default(), |(_, s, c)| (s, c));
-                let key_now = assigned.map(|(n, _, _)| n);
-                ui.horizontal(|ui| {
-                    let toggled = ui.checkbox(&mut shift, crate::shortcuts::pretty("Shift")).changed()
-                        | ui.checkbox(&mut command, crate::shortcuts::pretty("Cmd")).changed();
-                    if toggled {
-                        match key_now.and_then(|n| actions_cmds::action_key(n, shift, command)) {
-                            Some(key) => {
-                                let _ = assign_shortcut(app, name, &key);
-                            }
-                            None => {
-                                ui.ctx().data_mut(|d| d.insert_temp(mods_id, (shift, command)));
-                            }
-                        }
+                if let Some(change) = drag_row(ui, &resp, DragRow { action: i, step: None }, &t) {
+                    moved = Some(change);
+                }
+                let expanded = app.ui.actions.expanded.get(i).copied().unwrap_or(false) && !button_mode;
+                let (check, dialog) = (row.check(), row.dialog());
+                if !button_mode {
+                    paint_check(ui, Rect::from_center_size(pos2(x0 + CHECK_X, rect.center().y), vec2(16.0, 16.0)), check, &t);
+                    paint_dialog(ui, Rect::from_center_size(pos2(x0 + DIALOG_X, rect.center().y), vec2(16.0, 16.0)), dialog, &t);
+                    paint_triangle(ui, pos2(cx + 6.0, rect.center().y), expanded, &t);
+                }
+                let recording_this = recording.is_some_and(|(_, r)| r == i);
+                let name_x = if button_mode { x0 + 8.0 } else { cx + 18.0 };
+                let name_color = if button_mode { button_label_color(swatch, &t) } else { t.text };
+                let name_rect = if app.ui.actions.renaming.as_ref().is_some_and(|r| r.index == i) {
+                    let field = Rect::from_min_max(pos2(cx + 14.0, rect.top() + 3.0), pos2((rect.right() - 80.0).max(cx + 120.0), rect.bottom() - 3.0));
+                    if let Some(text) = rename_field(app, ui, i, field) {
+                        renamed = Some((i, text));
                     }
-                });
-                for n in std::iter::once(None).chain((1..=12).map(Some)) {
-                    let label = n.map_or_else(|| tl!("None").to_string(), |n| format!("F{n}"));
-                    if ui.selectable_label(key_now == n, label).clicked() {
-                        let key = n.and_then(|n| actions_cmds::action_key(n, shift, command)).unwrap_or_default();
-                        let _ = assign_shortcut(app, name, &key);
+                    field
+                } else {
+                    ui.painter().text(pos2(name_x, rect.center().y), Align2::LEFT_CENTER, name, egui::FontId::proportional(12.0), name_color)
+                };
+                let key = app.session.prefs().shortcuts.get(&shortcut_id(name)).filter(|s| !s.is_empty()).map(|k| crate::shortcuts::pretty(k));
+                if !button_mode {
+                    ui.painter().text(
+                        pos2(rect.right() - 8.0, rect.center().y),
+                        Align2::RIGHT_CENTER,
+                        // The step count, then the shortcut at the right edge.
+                        key.map_or_else(|| step_count(steps.len(), disabled.len()), |key| format!("{} · {key}", step_count(steps.len(), disabled.len()))),
+                        egui::FontId::proportional(11.0),
+                        t.text_faint,
+                    );
+                } else if let Some(key) = key {
+                    ui.painter().text(pos2(rect.right() - 8.0, rect.center().y), Align2::RIGHT_CENTER, key, egui::FontId::proportional(11.0), name_color);
+                }
+                if recording_this {
+                    ui.painter().circle_filled(pos2(rect.right() - 64.0, rect.center().y), 4.0, Color32::from_rgb(230, 60, 60));
+                }
+                let x = resp.interact_pointer_pos().map(|p| p.x - x0);
+                let double = resp.double_clicked();
+                if double && button_mode {
+                    // The first click already played it.
+                } else if double && resp.interact_pointer_pos().is_some_and(|p| name_rect.expand2(vec2(4.0, 13.0)).contains(p)) {
+                    // Photoshop renames in place when the name itself is double-clicked, and
+                    // opens Action Options elsewhere on the row past the triangle (on the columns
+                    // or the triangle a double-click is two clicks).
+                    app.ui.actions.renaming = Some(RenameAction { index: i, text: name.clone(), focused: false });
+                } else if double && x.is_some_and(|x| x >= cx - x0 + 14.0) {
+                    clicks.push(Click::ActionOptions(i));
+                } else if resp.clicked() {
+                    clicks.push(match x {
+                        _ if button_mode => Click::Play(i),
+                        Some(x) if x < CHECK_SPLIT => Click::CheckAction(i),
+                        Some(x) if x < TREE_X && dialog.is_some() => Click::DialogAction(i, dialog),
+                        Some(x) if (TREE_X + indent..cx + 14.0).contains(&x) => Click::ToggleAction(i),
+                        _ => Click::SelectAction(i),
+                    });
+                    if button_mode {
+                        clicks.push(Click::SelectAction(i));
+                    }
+                }
+                resp.context_menu(|ui| {
+                    if ui.button(tl!("Action Options…")).clicked() {
+                        clicks.push(Click::ActionOptions(i));
                         ui.close();
                     }
-                }
-                if ui.button(tl!("Set Shortcut…")).clicked() {
-                    open_key_for = Some(name.clone());
-                    ui.close();
-                }
-                ui.separator();
-                ui.menu_button(tl!("Color"), |ui| {
-                    for (id, label) in [
-                        ("", tl!("None")),
-                        ("red", tl!("Red")),
-                        ("orange", tl!("Orange")),
-                        ("yellow", tl!("Yellow")),
-                        ("green", tl!("Green")),
-                        ("blue", tl!("Blue")),
-                        ("violet", tl!("Violet")),
-                        ("gray", tl!("Gray")),
-                    ] {
-                        if ui.selectable_label(swatch == id, label).clicked() {
-                            let _ = app.run("actions.setColor", json!({"action": i, "color": id}));
+                    ui.separator();
+                    ui.label(tl!("Keyboard Shortcuts"));
+                    // Photoshop's Action Options: a function key, with Shift and/or Control (⌘).
+                    let current = app.session.prefs().shortcuts.get(&shortcut_id(name)).cloned().unwrap_or_default();
+                    let assigned = actions_cmds::parse_action_key(&current);
+                    // Modifiers picked before a key are kept for the key picked next.
+                    let mods_id = egui::Id::new(("action-key-modifiers", name.as_str()));
+                    let (mut shift, mut command) =
+                        assigned.map_or_else(|| ui.ctx().data(|d| d.get_temp::<(bool, bool)>(mods_id)).unwrap_or_default(), |(_, s, c)| (s, c));
+                    let key_now = assigned.map(|(n, _, _)| n);
+                    ui.horizontal(|ui| {
+                        let toggled = ui.checkbox(&mut shift, crate::shortcuts::pretty("Shift")).changed()
+                            | ui.checkbox(&mut command, crate::shortcuts::pretty("Cmd")).changed();
+                        if toggled {
+                            match key_now.and_then(|n| actions_cmds::action_key(n, shift, command)) {
+                                Some(key) => {
+                                    let _ = assign_shortcut(app, name, &key);
+                                }
+                                None => {
+                                    ui.ctx().data_mut(|d| d.insert_temp(mods_id, (shift, command)));
+                                }
+                            }
+                        }
+                    });
+                    for n in std::iter::once(None).chain((1..=12).map(Some)) {
+                        let label = n.map_or_else(|| tl!("None").to_string(), |n| format!("F{n}"));
+                        if ui.selectable_label(key_now == n, label).clicked() {
+                            let key = n.and_then(|n| actions_cmds::action_key(n, shift, command)).unwrap_or_default();
+                            let _ = assign_shortcut(app, name, &key);
                             ui.close();
                         }
                     }
+                    if ui.button(tl!("Set Shortcut…")).clicked() {
+                        open_key_for = Some(name.clone());
+                        ui.close();
+                    }
+                    ui.separator();
+                    ui.menu_button(tl!("Color"), |ui| {
+                        for (id, label) in [
+                            ("", tl!("None")),
+                            ("red", tl!("Red")),
+                            ("orange", tl!("Orange")),
+                            ("yellow", tl!("Yellow")),
+                            ("green", tl!("Green")),
+                            ("blue", tl!("Blue")),
+                            ("violet", tl!("Violet")),
+                            ("gray", tl!("Gray")),
+                        ] {
+                            if ui.selectable_label(swatch == id, label).clicked() {
+                                let _ = app.run("actions.setColor", json!({"action": i, "color": id}));
+                                ui.close();
+                            }
+                        }
+                    });
                 });
-            });
-            if resp.double_clicked() && !button_mode {
-                // Photoshop renames in place when the name itself is double-clicked.
-                if resp.interact_pointer_pos().is_some_and(|p| name_rect.expand2(vec2(4.0, 13.0)).contains(p)) {
-                    app.ui.actions.renaming = Some(RenameAction { index: i, text: name.clone(), focused: false });
-                } else {
-                    play_idx = Some(i);
+                if !expanded {
+                    continue;
                 }
-            }
-            if expanded {
+                let picked = if app.ui.actions.selected == Some(i) { app.ui.actions.step_selection() } else { Vec::new() };
                 for (step, (id, params)) in steps.iter().enumerate() {
                     let (r, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW_H), Sense::click_and_drag());
-                    if reveal == Some((i, step + 1)) {
-                        ui.scroll_to_rect(r, Some(egui::Align::BOTTOM));
+                    if reveal.is_some_and(|(a, n)| a == i && n == step + 1) || playing_step == Some((Some(i), Some(step))) {
+                        ui.scroll_to_rect(r, None);
                     }
                     let label = step_label(id, params);
-                    let selected = app.ui.actions.selected == Some(i) && app.ui.actions.selected_step == Some(step);
+                    let selected = picked.contains(&step);
                     response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, selected, &label));
                     if selected {
                         ui.painter().rect_filled(r, 0.0, t.row_selected);
@@ -1040,55 +1649,65 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         moved = Some(change);
                     }
                     let on = !disabled.contains(&step);
+                    let lines = param_lines(params);
+                    let open = !lines.is_empty() && app.ui.actions.open_steps.contains(&(i, step));
+                    let sx = cx + 14.0;
+                    if !lines.is_empty() {
+                        paint_triangle(ui, pos2(sx + 6.0, r.center().y), open, &t);
+                    }
                     let color = if on { t.text_dim } else { t.text_faint };
-                    ui.painter().text(pos2(x0 + 62.0, r.center().y), Align2::LEFT_CENTER, &label, egui::FontId::proportional(11.5), color);
+                    ui.painter().text(pos2(sx + 18.0, r.center().y), Align2::LEFT_CENTER, &label, egui::FontId::proportional(11.5), color);
                     // Photoshop's check column: unchecked steps are skipped by playback, Batch and droplets.
                     let check = ui.interact(
-                        Rect::from_center_size(pos2(x0 + 30.0, r.center().y), vec2(16.0, 16.0)),
+                        Rect::from_center_size(pos2(x0 + CHECK_X, r.center().y), vec2(18.0, 18.0)),
                         ui.id().with(("action-step-check", i, step)),
                         Sense::click(),
                     );
                     check.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, on, format!("{}: {label}", tl!("Include in playback"))));
-                    paint_check(ui, check.rect, on, &t);
-                    // Photoshop's dialog column: playback shows the step's dialog, seeded with its
-                    // recorded values, and continues when it is confirmed.
+                    paint_check(ui, check.rect, if on { Tri::On } else { Tri::Off }, &t);
+                    // Photoshop's dialog column, for steps that have a dialog: playback shows it,
+                    // seeded with the recorded values, and continues when it is confirmed.
                     let with_dialog = dialogs.contains(&step);
-                    let dialog = ui.interact(
-                        Rect::from_center_size(pos2(x0 + 46.0, r.center().y), vec2(16.0, 16.0)),
-                        ui.id().with(("action-step-dialog", i, step)),
-                        Sense::click(),
-                    );
-                    // A toggle button, not a check box, so the check column stays the only CheckBox role.
-                    dialog.widget_info(|| {
-                        egui::WidgetInfo::selected(egui::WidgetType::Button, true, with_dialog, format!("{}: {label}", tl!("Show dialog during playback")))
+                    let dialog_hit = has_dialog(id).then(|| {
+                        let dialog = ui.interact(
+                            Rect::from_center_size(pos2(x0 + DIALOG_X, r.center().y), vec2(18.0, 18.0)),
+                            ui.id().with(("action-step-dialog", i, step)),
+                            Sense::click(),
+                        );
+                        // A toggle button, not a check box, so the check column stays the only CheckBox role.
+                        dialog.widget_info(|| {
+                            egui::WidgetInfo::selected(egui::WidgetType::Button, true, with_dialog, format!("{}: {label}", tl!("Show dialog during playback")))
+                        });
+                        paint_dialog(ui, dialog.rect, Some(if with_dialog { Tri::On } else { Tri::Off }), &t);
+                        dialog.on_hover_text(tl!("Show dialog during playback"))
                     });
-                    crate::icons::paint(ui, dialog.rect, "message-square", 11.0, if with_dialog { t.icon } else { t.text_faint.gamma_multiply(0.45) });
-                    let dialog = dialog.on_hover_text(tl!("Show dialog during playback"));
+                    let x = response.interact_pointer_pos().map(|p| p.x - x0);
                     if check.on_hover_text(tl!("Include in playback")).clicked() {
-                        toggled = Some((i, step));
-                    } else if dialog.clicked() {
-                        dialog_toggled = Some((i, step));
+                        clicks.push(Click::CheckStep(i, step));
+                    } else if dialog_hit.is_some_and(|d| d.clicked()) {
+                        clicks.push(Click::DialogStep(i, step));
+                    } else if response.double_clicked() {
+                        // Ctrl+double-click plays the step alone; a double-click records it again.
+                        clicks.push(if ctrl { Click::PlayStep(i, step) } else { Click::RecordAgain(i, step) });
                     } else if response.clicked() {
-                        app.ui.actions.selected = Some(i);
-                        app.ui.actions.selected_step = Some(step);
+                        if !lines.is_empty() && x.is_some_and(|x| (sx - x0..sx - x0 + 14.0).contains(&x)) {
+                            clicks.push(Click::ToggleStep(i, step));
+                        } else {
+                            clicks.push(Click::Step { action: i, step, ctrl, shift });
+                        }
+                    }
+                    if open {
+                        for line in lines {
+                            let (pr, _) = ui.allocate_exact_size(vec2(ui.available_width(), PARAM_H), Sense::hover());
+                            ui.painter().text(pos2(sx + 34.0, pr.center().y), Align2::LEFT_CENTER, line, egui::FontId::proportional(11.0), t.text_faint);
+                        }
                     }
                 }
             }
         }
     });
-    if let Some((action, step)) = toggled {
-        let _ = app.run("actions.toggle", json!({"action": action, "step": step}));
-    }
-    if let Some((action, step)) = dialog_toggled {
-        let _ = app.run("actions.dialog", json!({"action": action, "step": step}));
-    }
-    if let Some(set) = set_toggled {
-        match app.ui.actions.collapsed_sets.iter().position(|c| *c == set) {
-            Some(i) => {
-                app.ui.actions.collapsed_sets.remove(i);
-            }
-            None => app.ui.actions.collapsed_sets.push(set),
-        }
+    for click in clicks {
+        apply(app, click);
     }
     if let Some(set) = save_set
         && let Err(e) = save_dialog(app, Some(set))
@@ -1104,61 +1723,71 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         move_row(app, source, to);
     }
     ui.add_space(4.0);
+    // Photoshop's buttons: Stop, Record, Play, Create new set, Create new action, Delete.
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 2.0;
         let recording_now = app.session.actions.recording.is_some();
-        if crate::icons::button(ui, "square", 24.0, false, tl!("Stop playing/recording")).clicked() && recording_now {
-            let _ = app.run("actions.stop", json!({}));
+        let busy = recording_now || app.action_run.is_some();
+        let stop_button = crate::icons::button(ui, "square", 24.0, false, tl!("Stop playing/recording"));
+        if stop_button.clicked() && busy {
+            stop(app);
         }
         let (r, rec) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::click());
         if rec.hovered() {
             ui.painter().rect_filled(r, 3.0, t.hover);
         }
         ui.painter().circle_filled(r.center(), 5.5, if recording_now { Color32::from_rgb(230, 60, 60) } else { t.icon });
+        rec.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Begin recording")));
         if rec.on_hover_text(tl!("Begin recording")).clicked() && !recording_now {
-            begin_recording(app, true);
+            begin_recording(app);
         }
         let play = crate::icons::button(ui, "play", 24.0, false, tl!("Play selection"));
         play.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tl!("Play selection")));
         if play.clicked() {
-            play_idx = playback_selection(app);
+            play_selection(app, ctrl);
         }
-        if crate::icons::button(ui, "plus", 24.0, false, tl!("Create new action")).clicked() && !recording_now {
-            begin_recording(app, false);
+        let new_set = crate::icons::button(ui, "folder-plus", 24.0, false, tl!("Create new set"));
+        new_set.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !recording_now, tl!("Create new set")));
+        if new_set.clicked() && !recording_now {
+            crate::actions_dialogs::new_set(app);
         }
-        let can_delete = app.ui.actions.selected.is_some() && (!recording_now || app.ui.actions.selected_step.is_some());
+        let new_action = crate::icons::button(ui, "file-plus", 24.0, false, tl!("Create new action"));
+        new_action.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !recording_now, tl!("Create new action")));
+        if new_action.clicked() && !recording_now {
+            crate::actions_dialogs::new_action(app);
+        }
+        let a = &app.ui.actions;
+        let can_delete = (a.selected.is_some() || a.selected_set.is_some()) && (!recording_now || a.selected_step.is_some());
         ui.add_enabled_ui(can_delete, |ui| {
             let response = crate::icons::button(ui, "trash", 24.0, false, tl!("Delete"));
             response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, can_delete, tl!("Delete")));
             if response.clicked() {
-                delete_selection(app);
+                delete_selection(app, alt);
             }
         });
-        let mode_label = if app.ui.actions.button_mode { tl!("Button Mode On") } else { tl!("Button Mode") };
-        let mode_button = ui.add_enabled(!recording_now, egui::Button::new(mode_label).small()).on_hover_text(tl!("Button Mode"));
-        mode_button.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, !recording_now, mode_label));
-        if mode_button.clicked() {
-            app.ui.actions.button_mode = !app.ui.actions.button_mode;
-        }
     });
     if let Some(name) = open_key_for {
         open_set_shortcut(app, &name);
     }
-    if let Some(i) = play_idx {
-        match app.run("actions.play", json!({"action": i})) {
-            Ok(v) => report_play(app, &v),
-            Err(e) => {
-                let template = "Action playback failed: {error}";
-                app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
-                app.ui.status_error = true;
-            }
-        }
-    }
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// A click on step `step` of action `action`, with Ctrl and Shift as given.
+    pub(crate) fn click_step(app: &mut PhotocraftApp, action: usize, step: usize, ctrl: bool, shift: bool) {
+        apply(app, Click::Step { action, step, ctrl, shift });
+    }
+
+    /// The Record button.
+    pub(crate) fn record_button(app: &mut PhotocraftApp) {
+        begin_recording(app);
+    }
+
+    pub(crate) fn record_again_step(app: &mut PhotocraftApp, action: usize, step: usize) -> Result<Value, String> {
+        record_again(app, action, step)
+    }
 
     /// An action's Set Shortcut… takes any key with any modifiers (beyond Photoshop's F-keys), and
     /// that key plays it; system keys are refused and Backspace clears it.
@@ -1302,7 +1931,8 @@ mod tests {
         let mut h = Harness::builder().with_size(vec2(320.0, 260.0)).with_step_dt(1.0 / 60.0).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(3);
         let rename = |h: &mut Harness<'_, PhotocraftApp>, text: &str| {
-            let name = h.get_by_label("Action 1").rect().left_center() + vec2(52.0, 0.0);
+            // The name, right of the two toggle columns and the triangle (inside its set).
+            let name = h.get_by_label("Action 1").rect().left_center() + vec2(TREE_X + 14.0 + 30.0, 0.0);
             h.event(egui::Event::PointerMoved(name));
             // Wait out the double-click window of the previous attempt.
             h.run_steps(30);
@@ -1412,16 +2042,16 @@ mod tests {
         }
         let mut h = Harness::builder().with_size(vec2(320.0, 260.0)).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(4);
-        begin_recording(h.state_mut(), false);
+        h.state_mut().run("actions.record", json!({})).unwrap();
         h.run_steps(20);
         let rect = h.get_by_label("Action 31").rect();
         assert!(rect.top() >= 0.0 && rect.bottom() <= h.get_by_label("Play selection").rect().top(), "new action visible: {rect:?}");
         for _ in 0..20 {
-            h.state_mut().run("view.zoomOut", json!({})).unwrap();
+            h.state_mut().run("select.all", json!({})).unwrap();
         }
-        h.state_mut().run("view.fitOnScreen", json!({})).unwrap();
+        h.state_mut().run("select.inverse", json!({})).unwrap();
         h.run_steps(20);
-        let rect = h.get_by_label("Fit on Screen").rect();
+        let rect = h.get_by_label("Inverse").rect();
         assert!(rect.top() >= 0.0 && rect.bottom() <= h.get_by_label("Play selection").rect().top(), "latest step visible: {rect:?}");
     }
 
@@ -1499,48 +2129,57 @@ mod tests {
         use egui_kittest::{Harness, kittest::Queryable};
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         app.run("file.new", json!({"width": 40, "height": 40})).unwrap();
-        begin_recording(&mut app, false);
-        app.run("view.fitOnScreen", json!({})).unwrap();
-        app.run("view.zoomOut", json!({})).unwrap();
+        app.run("actions.record", json!({})).unwrap();
+        app.run("select.all", json!({})).unwrap();
+        app.run("select.inverse", json!({})).unwrap();
         let mut h = Harness::builder().with_size(vec2(320.0, 400.0)).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(2);
         assert!(h.state().session.actions.recording.is_some());
-        h.get_by_label("Fit on Screen");
-        h.get_by_label("Zoom Out").click();
+        h.get_by_label("All");
+        h.get_by_label("Inverse").click();
         h.run_steps(2);
         assert_eq!(h.state().ui.actions.selected_step, Some(1));
+        // Delete asks first, as Photoshop does.
         h.get_by_label("Delete").click();
         h.run_steps(2);
-        assert_eq!(visible_steps(h.state(), 0).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["view.fitOnScreen"]);
+        let ask = h.state().ui.dialogs.iter().find(|d| crate::actions_dialogs::owns(&d.fields)).map(|d| d.id).unwrap();
+        crate::dialogs::confirm(h.state_mut(), ask).unwrap();
+        h.run_steps(2);
+        assert_eq!(visible_steps(h.state(), 0).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["select.all"]);
         assert_eq!(h.state().session.actions.list.len(), 1);
         assert!(h.state().session.actions.recording.is_some());
-        assert!(h.state().ui.actions.selected.is_none());
-        delete_selection(h.state_mut());
-        assert_eq!(h.state().session.actions.list.len(), 1, "repeated trash cannot delete the action");
-        h.state_mut().run("view.zoomIn", json!({})).unwrap();
+        assert!(h.state().ui.actions.selected_step.is_none());
+        delete_selection(h.state_mut(), true);
+        assert_eq!(h.state().session.actions.list.len(), 1, "repeated trash cannot delete the action being recorded");
+        h.state_mut().run("select.deselect", json!({})).unwrap();
         h.run_steps(2);
-        h.get_by_label("Zoom In");
+        h.get_by_label("Deselect");
         h.state_mut().run("actions.stop", json!({})).unwrap();
         h.run_steps(2);
-        assert_eq!(visible_steps(h.state(), 0).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["view.fitOnScreen", "view.zoomIn"]);
-        h.get_by_label("Zoom In").click();
+        assert_eq!(visible_steps(h.state(), 0).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["select.all", "select.deselect"]);
+        h.get_by_label("Deselect").click();
         h.run_steps(2);
-        h.get_by_label("Delete").click();
+        delete_selection(h.state_mut(), true);
         h.run_steps(2);
-        assert_eq!(visible_steps(h.state(), 0).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["view.fitOnScreen"]);
+        assert_eq!(visible_steps(h.state(), 0).iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(), ["select.all"]);
     }
 
     #[test]
-    fn view_menu_commands_record_append_and_replay_after_resize() {
+    fn view_menu_commands_are_inserted_not_recorded_and_replay_after_resize() {
         let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
         let ctx = egui::Context::default();
         app.run("file.new", json!({"width": 160, "height": 100})).unwrap();
-        begin_recording(&mut app, false);
+        app.run("actions.record", json!({})).unwrap();
         app.run("image.canvasSize", json!({"width": 80, "height": 60})).unwrap();
-        app.run("actions.stop", json!({})).unwrap();
-        begin_recording(&mut app, true);
+        // Photoshop doesn't record the View menu...
         crate::menus::invoke(&mut app, &ctx, "view.fitOnScreen", json!({})).unwrap();
         app.run("actions.stop", json!({})).unwrap();
+        assert_eq!(app.session.actions.list[0].steps.len(), 1);
+        // ...Insert Menu Item adds it.
+        app.ui.actions.selected = Some(0);
+        let dialog = crate::actions_dialogs::insert_menu_item(&mut app).unwrap();
+        app.ui.dialog_mut(dialog).unwrap().fields.insert("item".into(), json!("view.fitOnScreen"));
+        crate::dialogs::confirm(&mut app, dialog).unwrap();
         assert_eq!(app.session.actions.list.len(), 1);
         assert_eq!(app.session.actions.list[0].steps.iter().map(|s| s.0.as_str()).collect::<Vec<_>>(), ["image.canvasSize", "view.fitOnScreen"]);
         assert_eq!(label_of("view.fitOnScreen"), "Fit on Screen");
@@ -1736,21 +2375,34 @@ mod tests {
         app.session.actions.list.push(soften);
         let mut h = Harness::builder().with_size(vec2(360.0, 400.0)).build_ui_state(|ui, app| panel(app, ui), app);
         h.run_steps(3);
-        // The folder row shows the set with its count; its actions sit under it, loose ones first.
+        // Loose actions go into Default Actions (Photoshop keeps every action in a set); each
+        // folder row has its actions under it.
         let folder = h.get_by_label("Retouch").rect();
-        assert!(h.get_by_label("Loose").rect().top() < folder.top());
+        let default = h.get_by_label(actions_cmds::DEFAULT_SET).rect();
+        assert!(default.top() < h.get_by_label("Loose").rect().top());
         assert!(h.get_by_label("Also loose").rect().top() < folder.top());
         assert!(h.get_by_label("Sharpen").rect().top() > folder.top());
         assert!(h.get_by_label("Soften").rect().top() > h.get_by_label("Sharpen").rect().top());
-        assert_eq!(display_order(&[]), Vec::<usize>::new());
-        // Clicking the folder collapses it; its actions disappear and the state is remembered.
+        assert!(h.state().session.actions.list.iter().all(|a| a.set.is_some()));
+        assert!(display_order(&[], &[]).is_empty());
+        // Clicking the folder selects it; its triangle collapses it, and the state is remembered.
         h.get_by_label("Retouch").click();
         h.run_steps(3);
+        assert_eq!(h.state().ui.actions.selected_set.as_deref(), Some("Retouch"));
+        let triangle = pos2(folder.left() + TREE_X + 6.0, folder.center().y);
+        let click = |h: &mut Harness<'_, PhotocraftApp>| {
+            for pressed in [true, false] {
+                h.event(egui::Event::PointerButton { pos: triangle, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE });
+                h.step();
+            }
+            h.run_steps(30);
+        };
+        h.hover_at(triangle);
+        click(&mut h);
         assert_eq!(h.state().ui.actions.collapsed_sets, ["Retouch"]);
         assert!(h.query_by_label("Sharpen").is_none());
         assert!(h.query_by_label("Loose").is_some());
-        h.get_by_label("Retouch").click();
-        h.run_steps(3);
+        click(&mut h);
         assert!(h.state().ui.actions.collapsed_sets.is_empty());
         assert!(h.query_by_label("Sharpen").is_some());
     }
@@ -1868,10 +2520,10 @@ mod tests {
         h.get_by_label("Print").click();
         h.run_steps(3);
         assert_eq!(h.state().session.active().unwrap().doc.layers.len(), before + 1, "a click plays the action");
-        h.get_by_label("Button Mode On").click();
+        // Button Mode is a panel menu item in Photoshop, not a button.
+        assert!(h.query_by_label("Button Mode").is_none());
+        h.state_mut().ui.actions.button_mode = false;
         h.run_steps(2);
-        assert!(!h.state().ui.actions.button_mode);
-        assert!(h.query_by_label("Button Mode").is_some());
         assert_eq!(h.query_all_by_role(egui::accesskit::Role::CheckBox).count(), 1, "the step list returns when Button Mode is turned off");
     }
 }

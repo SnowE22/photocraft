@@ -3473,3 +3473,65 @@ curves	Smooth	Сгладить
 	Save as:	Сохранить как:
 	Save Preset	Сохранить набор
 	Keep these two presets as one, listed with the others	Сохранить эти два набора как один, в списке с остальными
+	Stop recording first	Сначала остановите запись
+	Select a step first	Сначала выберите шаг
+	This step has no dialog to record again	У этого шага нет диалогового окна для повторной записи
+	New Action…	Новая операция…
+	Record Again…	Записать заново…
+	Insert Menu Item…	Вставить пункт меню…
+	Insert Conditional…	Вставить условие…
+	Set Options…	Параметры набора…
+	Action Options…	Параметры операции…
+	Playback Options…	Параметры воспроизведения…
+	Allow Tool Recording	Разрешить запись инструментов
+	Record brush and other painting strokes, and the brush settings they use	Записывать мазки кистью и другими рисующими инструментами, а также используемые ими настройки кисти
+	Clear All Actions	Удалить все операции
+	Replace Actions…	Заменить операции…
+	Delete the set “{name}”?	Удалить набор «{name}»?
+	Delete the action “{name}”?	Удалить операцию «{name}»?
+	Delete the selection?	Удалить выделенное?
+	Function Key:	Функциональная клавиша:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	У операции другое сочетание клавиш (Задать сочетание…); клавиша, выбранная здесь, заменит его.
+	Accelerated	Ускоренно
+	Step by Step	Пошагово
+	Pause For:	Пауза:
+	seconds	с
+	None Selected	Ничего не выбрано
+	Menu Item:	Пункт меню:
+	Type part of a menu item's name, then pick it below.	Введите часть названия пункта меню и выберите его ниже.
+	If Current:	Если текущий:
+	Then Play Action:	То выполнить операцию:
+	Else Play Action:	Иначе выполнить операцию:
+	Document Is Open	Документ открыт
+	Document Is Landscape	Документ альбомный
+	Document Is Square	Документ квадратный
+	Document Is Portrait	Документ книжный
+	Document Mode Is RGB	Режим документа — RGB
+	Document Mode Is CMYK	Режим документа — CMYK
+	Document Mode Is Grayscale	Режим документа — Градации серого
+	Document Mode Is Lab	Режим документа — Lab
+	Document Mode Is Bitmap	Режим документа — Битовый формат
+	Document Mode Is Indexed	Режим документа — Индексированные цвета
+	Document Mode Is Duotone	Режим документа — Дуплекс
+	Document Mode Is Multichannel	Режим документа — Многоканальный
+	Document Is 8 Bits/Channel	Документ 8 бит/канал
+	Document Is 16 Bits/Channel	Документ 16 бит/канал
+	Document Is 32 Bits/Channel	Документ 32 бит/канал
+	Document Has Unsaved Changes	В документе есть несохранённые изменения
+	Document Has a Selection	В документе есть выделение
+	Document Has Layers	В документе есть слои
+	Document Has Alpha Channels	В документе есть альфа-каналы
+	Layer Is Background	Слой — фон
+	Layer Is a Pixel Layer	Слой — пиксельный слой
+	Layer Is an Adjustment Layer	Слой — корректирующий слой
+	Layer Is a Shape Layer	Слой — слой-фигура
+	Layer Is a Type Layer	Слой — текстовый слой
+	Layer Is a Smart Object	Слой — смарт-объект
+	Layer Is a Group	Слой — группа
+	Layer Is Locked	Слой закреплён
+	Layer Is Visible	Слой видим
+	Layer Has Pixel Mask	У слоя есть пиксельная маска
+	Layer Has Vector Mask	У слоя есть векторная маска
+	Layer Has Effects	У слоя есть эффекты
+	Pick a menu item first	Сначала выберите пункт меню
+	Find	Найти

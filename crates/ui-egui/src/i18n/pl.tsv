@@ -4101,3 +4101,65 @@ curves	Smooth	Wygładź
 	Save as:	Zapisz jako:
 	Save Preset	Zapisz ustawienie
 	Keep these two presets as one, listed with the others	Zachowaj te dwa ustawienia jako jedno, na liście z pozostałymi
+	Stop recording first	Najpierw zatrzymaj nagrywanie
+	Select a step first	Najpierw zaznacz krok
+	This step has no dialog to record again	Ten krok nie ma okna dialogowego do ponownego nagrania
+	New Action…	Nowa operacja…
+	Record Again…	Nagraj ponownie…
+	Insert Menu Item…	Wstaw polecenie menu…
+	Insert Conditional…	Wstaw warunek…
+	Set Options…	Opcje zestawu…
+	Action Options…	Opcje operacji…
+	Playback Options…	Opcje odtwarzania…
+	Allow Tool Recording	Zezwalaj na nagrywanie narzędzi
+	Record brush and other painting strokes, and the brush settings they use	Nagrywaj pociągnięcia pędzla i innych narzędzi malarskich oraz używane przez nie ustawienia pędzla
+	Clear All Actions	Usuń wszystkie operacje
+	Replace Actions…	Zastąp operacje…
+	Delete the set “{name}”?	Usunąć zestaw „{name}”?
+	Delete the action “{name}”?	Usunąć operację „{name}”?
+	Delete the selection?	Usunąć zaznaczenie?
+	Function Key:	Klawisz funkcyjny:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Operacja ma inny skrót (Ustaw skrót…); wybranie tu klawisza go zastąpi.
+	Accelerated	Przyspieszone
+	Step by Step	Krok po kroku
+	Pause For:	Pauza na:
+	seconds	s
+	None Selected	Nic nie wybrano
+	Menu Item:	Polecenie menu:
+	Type part of a menu item's name, then pick it below.	Wpisz część nazwy polecenia menu, a następnie wybierz je poniżej.
+	If Current:	Jeśli bieżący:
+	Then Play Action:	Wtedy odtwórz operację:
+	Else Play Action:	W przeciwnym razie odtwórz operację:
+	Document Is Open	Dokument jest otwarty
+	Document Is Landscape	Dokument jest poziomy
+	Document Is Square	Dokument jest kwadratowy
+	Document Is Portrait	Dokument jest pionowy
+	Document Mode Is RGB	Tryb dokumentu to RGB
+	Document Mode Is CMYK	Tryb dokumentu to CMYK
+	Document Mode Is Grayscale	Tryb dokumentu to Skala szarości
+	Document Mode Is Lab	Tryb dokumentu to Lab
+	Document Mode Is Bitmap	Tryb dokumentu to Bitmapa
+	Document Mode Is Indexed	Tryb dokumentu to Kolor indeksowany
+	Document Mode Is Duotone	Tryb dokumentu to Bichromia
+	Document Mode Is Multichannel	Tryb dokumentu to Wielokanałowy
+	Document Is 8 Bits/Channel	Dokument ma 8 bitów/kanał
+	Document Is 16 Bits/Channel	Dokument ma 16 bitów/kanał
+	Document Is 32 Bits/Channel	Dokument ma 32 bity/kanał
+	Document Has Unsaved Changes	Dokument ma niezapisane zmiany
+	Document Has a Selection	Dokument ma zaznaczenie
+	Document Has Layers	Dokument ma warstwy
+	Document Has Alpha Channels	Dokument ma kanały alfa
+	Layer Is Background	Warstwa jest tłem
+	Layer Is a Pixel Layer	Warstwa jest warstwą pikseli
+	Layer Is an Adjustment Layer	Warstwa jest warstwą dopasowania
+	Layer Is a Shape Layer	Warstwa jest warstwą kształtu
+	Layer Is a Type Layer	Warstwa jest warstwą tekstową
+	Layer Is a Smart Object	Warstwa jest obiektem inteligentnym
+	Layer Is a Group	Warstwa jest grupą
+	Layer Is Locked	Warstwa jest zablokowana
+	Layer Is Visible	Warstwa jest widoczna
+	Layer Has Pixel Mask	Warstwa ma maskę pikseli
+	Layer Has Vector Mask	Warstwa ma maskę wektorową
+	Layer Has Effects	Warstwa ma efekty
+	Pick a menu item first	Najpierw wybierz polecenie menu
+	Find	Znajdź

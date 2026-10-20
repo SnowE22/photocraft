@@ -3498,3 +3498,65 @@ curves	Smooth	Haluskan
 	Save as:	Simpan sebagai:
 	Save Preset	Simpan Prasetel
 	Keep these two presets as one, listed with the others	Simpan kedua prasetel ini sebagai satu, tercantum bersama yang lain
+	Stop recording first	Hentikan perekaman terlebih dahulu
+	Select a step first	Pilih langkah terlebih dahulu
+	This step has no dialog to record again	Langkah ini tidak memiliki dialog untuk direkam ulang
+	New Action…	Aksi Baru…
+	Record Again…	Rekam Ulang…
+	Insert Menu Item…	Sisipkan Item Menu…
+	Insert Conditional…	Sisipkan Kondisi…
+	Set Options…	Opsi Set…
+	Action Options…	Opsi Aksi…
+	Playback Options…	Opsi Pemutaran…
+	Allow Tool Recording	Izinkan Perekaman Alat
+	Record brush and other painting strokes, and the brush settings they use	Rekam goresan kuas dan goresan lukis lainnya, beserta pengaturan kuas yang digunakan
+	Clear All Actions	Hapus Semua Aksi
+	Replace Actions…	Ganti Aksi…
+	Delete the set “{name}”?	Hapus set “{name}”?
+	Delete the action “{name}”?	Hapus aksi “{name}”?
+	Delete the selection?	Hapus pilihan?
+	Function Key:	Tombol Fungsi:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Aksi ini memiliki pintasan lain (Atur Pintasan…); memilih tombol di sini akan menggantinya.
+	Accelerated	Dipercepat
+	Step by Step	Langkah demi Langkah
+	Pause For:	Jeda Selama:
+	seconds	detik
+	None Selected	Tidak Ada yang Dipilih
+	Menu Item:	Item Menu:
+	Type part of a menu item's name, then pick it below.	Ketik sebagian nama item menu, lalu pilih di bawah.
+	If Current:	Jika Saat Ini:
+	Then Play Action:	Lalu Putar Aksi:
+	Else Play Action:	Jika Tidak, Putar Aksi:
+	Document Is Open	Dokumen Terbuka
+	Document Is Landscape	Dokumen Lanskap
+	Document Is Square	Dokumen Persegi
+	Document Is Portrait	Dokumen Potret
+	Document Mode Is RGB	Mode Dokumen RGB
+	Document Mode Is CMYK	Mode Dokumen CMYK
+	Document Mode Is Grayscale	Mode Dokumen Skala Abu-abu
+	Document Mode Is Lab	Mode Dokumen Lab
+	Document Mode Is Bitmap	Mode Dokumen Bitmap
+	Document Mode Is Indexed	Mode Dokumen Warna Terindeks
+	Document Mode Is Duotone	Mode Dokumen Duotone
+	Document Mode Is Multichannel	Mode Dokumen Multisaluran
+	Document Is 8 Bits/Channel	Dokumen 8 Bit/Saluran
+	Document Is 16 Bits/Channel	Dokumen 16 Bit/Saluran
+	Document Is 32 Bits/Channel	Dokumen 32 Bit/Saluran
+	Document Has Unsaved Changes	Dokumen Memiliki Perubahan yang Belum Disimpan
+	Document Has a Selection	Dokumen Memiliki Seleksi
+	Document Has Layers	Dokumen Memiliki Lapisan
+	Document Has Alpha Channels	Dokumen Memiliki Saluran Alfa
+	Layer Is Background	Lapisan Adalah Latar Belakang
+	Layer Is a Pixel Layer	Lapisan Adalah Lapisan Piksel
+	Layer Is an Adjustment Layer	Lapisan Adalah Lapisan Penyesuaian
+	Layer Is a Shape Layer	Lapisan Adalah Lapisan Bentuk
+	Layer Is a Type Layer	Lapisan Adalah Lapisan Teks
+	Layer Is a Smart Object	Lapisan Adalah Objek Cerdas
+	Layer Is a Group	Lapisan Adalah Grup
+	Layer Is Locked	Lapisan Terkunci
+	Layer Is Visible	Lapisan Terlihat
+	Layer Has Pixel Mask	Lapisan Memiliki Masker Piksel
+	Layer Has Vector Mask	Lapisan Memiliki Masker Vektor
+	Layer Has Effects	Lapisan Memiliki Efek
+	Pick a menu item first	Pilih item menu terlebih dahulu
+	Find	Cari

@@ -3506,3 +3506,66 @@ curves	Smooth	Glätten
 	Save as:	Speichern als:
 	Save Preset	Vorgabe speichern
 	Keep these two presets as one, listed with the others	Diese zwei Vorgaben als eine speichern, bei den anderen aufgeführt
+	Stop recording first	Zuerst die Aufnahme beenden
+	Select a step first	Zuerst einen Schritt auswählen
+	This step has no dialog to record again	Dieser Schritt hat kein Dialogfeld zum erneuten Aufzeichnen
+	New Action…	Neue Aktion…
+	Duplicate	Duplizieren
+	Record Again…	Erneut aufzeichnen…
+	Insert Menu Item…	Menübefehl einfügen…
+	Insert Conditional…	Bedingung einfügen…
+	Set Options…	Satzoptionen…
+	Action Options…	Aktionsoptionen…
+	Playback Options…	Ausführungsoptionen…
+	Allow Tool Recording	Werkzeugaufzeichnung zulassen
+	Record brush and other painting strokes, and the brush settings they use	Pinsel- und andere Malstriche sowie die verwendeten Pinseleinstellungen aufzeichnen
+	Clear All Actions	Alle Aktionen löschen
+	Replace Actions…	Aktionen ersetzen…
+	Create new set	Neuen Satz erstellen
+	Delete the set “{name}”?	Satz „{name}“ löschen?
+	Delete the action “{name}”?	Aktion „{name}“ löschen?
+	Delete the selection?	Auswahl löschen?
+	Function Key:	Funktionstaste:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Die Aktion hat ein anderes Tastaturkürzel (Tastaturbefehl festlegen…); eine hier gewählte Taste ersetzt es.
+	Accelerated	Beschleunigt
+	Step by Step	Schritt für Schritt
+	Pause For:	Anhalten für:
+	seconds	Sekunden
+	None Selected	Nichts ausgewählt
+	Menu Item:	Menübefehl:
+	Type part of a menu item's name, then pick it below.	Teil des Namens eines Menübefehls eingeben und ihn unten auswählen.
+	If Current:	Wenn aktuell:
+	Then Play Action:	Dann Aktion ausführen:
+	Else Play Action:	Sonst Aktion ausführen:
+	Document Is Open	Dokument ist geöffnet
+	Document Is Landscape	Dokument ist Querformat
+	Document Is Square	Dokument ist quadratisch
+	Document Is Portrait	Dokument ist Hochformat
+	Document Mode Is RGB	Dokumentmodus ist RGB
+	Document Mode Is CMYK	Dokumentmodus ist CMYK
+	Document Mode Is Grayscale	Dokumentmodus ist Graustufen
+	Document Mode Is Lab	Dokumentmodus ist Lab
+	Document Mode Is Bitmap	Dokumentmodus ist Bitmap
+	Document Mode Is Indexed	Dokumentmodus ist Indizierte Farben
+	Document Mode Is Duotone	Dokumentmodus ist Duplex
+	Document Mode Is Multichannel	Dokumentmodus ist Mehrkanal
+	Document Is 8 Bits/Channel	Dokument hat 8 Bit/Kanal
+	Document Is 16 Bits/Channel	Dokument hat 16 Bit/Kanal
+	Document Is 32 Bits/Channel	Dokument hat 32 Bit/Kanal
+	Document Has Unsaved Changes	Dokument hat ungespeicherte Änderungen
+	Document Has a Selection	Dokument hat eine Auswahl
+	Document Has Layers	Dokument hat Ebenen
+	Document Has Alpha Channels	Dokument hat Alphakanäle
+	Layer Is Background	Ebene ist Hintergrund
+	Layer Is a Pixel Layer	Ebene ist eine Pixelebene
+	Layer Is an Adjustment Layer	Ebene ist eine Einstellungsebene
+	Layer Is a Shape Layer	Ebene ist eine Formebene
+	Layer Is a Type Layer	Ebene ist eine Textebene
+	Layer Is a Smart Object	Ebene ist ein Smartobjekt
+	Layer Is a Group	Ebene ist eine Gruppe
+	Layer Is Locked	Ebene ist fixiert
+	Layer Is Visible	Ebene ist sichtbar
+	Layer Has Pixel Mask	Ebene hat Pixelmaske
+	Layer Has Vector Mask	Ebene hat Vektormaske
+	Layer Has Effects	Ebene hat Effekte
+	Pick a menu item first	Zuerst einen Menübefehl auswählen

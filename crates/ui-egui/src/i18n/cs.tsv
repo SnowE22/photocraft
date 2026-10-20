@@ -4107,3 +4107,65 @@ navigator	Zoom	Zvětšení
 	Save as:	Uložit jako:
 	Save Preset	Uložit přednastavení
 	Keep these two presets as one, listed with the others	Uložit tato dvě přednastavení jako jedno, uvedené s ostatními
+	Stop recording first	Nejprve zastavte záznam
+	Select a step first	Nejprve vyberte krok
+	This step has no dialog to record again	Tento krok nemá dialogové okno, které by šlo znovu zaznamenat
+	New Action…	Nová akce…
+	Record Again…	Zaznamenat znovu…
+	Insert Menu Item…	Vložit položku nabídky…
+	Insert Conditional…	Vložit podmínku…
+	Set Options…	Volby sady…
+	Action Options…	Volby akce…
+	Playback Options…	Volby přehrávání…
+	Allow Tool Recording	Povolit záznam nástrojů
+	Record brush and other painting strokes, and the brush settings they use	Zaznamenávat tahy štětcem a dalšími malířskými nástroji i nastavení štětce, které používají
+	Clear All Actions	Vymazat všechny akce
+	Replace Actions…	Nahradit akce…
+	Create new set	Vytvořit novou sadu
+	Delete the set “{name}”?	Odstranit sadu „{name}“?
+	Delete the action “{name}”?	Odstranit akci „{name}“?
+	Delete the selection?	Odstranit výběr?
+	Function Key:	Funkční klávesa:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Akce má jinou klávesovou zkratku (Nastavit zkratku…); klávesa vybraná zde ji nahradí.
+	Accelerated	Zrychleně
+	Step by Step	Krok za krokem
+	Pause For:	Pozastavit na:
+	seconds	s
+	None Selected	Nic nevybráno
+	Menu Item:	Položka nabídky:
+	Type part of a menu item's name, then pick it below.	Napište část názvu položky nabídky a pak ji vyberte níže.
+	If Current:	Pokud aktuální:
+	Then Play Action:	Pak přehrát akci:
+	Else Play Action:	Jinak přehrát akci:
+	Document Is Open	Dokument je otevřený
+	Document Is Landscape	Dokument je na šířku
+	Document Is Square	Dokument je čtvercový
+	Document Is Portrait	Dokument je na výšku
+	Document Mode Is RGB	Režim dokumentu je RGB
+	Document Mode Is CMYK	Režim dokumentu je CMYK
+	Document Mode Is Grayscale	Režim dokumentu je Stupně šedi
+	Document Mode Is Lab	Režim dokumentu je Lab
+	Document Mode Is Bitmap	Režim dokumentu je Bitová mapa
+	Document Mode Is Indexed	Režim dokumentu je Indexované barvy
+	Document Mode Is Duotone	Režim dokumentu je Duplex
+	Document Mode Is Multichannel	Režim dokumentu je Vícekanálový
+	Document Is 8 Bits/Channel	Dokument má 8 bitů/kanál
+	Document Is 16 Bits/Channel	Dokument má 16 bitů/kanál
+	Document Is 32 Bits/Channel	Dokument má 32 bitů/kanál
+	Document Has Unsaved Changes	Dokument má neuložené změny
+	Document Has a Selection	Dokument má výběr
+	Document Has Layers	Dokument má vrstvy
+	Document Has Alpha Channels	Dokument má alfa kanály
+	Layer Is Background	Vrstva je pozadí
+	Layer Is a Pixel Layer	Vrstva je obrazová vrstva
+	Layer Is an Adjustment Layer	Vrstva je vrstva úprav
+	Layer Is a Shape Layer	Vrstva je vrstva tvaru
+	Layer Is a Type Layer	Vrstva je textová vrstva
+	Layer Is a Smart Object	Vrstva je inteligentní objekt
+	Layer Is a Group	Vrstva je skupina
+	Layer Is Locked	Vrstva je zamčená
+	Layer Is Visible	Vrstva je viditelná
+	Layer Has Pixel Mask	Vrstva má obrazovou masku
+	Layer Has Vector Mask	Vrstva má vektorovou masku
+	Layer Has Effects	Vrstva má efekty
+	Pick a menu item first	Nejprve vyberte položku nabídky

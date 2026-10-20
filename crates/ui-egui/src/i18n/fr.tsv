@@ -3511,3 +3511,65 @@ curves	Smooth	Lisser
 	Save as:	Enregistrer sous :
 	Save Preset	Enregistrer le paramètre prédéfini
 	Keep these two presets as one, listed with the others	Conserver ces deux paramètres prédéfinis en un seul, listé avec les autres
+	Stop recording first	Arrêtez d’abord l’enregistrement
+	Select a step first	Sélectionnez d’abord une étape
+	This step has no dialog to record again	Cette étape n’a pas de boîte de dialogue à réenregistrer
+	New Action…	Nouvelle action…
+	Record Again…	Enregistrer à nouveau…
+	Insert Menu Item…	Insérer une commande de menu…
+	Insert Conditional…	Insérer une condition…
+	Set Options…	Options de l’ensemble…
+	Action Options…	Options d’action…
+	Playback Options…	Options d’exécution…
+	Allow Tool Recording	Autoriser l’enregistrement des outils
+	Record brush and other painting strokes, and the brush settings they use	Enregistrer les tracés du pinceau et des autres outils de peinture, et les réglages de forme qu’ils utilisent
+	Clear All Actions	Effacer toutes les actions
+	Replace Actions…	Remplacer les actions…
+	Delete the set “{name}”?	Supprimer l’ensemble « {name} » ?
+	Delete the action “{name}”?	Supprimer l’action « {name} » ?
+	Delete the selection?	Supprimer la sélection ?
+	Function Key:	Touche de fonction :
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	L’action a un autre raccourci (Définir le raccourci…) ; choisir une touche ici le remplace.
+	Accelerated	Accélérée
+	Step by Step	Pas à pas
+	Pause For:	Pause de :
+	seconds	secondes
+	None Selected	Aucune sélection
+	Menu Item:	Commande de menu :
+	Type part of a menu item's name, then pick it below.	Tapez une partie du nom d’une commande de menu, puis choisissez-la ci-dessous.
+	If Current:	Si actuel :
+	Then Play Action:	Puis exécuter l’action :
+	Else Play Action:	Sinon exécuter l’action :
+	Document Is Open	Le document est ouvert
+	Document Is Landscape	Le document est en paysage
+	Document Is Square	Le document est carré
+	Document Is Portrait	Le document est en portrait
+	Document Mode Is RGB	Le mode du document est RVB
+	Document Mode Is CMYK	Le mode du document est CMJN
+	Document Mode Is Grayscale	Le mode du document est Niveaux de gris
+	Document Mode Is Lab	Le mode du document est Lab
+	Document Mode Is Bitmap	Le mode du document est Bitmap
+	Document Mode Is Indexed	Le mode du document est Couleurs indexées
+	Document Mode Is Duotone	Le mode du document est Bichromie
+	Document Mode Is Multichannel	Le mode du document est Multicouche
+	Document Is 8 Bits/Channel	Le document est en 8 bits/couche
+	Document Is 16 Bits/Channel	Le document est en 16 bits/couche
+	Document Is 32 Bits/Channel	Le document est en 32 bits/couche
+	Document Has Unsaved Changes	Le document a des modifications non enregistrées
+	Document Has a Selection	Le document a une sélection
+	Document Has Layers	Le document a des calques
+	Document Has Alpha Channels	Le document a des couches alpha
+	Layer Is Background	Le calque est l’arrière-plan
+	Layer Is a Pixel Layer	Le calque est un calque de pixels
+	Layer Is an Adjustment Layer	Le calque est un calque de réglage
+	Layer Is a Shape Layer	Le calque est un calque de forme
+	Layer Is a Type Layer	Le calque est un calque de texte
+	Layer Is a Smart Object	Le calque est un objet dynamique
+	Layer Is a Group	Le calque est un groupe
+	Layer Is Locked	Le calque est verrouillé
+	Layer Is Visible	Le calque est visible
+	Layer Has Pixel Mask	Le calque a un masque de pixels
+	Layer Has Vector Mask	Le calque a un masque vectoriel
+	Layer Has Effects	Le calque a des effets
+	Pick a menu item first	Choisissez d’abord une commande de menu
+	Find	Rechercher

@@ -4228,3 +4228,64 @@ cameraData	Lens	Lens
 	Save as:	Farklı kaydet:
 	Save Preset	Hazır Ayarı Kaydet
 	Keep these two presets as one, listed with the others	Bu iki hazır ayarı tek ayar olarak diğerleriyle birlikte sakla
+	Stop recording first	Önce kaydı durdurun
+	Select a step first	Önce bir adım seçin
+	This step has no dialog to record again	Bu adımın yeniden kaydedilecek bir iletişim kutusu yok
+	New Action…	Yeni Eylem…
+	Record Again…	Yeniden Kaydet…
+	Insert Menu Item…	Menü Öğesi Ekle…
+	Insert Conditional…	Koşul Ekle…
+	Set Options…	Küme Seçenekleri…
+	Action Options…	Eylem Seçenekleri…
+	Playback Options…	Oynatma Seçenekleri…
+	Allow Tool Recording	Araç Kaydına İzin Ver
+	Record brush and other painting strokes, and the brush settings they use	Fırça ve diğer boyama vuruşlarını ve kullandıkları fırça ayarlarını kaydet
+	Clear All Actions	Tüm Eylemleri Temizle
+	Replace Actions…	Eylemleri Değiştir…
+	Delete the set “{name}”?	“{name}” kümesi silinsin mi?
+	Delete the action “{name}”?	“{name}” eylemi silinsin mi?
+	Delete the selection?	Seçim silinsin mi?
+	Function Key:	İşlev Tuşu:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Eylemin başka bir kısayolu var (Kısayol Ayarla…); burada seçilen tuş onun yerini alır.
+	Accelerated	Hızlandırılmış
+	Step by Step	Adım Adım
+	Pause For:	Duraklat:
+	seconds	saniye
+	None Selected	Hiçbiri Seçili Değil
+	Menu Item:	Menü Öğesi:
+	Type part of a menu item's name, then pick it below.	Bir menü öğesinin adının bir bölümünü yazın, sonra aşağıdan seçin.
+	If Current:	Geçerli ise:
+	Then Play Action:	Sonra Eylemi Oynat:
+	Else Play Action:	Değilse Eylemi Oynat:
+	Document Is Open	Belge Açık
+	Document Is Landscape	Belge Yatay
+	Document Is Square	Belge Kare
+	Document Is Portrait	Belge Dikey
+	Document Mode Is RGB	Belge Modu RGB
+	Document Mode Is CMYK	Belge Modu CMYK
+	Document Mode Is Grayscale	Belge Modu Gri Tonlama
+	Document Mode Is Lab	Belge Modu Lab
+	Document Mode Is Bitmap	Belge Modu Bitmap
+	Document Mode Is Indexed	Belge Modu Dizinlenmiş Renk
+	Document Mode Is Duotone	Belge Modu Çift Ton
+	Document Mode Is Multichannel	Belge Modu Çok Kanallı
+	Document Is 8 Bits/Channel	Belge 8 Bit/Kanal
+	Document Is 16 Bits/Channel	Belge 16 Bit/Kanal
+	Document Is 32 Bits/Channel	Belge 32 Bit/Kanal
+	Document Has Unsaved Changes	Belgede Kaydedilmemiş Değişiklikler Var
+	Document Has a Selection	Belgede Seçim Var
+	Document Has Layers	Belgede Katmanlar Var
+	Document Has Alpha Channels	Belgede Alfa Kanalları Var
+	Layer Is Background	Katman Arka Plan
+	Layer Is a Pixel Layer	Katman Piksel Katmanı
+	Layer Is an Adjustment Layer	Katman Ayarlama Katmanı
+	Layer Is a Shape Layer	Katman Şekil Katmanı
+	Layer Is a Type Layer	Katman Yazı Katmanı
+	Layer Is a Smart Object	Katman Akıllı Nesne
+	Layer Is a Group	Katman Grup
+	Layer Is Locked	Katman Kilitli
+	Layer Is Visible	Katman Görünür
+	Layer Has Pixel Mask	Katmanda Piksel Maskesi Var
+	Layer Has Vector Mask	Katmanda Vektör Maskesi Var
+	Layer Has Effects	Katmanda Efektler Var
+	Pick a menu item first	Önce bir menü öğesi seçin

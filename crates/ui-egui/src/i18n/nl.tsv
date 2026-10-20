@@ -4258,3 +4258,64 @@ curves	Smooth	Vloeiend maken
 	Save as:	Opslaan als:
 	Save Preset	Voorinstelling opslaan
 	Keep these two presets as one, listed with the others	Deze twee voorinstellingen als één bewaren, bij de andere vermeld
+	Stop recording first	Stop eerst met opnemen
+	Select a step first	Selecteer eerst een stap
+	This step has no dialog to record again	Deze stap heeft geen dialoogvenster om opnieuw op te nemen
+	New Action…	Nieuwe handeling…
+	Record Again…	Opnieuw opnemen…
+	Insert Menu Item…	Menuopdracht invoegen…
+	Insert Conditional…	Voorwaarde invoegen…
+	Set Options…	Setopties…
+	Action Options…	Handelingsopties…
+	Playback Options…	Afspeelopties…
+	Allow Tool Recording	Gereedschapsopname toestaan
+	Record brush and other painting strokes, and the brush settings they use	Penseelstreken en andere verfstreken opnemen, met de penseelinstellingen die ze gebruiken
+	Clear All Actions	Alle handelingen wissen
+	Replace Actions…	Handelingen vervangen…
+	Delete the set “{name}”?	Set ‘{name}’ verwijderen?
+	Delete the action “{name}”?	Handeling ‘{name}’ verwijderen?
+	Delete the selection?	Selectie verwijderen?
+	Function Key:	Functietoets:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	De handeling heeft een andere sneltoets (Sneltoets instellen…); een toets die u hier kiest, vervangt die.
+	Accelerated	Versneld
+	Step by Step	Stap voor stap
+	Pause For:	Pauzeren gedurende:
+	seconds	seconden
+	None Selected	Niets geselecteerd
+	Menu Item:	Menuopdracht:
+	Type part of a menu item's name, then pick it below.	Typ een deel van de naam van een menuopdracht en kies die hieronder.
+	If Current:	Als huidig:
+	Then Play Action:	Dan handeling afspelen:
+	Else Play Action:	Anders handeling afspelen:
+	Document Is Open	Document is geopend
+	Document Is Landscape	Document is liggend
+	Document Is Square	Document is vierkant
+	Document Is Portrait	Document is staand
+	Document Mode Is RGB	Documentmodus is RGB
+	Document Mode Is CMYK	Documentmodus is CMYK
+	Document Mode Is Grayscale	Documentmodus is Grijswaarden
+	Document Mode Is Lab	Documentmodus is Lab
+	Document Mode Is Bitmap	Documentmodus is Bitmap
+	Document Mode Is Indexed	Documentmodus is Geïndexeerde kleur
+	Document Mode Is Duotone	Documentmodus is Duotoon
+	Document Mode Is Multichannel	Documentmodus is Multikanaal
+	Document Is 8 Bits/Channel	Document is 8 bits/kanaal
+	Document Is 16 Bits/Channel	Document is 16 bits/kanaal
+	Document Is 32 Bits/Channel	Document is 32 bits/kanaal
+	Document Has Unsaved Changes	Document heeft niet-opgeslagen wijzigingen
+	Document Has a Selection	Document heeft een selectie
+	Document Has Layers	Document heeft lagen
+	Document Has Alpha Channels	Document heeft alfakanalen
+	Layer Is Background	Laag is achtergrond
+	Layer Is a Pixel Layer	Laag is een pixellaag
+	Layer Is an Adjustment Layer	Laag is een aanpassingslaag
+	Layer Is a Shape Layer	Laag is een vormlaag
+	Layer Is a Type Layer	Laag is een tekstlaag
+	Layer Is a Smart Object	Laag is een slim object
+	Layer Is a Group	Laag is een groep
+	Layer Is Locked	Laag is vergrendeld
+	Layer Is Visible	Laag is zichtbaar
+	Layer Has Pixel Mask	Laag heeft pixelmasker
+	Layer Has Vector Mask	Laag heeft vectormasker
+	Layer Has Effects	Laag heeft effecten
+	Pick a menu item first	Kies eerst een menuopdracht

@@ -3113,3 +3113,67 @@ curves	Smooth	平滑
 	Save as:	另存為：
 	Save Preset	儲存預設集
 	Keep these two presets as one, listed with the others	將這兩個預設集存為一個，與其他預設集列在一起
+	Stop recording first	請先停止記錄
+	Select a step first	請先選取一個步驟
+	This step has no dialog to record again	此步驟沒有可重新記錄的對話框
+	New Action…	新增動作…
+	Duplicate	複製
+	Record Again…	再次記錄…
+	Insert Menu Item…	插入選單項目…
+	Insert Conditional…	插入條件…
+	Set Options…	組合選項…
+	Action Options…	動作選項…
+	Playback Options…	播放選項…
+	Allow Tool Recording	允許工具記錄
+	Record brush and other painting strokes, and the brush settings they use	記錄筆刷及其他繪畫筆觸，以及它們使用的筆刷設定
+	Clear All Actions	清除所有動作
+	Replace Actions…	取代動作…
+	Create new set	建立新組合
+	Delete the set “{name}”?	要刪除組合「{name}」嗎？
+	Delete the action “{name}”?	要刪除動作「{name}」嗎？
+	Delete the selection?	要刪除所選內容嗎？
+	Function Key:	功能鍵：
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	此動作已有其他快速鍵（設定快速鍵…）；在此選擇按鍵將取代它。
+	Accelerated	加速
+	Step by Step	逐步
+	Pause For:	暫停：
+	seconds	秒
+	None Selected	未選取
+	Menu Item:	選單項目：
+	Type part of a menu item's name, then pick it below.	輸入選單項目名稱的一部分，然後在下方選擇。
+	If Current:	如果目前：
+	Then Play Action:	則播放動作：
+	Else Play Action:	否則播放動作：
+	Document Is Open	文件已開啟
+	Document Is Landscape	文件為橫向
+	Document Is Square	文件為正方形
+	Document Is Portrait	文件為直向
+	Document Mode Is RGB	文件模式為 RGB
+	Document Mode Is CMYK	文件模式為 CMYK
+	Document Mode Is Grayscale	文件模式為灰階
+	Document Mode Is Lab	文件模式為 Lab
+	Document Mode Is Bitmap	文件模式為點陣圖
+	Document Mode Is Indexed	文件模式為索引色
+	Document Mode Is Duotone	文件模式為雙色調
+	Document Mode Is Multichannel	文件模式為多重色版
+	Document Is 8 Bits/Channel	文件為 8 位元/色版
+	Document Is 16 Bits/Channel	文件為 16 位元/色版
+	Document Is 32 Bits/Channel	文件為 32 位元/色版
+	Document Has Unsaved Changes	文件有未儲存的變更
+	Document Has a Selection	文件有選取範圍
+	Document Has Layers	文件有圖層
+	Document Has Alpha Channels	文件有 Alpha 色版
+	Layer Is Background	圖層是背景
+	Layer Is a Pixel Layer	圖層是像素圖層
+	Layer Is an Adjustment Layer	圖層是調整圖層
+	Layer Is a Shape Layer	圖層是形狀圖層
+	Layer Is a Type Layer	圖層是文字圖層
+	Layer Is a Smart Object	圖層是智慧型物件
+	Layer Is a Group	圖層是群組
+	Layer Is Locked	圖層已鎖定
+	Layer Is Visible	圖層可見
+	Layer Has Pixel Mask	圖層有像素遮色片
+	Layer Has Vector Mask	圖層有向量遮色片
+	Layer Has Effects	圖層有效果
+	Pick a menu item first	請先選擇一個選單項目
+	Find	尋找

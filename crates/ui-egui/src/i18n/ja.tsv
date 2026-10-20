@@ -4178,3 +4178,65 @@ curves	Smooth	スムーズ
 	Save as:	保存名：
 	Save Preset	プリセットを保存
 	Keep these two presets as one, listed with the others	この 2 つのプリセットを 1 つとして保存し、他と一緒に表示します
+	Stop recording first	先に記録を停止してください
+	Select a step first	先にステップを選択してください
+	This step has no dialog to record again	このステップには再記録するダイアログがありません
+	New Action…	新規アクション…
+	Record Again…	再記録…
+	Insert Menu Item…	メニュー項目を挿入…
+	Insert Conditional…	条件を挿入…
+	Set Options…	セットオプション…
+	Action Options…	アクションオプション…
+	Playback Options…	再生オプション…
+	Allow Tool Recording	ツールの記録を許可
+	Record brush and other painting strokes, and the brush settings they use	ブラシなどのペイントのストロークと、それが使うブラシ設定を記録します
+	Clear All Actions	すべてのアクションを消去
+	Replace Actions…	アクションを置き換え…
+	Delete the set “{name}”?	セット「{name}」を削除しますか？
+	Delete the action “{name}”?	アクション「{name}」を削除しますか？
+	Delete the selection?	選択範囲を削除しますか？
+	Function Key:	ファンクションキー：
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	このアクションには別のショートカットがあります（ショートカットを設定…）。ここでキーを選ぶと置き換わります。
+	Accelerated	高速
+	Step by Step	ステップごと
+	Pause For:	一時停止：
+	seconds	秒
+	None Selected	選択なし
+	Menu Item:	メニュー項目：
+	Type part of a menu item's name, then pick it below.	メニュー項目の名前の一部を入力し、下から選んでください。
+	If Current:	現在の状態が次の場合：
+	Then Play Action:	アクションを再生：
+	Else Play Action:	それ以外の場合に再生：
+	Document Is Open	ドキュメントが開いている
+	Document Is Landscape	ドキュメントが横長
+	Document Is Square	ドキュメントが正方形
+	Document Is Portrait	ドキュメントが縦長
+	Document Mode Is RGB	ドキュメントのモードが RGB
+	Document Mode Is CMYK	ドキュメントのモードが CMYK
+	Document Mode Is Grayscale	ドキュメントのモードがグレースケール
+	Document Mode Is Lab	ドキュメントのモードが Lab
+	Document Mode Is Bitmap	ドキュメントのモードがモノクロ 2 階調
+	Document Mode Is Indexed	ドキュメントのモードがインデックスカラー
+	Document Mode Is Duotone	ドキュメントのモードがダブルトーン
+	Document Mode Is Multichannel	ドキュメントのモードがマルチチャンネル
+	Document Is 8 Bits/Channel	ドキュメントが 8 bit/チャンネル
+	Document Is 16 Bits/Channel	ドキュメントが 16 bit/チャンネル
+	Document Is 32 Bits/Channel	ドキュメントが 32 bit/チャンネル
+	Document Has Unsaved Changes	ドキュメントに未保存の変更がある
+	Document Has a Selection	ドキュメントに選択範囲がある
+	Document Has Layers	ドキュメントにレイヤーがある
+	Document Has Alpha Channels	ドキュメントにアルファチャンネルがある
+	Layer Is Background	レイヤーが背景
+	Layer Is a Pixel Layer	レイヤーがピクセルレイヤー
+	Layer Is an Adjustment Layer	レイヤーが調整レイヤー
+	Layer Is a Shape Layer	レイヤーがシェイプレイヤー
+	Layer Is a Type Layer	レイヤーがテキストレイヤー
+	Layer Is a Smart Object	レイヤーがスマートオブジェクト
+	Layer Is a Group	レイヤーがグループ
+	Layer Is Locked	レイヤーがロックされている
+	Layer Is Visible	レイヤーが表示されている
+	Layer Has Pixel Mask	レイヤーにピクセルマスクがある
+	Layer Has Vector Mask	レイヤーにベクトルマスクがある
+	Layer Has Effects	レイヤーに効果がある
+	Pick a menu item first	先にメニュー項目を選んでください
+	Find	検索

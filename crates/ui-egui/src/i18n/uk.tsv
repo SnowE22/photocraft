@@ -4202,3 +4202,65 @@ curves	Smooth	Згладити
 	Save as:	Зберегти як:
 	Save Preset	Зберегти набір
 	Keep these two presets as one, listed with the others	Зберегти ці два набори як один, у списку з іншими
+	Stop recording first	Спочатку зупиніть запис
+	Select a step first	Спочатку виберіть крок
+	This step has no dialog to record again	Цей крок не має діалогового вікна для повторного запису
+	New Action…	Нова операція…
+	Record Again…	Записати знову…
+	Insert Menu Item…	Вставити пункт меню…
+	Insert Conditional…	Вставити умову…
+	Set Options…	Параметри набору…
+	Action Options…	Параметри операції…
+	Playback Options…	Параметри відтворення…
+	Allow Tool Recording	Дозволити запис інструментів
+	Record brush and other painting strokes, and the brush settings they use	Записувати мазки пензлем та іншими інструментами малювання, а також налаштування пензля, які вони використовують
+	Clear All Actions	Видалити всі операції
+	Replace Actions…	Замінити операції…
+	Delete the set “{name}”?	Видалити набір «{name}»?
+	Delete the action “{name}”?	Видалити операцію «{name}»?
+	Delete the selection?	Видалити виділене?
+	Function Key:	Функціональна клавіша:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Операція має інше сполучення клавіш (Задати сполучення…); клавіша, вибрана тут, замінить його.
+	Accelerated	Прискорено
+	Step by Step	Покроково
+	Pause For:	Пауза:
+	seconds	с
+	None Selected	Нічого не вибрано
+	Menu Item:	Пункт меню:
+	Type part of a menu item's name, then pick it below.	Введіть частину назви пункту меню й виберіть його нижче.
+	If Current:	Якщо поточний:
+	Then Play Action:	Тоді виконати операцію:
+	Else Play Action:	Інакше виконати операцію:
+	Document Is Open	Документ відкрито
+	Document Is Landscape	Документ альбомний
+	Document Is Square	Документ квадратний
+	Document Is Portrait	Документ книжковий
+	Document Mode Is RGB	Режим документа — RGB
+	Document Mode Is CMYK	Режим документа — CMYK
+	Document Mode Is Grayscale	Режим документа — Відтінки сірого
+	Document Mode Is Lab	Режим документа — Lab
+	Document Mode Is Bitmap	Режим документа — Бітовий
+	Document Mode Is Indexed	Режим документа — Індексовані кольори
+	Document Mode Is Duotone	Режим документа — Дуплекс
+	Document Mode Is Multichannel	Режим документа — Багатоканальний
+	Document Is 8 Bits/Channel	Документ 8 біт/канал
+	Document Is 16 Bits/Channel	Документ 16 біт/канал
+	Document Is 32 Bits/Channel	Документ 32 біт/канал
+	Document Has Unsaved Changes	Документ має незбережені зміни
+	Document Has a Selection	Документ має виділення
+	Document Has Layers	Документ має шари
+	Document Has Alpha Channels	Документ має альфа-канали
+	Layer Is Background	Шар — тло
+	Layer Is a Pixel Layer	Шар — піксельний шар
+	Layer Is an Adjustment Layer	Шар — коригувальний шар
+	Layer Is a Shape Layer	Шар — шар фігури
+	Layer Is a Type Layer	Шар — текстовий шар
+	Layer Is a Smart Object	Шар — смарт-об’єкт
+	Layer Is a Group	Шар — група
+	Layer Is Locked	Шар заблоковано
+	Layer Is Visible	Шар видимий
+	Layer Has Pixel Mask	Шар має піксельну маску
+	Layer Has Vector Mask	Шар має векторну маску
+	Layer Has Effects	Шар має ефекти
+	Pick a menu item first	Спочатку виберіть пункт меню
+	Find	Знайти

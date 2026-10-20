@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-19 · **Change:** minor (G16: Topaz Gigapixel presets, one click or two presets combined; G15: the Remove tool's Generative AI mode, LaMa inpainting on a local ONNX Runtime (DirectML on Windows), PhotoCraft's first ML runtime; G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-18 · **Last updated:** 2026-10-20 · **Change:** minor (G11: the Actions panel works like Photoshop's: sets with New Set, New Action… with Record, the check and dialog columns on sets and actions, Record from the selected step, Photoshop's recording rules with Allow Tool Recording, Insert Menu Item and Insert Conditional, Record Again, Playback Options, several steps deleted at once, the panel menu in Photoshop's order; G16: Topaz Gigapixel presets, one click or two presets combined; G15: the Remove tool's Generative AI mode, LaMa inpainting on a local ONNX Runtime (DirectML on Windows), PhotoCraft's first ML runtime; G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -90,6 +90,20 @@ what an agent can't finish alone.
 - **Estimate:** 120–200 h.
 
 ### G11. Actions and scripting
+- **2026-10-20 evidence:** The Actions panel follows Photoshop's: every action sits in a set
+  (Default Actions for loose ones), the footer is Stop, Record, Play, Create new set, Create new
+  action, Delete (which asks first; Alt skips), and sets and actions carry the check and dialog
+  columns (red when partial). New Action… names the action, set, function key and colour and
+  starts recording on Record; Record with a step selected inserts after it. Recording leaves out
+  what Photoshop does (tool options, presets panels, preferences, the View menu) and records
+  painting strokes only with Allow Tool Recording; Insert Menu Item… adds a View step. Play runs
+  from the selected step (Ctrl+Play that step alone; a selected set plays all its actions);
+  Playback Options… paces Step by Step or Pause For; Record Again… (double-click a step) stores new
+  dialog values; opened steps list their values; Ctrl/Shift-click picks several steps to delete;
+  the action that played is selected. Panel menu in Photoshop's order (Duplicate, Clear All
+  Actions, Replace Actions…, Action/Set Options…). `actions.newSet`, `renameSet`, `deleteSet`,
+  `duplicate`, `clear`, `setStep`, `options` for agents. Still missing: Insert Path, Reset
+  Actions (no stock sets), playback dialogs for menu items without a PhotoCraft dialog.
 - **2026-10-18 evidence:** A Photoshop 2026 user's whole Actions palette (`Actions Palette.psp`,
   nine sets, 1,457 steps) loads at once (Actions panel menu › Import Photoshop Actions, or Load
   Actions… on the `.psp`): 1,392 steps (96 %) map, up from 74 %. The user's own sets keep only
@@ -327,6 +341,7 @@ what an agent can't finish alone.
 | 2026-10-13 | minor | G4: Hue Jitter amount-track appearance (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-13 | minor | G4: minimum inputs in Shape Dynamics and Transfer follow their Control (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
+| 2026-10-20 | minor | G11: Actions panel behaves like Photoshop's (sets, New Action/Set dialogs, recording rules and Allow Tool Recording, record from the selected step, Insert Menu Item/Conditional, Record Again, Playback Options, multi-step delete) |
 | 2026-10-19 | minor | G16: Topaz Gigapixel presets (one click, or two presets chained or side by side), no plug-in hosting needed |
 | 2026-10-18 | minor | G16: Topaz Gigapixel AI round trip in File › Automate (app or command-line tool), no plug-in hosting needed |
 | 2026-10-18 | minor | G15: the Remove tool's Generative AI mode (Auto / On / Off): LaMa on a local ONNX Runtime, DirectML on Windows, model installed separately; estimate unchanged |

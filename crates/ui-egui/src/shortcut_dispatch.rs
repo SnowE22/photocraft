@@ -360,7 +360,11 @@ pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {
     } else if ctx.data(|d| d.get_temp::<bool>(dry_run_id())).unwrap_or(false) {
         Outcome::Ran
     } else {
-        let r = if let Some(name) = action {
+        let r = if let Some(name) = action.filter(|_| app.session.actions.prefs.playback.delay().is_some() && !app.automation_input) {
+            // Playback Options › Step by Step or Pause For: the Actions panel paces the steps.
+            crate::actions::start(app, vec![name.to_string()], 0, None);
+            Ok(serde_json::Value::Null)
+        } else if let Some(name) = action {
             // Use the normal command path: synthetic input and every nested action
             // step must still pass the automation authorizer.
             crate::menus::invoke(app, ctx, "actions.play", json!({"action": name})).and_then(|v| {

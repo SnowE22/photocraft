@@ -323,6 +323,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 DialogKind::Command if crate::delete_layer_prompt::owns(&fields) => crate::delete_layer_prompt::body(ui, &mut fields),
                 DialogKind::Command if crate::disk_change_prompt::owns(&fields) => crate::disk_change_prompt::body(ui, &fields),
                 DialogKind::Command if crate::actions::owns_insert_stop(&fields) => crate::actions::insert_stop_body(ui, &mut fields),
+                DialogKind::Command if crate::actions_dialogs::owns(&fields) => crate::actions_dialogs::body(app, ui, &mut fields),
                 DialogKind::Command if crate::new_layer_ui::owns(&fields) => crate::new_layer_ui::body(ui, &mut fields),
                 DialogKind::Command if crate::mask_trash_prompt::owns(&fields) => crate::mask_trash_prompt::body(ui, &fields),
                 DialogKind::Command if crate::rasterize_prompt::owns(&fields) => crate::rasterize_prompt::body(ui, &fields),
@@ -413,6 +414,8 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                             tl!("Export")
                         } else if crate::gigapixel_ui::owns(&d.fields) {
                             crate::gigapixel_ui::ok_label(&d.fields)
+                        } else if let Some(label) = crate::actions_dialogs::ok_label(&d.fields) {
+                            label
                         } else {
                             crate::file_ui::ok_label(&d.fields).unwrap_or(tl!("OK"))
                         };
@@ -626,6 +629,7 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
         DialogKind::Command if crate::delete_layer_prompt::owns(&d.fields) => crate::delete_layer_prompt::confirm(app, &d.fields),
         DialogKind::Command if crate::disk_change_prompt::owns(&d.fields) => crate::disk_change_prompt::confirm(app, &d.fields),
         DialogKind::Command if crate::actions::owns_insert_stop(&d.fields) => crate::actions::insert_stop_confirm(app, &d.fields),
+        DialogKind::Command if crate::actions_dialogs::owns(&d.fields) => crate::actions_dialogs::confirm(app, &d.fields),
         DialogKind::Command if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
         DialogKind::Command if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
         DialogKind::Command if crate::rasterize_prompt::owns(&d.fields) => crate::rasterize_prompt::confirm(app, &d.fields),
@@ -660,10 +664,12 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
                 _ => app.filter_preview = None,
             }
             if result.is_ok() && cmd == "view.newGuideLayout" {
-                app.ui.view.guide_layout = params;
+                app.ui.view.guide_layout = params.clone();
             }
             if result.is_ok() {
                 crate::filter_dialog::remember(app, &cmd, &d.fields);
+                // Record Again…: the step keeps the values just confirmed.
+                crate::actions::rerecorded(app, &d.fields, &params);
                 // A step dialog of a playing action: the action continues after it.
                 crate::actions::resume(app, &d.fields);
             }

@@ -64,6 +64,11 @@ fn insert(s: &mut Session, p: &Value) -> Result<Value> {
     }
     if s.actions.recording.is_some_and(|(_, i)| i == idx) {
         flush_recording(s)?;
+        if let Some(r) = s.actions.record_at.as_mut()
+            && at <= *r
+        {
+            *r += 1;
+        }
     }
     let action = &mut s.actions.list[idx];
     action.steps.insert(at, (id.clone(), params));

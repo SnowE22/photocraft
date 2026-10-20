@@ -4199,3 +4199,64 @@ curves	Smooth	Εξομάλυνση
 	Save as:	Αποθήκευση ως:
 	Save Preset	Αποθήκευση προρύθμισης
 	Keep these two presets as one, listed with the others	Διατήρηση αυτών των δύο προρυθμίσεων ως μίας, μαζί με τις άλλες
+	Stop recording first	Σταματήστε πρώτα την εγγραφή
+	Select a step first	Επιλέξτε πρώτα ένα βήμα
+	This step has no dialog to record again	Αυτό το βήμα δεν έχει παράθυρο διαλόγου για νέα εγγραφή
+	New Action…	Νέα ενέργεια…
+	Record Again…	Νέα εγγραφή…
+	Insert Menu Item…	Εισαγωγή στοιχείου μενού…
+	Insert Conditional…	Εισαγωγή συνθήκης…
+	Set Options…	Επιλογές συνόλου…
+	Action Options…	Επιλογές ενέργειας…
+	Playback Options…	Επιλογές αναπαραγωγής…
+	Allow Tool Recording	Να επιτρέπεται η εγγραφή εργαλείων
+	Record brush and other painting strokes, and the brush settings they use	Εγγραφή πινελιών και άλλων πινελιών ζωγραφικής, μαζί με τις ρυθμίσεις πινέλου που χρησιμοποιούν
+	Clear All Actions	Διαγραφή όλων των ενεργειών
+	Replace Actions…	Αντικατάσταση ενεργειών…
+	Delete the set “{name}”?	Διαγραφή του συνόλου «{name}»;
+	Delete the action “{name}”?	Διαγραφή της ενέργειας «{name}»;
+	Delete the selection?	Διαγραφή της επιλογής;
+	Function Key:	Πλήκτρο λειτουργίας:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Η ενέργεια έχει άλλη συντόμευση (Ορισμός συντόμευσης…)· ένα πλήκτρο που επιλέγετε εδώ την αντικαθιστά.
+	Accelerated	Επιταχυμένη
+	Step by Step	Βήμα προς βήμα
+	Pause For:	Παύση για:
+	seconds	δευτερόλεπτα
+	None Selected	Καμία επιλογή
+	Menu Item:	Στοιχείο μενού:
+	Type part of a menu item's name, then pick it below.	Πληκτρολογήστε μέρος του ονόματος ενός στοιχείου μενού και επιλέξτε το παρακάτω.
+	If Current:	Αν το τρέχον:
+	Then Play Action:	Τότε αναπαραγωγή ενέργειας:
+	Else Play Action:	Αλλιώς αναπαραγωγή ενέργειας:
+	Document Is Open	Το έγγραφο είναι ανοιχτό
+	Document Is Landscape	Το έγγραφο είναι οριζόντιο
+	Document Is Square	Το έγγραφο είναι τετράγωνο
+	Document Is Portrait	Το έγγραφο είναι κατακόρυφο
+	Document Mode Is RGB	Η λειτουργία του εγγράφου είναι RGB
+	Document Mode Is CMYK	Η λειτουργία του εγγράφου είναι CMYK
+	Document Mode Is Grayscale	Η λειτουργία του εγγράφου είναι Κλίμακα του γκρι
+	Document Mode Is Lab	Η λειτουργία του εγγράφου είναι Lab
+	Document Mode Is Bitmap	Η λειτουργία του εγγράφου είναι Bitmap
+	Document Mode Is Indexed	Η λειτουργία του εγγράφου είναι Χρώμα με ευρετήριο
+	Document Mode Is Duotone	Η λειτουργία του εγγράφου είναι Διτονική
+	Document Mode Is Multichannel	Η λειτουργία του εγγράφου είναι Πολυκαναλική
+	Document Is 8 Bits/Channel	Το έγγραφο είναι 8 bit/κανάλι
+	Document Is 16 Bits/Channel	Το έγγραφο είναι 16 bit/κανάλι
+	Document Is 32 Bits/Channel	Το έγγραφο είναι 32 bit/κανάλι
+	Document Has Unsaved Changes	Το έγγραφο έχει μη αποθηκευμένες αλλαγές
+	Document Has a Selection	Το έγγραφο έχει επιλογή
+	Document Has Layers	Το έγγραφο έχει επίπεδα
+	Document Has Alpha Channels	Το έγγραφο έχει κανάλια άλφα
+	Layer Is Background	Το επίπεδο είναι το φόντο
+	Layer Is a Pixel Layer	Το επίπεδο είναι επίπεδο εικονοστοιχείων
+	Layer Is an Adjustment Layer	Το επίπεδο είναι επίπεδο προσαρμογής
+	Layer Is a Shape Layer	Το επίπεδο είναι επίπεδο σχήματος
+	Layer Is a Type Layer	Το επίπεδο είναι επίπεδο κειμένου
+	Layer Is a Smart Object	Το επίπεδο είναι έξυπνο αντικείμενο
+	Layer Is a Group	Το επίπεδο είναι ομάδα
+	Layer Is Locked	Το επίπεδο είναι κλειδωμένο
+	Layer Is Visible	Το επίπεδο είναι ορατό
+	Layer Has Pixel Mask	Το επίπεδο έχει μάσκα εικονοστοιχείων
+	Layer Has Vector Mask	Το επίπεδο έχει διανυσματική μάσκα
+	Layer Has Effects	Το επίπεδο έχει εφέ
+	Pick a menu item first	Επιλέξτε πρώτα ένα στοιχείο μενού

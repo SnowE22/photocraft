@@ -4619,3 +4619,64 @@ shape	Appearance	Aspetto
 	Save as:	Salva come:
 	Save Preset	Salva predefinito
 	Keep these two presets as one, listed with the others	Conserva questi due predefiniti come uno solo, elencato con gli altri
+	Stop recording first	Prima interrompi la registrazione
+	Select a step first	Prima seleziona un passaggio
+	This step has no dialog to record again	Questo passaggio non ha una finestra di dialogo da registrare di nuovo
+	New Action…	Nuova azione…
+	Record Again…	Registra di nuovo…
+	Insert Menu Item…	Inserisci voce di menu…
+	Insert Conditional…	Inserisci condizione…
+	Set Options…	Opzioni set…
+	Action Options…	Opzioni azione…
+	Playback Options…	Opzioni di riproduzione…
+	Allow Tool Recording	Consenti registrazione strumenti
+	Record brush and other painting strokes, and the brush settings they use	Registra le pennellate e gli altri tratti di pittura, con le impostazioni del pennello che usano
+	Clear All Actions	Cancella tutte le azioni
+	Replace Actions…	Sostituisci azioni…
+	Delete the set “{name}”?	Eliminare il set “{name}”?
+	Delete the action “{name}”?	Eliminare l’azione “{name}”?
+	Delete the selection?	Eliminare la selezione?
+	Function Key:	Tasto funzione:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	L’azione ha un’altra scelta rapida (Imposta scelta rapida…); scegliere qui un tasto la sostituisce.
+	Accelerated	Accelerata
+	Step by Step	Passo per passo
+	Pause For:	Pausa di:
+	seconds	secondi
+	None Selected	Nessuna selezione
+	Menu Item:	Voce di menu:
+	Type part of a menu item's name, then pick it below.	Digita parte del nome di una voce di menu, poi sceglila qui sotto.
+	If Current:	Se corrente:
+	Then Play Action:	Allora esegui azione:
+	Else Play Action:	Altrimenti esegui azione:
+	Document Is Open	Il documento è aperto
+	Document Is Landscape	Il documento è orizzontale
+	Document Is Square	Il documento è quadrato
+	Document Is Portrait	Il documento è verticale
+	Document Mode Is RGB	Il metodo del documento è RGB
+	Document Mode Is CMYK	Il metodo del documento è CMYK
+	Document Mode Is Grayscale	Il metodo del documento è Scala di grigio
+	Document Mode Is Lab	Il metodo del documento è Lab
+	Document Mode Is Bitmap	Il metodo del documento è Bitmap
+	Document Mode Is Indexed	Il metodo del documento è Colore indicizzato
+	Document Mode Is Duotone	Il metodo del documento è Bicromia
+	Document Mode Is Multichannel	Il metodo del documento è Multicanale
+	Document Is 8 Bits/Channel	Il documento è a 8 bit/canale
+	Document Is 16 Bits/Channel	Il documento è a 16 bit/canale
+	Document Is 32 Bits/Channel	Il documento è a 32 bit/canale
+	Document Has Unsaved Changes	Il documento ha modifiche non salvate
+	Document Has a Selection	Il documento ha una selezione
+	Document Has Layers	Il documento ha livelli
+	Document Has Alpha Channels	Il documento ha canali alfa
+	Layer Is Background	Il livello è lo sfondo
+	Layer Is a Pixel Layer	Il livello è un livello di pixel
+	Layer Is an Adjustment Layer	Il livello è un livello di regolazione
+	Layer Is a Shape Layer	Il livello è un livello forma
+	Layer Is a Type Layer	Il livello è un livello di testo
+	Layer Is a Smart Object	Il livello è un oggetto avanzato
+	Layer Is a Group	Il livello è un gruppo
+	Layer Is Locked	Il livello è bloccato
+	Layer Is Visible	Il livello è visibile
+	Layer Has Pixel Mask	Il livello ha una maschera di pixel
+	Layer Has Vector Mask	Il livello ha una maschera vettoriale
+	Layer Has Effects	Il livello ha effetti
+	Pick a menu item first	Prima scegli una voce di menu

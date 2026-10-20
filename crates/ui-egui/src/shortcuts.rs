@@ -334,6 +334,8 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     crate::spring_tools::tick(app, ctx);
     // A held [ or ] steps the brush on the app's clock, at the pace its settings ask for.
     crate::brush_key_repeat::tick(app, ctx);
+    // An action played step by step (Playback Options) plays its next step when it is due.
+    crate::actions::tick(app, ctx);
     // However the tool was picked (toolbar, flyout, shortcut, automation), its group's key brings
     // it back later (#2608).
     app.ui.remember_group_tool();

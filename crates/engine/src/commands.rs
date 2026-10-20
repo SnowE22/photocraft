@@ -1426,6 +1426,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::preset_import_cmds::specs());
     v.extend(crate::atn_cmds::specs());
     v.extend(crate::actions_edit_cmds::specs());
+    v.extend(crate::actions_set_cmds::specs());
     v.extend(crate::swatch_cmds::specs());
     v.extend(crate::retouch_cmds::specs());
     v.extend(crate::redeye_cmds::specs());

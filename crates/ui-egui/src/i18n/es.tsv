@@ -4460,3 +4460,64 @@ navigator	Zoom	Zoom
 	Save as:	Guardar como:
 	Save Preset	Guardar ajuste preestablecido
 	Keep these two presets as one, listed with the others	Guardar estos dos ajustes como uno solo, junto a los demás
+	Stop recording first	Detenga primero la grabación
+	Select a step first	Seleccione primero un paso
+	This step has no dialog to record again	Este paso no tiene un cuadro de diálogo que volver a grabar
+	New Action…	Nueva acción…
+	Record Again…	Volver a grabar…
+	Insert Menu Item…	Insertar elemento de menú…
+	Insert Conditional…	Insertar condicional…
+	Set Options…	Opciones de conjunto…
+	Action Options…	Opciones de acción…
+	Playback Options…	Opciones de ejecución…
+	Allow Tool Recording	Permitir grabación de herramientas
+	Record brush and other painting strokes, and the brush settings they use	Grabar los trazos de pincel y de otras herramientas de pintura, y los ajustes de pincel que usan
+	Clear All Actions	Borrar todas las acciones
+	Replace Actions…	Reemplazar acciones…
+	Delete the set “{name}”?	¿Eliminar el conjunto «{name}»?
+	Delete the action “{name}”?	¿Eliminar la acción «{name}»?
+	Delete the selection?	¿Eliminar la selección?
+	Function Key:	Tecla de función:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	La acción tiene otro método abreviado (Definir método abreviado…); elegir una tecla aquí lo reemplaza.
+	Accelerated	Acelerada
+	Step by Step	Paso a paso
+	Pause For:	Pausa de:
+	seconds	segundos
+	None Selected	Ninguno seleccionado
+	Menu Item:	Elemento de menú:
+	Type part of a menu item's name, then pick it below.	Escriba parte del nombre de un elemento de menú y elíjalo abajo.
+	If Current:	Si actual:
+	Then Play Action:	Entonces ejecutar acción:
+	Else Play Action:	Si no, ejecutar acción:
+	Document Is Open	El documento está abierto
+	Document Is Landscape	El documento es horizontal
+	Document Is Square	El documento es cuadrado
+	Document Is Portrait	El documento es vertical
+	Document Mode Is RGB	El modo del documento es RGB
+	Document Mode Is CMYK	El modo del documento es CMYK
+	Document Mode Is Grayscale	El modo del documento es Escala de grises
+	Document Mode Is Lab	El modo del documento es Lab
+	Document Mode Is Bitmap	El modo del documento es Mapa de bits
+	Document Mode Is Indexed	El modo del documento es Color indexado
+	Document Mode Is Duotone	El modo del documento es Duotono
+	Document Mode Is Multichannel	El modo del documento es Multicanal
+	Document Is 8 Bits/Channel	El documento tiene 8 bits/canal
+	Document Is 16 Bits/Channel	El documento tiene 16 bits/canal
+	Document Is 32 Bits/Channel	El documento tiene 32 bits/canal
+	Document Has Unsaved Changes	El documento tiene cambios sin guardar
+	Document Has a Selection	El documento tiene una selección
+	Document Has Layers	El documento tiene capas
+	Document Has Alpha Channels	El documento tiene canales alfa
+	Layer Is Background	La capa es el fondo
+	Layer Is a Pixel Layer	La capa es una capa de píxeles
+	Layer Is an Adjustment Layer	La capa es una capa de ajuste
+	Layer Is a Shape Layer	La capa es una capa de forma
+	Layer Is a Type Layer	La capa es una capa de texto
+	Layer Is a Smart Object	La capa es un objeto inteligente
+	Layer Is a Group	La capa es un grupo
+	Layer Is Locked	La capa está bloqueada
+	Layer Is Visible	La capa está visible
+	Layer Has Pixel Mask	La capa tiene máscara de píxeles
+	Layer Has Vector Mask	La capa tiene máscara vectorial
+	Layer Has Effects	La capa tiene efectos
+	Pick a menu item first	Elija primero un elemento de menú

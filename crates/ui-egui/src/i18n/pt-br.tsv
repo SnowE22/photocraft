@@ -4288,3 +4288,64 @@ layerLabel	No Color	Sem cor
 	Save as:	Salvar como:
 	Save Preset	Salvar predefinição
 	Keep these two presets as one, listed with the others	Manter estas duas predefinições como uma só, listada com as outras
+	Stop recording first	Pare a gravação primeiro
+	Select a step first	Selecione um passo primeiro
+	This step has no dialog to record again	Este passo não tem uma caixa de diálogo para gravar novamente
+	New Action…	Nova ação…
+	Record Again…	Gravar novamente…
+	Insert Menu Item…	Inserir item de menu…
+	Insert Conditional…	Inserir condicional…
+	Set Options…	Opções do conjunto…
+	Action Options…	Opções da ação…
+	Playback Options…	Opções de reprodução…
+	Allow Tool Recording	Permitir gravação de ferramentas
+	Record brush and other painting strokes, and the brush settings they use	Gravar traços de pincel e de outras ferramentas de pintura, e as configurações de pincel que usam
+	Clear All Actions	Limpar todas as ações
+	Replace Actions…	Substituir ações…
+	Delete the set “{name}”?	Excluir o conjunto “{name}”?
+	Delete the action “{name}”?	Excluir a ação “{name}”?
+	Delete the selection?	Excluir a seleção?
+	Function Key:	Tecla de função:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	A ação tem outro atalho (Definir atalho…); escolher uma tecla aqui o substitui.
+	Accelerated	Acelerada
+	Step by Step	Passo a passo
+	Pause For:	Pausar por:
+	seconds	segundos
+	None Selected	Nenhum selecionado
+	Menu Item:	Item de menu:
+	Type part of a menu item's name, then pick it below.	Digite parte do nome de um item de menu e escolha-o abaixo.
+	If Current:	Se atual:
+	Then Play Action:	Então reproduzir ação:
+	Else Play Action:	Senão reproduzir ação:
+	Document Is Open	O documento está aberto
+	Document Is Landscape	O documento é paisagem
+	Document Is Square	O documento é quadrado
+	Document Is Portrait	O documento é retrato
+	Document Mode Is RGB	O modo do documento é RGB
+	Document Mode Is CMYK	O modo do documento é CMYK
+	Document Mode Is Grayscale	O modo do documento é Tons de cinza
+	Document Mode Is Lab	O modo do documento é Lab
+	Document Mode Is Bitmap	O modo do documento é Bitmap
+	Document Mode Is Indexed	O modo do documento é Cores indexadas
+	Document Mode Is Duotone	O modo do documento é Duotônico
+	Document Mode Is Multichannel	O modo do documento é Multicanal
+	Document Is 8 Bits/Channel	O documento tem 8 bits/canal
+	Document Is 16 Bits/Channel	O documento tem 16 bits/canal
+	Document Is 32 Bits/Channel	O documento tem 32 bits/canal
+	Document Has Unsaved Changes	O documento tem alterações não salvas
+	Document Has a Selection	O documento tem uma seleção
+	Document Has Layers	O documento tem camadas
+	Document Has Alpha Channels	O documento tem canais alfa
+	Layer Is Background	A camada é o plano de fundo
+	Layer Is a Pixel Layer	A camada é uma camada de pixels
+	Layer Is an Adjustment Layer	A camada é uma camada de ajuste
+	Layer Is a Shape Layer	A camada é uma camada de forma
+	Layer Is a Type Layer	A camada é uma camada de texto
+	Layer Is a Smart Object	A camada é um objeto inteligente
+	Layer Is a Group	A camada é um grupo
+	Layer Is Locked	A camada está bloqueada
+	Layer Is Visible	A camada está visível
+	Layer Has Pixel Mask	A camada tem máscara de pixels
+	Layer Has Vector Mask	A camada tem máscara vetorial
+	Layer Has Effects	A camada tem efeitos
+	Pick a menu item first	Escolha um item de menu primeiro

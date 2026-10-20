@@ -4417,3 +4417,64 @@ cameraRaw	Yellow	Sárga
 	Save as:	Mentés másként:
 	Save Preset	Készlet mentése
 	Keep these two presets as one, listed with the others	A két készlet megtartása egyként, a többi között
+	Stop recording first	Előbb állítsa le a rögzítést
+	Select a step first	Előbb jelöljön ki egy lépést
+	This step has no dialog to record again	Ennek a lépésnek nincs újrarögzíthető párbeszédablaka
+	New Action…	Új művelet…
+	Record Again…	Újrarögzítés…
+	Insert Menu Item…	Menüelem beszúrása…
+	Insert Conditional…	Feltétel beszúrása…
+	Set Options…	Készletbeállítások…
+	Action Options…	Műveletbeállítások…
+	Playback Options…	Lejátszási beállítások…
+	Allow Tool Recording	Eszközrögzítés engedélyezése
+	Record brush and other painting strokes, and the brush settings they use	Az ecsetvonások és más festővonások, valamint az általuk használt ecsetbeállítások rögzítése
+	Clear All Actions	Minden művelet törlése
+	Replace Actions…	Műveletek cseréje…
+	Delete the set “{name}”?	Törli a(z) „{name}” készletet?
+	Delete the action “{name}”?	Törli a(z) „{name}” műveletet?
+	Delete the selection?	Törli a kijelölést?
+	Function Key:	Funkcióbillentyű:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	A műveletnek más billentyűparancsa van (Billentyűparancs beállítása…); az itt választott billentyű lecseréli.
+	Accelerated	Gyorsított
+	Step by Step	Lépésenként
+	Pause For:	Szünet:
+	seconds	másodperc
+	None Selected	Nincs kijelölve
+	Menu Item:	Menüelem:
+	Type part of a menu item's name, then pick it below.	Írja be egy menüelem nevének egy részét, majd válassza ki alább.
+	If Current:	Ha az aktuális:
+	Then Play Action:	Akkor művelet lejátszása:
+	Else Play Action:	Különben művelet lejátszása:
+	Document Is Open	A dokumentum meg van nyitva
+	Document Is Landscape	A dokumentum fekvő
+	Document Is Square	A dokumentum négyzetes
+	Document Is Portrait	A dokumentum álló
+	Document Mode Is RGB	A dokumentum módja RGB
+	Document Mode Is CMYK	A dokumentum módja CMYK
+	Document Mode Is Grayscale	A dokumentum módja Szürkeárnyalatos
+	Document Mode Is Lab	A dokumentum módja Lab
+	Document Mode Is Bitmap	A dokumentum módja Bittérkép
+	Document Mode Is Indexed	A dokumentum módja Indexelt szín
+	Document Mode Is Duotone	A dokumentum módja Duplex
+	Document Mode Is Multichannel	A dokumentum módja Többcsatornás
+	Document Is 8 Bits/Channel	A dokumentum 8 bit/csatorna
+	Document Is 16 Bits/Channel	A dokumentum 16 bit/csatorna
+	Document Is 32 Bits/Channel	A dokumentum 32 bit/csatorna
+	Document Has Unsaved Changes	A dokumentumban nem mentett változások vannak
+	Document Has a Selection	A dokumentumban kijelölés van
+	Document Has Layers	A dokumentumban rétegek vannak
+	Document Has Alpha Channels	A dokumentumban alfacsatornák vannak
+	Layer Is Background	A réteg a háttér
+	Layer Is a Pixel Layer	A réteg képpontréteg
+	Layer Is an Adjustment Layer	A réteg korrekciós réteg
+	Layer Is a Shape Layer	A réteg alakzatréteg
+	Layer Is a Type Layer	A réteg szövegréteg
+	Layer Is a Smart Object	A réteg intelligens objektum
+	Layer Is a Group	A réteg csoport
+	Layer Is Locked	A réteg zárolva van
+	Layer Is Visible	A réteg látható
+	Layer Has Pixel Mask	A rétegnek képpontmaszkja van
+	Layer Has Vector Mask	A rétegnek vektormaszkja van
+	Layer Has Effects	A rétegnek effektusai vannak
+	Pick a menu item first	Előbb válasszon menüelemet

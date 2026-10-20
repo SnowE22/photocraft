@@ -3686,3 +3686,66 @@ curves	Smooth	매끄럽게
 	Save as:	다른 이름으로 저장:
 	Save Preset	사전 설정 저장
 	Keep these two presets as one, listed with the others	이 두 사전 설정을 하나로 저장하여 다른 설정과 함께 표시합니다
+	Stop recording first	먼저 기록을 중지하십시오
+	Select a step first	먼저 단계를 선택하십시오
+	This step has no dialog to record again	이 단계에는 다시 기록할 대화 상자가 없습니다
+	New Action…	새 액션…
+	Record Again…	다시 기록…
+	Insert Menu Item…	메뉴 항목 삽입…
+	Insert Conditional…	조건 삽입…
+	Set Options…	세트 옵션…
+	Action Options…	액션 옵션…
+	Playback Options…	재생 옵션…
+	Allow Tool Recording	도구 기록 허용
+	Record brush and other painting strokes, and the brush settings they use	브러시 및 기타 페인팅 획과 획이 사용하는 브러시 설정을 기록합니다
+	Clear All Actions	모든 액션 지우기
+	Replace Actions…	액션 바꾸기…
+	Create new set	새 세트 만들기
+	Delete the set “{name}”?	“{name}” 세트를 삭제하시겠습니까?
+	Delete the action “{name}”?	“{name}” 액션을 삭제하시겠습니까?
+	Delete the selection?	선택 항목을 삭제하시겠습니까?
+	Function Key:	기능 키:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	이 액션에는 다른 바로 가기가 있습니다(바로 가기 설정…). 여기서 키를 고르면 바뀝니다.
+	Accelerated	가속
+	Step by Step	단계별
+	Pause For:	일시 정지:
+	seconds	초
+	None Selected	선택 안 함
+	Menu Item:	메뉴 항목:
+	Type part of a menu item's name, then pick it below.	메뉴 항목 이름의 일부를 입력한 다음 아래에서 고르십시오.
+	If Current:	현재 조건:
+	Then Play Action:	이면 액션 재생:
+	Else Play Action:	아니면 액션 재생:
+	Document Is Open	문서가 열려 있음
+	Document Is Landscape	문서가 가로 방향임
+	Document Is Square	문서가 정사각형임
+	Document Is Portrait	문서가 세로 방향임
+	Document Mode Is RGB	문서 모드가 RGB임
+	Document Mode Is CMYK	문서 모드가 CMYK임
+	Document Mode Is Grayscale	문서 모드가 회색 음영임
+	Document Mode Is Lab	문서 모드가 Lab임
+	Document Mode Is Bitmap	문서 모드가 비트맵임
+	Document Mode Is Indexed	문서 모드가 인덱스 색상임
+	Document Mode Is Duotone	문서 모드가 이중톤임
+	Document Mode Is Multichannel	문서 모드가 다중 채널임
+	Document Is 8 Bits/Channel	문서가 8비트/채널임
+	Document Is 16 Bits/Channel	문서가 16비트/채널임
+	Document Is 32 Bits/Channel	문서가 32비트/채널임
+	Document Has Unsaved Changes	문서에 저장하지 않은 변경 사항이 있음
+	Document Has a Selection	문서에 선택 영역이 있음
+	Document Has Layers	문서에 레이어가 있음
+	Document Has Alpha Channels	문서에 알파 채널이 있음
+	Layer Is Background	레이어가 배경임
+	Layer Is a Pixel Layer	레이어가 픽셀 레이어임
+	Layer Is an Adjustment Layer	레이어가 조정 레이어임
+	Layer Is a Shape Layer	레이어가 모양 레이어임
+	Layer Is a Type Layer	레이어가 문자 레이어임
+	Layer Is a Smart Object	레이어가 고급 개체임
+	Layer Is a Group	레이어가 그룹임
+	Layer Is Locked	레이어가 잠겨 있음
+	Layer Is Visible	레이어가 표시됨
+	Layer Has Pixel Mask	레이어에 픽셀 마스크가 있음
+	Layer Has Vector Mask	레이어에 벡터 마스크가 있음
+	Layer Has Effects	레이어에 효과가 있음
+	Pick a menu item first	먼저 메뉴 항목을 고르십시오
+	Find	찾기
