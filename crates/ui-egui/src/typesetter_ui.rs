@@ -515,10 +515,8 @@ impl TypesetterUi {
                     .fill(Color32::WHITE)
                     .stroke(Stroke::new(1.0, Color32::from_rgb(170, 175, 185)))
                     .corner_radius(CornerRadius::same(3))
-                    .inner_margin(Margin::symmetric(8, 6))
+                    .inner_margin(Margin::symmetric(6, 4))
                     .show(ui, |ui| {
-                        let avail_w = ui.available_width();
-                        ui.set_width(avail_w);
                         let display = if current_text.is_empty() {
                             if total_lines == 0 {
                                 "(сценарий не загружен — вкладка 'Сценарий')"
@@ -535,22 +533,15 @@ impl TypesetterUi {
                             Color32::from_rgb(20, 25, 35)
                         };
 
-                        ScrollArea::vertical()
-                            .id_salt("current_phrase_box_scroll")
-                            .max_height(60.0)
-                            .auto_shrink([false, true])
-                            .show(ui, |ui| {
-                                ui.set_width(avail_w);
-                                ui.add(
-                                    egui::Label::new(
-                                        RichText::new(display)
-                                            .color(text_color)
-                                            .size(12.5)
-                                            .strong(),
-                                    )
-                                    .wrap_mode(egui::TextWrapMode::Wrap),
-                                );
-                            });
+                        ui.add(
+                            egui::Label::new(
+                                RichText::new(display)
+                                    .color(text_color)
+                                    .size(12.0)
+                                    .strong(),
+                            )
+                            .wrap_mode(egui::TextWrapMode::Wrap),
+                        );
                     });
             });
         });
@@ -628,20 +619,8 @@ impl TypesetterUi {
 
                                 let row_resp = row_frame.show(ui, |ui| {
                                     ui.horizontal(|ui| {
-                                        let avail = ui.available_width();
-                                        let num_w = 20.0;
-                                        let target_w = 22.0;
-                                        let btn_w = 24.0;
-                                        let spacing = 4.0;
-                                        ui.spacing_mut().item_spacing.x = spacing;
-
-                                        let text_w = (avail - num_w - target_w - btn_w - spacing * 4.0).max(40.0);
-
                                         // 1. Номер строки
-                                        ui.add_sized(
-                                            vec2(num_w, 18.0),
-                                            egui::Label::new(RichText::new(format!("{:2}", idx + 1)).color(num_color).monospace().small()),
-                                        );
+                                        ui.label(RichText::new(format!("{:2}", idx + 1)).color(num_color).monospace().small());
 
                                         // 2. Иконка прицела: ● если активна, ◎ если неактивна
                                         let target_icon = if is_active { "●" } else { "◎" };
@@ -649,25 +628,33 @@ impl TypesetterUi {
                                             line_to_set = Some(idx);
                                         }
 
-                                        // 3. Текст строки — выравнивание ВЛЕВО (Left-aligned)
-                                        let text_label = egui::Label::new(
-                                            RichText::new(&line.text)
-                                                .color(text_color)
-                                                .strong(),
-                                        ).truncate();
-                                        let text_resp = ui.add_sized(vec2(text_w, 18.0), text_label.sense(Sense::click()));
-                                        if text_resp.clicked() {
-                                            line_to_set = Some(idx);
-                                        }
+                                        // 3. Кнопка быстрой вставки ▶ на правом краю, и текст между ними слева направо!
+                                        let mut do_insert = false;
+                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                            let insert_btn = egui::Button::new(
+                                                RichText::new("▶").color(Color32::WHITE).strong()
+                                            )
+                                            .fill(Color32::from_rgb(0, 120, 215))
+                                            .min_size(vec2(22.0, 16.0));
 
-                                        // 4. Кнопка быстрой вставки ▶ на правом краю
-                                        let insert_btn = egui::Button::new(
-                                            RichText::new("▶").color(Color32::WHITE).strong()
-                                        )
-                                        .fill(Color32::from_rgb(0, 120, 215))
-                                        .min_size(vec2(22.0, 16.0));
+                                            if ui.add(insert_btn).on_hover_text("Вставить эту строку в баббл (Enter)").clicked() {
+                                                do_insert = true;
+                                            }
 
-                                        if ui.add(insert_btn).on_hover_text("Вставить эту строку в баббл (Enter)").clicked() {
+                                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                                let text_label = egui::Label::new(
+                                                    RichText::new(&line.text)
+                                                        .color(text_color)
+                                                        .strong(),
+                                                ).truncate();
+                                                let text_resp = ui.add(text_label.sense(Sense::click()));
+                                                if text_resp.clicked() {
+                                                    line_to_set = Some(idx);
+                                                }
+                                            });
+                                        });
+
+                                        if do_insert {
                                             line_to_insert = Some((idx, line.clone()));
                                         }
                                     });
@@ -677,11 +664,11 @@ impl TypesetterUi {
                                     row_resp.response.scroll_to_me(Some(Align::Center));
                                 }
 
-                                // Четкая горизонтальная разделительная линия между строками текста
+                                // Разделитель строк
                                 if idx + 1 < total_lines {
-                                    let avail_w = ui.available_width();
-                                    let (rect, _resp) = ui.allocate_exact_size(vec2(avail_w, 1.0), Sense::hover());
-                                    ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, Color32::from_rgb(220, 224, 232)));
+                                    let r = ui.available_rect_before_wrap();
+                                    ui.painter().hline(r.x_range(), r.min.y, Stroke::new(1.0, Color32::from_rgb(225, 230, 238)));
+                                    ui.add_space(1.0);
                                 }
                             }
                         }
@@ -820,121 +807,108 @@ impl TypesetterUi {
                         .id_salt(format!("folder_collapse_{}", folder_name))
                         .default_open(true)
                         .show(ui, |ui| {
-                            // 2-колоночная сетка стилей внутри папки
-                            let avail_w = (ui.available_width() - 8.0).max(100.0);
-                            let spacing = 4.0;
-                            let col_w = ((avail_w - spacing) * 0.5).floor().max(80.0);
+                            // 2-колоночная адаптивная сетка стилей внутри папки
+                            ui.columns(2, |cols| {
+                                for (i, &p_idx) in matching_indices.iter().enumerate() {
+                                    let col = &mut cols[i % 2];
+                                    let preset = &self.state.presets[p_idx];
+                                    let is_active = p_idx == active_preset_idx;
 
-                            for pair in matching_indices.chunks(2) {
-                                ui.horizontal(|ui| {
-                                    ui.spacing_mut().item_spacing.x = spacing;
+                                    let (card_bg, card_border, text_color) = if is_active {
+                                        (
+                                            Color32::from_rgb(0, 120, 215), // TypeR active blue
+                                            Color32::from_rgb(100, 180, 255),
+                                            Color32::WHITE,
+                                        )
+                                    } else {
+                                        (
+                                            t.field,
+                                            t.field_border,
+                                            t.text,
+                                        )
+                                    };
 
-                                    for &p_idx in pair {
-                                        let preset = &self.state.presets[p_idx];
-                                        let is_active = p_idx == active_preset_idx;
+                                    Frame::NONE
+                                        .fill(card_bg)
+                                        .stroke(Stroke::new(1.0, card_border))
+                                        .corner_radius(CornerRadius::same(t.radius_sm as u8))
+                                        .inner_margin(Margin::symmetric(4, 3))
+                                        .show(col, |ui| {
+                                            ui.horizontal(|ui| {
+                                                // 1. Левый индикатор (● / ○)
+                                                let sel_icon = if is_active { "●" } else { "○" };
+                                                let ind_color = if is_active { Color32::WHITE } else { t.text_dim };
+                                                if ui.add(egui::Label::new(RichText::new(sel_icon).color(ind_color).small()).sense(Sense::click())).clicked() {
+                                                    style_to_select = Some(p_idx);
+                                                }
 
-                                        // Если в папке всего 1 стиль — растягиваем его на всю ширину
-                                        let is_single = matching_indices.len() == 1;
-                                        let card_w = if is_single { avail_w } else { col_w };
-                                        let card_inner_w = (card_w - 8.0).max(40.0);
-
-                                        let (card_bg, card_border, text_color) = if is_active {
-                                            (
-                                                Color32::from_rgb(0, 120, 215), // TypeR active blue
-                                                Color32::from_rgb(100, 180, 255),
-                                                Color32::WHITE,
-                                            )
-                                        } else {
-                                            (
-                                                t.field,
-                                                t.field_border,
-                                                t.text,
-                                            )
-                                        };
-
-                                        Frame::NONE
-                                            .fill(card_bg)
-                                            .stroke(Stroke::new(1.0, card_border))
-                                            .corner_radius(CornerRadius::same(t.radius_sm as u8))
-                                            .inner_margin(Margin::symmetric(4, 3))
-                                            .show(ui, |ui| {
-                                                ui.set_width(card_inner_w);
-                                                ui.horizontal(|ui| {
-                                                    ui.spacing_mut().item_spacing.x = 3.0;
-
-                                                    // 1. Левый индикатор выбора (● / ○)
-                                                    let sel_icon = if is_active { "●" } else { "○" };
-                                                    let ind_color = if is_active { Color32::WHITE } else { t.text_dim };
-                                                    if ui.add(egui::Label::new(RichText::new(sel_icon).color(ind_color).small()).sense(Sense::click())).clicked() {
-                                                        style_to_select = Some(p_idx);
-                                                    }
-
-                                                    // 2. Название стиля — выравнивание влево, строго ограниченная ширина с обрезанием
-                                                    let label_w = (card_inner_w - 36.0).max(20.0);
-
-                                                    let mut title = RichText::new(&preset.name).color(text_color).small();
-                                                    if preset.bold {
-                                                        title = title.strong();
-                                                    }
-                                                    if preset.italic {
-                                                        title = title.italics();
-                                                    }
-
-                                                    let tip = format!(
-                                                        "{}\nШрифт: {}\nКегль: {}pt\nИнтерлиньяж: {}pt\nТрекинг: {}\n\nЛКМ: выбрать стиль\n2xЛКМ: применить и вставить\nПКМ: меню действий",
-                                                        preset.name, preset.font_family, preset.font_size, preset.leading, preset.tracking
-                                                    );
-
-                                                    let name_resp = ui.add_sized(
-                                                        vec2(label_w, 18.0),
-                                                        egui::Label::new(title).truncate().sense(Sense::click()),
-                                                    ).on_hover_text(tip);
-
-                                                    if name_resp.clicked() {
-                                                        style_to_select = Some(p_idx);
-                                                    }
-                                                    if name_resp.double_clicked() {
-                                                        style_to_apply = Some(p_idx);
-                                                    }
-
-                                                    name_resp.context_menu(|ui| {
-                                                        if ui.button("✏ Редактировать стиль...").clicked() {
-                                                            style_to_edit = Some(p_idx);
-                                                            ui.close();
-                                                        }
-                                                        if ui.button("+ Дублировать стиль").clicked() {
-                                                            style_to_duplicate = Some(p_idx);
-                                                            ui.close();
-                                                        }
-                                                        if ui.button("▶ Применить и вставить").clicked() {
-                                                            style_to_apply = Some(p_idx);
-                                                            ui.close();
-                                                        }
-                                                        ui.separator();
-                                                        if ui.button(RichText::new("🗑 Удалить стиль").color(t.danger)).clicked() {
-                                                            style_to_delete = Some(p_idx);
-                                                            ui.close();
-                                                        }
-                                                    });
-
-                                                    // 3. Правая кнопка ✏ (настройки) — всегда на своем месте у правого края
+                                                // 2. Правая кнопка ✏ и левый текст
+                                                let mut open_edit = false;
+                                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                                     let edit_btn = egui::Button::new(
                                                         RichText::new("✏")
                                                             .color(if is_active { Color32::WHITE } else { t.text_dim })
                                                             .small(),
                                                     )
-                                                    .frame(false)
-                                                    .min_size(vec2(16.0, 16.0));
-
+                                                    .frame(false);
                                                     if ui.add(edit_btn).on_hover_text("Настройки шрифта и стиля").clicked() {
-                                                        style_to_edit = Some(p_idx);
+                                                        open_edit = true;
                                                     }
+
+                                                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                                        let mut title = RichText::new(&preset.name).color(text_color).small();
+                                                        if preset.bold {
+                                                            title = title.strong();
+                                                        }
+                                                        if preset.italic {
+                                                            title = title.italics();
+                                                        }
+
+                                                        let tip = format!(
+                                                            "{}\nШрифт: {}\nКегль: {}pt\nИнтерлиньяж: {}pt\nТрекинг: {}\n\nЛКМ: выбрать стиль\n2xЛКМ: применить и вставить\nПКМ: меню действий",
+                                                            preset.name, preset.font_family, preset.font_size, preset.leading, preset.tracking
+                                                        );
+
+                                                        let name_label = ui.add(egui::Label::new(title).truncate().sense(Sense::click()))
+                                                            .on_hover_text(tip);
+
+                                                        if name_label.clicked() {
+                                                            style_to_select = Some(p_idx);
+                                                        }
+                                                        if name_label.double_clicked() {
+                                                            style_to_apply = Some(p_idx);
+                                                        }
+
+                                                        name_label.context_menu(|ui| {
+                                                            if ui.button("✏ Редактировать стиль...").clicked() {
+                                                                open_edit = true;
+                                                                ui.close();
+                                                            }
+                                                            if ui.button("+ Дублировать стиль").clicked() {
+                                                                style_to_duplicate = Some(p_idx);
+                                                                ui.close();
+                                                            }
+                                                            if ui.button("▶ Применить и вставить").clicked() {
+                                                                style_to_apply = Some(p_idx);
+                                                                ui.close();
+                                                            }
+                                                            ui.separator();
+                                                            if ui.button(RichText::new("🗑 Удалить стиль").color(t.danger)).clicked() {
+                                                                style_to_delete = Some(p_idx);
+                                                                ui.close();
+                                                            }
+                                                        });
+                                                    });
                                                 });
+
+                                                if open_edit {
+                                                    style_to_edit = Some(p_idx);
+                                                }
                                             });
-                                    }
-                                });
-                                ui.add_space(2.0);
-                            }
+                                        });
+                                    col.add_space(2.0);
+                                }
+                            });
                         });
                 }
             });
