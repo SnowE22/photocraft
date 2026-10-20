@@ -74,7 +74,7 @@ fn a_result_goes_to_its_own_document() {
 fn command_line_arguments() {
     let (i, o) = (Path::new("C:/t/in.tif"), Path::new("C:/t/out"));
     let a = cli_args(&json!({"model": "hf", "scale": 2, "denoise": 30}), i, o).unwrap();
-    assert_eq!(a, ["-i", "C:/t/in.tif", "-o", "C:/t/out", "--cf", "-m", "hf", "--mv", "2", "--scale", "2", "--dn", "30", "-f", "tif", "--bd", "0", "-q"].map(String::from), "High Fidelity V2: a bare -m hf fails");
+    assert_eq!(a, ["-i", "C:/t/in.tif", "-o", "C:/t/out", "--cf", "-m", "hf", "--mv", "2", "--scale", "2", "--dn", "30", "-f", "tif", "--tc", "none", "--bd", "0"].map(String::from), "High Fidelity V2: a bare -m hf fails");
     let a = cli_args(&json!({"model": "recovery", "modelVersion": 2, "scale": 2, "detail": 30, "faceRecovery": 80, "faceRecoveryVersion": 2}), i, o).unwrap();
     assert_eq!(a[5..15], ["-m", "recovery", "--mv", "2", "--scale", "2", "--dt", "30", "--fr", "80"].map(String::from));
     assert_eq!(a[15..17], ["--frv", "2"].map(String::from));
@@ -183,13 +183,15 @@ fn only_rgb_and_gray_8_and_16_bit_documents_go() {
 }
 
 /// A stand-in for Gigapixel's command-line tool in `dir`: it copies its input (`-i`) into its
-/// output folder (`-o`) and appends its arguments to `dir/args.txt`.
+/// output folder (`-o`), writes its arguments into `dir/call-N/args.txt` for the next free N
+/// (`mkdir` claims it atomically: runs side by side would clash appending to one file) and says
+/// it's finished, as Gigapixel does.
 fn fake_cli(dir: &Path) -> PathBuf {
     script(
         dir,
         "fake-gigapixel",
-        "@echo off\r\nmkdir \"%~4\"\r\ncopy /y \"%~2\" \"%~4\\\" >nul\r\necho %* >> \"%~dp0args.txt\"\r\n",
-        "#!/bin/sh\nmkdir -p \"$4\"\ncp \"$2\" \"$4/\"\necho \"$@\" >> \"$(dirname \"$0\")/args.txt\"\n",
+        "@echo off\r\nmkdir \"%~4\"\r\ncopy /y \"%~2\" \"%~4\\\" >nul\r\nset n=0\r\n:next\r\nset /a n+=1\r\nmkdir \"%~dp0call-%n%\" 2>nul || goto next\r\necho %* > \"%~dp0call-%n%\\args.txt\"\r\necho \"Finished processing all images\"\r\n",
+        "#!/bin/sh\nmkdir -p \"$4\"\ncp \"$2\" \"$4/\"\nd=$(dirname \"$0\")\nn=1\nwhile ! mkdir \"$d/call-$n\" 2>/dev/null; do n=$((n+1)); done\necho \"$@\" > \"$d/call-$n/args.txt\"\necho '\"Finished processing all images\"'\n",
     )
 }
 
@@ -211,9 +213,19 @@ fn script(dir: &Path, name: &str, windows: &str, unix: &str) -> PathBuf {
     }
 }
 
-/// The runs the stand-in saw, one line of arguments each.
+/// The runs the stand-in saw, oldest first: one line of arguments each.
 fn runs(dir: &Path) -> Vec<String> {
-    std::fs::read_to_string(dir.join("args.txt")).unwrap_or_default().lines().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+    let mut calls: Vec<(u32, String)> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|e| {
+            let n = e.file_name().to_string_lossy().strip_prefix("call-")?.parse().ok()?;
+            Some((n, std::fs::read_to_string(e.path().join("args.txt")).ok()?.trim().to_string()))
+        })
+        .collect();
+    calls.sort();
+    calls.into_iter().map(|(_, c)| c).filter(|c| !c.is_empty()).collect()
 }
 
 fn save_preset(s: &mut Session, name: &str, settings: Value) -> Result<Value> {

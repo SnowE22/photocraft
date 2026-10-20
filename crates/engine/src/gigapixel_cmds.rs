@@ -322,8 +322,9 @@ pub fn cli_args(p: &Value, input: &Path, out: &Path) -> Result<Vec<String>> {
         }
         a.extend(["--frv".into(), format!("{v}")]);
     }
-    // A TIFF back, at the input's bit depth.
-    a.extend(["-f".into(), "tif".into(), "--bd".into(), "0".into(), "-q".into()]);
+    // An uncompressed TIFF back (quicker to write and to read than zip), at the input's bit
+    // depth. Not quiet: the stages it prints say when it's done (`run_cli`).
+    a.extend(["-f".into(), "tif".into(), "--tc".into(), "none".into(), "--bd".into(), "0".into()]);
     Ok(a)
 }
 
@@ -573,7 +574,17 @@ fn run_cli(cli: &Path, params: &Value, input: &Path, out: &Path, ctx: &crate::jo
         cmd.creation_flags(CREATE_NO_WINDOW);
     }
     let mut child = cmd.spawn().map_err(|e| EngineError::Other(format!("{}: {e}", cli.display())))?;
+    // Gigapixel 8.4 crashes on its way out after saving (0xC0000409), and Windows takes a second
+    // or two over that: once it says it's done, give it a moment, then stop it.
+    let mut finished_at: Option<std::time::Instant> = None;
     let status = loop {
+        if finished_at.is_none() && std::fs::read_to_string(&log_path).is_ok_and(|l| l.contains(FINISHED)) {
+            finished_at = Some(std::time::Instant::now());
+        }
+        if finished_at.is_some_and(|t| t.elapsed() >= std::time::Duration::from_millis(300)) {
+            let _ = child.kill();
+            break child.wait().map_err(|e| EngineError::Other(format!("{}: {e}", cli.display())))?;
+        }
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) if ctx.cancelled() => {
@@ -581,7 +592,7 @@ fn run_cli(cli: &Path, params: &Value, input: &Path, out: &Path, ctx: &crate::jo
                 let _ = child.wait();
                 return Err(EngineError::Cancelled);
             }
-            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
             Err(e) => {
                 let _ = child.kill();
                 return Err(EngineError::Other(format!("{}: {e}", cli.display())));
@@ -601,6 +612,9 @@ fn run_cli(cli: &Path, params: &Value, input: &Path, out: &Path, ctx: &crate::jo
         EngineError::Other(format!("Topaz Gigapixel AI's command-line tool made no image (exit {status}): {said}"))
     })
 }
+
+/// What the command-line tool prints once every image is saved.
+const FINISHED: &str = "Finished processing all images";
 
 /// The layer name for a result: the name Photoshop's plug-in gives it, plus the presets that
 /// made it.
@@ -627,7 +641,33 @@ fn upscale(s: &mut Session, p: &Value) -> Result<Value> {
             let n = steps.len();
             let mut source = input.clone();
             let mut made: Vec<(Vec<&str>, PathBuf)> = Vec::new();
-            for (i, step) in steps.iter().enumerate() {
+            // Each on its own layer: every run reads the image, so they run at once (Gigapixel's
+            // start-up, about 8 s a run, then overlaps). One that fails, say out of GPU memory
+            // beside the others, runs again on its own.
+            let parallel = combine == Combine::Layers && n > 1;
+            if parallel {
+                let names: Vec<&str> = steps.iter().map(|st| st.preset.as_deref().unwrap_or(LABEL)).collect();
+                ctx.progress(0.05, &format!("Upscaling with {}", names.join(" and ")));
+                let (cli, input, folder) = (&cli, &input, &folder);
+                let results: Vec<Result<PathBuf>> = std::thread::scope(|scope| {
+                    let runs: Vec<_> =
+                        steps.iter().enumerate().map(|(i, step)| scope.spawn(move || run_cli(cli, &step.params, input, &folder.join(format!("step{}", i + 1)), ctx))).collect();
+                    runs.into_iter().map(|h| h.join().unwrap_or_else(|_| Err(EngineError::Other("the Gigapixel run stopped".into())))).collect()
+                });
+                for (i, (step, result)) in steps.iter().zip(results).enumerate() {
+                    ctx.check()?;
+                    let result = match result {
+                        Ok(path) => path,
+                        Err(EngineError::Cancelled) => return Err(EngineError::Cancelled),
+                        Err(_) => {
+                            let again = folder.join(format!("step{}-again", i + 1));
+                            run_cli(cli, &step.params, input, &again, ctx)?
+                        }
+                    };
+                    made.push((step.preset.as_deref().into_iter().collect(), result));
+                }
+            }
+            for (i, step) in steps.iter().enumerate().filter(|_| !parallel) {
                 ctx.check()?;
                 let what = step.preset.as_deref().unwrap_or(LABEL);
                 let message = if n > 1 { format!("Upscaling with {what} ({} of {n})", i + 1) } else { format!("Upscaling with {what}") };
@@ -645,10 +685,15 @@ fn upscale(s: &mut Session, p: &Value) -> Result<Value> {
                 source = result;
             }
             ctx.progress(0.9, "Reading the upscaled image");
+            ctx.check()?;
+            // Read side by side too: the files are large.
+            let read: Vec<Result<photocraft_doc::Document>> = std::thread::scope(|scope| {
+                let reads: Vec<_> = made.iter().map(|(_, path)| scope.spawn(move || import_result(path))).collect();
+                reads.into_iter().map(|h| h.join().unwrap_or_else(|_| Err(EngineError::Other("reading the upscaled image stopped".into())))).collect()
+            });
             let mut images: Vec<(String, photocraft_doc::Document)> = Vec::new();
-            for (by, path) in made {
-                ctx.check()?;
-                images.push((layer_name(&by), import_result(&path)?));
+            for ((by, _), doc) in made.iter().zip(read) {
+                images.push((layer_name(by), doc?));
             }
             // Smallest first: the document ends at the largest size, and only smaller results
             // are resampled to it.

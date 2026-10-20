@@ -398,6 +398,50 @@ pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value,
     Ok(r)
 }
 
+/// The name Run Two Presets suggests for saving the pair: "First → Then" or "First + Then".
+fn pair_name(f: &Map<String, Value>) -> String {
+    let joint = if text(f, "combine") == "layers" { " + " } else { " → " };
+    format!("{}{joint}{}", text(f, "first"), text(f, "second"))
+}
+
+/// Run Two Presets' Save: the two presets, as chosen, saved as one preset that the Topaz
+/// Gigapixel Presets submenu lists with the others (an empty name takes the suggested one).
+fn save_two(app: &mut PhotocraftApp, f: &mut Map<String, Value>) -> Result<String, String> {
+    let typed = text(f, "saveName").trim().to_string();
+    let name = if typed.is_empty() { pair_name(f) } else { typed };
+    let settings = json!({"presets": [text(f, "first"), text(f, "second")], "combine": text(f, "combine")});
+    app.run(photocraft_engine::gigapixel_cmds::presets::SAVE_ID, json!({"name": name, "settings": settings}))?;
+    f.insert("saveName".into(), json!(""));
+    Ok(name)
+}
+
+fn save_two_row(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Value>) {
+    ui.add_space(8.0);
+    widgets::hairline(ui);
+    ui.add_space(6.0);
+    let mut name = text(f, "saveName").to_string();
+    let mut save = false;
+    row(ui, tl!("Save as:"), |ui| {
+        let hint = pair_name(f);
+        let r = ui.add(egui::TextEdit::singleline(&mut name).char_limit(255).desired_width(220.0).hint_text(hint));
+        save |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        save |= widgets::secondary_button(ui, tl!("Save Preset"), 0.0).on_hover_text(tl!("Keep these two presets as one, listed with the others")).clicked();
+    });
+    f.insert("saveName".into(), json!(name));
+    if save && can_confirm(f) {
+        match save_two(app, f) {
+            Ok(name) => {
+                app.ui.status_error = false;
+                app.ui.status = crate::i18n::fmt(tl!("Saved Topaz Gigapixel preset “{name}”"), &[("name", &name)]);
+            }
+            Err(e) => {
+                app.ui.status_error = true;
+                app.ui.status = e;
+            }
+        }
+    }
+}
+
 /// Width of the labels' column.
 const LABELS: f32 = 130.0;
 
@@ -443,6 +487,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
         let all = app.session.presets.gigapixel_presets.clone();
         let names: Vec<(String, &str)> = singles(&all).into_iter().map(|p| (p.name.clone(), p.name.as_str())).collect();
         two_preset_rows(ui, f, &names);
+        save_two_row(app, ui, f);
         return;
     }
     let all = app.session.presets.gigapixel_presets.clone();
@@ -763,6 +808,42 @@ mod tests {
         assert!(e.contains("disabled"), "{e}");
         f.insert("second".into(), json!("Both"));
         assert!(!confirm(h.state_mut(), &f).unwrap_err().contains("disabled"), "a preset that combines others can't be one of the two");
+    }
+
+    /// Run Two Presets saves the pair as it's set up, as one preset the submenu lists with the
+    /// others; an empty name takes the suggested "First → Then" / "First + Then".
+    #[test]
+    fn run_two_presets_saves_the_pair_as_a_preset() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness();
+        let save = photocraft_engine::gigapixel_cmds::presets::SAVE_ID;
+        h.state_mut().run(save, json!({"name": "Faces", "settings": {"model": "std", "scale": 2}})).unwrap();
+        h.state_mut().run(save, json!({"name": "Art", "settings": {"model": "art", "scale": 2}})).unwrap();
+        open_run_two(h.state_mut()).unwrap();
+        h.run_steps(4);
+        assert!(h.query_by_label("Save Preset").is_some() && h.query_by_label("Save as:").is_some());
+        let mut f = h.state().ui.dialogs.iter().find(|d| d.fields.contains_key(RUN_MARK)).map(|d| d.fields.clone()).unwrap();
+        f.insert("combine".into(), json!("layers"));
+        assert_eq!(save_two(h.state_mut(), &mut f).unwrap(), "Faces + Art");
+        f.insert("combine".into(), json!("chain"));
+        f.insert("saveName".into(), json!("  Both  "));
+        assert_eq!(save_two(h.state_mut(), &mut f).unwrap(), "Both");
+        let all = &h.state().session.presets.gigapixel_presets;
+        let settings = |n: &str| all.iter().find(|p| p.name == n).map(|p| p.settings.clone());
+        assert_eq!(settings("Faces + Art"), Some(json!({"presets": ["Faces", "Art"], "combine": "layers"})));
+        assert_eq!(settings("Both"), Some(json!({"presets": ["Faces", "Art"], "combine": "chain"})));
+        // The same name again saves over it; one of the pair's own names is refused (it would
+        // run itself).
+        f.insert("combine".into(), json!("layers"));
+        f.insert("saveName".into(), json!("Both"));
+        save_two(h.state_mut(), &mut f).unwrap();
+        let both = h.state().session.presets.gigapixel_presets.iter().filter(|p| p.name == "Both").map(|p| p.settings["combine"].clone()).collect::<Vec<_>>();
+        assert_eq!(both, [json!("layers")]);
+        f.insert("saveName".into(), json!("Faces"));
+        assert!(save_two(h.state_mut(), &mut f).is_err());
+        // Both are listed with the other presets, and run from there.
+        let labels: Vec<String> = crate::menus::menu_items(h.state()).into_iter().filter(|i| i.path == ["File", "Automate", SUBMENU]).map(|i| i.label).collect();
+        assert_eq!(labels[..4], ["Faces", "Art", "Faces + Art", "Both"]);
     }
 
     #[test]
