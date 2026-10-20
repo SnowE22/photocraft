@@ -214,10 +214,38 @@ pub fn load(dir: &Path) -> Option<Recording> {
     Some(Recording { dir: dir.to_path_buf(), meta })
 }
 
-/// Every recording in the recordings folder, most recently recorded first.
+/// Recordings read by [`scan`], by `recording.json` path, with the size and time it had: the
+/// Library rescans every few seconds, and a recording's file lists every frame.
+type Scanned = std::collections::HashMap<std::path::PathBuf, (u64, Option<std::time::SystemTime>, Recording)>;
+
+/// Every recording in the recordings folder, most recently recorded first. A `recording.json`
+/// whose size and modification time are unchanged since the last scan isn't read again.
 pub fn scan(root: &Path) -> Vec<Recording> {
+    static SCANNED: std::sync::Mutex<Option<Scanned>> = std::sync::Mutex::new(None);
     let Ok(entries) = std::fs::read_dir(root) else { return Vec::new() };
-    let mut out: Vec<Recording> = entries.filter_map(|e| e.ok()).filter(|e| e.path().is_dir()).filter_map(|e| load(&e.path())).collect();
+    let mut cache = SCANNED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let cache = cache.get_or_insert_with(Default::default);
+    let mut seen = std::collections::HashSet::new();
+    let mut out: Vec<Recording> = Vec::new();
+    for dir in entries.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.is_dir()) {
+        let path = dir.join(META);
+        let Ok(md) = std::fs::metadata(&path) else { continue };
+        let stamp = (md.len(), md.modified().ok());
+        // File times tick coarsely: a file written in the last two seconds is read again, so two
+        // writes of the same size close together are both seen.
+        let settled = stamp.1.and_then(|t| t.elapsed().ok()).is_some_and(|age| age.as_secs() >= 2);
+        let rec = match cache.get(&path) {
+            Some((len, time, rec)) if settled && (*len, *time) == stamp => Some(rec.clone()),
+            _ => load(&dir),
+        };
+        if let Some(rec) = rec {
+            cache.insert(path.clone(), (stamp.0, stamp.1, rec.clone()));
+            seen.insert(path);
+            out.push(rec);
+        }
+    }
+    // Forget folders that went away (or other roots), so the cache stays the size of the library.
+    cache.retain(|p, _| seen.contains(p));
     out.sort_by_key(|r| std::cmp::Reverse(r.meta.recorded));
     out
 }

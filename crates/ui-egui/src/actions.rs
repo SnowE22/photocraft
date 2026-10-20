@@ -1161,26 +1161,45 @@ fn rename_action(app: &mut PhotocraftApp, index: usize, name: String) {
     }
 }
 
-/// One action's row data for a frame.
+/// One action's row data for a frame. Only an opened action's steps are copied: a whole
+/// imported Photoshop palette (well over a thousand steps, some with embedded tables) would
+/// otherwise be copied every frame.
 struct Row {
     name: String,
+    /// How many steps it has, those being recorded included.
+    count: usize,
+    /// Its steps, when they are shown.
     steps: Vec<(String, Value)>,
     disabled: std::collections::BTreeSet<usize>,
     dialogs: std::collections::BTreeSet<usize>,
     set: Option<String>,
     color: String,
+    check: Tri,
+    /// The dialog column over the steps that have a dialog; `None` when none has.
+    dialog: Option<Tri>,
 }
 
 impl Row {
-    fn check(&self) -> Tri {
-        let n = self.steps.len();
-        Tri::of(n - self.disabled.iter().filter(|i| **i < n).count(), n)
-    }
-
-    /// The dialog column over the steps that have a dialog; `None` when none has.
-    fn dialog(&self) -> Option<Tri> {
-        let with: Vec<usize> = self.steps.iter().enumerate().filter(|(_, (id, _))| has_dialog(id)).map(|(i, _)| i).collect();
-        (!with.is_empty()).then(|| Tri::of(with.iter().filter(|i| self.dialogs.contains(i)).count(), with.len()))
+    fn new(app: &PhotocraftApp, i: usize, a: &Action, shown: bool) -> Row {
+        let pending: Vec<&(String, Value)> = actions_cmds::pending_steps(&app.session, i).collect();
+        let count = a.steps.len() + pending.len();
+        let check = Tri::of(count - a.disabled.iter().filter(|s| **s < count).count(), count);
+        // Recorded steps land at `pending_at`: number the steps as the panel shows them.
+        let at = actions_cmds::pending_at(&app.session, i);
+        let ids = a.steps.iter().take(at).chain(pending.iter().copied()).chain(a.steps.iter().skip(at)).map(|(id, _)| id.as_str());
+        let with: Vec<usize> = ids.enumerate().filter(|(_, id)| has_dialog(id)).map(|(s, _)| s).collect();
+        let dialog = (!with.is_empty()).then(|| Tri::of(with.iter().filter(|s| a.dialogs.contains(s)).count(), with.len()));
+        Row {
+            name: a.name.clone(),
+            count,
+            steps: if shown { visible_steps(app, i) } else { Vec::new() },
+            disabled: a.disabled.clone(),
+            dialogs: a.dialogs.clone(),
+            set: a.set.clone(),
+            color: a.color.clone(),
+            check,
+            dialog,
+        }
     }
 }
 
@@ -1344,20 +1363,31 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     adopt_loose_actions(app);
     let recording = app.session.actions.recording;
+    let list_len = app.session.actions.list.len();
+    // While recording, the newest recorded step is scrolled into view.
+    let recording_row = recording.and_then(|(_, i)| {
+        let n = actions_cmds::pending_steps(&app.session, i).count();
+        (i < list_len).then(|| (i, actions_cmds::pending_at(&app.session, i) + n))
+    });
+    let reveal = recording_row.filter(|row| app.ui.actions.reveal_recording != Some(*row));
+    app.ui.actions.reveal_recording = recording_row;
+    if let Some((i, _)) = reveal {
+        app.ui.actions.expanded.resize(list_len, false);
+        if let Some(expanded) = app.ui.actions.expanded.get_mut(i) {
+            *expanded = true;
+        }
+        if let Some(set) = app.session.actions.list.get(i).and_then(|a| a.set.clone()) {
+            app.ui.actions.collapsed_sets.retain(|c| *c != set);
+        }
+    }
+    let button_mode = app.ui.actions.button_mode;
     let rows: Vec<Row> = app
         .session
         .actions
         .list
         .iter()
         .enumerate()
-        .map(|(i, a)| Row {
-            name: a.name.clone(),
-            steps: visible_steps(app, i),
-            disabled: a.disabled.clone(),
-            dialogs: a.dialogs.clone(),
-            set: a.set.clone(),
-            color: a.color.clone(),
-        })
+        .map(|(i, a)| Row::new(app, i, a, !button_mode && app.ui.actions.expanded.get(i).copied().unwrap_or(false)))
         .collect();
     let sets = app.session.actions.sets();
     {
@@ -1366,7 +1396,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             a.selected = None;
             a.clear_steps();
         }
-        if let Some(n) = a.selected.and_then(|i| rows.get(i)).map(|r| r.steps.len()) {
+        if let Some(n) = a.selected.and_then(|i| rows.get(i)).map(|r| r.count) {
             a.selected_steps.retain(|s| *s < n);
             if a.selected_step.is_some_and(|s| s >= n) {
                 a.clear_steps();
@@ -1389,26 +1419,9 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Set Shortcut… in an action's menu: its dialog opens once the list is drawn.
     let mut open_key_for: Option<String> = None;
     let mut moved = None;
-    // While recording, the newest recorded step is scrolled into view.
-    let recording_row = recording.and_then(|(_, i)| {
-        let n = actions_cmds::pending_steps(&app.session, i).count();
-        rows.get(i).map(|_| (i, actions_cmds::pending_at(&app.session, i) + n))
-    });
-    let reveal = recording_row.filter(|row| app.ui.actions.reveal_recording != Some(*row));
-    app.ui.actions.reveal_recording = recording_row;
-    if let Some((i, _)) = reveal {
-        app.ui.actions.expanded.resize(rows.len(), false);
-        if let Some(expanded) = app.ui.actions.expanded.get_mut(i) {
-            *expanded = true;
-        }
-        if let Some(set) = rows.get(i).and_then(|r| r.set.as_ref()) {
-            app.ui.actions.collapsed_sets.retain(|c| c != set);
-        }
-    }
     let reveal_action = app.ui.actions.reveal_action.take();
     let playing_step = app.action_run.as_ref().map(|_| (app.ui.actions.selected, app.ui.actions.selected_step));
     let (ctrl, shift, alt) = ui.input(|i| (i.modifiers.command, i.modifiers.shift, i.modifiers.alt));
-    let button_mode = app.ui.actions.button_mode;
     egui::ScrollArea::vertical().id_salt("actions-rows").max_height(max_h).min_scrolled_height(max_h).auto_shrink([false, false]).show(ui, |ui| {
         // Rows flush and ROW_H tall, as dense as Photoshop's list (and the History panel's);
         // Button Mode keeps its buttons apart.
@@ -1446,8 +1459,8 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 } else if hresp.hovered() {
                     ui.painter().rect_filled(hr, 0.0, t.hover.gamma_multiply(0.5));
                 }
-                let check = members.iter().filter_map(|i| rows.get(*i)).map(Row::check).reduce(Tri::merge).unwrap_or(Tri::On);
-                let dialog = members.iter().filter_map(|i| rows.get(*i)).filter_map(Row::dialog).reduce(Tri::merge);
+                let check = members.iter().filter_map(|i| rows.get(*i)).map(|r| r.check).reduce(Tri::merge).unwrap_or(Tri::On);
+                let dialog = members.iter().filter_map(|i| rows.get(*i)).filter_map(|r| r.dialog).reduce(Tri::merge);
                 let x0 = hr.left();
                 paint_check(ui, Rect::from_center_size(pos2(x0 + CHECK_X, hr.center().y), vec2(16.0, 16.0)), check, &t);
                 paint_dialog(ui, Rect::from_center_size(pos2(x0 + DIALOG_X, hr.center().y), vec2(16.0, 16.0)), dialog, &t);
@@ -1489,7 +1502,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             }
             for i in members {
                 let Some(row) = rows.get(i) else { continue };
-                let Row { name, steps, disabled, dialogs, color: swatch, .. } = row;
+                let Row { name, count, steps, disabled, dialogs, color: swatch, .. } = row;
                 let indent = if set.is_some() && !button_mode { 14.0 } else { 0.0 };
                 let row_h = if button_mode { BUTTON_H } else { ROW_H };
                 let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), row_h), Sense::click_and_drag());
@@ -1511,7 +1524,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                     moved = Some(change);
                 }
                 let expanded = app.ui.actions.expanded.get(i).copied().unwrap_or(false) && !button_mode;
-                let (check, dialog) = (row.check(), row.dialog());
+                let (check, dialog) = (row.check, row.dialog);
                 if !button_mode {
                     paint_check(ui, Rect::from_center_size(pos2(x0 + CHECK_X, rect.center().y), vec2(16.0, 16.0)), check, &t);
                     paint_dialog(ui, Rect::from_center_size(pos2(x0 + DIALOG_X, rect.center().y), vec2(16.0, 16.0)), dialog, &t);
@@ -1535,7 +1548,7 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         pos2(rect.right() - 8.0, rect.center().y),
                         Align2::RIGHT_CENTER,
                         // The step count, then the shortcut at the right edge.
-                        key.map_or_else(|| step_count(steps.len(), disabled.len()), |key| format!("{} · {key}", step_count(steps.len(), disabled.len()))),
+                        key.map_or_else(|| step_count(*count, disabled.len()), |key| format!("{} · {key}", step_count(*count, disabled.len()))),
                         egui::FontId::proportional(11.0),
                         t.text_faint,
                     );

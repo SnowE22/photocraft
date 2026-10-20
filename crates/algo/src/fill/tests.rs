@@ -282,3 +282,109 @@ fn big_canvas_timing() {
         eprintln!("{name}: {:?} ({:?})", t.elapsed(), r.map(|r| r.bbox));
     }
 }
+
+/// The click as it was computed before it worked on the clicked spot's box: everything over the
+/// whole page, the seed's area picked from it. (Gap closing reads the seed's spot, as it now
+/// does: before, the blank margin past the canvas edge let it go round a line that touches the
+/// edge into the next spot.)
+fn click_region_whole_page(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptions) -> Option<Region> {
+    let (w, h) = dims(img, area)?;
+    let si = (seed.1 - area.y0) as usize * w + (seed.0 - area.x0) as usize;
+    let target = premul(*img.get(si)?);
+    let strength = strengths(img, |p| difference(p, target));
+    let margin = margin(o.tolerance);
+    let free: Vec<bool> = strength.iter().map(|s| *s <= margin).collect();
+    let gap = finite(o.close_gap, MAX_GAP);
+    let mut spot = vec![false; free.len()];
+    flood(&free, &mut spot, w, h, si, true)?;
+    let mut fill = if gap < 1.0 {
+        spot
+    } else {
+        let (labels, seed_label) = areas(&spot, w, h, gap, o.image_border, Some(si));
+        let l = seed_label?;
+        let mut fill: Vec<bool> = labels.iter().map(|v| *v == l).collect();
+        cover_seams(&mut fill, &labels, &spot, w, h);
+        fill
+    };
+    scale(&mut fill, &strength, &free, w, h, o);
+    to_region(&fill, w, h, area, o.anti_alias)
+}
+
+/// Random line art: thick strokes (2–4 px, so no area touches another one corner to corner),
+/// some broken by gaps, some soft, and a few blobs.
+fn random_lines(w: usize, h: usize, seed: u64) -> Img {
+    let mut s = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    let mut next = move |n: usize| {
+        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        ((s >> 33) as usize) % n.max(1)
+    };
+    let mut img = Img::new(w, h, CLEAR);
+    for _ in 0..14 {
+        let (x0, y0, x1, y1) = (next(w) as f32, next(h) as f32, next(w) as f32, next(h) as f32);
+        let r = 1.0 + next(3) as f32 * 0.5;
+        let alpha = [255u8, 255, 255, 160][next(4)];
+        let gap_at = next(100) as f32 / 100.0;
+        let gap = [0.0, 0.0, 0.04, 0.08][next(4)];
+        let len = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt().max(1.0);
+        let steps = (len * 2.0) as usize;
+        for k in 0..=steps {
+            let t = k as f32 / steps.max(1) as f32;
+            if (t - gap_at).abs() < gap {
+                continue;
+            }
+            let (cx, cy) = (x0 + (x1 - x0) * t, y0 + (y1 - y0) * t);
+            for y in (cy - r).floor() as i32..=(cy + r).ceil() as i32 {
+                for x in (cx - r).floor() as i32..=(cx + r).ceil() as i32 {
+                    if x >= 0 && y >= 0 && (x as usize) < w && (y as usize) < h && ((x as f32 - cx).powi(2) + (y as f32 - cy).powi(2)) <= r * r {
+                        img.set(x as usize, y as usize, [0, 0, 0, alpha]);
+                    }
+                }
+            }
+        }
+    }
+    img
+}
+
+/// Working on the clicked spot's box gives exactly what working on the whole page gave, for every
+/// gap, Area Scaling mode and amount, colour margin and Image Border setting.
+#[test]
+fn the_spot_box_gives_what_the_whole_page_gave() {
+    let mut checked = 0;
+    for page in 0..12u64 {
+        let img = random_lines(97, 83, page);
+        for click in 0..6 {
+            let (x, y) = ((page as i32 * 37 + click * 29) % 97, (page as i32 * 11 + click * 41) % 83);
+            for gap in [0.0, 3.0, 6.0, 11.0] {
+                for (scaling, amount) in [(Scaling::Darkest, 0.0), (Scaling::Darkest, 3.0), (Scaling::Round, 2.0), (Scaling::Square, 2.0), (Scaling::Round, -2.0)] {
+                    for border in [false, true] {
+                        let o = FillOptions { close_gap: gap, scale: amount, scaling, image_border: border, tolerance: 20.0, ..FillOptions::default() };
+                        let got = click_region(&img.px, img.area(), (x, y), &o);
+                        let want = click_region_whole_page(&img.px, img.area(), (x, y), &o);
+                        assert_eq!(got, want, "page {page}, click ({x}, {y}), gap {gap}, {scaling:?} {amount}, border {border}");
+                        checked += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert!(checked > 2000);
+}
+
+
+/// With Image Border off the canvas carries on blank past its edge, but a fill still never goes
+/// round a line that reaches the edge into the next spot (it once did, through that margin).
+#[test]
+fn a_line_touching_the_edge_keeps_the_spots_apart() {
+    let mut img = Img::new(40, 20, CLEAR);
+    for y in 0..20 {
+        for x in 19..22 {
+            img.set(x, y, INK);
+        }
+    }
+    for border in [false, true] {
+        let o = FillOptions { close_gap: 3.0, image_border: border, ..hard() };
+        let r = click_region(&img.px, img.area(), (5, 10), &o).unwrap();
+        assert!(filled(&r, 5, 0) && filled(&r, 18, 19), "border {border}");
+        assert!(!filled(&r, 30, 0) && !filled(&r, 30, 10), "border {border}: the fill crossed the line");
+    }
+}

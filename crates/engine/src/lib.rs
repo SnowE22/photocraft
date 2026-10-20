@@ -457,6 +457,8 @@ pub struct Session {
     /// Layer › Layer Style › Copy Layer Style: the effects and the Blending Options
     /// ([`CopiedStyle`]: blend mode, fill opacity, Advanced Blending, Blend If, channels).
     pub style_clipboard: Option<CopiedStyle>,
+    /// The Fill tool's referenced composite, kept between clicks while its layers are unchanged.
+    pub(crate) fill_reference: std::sync::Mutex<Option<fill_tool_cmds::ReferenceCache>>,
     /// Shape path context menu: copied vector fill and stroke styles.
     pub path_fill_clipboard: Option<photocraft_doc::Fill>,
     pub path_stroke_clipboard: Option<photocraft_doc::ShapeStroke>,

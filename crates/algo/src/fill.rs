@@ -106,24 +106,45 @@ pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptio
     let target = premul(*img.get(si)?);
     let strength = strengths(img, |p| difference(p, target));
     let margin = margin(o.tolerance);
-    let free: Vec<bool> = strength.iter().map(|s| *s <= margin).collect();
+    let free: Vec<bool> = crate::par::map(strength.len(), strength.len() >= 65_536, |i| strength.get(i).is_some_and(|s| *s <= margin));
     let gap = finite(o.close_gap, MAX_GAP);
-    let mut fill = if !o.contiguous {
-        free.clone()
-    } else if gap < 1.0 {
-        let mut labels = vec![0u32; free.len()];
-        flood(&free, &mut labels, w, h, si, 1);
-        labels.iter().map(|l| *l != 0).collect()
+    if !o.contiguous {
+        let mut fill = free.clone();
+        scale(&mut fill, &strength, &free, w, h, o);
+        return to_region(&fill, w, h, area, o.anti_alias);
+    }
+    // The seed's area before any gap is closed. Closing gaps only splits it, and Area Scaling
+    // reaches a few pixels past it, so the rest works on its box and a margin: a click on a page
+    // costs what the spot clicked costs, not what the page does.
+    let mut spot = vec![false; free.len()];
+    let (x0, y0, x1, y1) = flood(&free, &mut spot, w, h, si, true)?;
+    let amount = if o.scale.is_finite() { o.scale.clamp(-MAX_SCALE, MAX_SCALE).abs() } else { 0.0 };
+    let pad = (gap / 2.0).ceil() as usize + amount.ceil() as usize + 4;
+    let (cx0, cy0) = (x0.saturating_sub(pad), y0.saturating_sub(pad));
+    let (cx1, cy1) = ((x1 + pad + 1).min(w), (y1 + pad + 1).min(h));
+    let (cw, ch) = (cx1 - cx0, cy1 - cy0);
+    let crop = |v: &[bool]| -> Vec<bool> { (cy0..cy1).flat_map(|y| v.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect() };
+    let strength: Vec<u8> = (cy0..cy1).flat_map(|y| strength.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect();
+    let (spot, free) = (crop(&spot), crop(&free));
+    let csi = (si / w - cy0) * cw + si % w - cx0;
+    let carea = Rect::new(area.x0 + cx0 as i32, area.y0 + cy0 as i32, area.x0 + cx1 as i32, area.y0 + cy1 as i32);
+    let mut fill = if gap < 1.0 {
+        spot
     } else {
-        let (labels, seed_label) = areas(&free, w, h, gap, o.image_border, Some(si));
+        // Inside the spot, the nearest pixel outside it is always a line pixel, so taking every
+        // other pixel for a line changes no distance there: the areas come out as they do over
+        // the whole page, and the narrow-spot climb can't step across a thin diagonal line into
+        // the next spot.
+        let (labels, seed_label) = areas(&spot, cw, ch, gap, o.image_border, Some(csi));
         let l = seed_label?;
         let mut fill: Vec<bool> = labels.iter().map(|v| *v == l).collect();
-        cover_seams(&mut fill, &labels, &free, w, h);
+        cover_seams(&mut fill, &labels, &spot, cw, ch);
         fill
     };
-    scale(&mut fill, &strength, &free, w, h, o);
-    to_region(&fill, w, h, area, o.anti_alias)
+    scale(&mut fill, &strength, &free, cw, ch, o);
+    to_region(&fill, cw, ch, carea, o.anti_alias)
 }
+
 
 /// Enclose and Fill / Paint Unfilled Area: fills every area of `target` pixels of `img` (as in
 /// [`click_region`]) that lies wholly inside `inside` (the lasso or the painted stroke, a mask
@@ -262,11 +283,13 @@ fn neighbours(i: usize, w: usize, h: usize) -> [Option<usize>; 4] {
     [(x > 0).then(|| i - 1), (x + 1 < w).then(|| i + 1), (y > 0).then(|| i - w), (y + 1 < h).then(|| i + w)]
 }
 
-/// Span flood of the 4-connected `open` pixels around `start` that have no label yet, giving
-/// them `label`.
-fn flood(open: &[bool], labels: &mut [u32], w: usize, h: usize, start: usize, label: u32) {
-    let ok = |labels: &[u32], i: usize| open.get(i).copied().unwrap_or(false) && labels.get(i) == Some(&0);
+/// Span flood of the 4-connected `open` pixels around `start` that have no label yet (the
+/// default value), giving them `label`. The box it filled, inclusive, or `None` when `start`
+/// wasn't open.
+fn flood<L: Copy + Default + PartialEq>(open: &[bool], labels: &mut [L], w: usize, h: usize, start: usize, label: L) -> Option<(usize, usize, usize, usize)> {
+    let ok = |labels: &[L], i: usize| open.get(i).copied().unwrap_or(false) && labels.get(i) == Some(&L::default());
     let mut stack = vec![(start % w, start / w)];
+    let mut bbox: Option<(usize, usize, usize, usize)> = None;
     while let Some((x, y)) = stack.pop() {
         let row = y * w;
         if !ok(labels, row + x) {
@@ -282,6 +305,7 @@ fn flood(open: &[bool], labels: &mut [u32], w: usize, h: usize, start: usize, la
         if let Some(run) = labels.get_mut(row + l..=row + r) {
             run.fill(label);
         }
+        bbox = Some(bbox.map_or((l, y, r, y), |(x0, y0, x1, y1)| (x0.min(l), y0.min(y), x1.max(r), y1.max(y))));
         for ny in [y.wrapping_sub(1), y + 1] {
             if ny >= h {
                 continue;
@@ -296,6 +320,7 @@ fn flood(open: &[bool], labels: &mut [u32], w: usize, h: usize, start: usize, la
             }
         }
     }
+    bbox
 }
 
 /// The 4-connected components of `open`, labelled from 1 (0 elsewhere).
@@ -491,10 +516,18 @@ fn grow_to_darkest(fill: &mut [bool], strength: &[u8], free: &[bool], w: usize, 
     let mut cost = vec![f32::INFINITY; n];
     let key = |c: f32| Reverse((c * 1024.0) as u32);
     let mut heap: BinaryHeap<(Reverse<u32>, usize)> = BinaryHeap::new();
+    // Only filled pixels beside a line pixel can step anywhere: the rest start the queue for
+    // nothing (a whole page of them took seconds).
+    let at_line = |i: usize| {
+        let (x, y) = (i % w, i / w);
+        (y.saturating_sub(1)..(y + 2).min(h)).any(|ny| (x.saturating_sub(1)..(x + 2).min(w)).any(|nx| free.get(ny * w + nx) == Some(&false) && fill.get(ny * w + nx) == Some(&false)))
+    };
     for (i, f) in fill.iter().enumerate() {
         if *f && let Some(c) = cost.get_mut(i) {
             *c = 0.0;
-            heap.push((key(0.0), i));
+            if at_line(i) {
+                heap.push((key(0.0), i));
+            }
         }
     }
     let s = |j: usize| strength.get(j).copied().unwrap_or(0);

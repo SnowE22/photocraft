@@ -542,6 +542,23 @@ pub fn encode_jpeg(f: &Frame) -> Result<Vec<u8>> {
     photocraft_codecs::encode(&img, Format::Jpeg, &opts).map_err(|e| EngineError::Other(e.to_string()))
 }
 
+/// Runs `f` (a capture) on a quarter of the cores. A frame is never urgent, and rendering one
+/// on every core every few seconds stuttered the brush painting beside it.
+fn in_capture_pool<T: Send>(f: impl FnOnce() -> T + Send) -> T {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        static POOL: std::sync::OnceLock<Option<rayon::ThreadPool>> = std::sync::OnceLock::new();
+        let pool = POOL.get_or_init(|| {
+            let n = std::thread::available_parallelism().map_or(4, |n| n.get());
+            rayon::ThreadPoolBuilder::new().num_threads((n / 4).max(1)).thread_name(|i| format!("photocraft-timelapse-{i}")).build().ok()
+        });
+        if let Some(p) = pool {
+            return p.install(f);
+        }
+    }
+    f()
+}
+
 /// The capture worker's job: render, skip if unchanged, write.
 fn capture_work(doc: Arc<Document>, max_long: u32, tag: String, last: Option<Arc<Frame>>, path: PathBuf) -> Outcome {
     let frame = match render_frame(&doc, max_long, &tag) {
@@ -782,7 +799,8 @@ impl Recorder {
             let doc = doc.clone();
             let last = last.clone();
             move || {
-                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| capture_work(doc, max_long, tag, last, path)))
+                let work = || capture_work(doc, max_long, tag, last, path);
+                let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| in_capture_pool(work)))
                     .unwrap_or_else(|_| Outcome::Failed("the capture failed with an internal error".into()));
                 let _ = tx.send(r);
             }

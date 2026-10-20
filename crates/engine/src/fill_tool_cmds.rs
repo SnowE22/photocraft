@@ -2,13 +2,20 @@
 //! closes gaps in line art and tucks under it (Area Scaling), and its Enclose and Fill (a lasso)
 //! and Paint Unfilled Area (a painted stroke), which fill every enclosed area they cover.
 //! `layer.setReference` marks the layers Reference › Reference Layers reads.
+//!
+//! The composite of the referenced layers is kept between clicks ([`ReferenceCache`]) while the
+//! layers it was made from are unchanged: colouring line art clicks many times on the same lines,
+//! and compositing a large page is most of what a click costs.
+
+use std::sync::{Arc, PoisonError};
 
 use photocraft_algo::fill::{self, FillOptions, Scaling, Target};
 use photocraft_algo::paint::FillPaint;
 use photocraft_algo::selection::{Region, rgba8_image};
 use photocraft_color::BlendMode;
-use photocraft_doc::{LayerContent, LayerId};
-use photocraft_geom::Rect;
+use photocraft_doc::{Document, LayerContent, LayerId};
+use photocraft_geom::{Rect, TileCoord};
+use photocraft_raster::{Surface, Tile};
 use serde_json::{Value, json};
 
 use crate::commands::{CommandSpec, blend_from_str, color_param, layer_param};
@@ -126,14 +133,111 @@ fn exclusions(p: &Value) -> Result<Exclude> {
     Ok(ex)
 }
 
+/// A surface's tiles, held (so their addresses can't be reused) and compared by identity: tiles
+/// are shared copy-on-write, so the same tiles mean the same pixels.
+struct Tiles {
+    tiles: Vec<(TileCoord, Arc<Tile>)>,
+    default: Vec<u32>,
+    format: photocraft_color::PixelFormat,
+}
+
+impl Tiles {
+    fn of(s: &Surface) -> Self {
+        Tiles { tiles: s.tiles().map(|(c, t)| (*c, t.clone())).collect(), default: s.default_pixel().iter().map(|v| v.to_bits()).collect(), format: s.format() }
+    }
+}
+
+impl PartialEq for Tiles {
+    fn eq(&self, o: &Self) -> bool {
+        self.format == o.format
+            && self.default == o.default
+            && self.tiles.len() == o.tiles.len()
+            && self.tiles.iter().zip(&o.tiles).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
+    }
+}
+
+/// What a referenced composite was made from: per layer, whether it shows, how it blends and its
+/// tiles (and its mask's).
+#[derive(PartialEq)]
+struct LayerKey {
+    id: LayerId,
+    shown: bool,
+    blend: BlendMode,
+    opacity: u32,
+    fill: u32,
+    clipped: bool,
+    mask: Option<(bool, u32, u32, Tiles)>,
+    tiles: Option<Tiles>,
+}
+
+#[derive(PartialEq)]
+struct ReferenceKey {
+    doc: photocraft_doc::DocId,
+    area: Rect,
+    mode: photocraft_color::ColorMode,
+    depth: photocraft_color::SampleType,
+    layers: Vec<LayerKey>,
+}
+
+/// The last referenced composite and what it was made from.
+pub(crate) struct ReferenceCache {
+    key: ReferenceKey,
+    img: Arc<Vec<[u8; 4]>>,
+}
+
+/// The key of `doc` (with the layers left out of the reference already hidden), or `None` when a
+/// shown layer has something the key can't see cheaply (effects, a vector mask, a fill, text,
+/// shape or smart object layer, Blend If or advanced blending): those are composited every time.
+fn reference_key(doc: &Document, area: Rect) -> Option<ReferenceKey> {
+    let mut layers = Vec::new();
+    for (path, _, l) in doc.walk() {
+        let shown = doc.shown_at(&path);
+        if !shown {
+            layers.push(LayerKey { id: l.id, shown, blend: l.blend, opacity: 0, fill: 0, clipped: l.clipped, mask: None, tiles: None });
+            continue;
+        }
+        let tiles = match &l.content {
+            LayerContent::Raster(s) => Some(Tiles::of(s)),
+            LayerContent::Group(g) if g.artboard.is_none() => None,
+            _ => return None,
+        };
+        let plain = l.effects.items.is_empty()
+            && l.vector_mask.is_none()
+            && l.fill_cache.is_none()
+            && l.video.is_none()
+            && l.excluded_channels == 0
+            && l.blend_if == Default::default()
+            && l.advanced == Default::default();
+        if !plain {
+            return None;
+        }
+        let mask = l.mask.as_ref().map(|m| (m.enabled, m.density.to_bits(), m.feather.to_bits(), Tiles::of(&m.surface)));
+        layers.push(LayerKey { id: l.id, shown, blend: l.blend, opacity: l.opacity.to_bits(), fill: l.fill_opacity.to_bits(), clipped: l.clipped, mask, tiles });
+    }
+    Some(ReferenceKey { doc: doc.id, area, mode: doc.mode, depth: doc.depth, layers })
+}
+
+/// The composite of `doc` over `area` as straight RGBA8.
+fn composite_rgba8(doc: &Document, area: Rect) -> Vec<[u8; 4]> {
+    let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    let px = photocraft_compose::render(doc, area).px;
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        use rayon::prelude::*;
+        px.par_iter().map(|p| p.map(q)).collect()
+    }
+    #[cfg(target_arch = "wasm32")]
+    px.iter().map(|p| p.map(q)).collect()
+}
+
 /// The pixels the fill reads, over the canvas: the target's own for [`Reference::Layer`], else the
-/// composite of the referenced layers (hidden layers are never read).
-fn reference_image(s: &Session, r: Reference, ex: Exclude, p: &Value) -> Result<(Rect, Vec<[u8; 4]>)> {
+/// composite of the referenced layers (hidden layers are never read), kept for the next click.
+fn reference_image(s: &Session, r: Reference, ex: Exclude, p: &Value) -> Result<(Rect, Arc<Vec<[u8; 4]>>)> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let area = d.doc.bounds();
     if r == Reference::Layer {
         let surf = crate::channel_cmds::read_target_surface(&d.doc, d.active_layer, p)?;
-        return Ok((area, rgba8_image(surf, area)));
+        return Ok((area, Arc::new(rgba8_image(surf, area))));
     }
     let active = d.active_layer;
     let folder = active.and_then(|id| d.doc.path_of(id)).map(|mut path| {
@@ -175,8 +279,18 @@ fn reference_image(s: &Session, r: Reference, ex: Exclude, p: &Value) -> Result<
             .into(),
         ));
     }
-    let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-    Ok((area, photocraft_compose::render(&doc, area).px.iter().map(|px| px.map(q)).collect()))
+    let key = reference_key(&doc, area);
+    let mut cache = s.fill_reference.lock().unwrap_or_else(PoisonError::into_inner);
+    if let (Some(key), Some(c)) = (&key, cache.as_ref())
+        && c.key == *key
+    {
+        return Ok((area, c.img.clone()));
+    }
+    // Let go of the old one before making the next.
+    *cache = None;
+    let img = Arc::new(composite_rgba8(&doc, area));
+    *cache = key.map(|key| ReferenceCache { key, img: img.clone() });
+    Ok((area, img))
 }
 
 /// The area a fill covers: around the click, or the enclosed areas inside the lasso or stroke.

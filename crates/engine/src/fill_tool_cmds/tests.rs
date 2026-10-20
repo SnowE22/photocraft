@@ -205,3 +205,41 @@ fn set_reference_toggles_and_undoes() {
     s.execute("edit.undo", json!({})).unwrap();
     assert!(flag(&s));
 }
+
+/// The referenced composite is kept between clicks, and any change to the line art (its pixels,
+/// its visibility, its opacity, which layers are referenced) is seen by the next click.
+#[test]
+fn the_kept_reference_follows_every_change_to_the_line_art() {
+    let (mut s, lines, colour) = inked(8);
+    s.execute(REFERENCE_ID, json!({"layer": lines})).unwrap();
+    let click = |s: &mut Session, x: i32, y: i32| {
+        s.execute(FILL_ID, json!({"x": x, "y": y, "reference": "reference", "closeGap": 4, "antiAlias": false, "color": RED})).unwrap()
+    };
+    // The box (gap closed): the outside stays empty.
+    s.execute(FILL_ID, json!({"x": 20, "y": 20, "reference": "reference", "closeGap": 4, "antiAlias": false, "color": RED})).unwrap();
+    assert!(is_red(rgba(&s, colour, 20, 20)) && !is_red(rgba(&s, colour, 2, 2)));
+    assert!(s.fill_reference.lock().unwrap().is_some(), "kept for the next click");
+    // A wall drawn across the box splits it: the next click sees the wall.
+    s.edit("wall", |doc, _| {
+        doc.layer_mut(lines).unwrap().surface_mut().unwrap().fill_rect(Rect::new(5, 19, 35, 21), &[0.0, 0.0, 0.0, 1.0]);
+        Ok(())
+    })
+    .unwrap();
+    s.execute("layer.select", json!({"layer": colour.0})).unwrap();
+    s.execute(FILL_ID, json!({"x": 20, "y": 25, "reference": "reference", "closeGap": 4, "antiAlias": false, "color": "#00ff00"})).unwrap();
+    let green = |s: &Session, x, y| {
+        let c = rgba(s, colour, x, y);
+        c[1] > 0.99 && c[0] < 0.01
+    };
+    assert!(green(&s, 20, 25) && !green(&s, 20, 12), "the wall stops the fill");
+    // Hidden line art: nothing is referenced any more.
+    s.execute("layer.setProps", json!({"layer": lines.0, "visible": false})).unwrap();
+    s.execute("layer.select", json!({"layer": colour.0})).unwrap();
+    assert!(s.execute(FILL_ID, json!({"x": 2, "y": 2, "reference": "reference"})).is_err(), "no visible reference");
+    s.execute("layer.setProps", json!({"layer": lines.0, "visible": true, "opacity": 0.05})).unwrap();
+    s.execute("layer.select", json!({"layer": colour.0})).unwrap();
+    // At 5 % the lines are within the colour margin: the fill crosses them now.
+    let r = click(&mut s, 2, 2);
+    assert_eq!(r["filled"], true);
+    assert!(is_red(rgba(&s, colour, 2, 2)) && is_red(rgba(&s, colour, 20, 12)), "faint lines no longer stop it");
+}
