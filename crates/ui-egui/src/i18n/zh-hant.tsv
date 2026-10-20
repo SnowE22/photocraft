@@ -2966,3 +2966,104 @@ curves	Smooth	平滑
 	No upscale has come back from Topaz Gigapixel AI yet	尚未從 Topaz Gigapixel AI 傳回任何放大結果
 	Detail:	細節：
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新圖層）。使用 Topaz Gigapixel 預設集 › 從上次放大儲存預設集 保留這些設定
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	已儲存 {name}（{seconds} 影片）。
+	Export failed: {error}	轉存失敗：{error}
+	Export cancelled.	已取消轉存。
+	just now	剛剛
+	{n} min ago	{n} 分鐘前
+	{n} h ago	{n} 小時前
+	yesterday	昨天
+	{n} days ago	{n} 天前
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	檔案較小，錄製最快。適合快速草圖與預覽。
+	Sharper video for big screens. Uses about twice the disk space.	適合大螢幕的更清晰影片。佔用約兩倍的磁碟空間。
+	Full-HD video, good for social media. Recommended.	全高清影片，適合社群媒體。建議使用。
+	idle	閒置
+	Record	錄製
+	Paused	已暫停
+	Click to resume recording	按一下以繼續錄製
+	Open a document to record it.	開啟文件以錄製。
+	You'll be asked where to save recordings.	會詢問錄製內容的儲存位置。
+	Export again	再次轉存
+	Export video	轉存影片
+	Show the export results	顯示轉存結果
+	Hide the export results	隱藏轉存結果
+	≈ {seconds} video from {frames}.	≈ 由 {frames}產生 {seconds} 影片。
+	Confirm	確認
+	Cancel export	取消轉存
+	Frames	影格
+	Timer	計時
+	On disk	佔用空間
+	Hide the live preview	隱藏即時預視
+	Show the newest frame	顯示最新的影格
+	No frames yet — just start drawing	還沒有影格——開始繪畫吧
+	No frames yet	還沒有影格
+	No layer selected	未選取圖層
+	{n} layers selected	已選取 {n} 個圖層
+	Not recorded	不錄製
+	A reference layer works like a normal layer, but won't show up in the timelapse.	參考圖層和一般圖層一樣使用，但不會出現在縮時影片中。
+	Back	返回
+	Export settings	轉存設定
+	Make video with	影片產生方式
+	Bars colour	邊條顏色
+	Bars fill the empty space when the canvas size changed during recording.	錄製期間版面尺寸有變化時，邊條會填滿空白。
+	Show finished drawing first	先顯示完成的畫作
+	Hold final image	停留在最終畫面
+	Show work-time counter	顯示工作時長計數
+	Record something in this document to see how long the video will be.	在此文件中錄製一些內容，即可查看影片長度。
+	≈ {seconds} video	≈ {seconds} 影片
+	{n} recorded frames	{n} 個已錄製影格
+	Auto shows every frame once (at least 5 s, at most 1 min).	自動會將每個影格顯示一次（至少 5 秒，最多 1 分鐘）。
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	錄製期間版面尺寸有變化；較早的影格會配合最終尺寸。
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	去除閃爍會略去一閃而過的影格（短暫隱藏的圖層、立即復原的筆畫），因此影片可能會稍短一些。
+	Recordings folder	錄製資料夾
+	Not chosen yet — see Settings	尚未選擇——請看「設定」
+	recorded {when}	錄製於{when}
+	Recorded more since the last export.	上次轉存後又錄製了新內容。
+	Frames folder	影格資料夾
+	Not chosen yet	尚未選擇
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	錄製的影格保存在這裡。影片會儲存到轉存時選擇的位置。
+	Choose folder…	選擇資料夾…
+	Change folder…	變更資料夾…
+	Recording quality	錄製品質
+	Undoing something removes those recorded frames.	復原操作會移除對應的已錄製影格。
+	Reference layers	參考圖層
+	Name tag	名稱標記
+	Layers with this in their name are left out of the timelapse.	名稱中含有此標記的圖層不會出現在縮時影片中。
+	Work timer	工作計時
+	Idle after	閒置判定
+	The timer stops counting after this long without activity.	無操作達到此時長後，計時停止。
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg（快速）
+	Dark grey	深灰色
+	0.5 s	0.5 秒
+	1 s	1 秒
+	1.5 s	1.5 秒
+	2 s	2 秒
+	3 s	3 秒
+	4 s	4 秒
+	5 s	5 秒
+	8 s	8 秒
+	10 s	10 秒
+	1 min	1 分鐘
+	1.5 min	1.5 分鐘
+	2 min	2 分鐘
+	3 min	3 分鐘
+	5 min	5 分鐘
+	45 seconds	45 秒
+
+# Window › Timelapse panel (more)
+	Length	長度
+	Result	結果
+	Run Two Presets…	執行兩個預設集…
+	Run Two Topaz Gigapixel Presets	執行兩個 Topaz Gigapixel 預設集
+	Run	執行
+	Set Shortcut…	設定快速鍵…
+	Action Shortcut	動作快速鍵
+	No shortcut.	無快速鍵。
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} 也是 {commands} 的快速鍵：改為執行此動作。
+	Press the keys that play “{action}”.	按下執行「{action}」的按鍵。
+	Shortcut:	快速鍵：
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	任何按鍵皆可，可搭配 Ctrl、Alt 和 Shift。Backspace 會移除快速鍵。
+	The action no longer exists.	該動作已不存在。

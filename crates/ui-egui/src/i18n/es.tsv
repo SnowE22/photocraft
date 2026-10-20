@@ -4320,3 +4320,98 @@ navigator	Zoom	Zoom
 	No upscale has come back from Topaz Gigapixel AI yet	Todavía no ha vuelto ninguna ampliación de Topaz Gigapixel AI
 	Detail:	Detalle:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: ampliada {scale}× a {w} × {h} px (capa nueva). Conserve estos ajustes con Ajustes preestablecidos de Topaz Gigapixel › Guardar ajuste preestablecido de la última ampliación
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Se guardó {name} (vídeo de {seconds}).
+	Export failed: {error}	La exportación falló: {error}
+	Export cancelled.	Exportación cancelada.
+	just now	ahora mismo
+	{n} min ago	hace {n} min
+	{n} h ago	hace {n} h
+	yesterday	ayer
+	{n} days ago	hace {n} días
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Archivos más pequeños y la captura más rápida. Suficiente para bocetos rápidos y vistas previas.
+	Sharper video for big screens. Uses about twice the disk space.	Vídeo más nítido para pantallas grandes. Ocupa aproximadamente el doble de espacio en disco.
+	Full-HD video, good for social media. Recommended.	Vídeo Full HD, bueno para redes sociales. Recomendado.
+	idle	inactivo
+	Record	Grabar
+	Paused	En pausa
+	Click to resume recording	Haga clic para reanudar la grabación
+	Open a document to record it.	Abra un documento para grabarlo.
+	You'll be asked where to save recordings.	Se le preguntará dónde guardar las grabaciones.
+	Export again	Exportar de nuevo
+	Export video	Exportar vídeo
+	Show the export results	Mostrar los resultados de la exportación
+	Hide the export results	Ocultar los resultados de la exportación
+	≈ {seconds} video from {frames}.	≈ {seconds} de vídeo a partir de {frames}.
+	Cancel export	Cancelar exportación
+	Frames	Fotogramas
+	Timer	Tiempo
+	On disk	En disco
+	Hide the live preview	Ocultar la vista previa en vivo
+	Show the newest frame	Mostrar el fotograma más reciente
+	No frames yet — just start drawing	Aún no hay fotogramas: empiece a dibujar
+	No frames yet	Aún no hay fotogramas
+	No layer selected	Ninguna capa seleccionada
+	{n} layers selected	{n} capas seleccionadas
+	Not recorded	No se graba
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Una capa de referencia funciona como una capa normal, pero no aparece en el timelapse.
+	Export settings	Ajustes de exportación
+	Make video with	Crear el vídeo con
+	Bars colour	Color de las barras
+	Bars fill the empty space when the canvas size changed during recording.	Las barras rellenan el espacio vacío si el tamaño del lienzo cambió durante la grabación.
+	Show finished drawing first	Mostrar primero el dibujo terminado
+	Hold final image	Mantener la imagen final
+	Show work-time counter	Mostrar el contador de tiempo de trabajo
+	Record something in this document to see how long the video will be.	Grabe algo en este documento para ver cuánto durará el vídeo.
+	≈ {seconds} video	≈ {seconds} de vídeo
+	{n} recorded frames	{n} fotogramas grabados
+	Auto shows every frame once (at least 5 s, at most 1 min).	Auto muestra cada fotograma una vez (mínimo 5 s, máximo 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	El tamaño del lienzo cambió durante la grabación; los fotogramas anteriores se ajustan al tamaño final.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Eliminar parpadeo omite los fotogramas que aparecen y desaparecen (una capa oculta un momento, un trazo deshecho al instante), así que el vídeo puede ser algo más corto.
+	Recordings folder	Carpeta de grabaciones
+	Not chosen yet — see Settings	Aún sin elegir: vea Ajustes
+	recorded {when}	grabado {when}
+	Recorded more since the last export.	Se grabó más desde la última exportación.
+	Frames folder	Carpeta de fotogramas
+	Not chosen yet	Aún sin elegir
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Donde se guardan los fotogramas grabados. Los vídeos se guardan donde elija al exportar.
+	Choose folder…	Elegir carpeta…
+	Change folder…	Cambiar carpeta…
+	Recording quality	Calidad de grabación
+	Undoing something removes those recorded frames.	Deshacer algo quita esos fotogramas grabados.
+	Reference layers	Capas de referencia
+	Name tag	Etiqueta del nombre
+	Layers with this in their name are left out of the timelapse.	Las capas que llevan esto en el nombre quedan fuera del timelapse.
+	Work timer	Temporizador de trabajo
+	Idle after	Inactivo tras
+	The timer stops counting after this long without activity.	El temporizador deja de contar tras este tiempo sin actividad.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (rápido)
+	Dark grey	Gris oscuro
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 segundos
+	Run Two Presets…	Ejecutar dos ajustes preestablecidos…
+	Run Two Topaz Gigapixel Presets	Ejecutar dos ajustes preestablecidos de Topaz Gigapixel
+	Run	Ejecutar
+	Set Shortcut…	Definir método abreviado…
+	Action Shortcut	Método abreviado de la acción
+	No shortcut.	Sin método abreviado.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} también es el método abreviado de {commands}: en su lugar ejecutará esta acción.
+	Press the keys that play “{action}”.	Pulse las teclas que ejecutan «{action}».
+	Shortcut:	Método abreviado:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Sirve cualquier tecla, con Ctrl, Alt y Mayús. Retroceso quita el método abreviado.
+	The action no longer exists.	La acción ya no existe.

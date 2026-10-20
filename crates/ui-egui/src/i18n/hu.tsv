@@ -4277,3 +4277,98 @@ cameraRaw	Yellow	Sárga
 	No upscale has come back from Topaz Gigapixel AI yet	A Topaz Gigapixel AI-ból még nem jött vissza felskálázás
 	Detail:	Részletesség:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× nagyítás {w} × {h} képpontra (új réteg). A beállítások megtartása: Topaz Gigapixel-készletek › Készlet mentése az utolsó felskálázásból
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} mentve ({seconds} videó).
+	Export failed: {error}	Az exportálás nem sikerült: {error}
+	Export cancelled.	Exportálás megszakítva.
+	just now	épp most
+	{n} min ago	{n} perce
+	{n} h ago	{n} órája
+	yesterday	tegnap
+	{n} days ago	{n} napja
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Kisebb fájlok és a leggyorsabb rögzítés. Gyors vázlatokhoz és előnézetekhez elég.
+	Sharper video for big screens. Uses about twice the disk space.	Élesebb videó nagy képernyőkre. Körülbelül kétszer annyi lemezterületet foglal.
+	Full-HD video, good for social media. Recommended.	Full HD videó, közösségi médiához jó. Ajánlott.
+	idle	tétlen
+	Record	Felvétel
+	Paused	Szüneteltetve
+	Click to resume recording	Kattintson a felvétel folytatásához
+	Open a document to record it.	Nyisson meg egy dokumentumot a rögzítéséhez.
+	You'll be asked where to save recordings.	Megkérdezzük, hová mentse a felvételeket.
+	Export again	Újbóli exportálás
+	Export video	Videó exportálása
+	Show the export results	Az exportálás eredményének megjelenítése
+	Hide the export results	Az exportálás eredményének elrejtése
+	≈ {seconds} video from {frames}.	≈ {seconds} videó {frames} alapján.
+	Cancel export	Exportálás megszakítása
+	Frames	Képkockák
+	Timer	Idő
+	On disk	Lemezen
+	Hide the live preview	Élő előnézet elrejtése
+	Show the newest frame	A legújabb képkocka megjelenítése
+	No frames yet — just start drawing	Még nincsenek képkockák — kezdjen el rajzolni
+	No frames yet	Még nincsenek képkockák
+	No layer selected	Nincs kijelölt réteg
+	{n} layers selected	{n} réteg kijelölve
+	Not recorded	Nem kerül a felvételbe
+	A reference layer works like a normal layer, but won't show up in the timelapse.	A referenciaréteg normál rétegként működik, de nem jelenik meg a timelapse-ben.
+	Export settings	Exportálási beállítások
+	Make video with	Videó készítése ezzel
+	Bars colour	Sávok színe
+	Bars fill the empty space when the canvas size changed during recording.	A sávok kitöltik az üres helyet, ha a vászon mérete megváltozott a felvétel közben.
+	Show finished drawing first	Először a kész rajz
+	Hold final image	Végső kép kitartása
+	Show work-time counter	Munkaidő-számláló megjelenítése
+	Record something in this document to see how long the video will be.	Rögzítsen valamit ebben a dokumentumban, hogy lássa, milyen hosszú lesz a videó.
+	≈ {seconds} video	≈ {seconds} videó
+	{n} recorded frames	{n} rögzített képkocka
+	Auto shows every frame once (at least 5 s, at most 1 min).	Az Automatikus minden képkockát egyszer mutat (legalább 5 mp, legfeljebb 1 perc).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	A vászon mérete megváltozott a felvétel közben; a korábbi képkockák a végső méretbe illeszkednek.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	A villogás eltávolítása kihagyja a felvillanó képkockákat (egy pillanatra elrejtett réteg, azonnal visszavont vonás), így a videó kicsit rövidebb lehet.
+	Recordings folder	Felvételek mappája
+	Not chosen yet — see Settings	Még nincs kiválasztva — lásd a Beállításokat
+	recorded {when}	rögzítve: {when}
+	Recorded more since the last export.	Az utolsó exportálás óta több készült.
+	Frames folder	Képkockák mappája
+	Not chosen yet	Még nincs kiválasztva
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Itt tárolódnak a rögzített képkockák. A videók oda kerülnek, ahová exportáláskor választja.
+	Choose folder…	Mappa kiválasztása…
+	Change folder…	Mappa módosítása…
+	Recording quality	Felvétel minősége
+	Undoing something removes those recorded frames.	A visszavonás eltávolítja az érintett rögzített képkockákat.
+	Reference layers	Referenciarétegek
+	Name tag	Névcímke
+	Layers with this in their name are left out of the timelapse.	Azok a rétegek, amelyek nevében ez szerepel, kimaradnak a timelapse-ből.
+	Work timer	Munkaidő-mérő
+	Idle after	Tétlen ennyi után
+	The timer stops counting after this long without activity.	A mérő ennyi tétlenség után leáll.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (gyors)
+	Dark grey	Sötétszürke
+	0.5 s	0,5 mp
+	1 s	1 mp
+	1.5 s	1,5 mp
+	2 s	2 mp
+	3 s	3 mp
+	4 s	4 mp
+	5 s	5 mp
+	8 s	8 mp
+	10 s	10 mp
+	1 min	1 perc
+	1.5 min	1,5 perc
+	2 min	2 perc
+	3 min	3 perc
+	5 min	5 perc
+	45 seconds	45 másodperc
+	Run Two Presets…	Két készlet futtatása…
+	Run Two Topaz Gigapixel Presets	Két Topaz Gigapixel-készlet futtatása
+	Run	Futtatás
+	Set Shortcut…	Billentyűparancs beállítása…
+	Action Shortcut	Művelet billentyűparancsa
+	No shortcut.	Nincs billentyűparancs.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	A(z) {shortcut} a(z) {commands} billentyűparancsa is: helyette ezt a műveletet futtatja.
+	Press the keys that play “{action}”.	Nyomja le a(z) „{action}” műveletet futtató billentyűket.
+	Shortcut:	Billentyűparancs:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Bármely billentyű megfelel, Ctrl, Alt és Shift billentyűvel. A Backspace törli a billentyűparancsot.
+	The action no longer exists.	A művelet már nem létezik.

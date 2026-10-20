@@ -4,7 +4,7 @@
 //! `play` / `list` / `get` / `delete` / `move` / `rename`), so the panel, the CLI and MCP share them. This module
 //! keeps only which row is selected and which rows are expanded.
 
-use egui::{Align2, Color32, Rect, Sense, Stroke, pos2, vec2};
+use egui::{Align2, Color32, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -76,6 +76,107 @@ pub(crate) const SHORTCUT_PREFIX: &str = actions_cmds::PLAY_SHORTCUT_PREFIX;
 
 pub(crate) fn shortcut_id(name: &str) -> String {
     format!("{SHORTCUT_PREFIX}{name}")
+}
+
+/// The Set Shortcut dialog's marker (an action's context menu › Set Shortcut…): any key, with any
+/// modifiers, plays the action, beyond Photoshop's F1–F15.
+const KEY_MARK: &str = "__actionShortcut";
+
+/// Open Set Shortcut for action `name`, listening for its key at once.
+pub(crate) fn open_set_shortcut(app: &mut PhotocraftApp, name: &str) -> u64 {
+    let current = app.session.prefs().shortcuts.get(&shortcut_id(name)).cloned().unwrap_or_default();
+    let mut f = serde_json::Map::new();
+    f.insert(KEY_MARK.into(), json!(true));
+    f.insert("__label".into(), json!("Action Shortcut"));
+    f.insert("action".into(), json!(name));
+    f.insert("key".into(), json!(current));
+    f.insert("message".into(), json!(""));
+    app.ui.open_dialog(crate::state::DialogKind::Command, f)
+}
+
+pub(crate) fn owns_set_shortcut(f: &serde_json::Map<String, Value>) -> bool {
+    f.contains_key(KEY_MARK)
+}
+
+/// The commands that already answer to `key` (their menu labels), other than action `name`.
+fn key_holders(app: &PhotocraftApp, key: &str, name: &str) -> Vec<String> {
+    let Some(sc) = crate::shortcuts::parse(key) else { return Vec::new() };
+    let own = shortcut_id(name);
+    let items = crate::menus::menu_items(app);
+    crate::shortcut_dispatch::bindings(app)
+        .into_iter()
+        .filter(|(id, b)| *b == sc && *id != own)
+        .map(|(id, _)| match id.strip_prefix(SHORTCUT_PREFIX) {
+            Some(action) => action.to_string(),
+            None => items.iter().find(|i| i.id == id).map_or(id, |i| tl!(i.label.as_str()).trim_end_matches('…').to_string()),
+        })
+        .collect()
+}
+
+/// The dialog: the key now set and the next key combination pressed, which replaces it. Esc
+/// keeps it, Backspace or Delete clears it.
+pub(crate) fn set_shortcut_body(app: &PhotocraftApp, ui: &mut Ui, f: &mut serde_json::Map<String, Value>) {
+    let name = f.get("action").and_then(Value::as_str).unwrap_or_default().to_string();
+    let pressed = ui.input(|i| {
+        i.events.iter().find_map(|e| match e {
+            egui::Event::Key { key, pressed: true, modifiers, .. } if !crate::prefs_ui::is_modifier_key(*key) => Some((*key, *modifiers)),
+            _ => None,
+        })
+    });
+    if let Some((key, m)) = pressed {
+        ui.input_mut(|i| {
+            i.consume_key(m, key);
+        });
+        let message = if matches!(key, egui::Key::Backspace | egui::Key::Delete) && m.is_none() {
+            f.insert("key".into(), json!(""));
+            tl!("No shortcut.").to_string()
+        } else if key == egui::Key::Escape || key == egui::Key::Enter {
+            String::new()
+        } else {
+            match crate::prefs_ui::shortcut_text(key, m) {
+                Some(sc) if crate::prefs_ui::reserved_shortcut(&sc) => {
+                    crate::i18n::fmt(tl!("{shortcut} is reserved by the system and can't be assigned."), &[("shortcut", &crate::shortcuts::pretty(&sc))])
+                }
+                Some(sc) => {
+                    let holders = key_holders(app, &sc, &name);
+                    f.insert("key".into(), json!(sc));
+                    if holders.is_empty() {
+                        String::new()
+                    } else {
+                        crate::i18n::fmt(
+                            tl!("{shortcut} is also the shortcut of {commands}: it will play this action instead."),
+                            &[("shortcut", &crate::shortcuts::pretty(&sc)), ("commands", &holders.join(", "))],
+                        )
+                    }
+                }
+                None => String::new(),
+            }
+        };
+        f.insert("message".into(), json!(message));
+    }
+    let t = Tokens::get(ui.ctx());
+    ui.label(crate::i18n::fmt(tl!("Press the keys that play “{action}”."), &[("action", &name)]));
+    ui.add_space(8.0);
+    let key = f.get("key").and_then(Value::as_str).unwrap_or_default();
+    let shown = if key.is_empty() { tl!("None").to_string() } else { crate::shortcuts::pretty(key) };
+    ui.horizontal(|ui| {
+        ui.label(tl!("Shortcut:"));
+        ui.label(egui::RichText::new(shown).strong());
+    });
+    ui.add_space(4.0);
+    let message = f.get("message").and_then(Value::as_str).unwrap_or_default();
+    let hint = if message.is_empty() { tl!("Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.") } else { message };
+    ui.label(egui::RichText::new(hint).color(t.text_dim));
+}
+
+/// OK: the action plays on the key now (none when cleared).
+pub(crate) fn set_shortcut_confirm(app: &mut PhotocraftApp, f: &serde_json::Map<String, Value>) -> Result<Value, String> {
+    let name = f.get("action").and_then(Value::as_str).ok_or("no action")?.to_string();
+    if !app.session.actions.list.iter().any(|a| a.name == name) {
+        return Err(tl!("The action no longer exists.").into());
+    }
+    let key = f.get("key").and_then(Value::as_str).unwrap_or_default().to_string();
+    assign_shortcut(app, &name, &key)
 }
 
 pub(crate) fn assign_shortcut(app: &mut PhotocraftApp, name: &str, shortcut: &str) -> Result<Value, String> {
@@ -697,6 +798,8 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let mut save_set: Option<String> = None;
     let max_h = (ui.available_height() - 38.0).max(0.0);
     let mut play_idx = None;
+    // Set Shortcut… in an action's menu: its dialog opens once the list is drawn.
+    let mut open_key_for: Option<String> = None;
     let mut moved = None;
     let recording_row = recording.and_then(|(_, i)| rows.get(i).map(|r| (i, r.steps.len())));
     let reveal = recording_row.filter(|row| app.ui.actions.reveal_recording != Some(*row));
@@ -888,6 +991,10 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         ui.close();
                     }
                 }
+                if ui.button(tl!("Set Shortcut…")).clicked() {
+                    open_key_for = Some(name.clone());
+                    ui.close();
+                }
                 ui.separator();
                 ui.menu_button(tl!("Color"), |ui| {
                     for (id, label) in [
@@ -1034,6 +1141,9 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             app.ui.actions.button_mode = !app.ui.actions.button_mode;
         }
     });
+    if let Some(name) = open_key_for {
+        open_set_shortcut(app, &name);
+    }
     if let Some(i) = play_idx {
         match app.run("actions.play", json!({"action": i})) {
             Ok(v) => report_play(app, &v),
@@ -1049,6 +1159,61 @@ pub fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An action's Set Shortcut… takes any key with any modifiers (beyond Photoshop's F-keys), and
+    /// that key plays it; system keys are refused and Backspace clears it.
+    #[test]
+    fn any_key_combination_plays_an_action() {
+        use egui::{Event, Key, Modifiers};
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1280.0, 800.0)).with_max_steps(64).build_eframe(|cc| {
+            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default())
+        });
+        h.state_mut().run("file.new", json!({"width": 16, "height": 16})).unwrap();
+        h.state_mut().run("actions.record", json!({"name": "New Layer"})).unwrap();
+        h.state_mut().run("layer.new.layer", json!({})).unwrap();
+        h.state_mut().run("actions.stop", json!({})).unwrap();
+        h.run_steps(2);
+        let layers = |h: &egui_kittest::Harness<'_, PhotocraftApp>| h.state().session.active().unwrap().doc.layers.len();
+        let press = |h: &mut egui_kittest::Harness<'static, PhotocraftApp>, key: Key, modifiers: Modifiers| {
+            for pressed in [true, false] {
+                h.event(Event::Key { key, physical_key: None, pressed, repeat: false, modifiers });
+            }
+            h.run_steps(3);
+        };
+        let dialog = |h: &egui_kittest::Harness<'_, PhotocraftApp>| h.state().ui.dialogs.iter().find(|d| owns_set_shortcut(&d.fields)).map(|d| (d.id, d.fields.clone()));
+        let id = open_set_shortcut(h.state_mut(), "New Layer");
+        h.run_steps(2);
+        // Alt+F4 belongs to the system.
+        press(&mut h, Key::F4, Modifiers::ALT);
+        let (_, f) = dialog(&h).unwrap();
+        assert_eq!(f["key"], json!(""));
+        assert!(f["message"].as_str().unwrap().contains("reserved"), "{f:?}");
+        // Ctrl+Alt+K.
+        let ctrl_alt = Modifiers { alt: true, ctrl: true, command: true, ..Modifiers::NONE };
+        press(&mut h, Key::K, ctrl_alt);
+        let (_, f) = dialog(&h).unwrap();
+        let key = f["key"].as_str().unwrap().to_string();
+        assert!(key.contains('K') && key.contains("Alt"), "{key}");
+        set_shortcut_confirm(h.state_mut(), &f).unwrap();
+        h.state_mut().ui.close_dialog(id);
+        assert_eq!(h.state().session.prefs().shortcuts.get(&shortcut_id("New Layer")), Some(&key));
+        let before = layers(&h);
+        press(&mut h, Key::K, ctrl_alt);
+        assert_eq!(layers(&h), before + 1, "Ctrl+Alt+K played the action");
+        // A plain letter works too; Backspace clears the shortcut.
+        let id = open_set_shortcut(h.state_mut(), "New Layer");
+        h.run_steps(2);
+        press(&mut h, Key::Backspace, Modifiers::NONE);
+        let (_, f) = dialog(&h).unwrap();
+        assert_eq!(f["key"], json!(""));
+        set_shortcut_confirm(h.state_mut(), &f).unwrap();
+        h.state_mut().ui.close_dialog(id);
+        assert!(h.state().session.prefs().shortcuts.get(&shortcut_id("New Layer")).is_none_or(String::is_empty));
+        let mut gone = f.clone();
+        gone.insert("action".into(), json!("Missing"));
+        assert!(set_shortcut_confirm(h.state_mut(), &gone).is_err());
+    }
 
     /// Import Photoshop Actions loads every set of Photoshop's Actions palette at once, and says
     /// so; without a Photoshop on the computer it says that instead.

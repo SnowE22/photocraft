@@ -4118,3 +4118,98 @@ curves	Smooth	Vloeiend maken
 	No upscale has come back from Topaz Gigapixel AI yet	Er is nog geen opschaling teruggekomen uit Topaz Gigapixel AI
 	Detail:	Detail:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× vergroot tot {w} × {h} px (nieuwe laag). Bewaar deze instellingen met Topaz Gigapixel-voorinstellingen › Voorinstelling opslaan van laatste opschaling
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} opgeslagen (video van {seconds}).
+	Export failed: {error}	Exporteren mislukt: {error}
+	Export cancelled.	Exporteren geannuleerd.
+	just now	zojuist
+	{n} min ago	{n} min geleden
+	{n} h ago	{n} uur geleden
+	yesterday	gisteren
+	{n} days ago	{n} dagen geleden
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Kleinere bestanden en het snelste vastleggen. Prima voor snelle schetsen en voorvertoningen.
+	Sharper video for big screens. Uses about twice the disk space.	Scherpere video voor grote schermen. Gebruikt ongeveer twee keer zoveel schijfruimte.
+	Full-HD video, good for social media. Recommended.	Full-HD-video, goed voor sociale media. Aanbevolen.
+	idle	inactief
+	Record	Opnemen
+	Paused	Gepauzeerd
+	Click to resume recording	Klik om de opname te hervatten
+	Open a document to record it.	Open een document om het op te nemen.
+	You'll be asked where to save recordings.	Je wordt gevraagd waar opnamen worden opgeslagen.
+	Export again	Opnieuw exporteren
+	Export video	Video exporteren
+	Show the export results	Exportresultaten tonen
+	Hide the export results	Exportresultaten verbergen
+	≈ {seconds} video from {frames}.	≈ {seconds} video uit {frames}.
+	Cancel export	Exporteren annuleren
+	Frames	Frames
+	Timer	Tijd
+	On disk	Op schijf
+	Hide the live preview	Live-voorvertoning verbergen
+	Show the newest frame	Nieuwste frame tonen
+	No frames yet — just start drawing	Nog geen frames — begin gewoon te tekenen
+	No frames yet	Nog geen frames
+	No layer selected	Geen laag geselecteerd
+	{n} layers selected	{n} lagen geselecteerd
+	Not recorded	Niet opgenomen
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Een referentielaag werkt als een gewone laag, maar verschijnt niet in de timelapse.
+	Export settings	Exportinstellingen
+	Make video with	Video maken met
+	Bars colour	Kleur van de balken
+	Bars fill the empty space when the canvas size changed during recording.	Balken vullen de lege ruimte als het canvasformaat tijdens de opname is veranderd.
+	Show finished drawing first	Eerst de afgemaakte tekening
+	Hold final image	Eindbeeld vasthouden
+	Show work-time counter	Werktijdteller tonen
+	Record something in this document to see how long the video will be.	Neem iets op in dit document om te zien hoe lang de video wordt.
+	≈ {seconds} video	≈ {seconds} video
+	{n} recorded frames	{n} opgenomen frames
+	Auto shows every frame once (at least 5 s, at most 1 min).	Auto toont elk frame één keer (minimaal 5 s, maximaal 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Het canvasformaat is tijdens de opname veranderd; eerdere frames worden in het uiteindelijke formaat gepast.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Flikkering verwijderen laat frames weg die even opflitsen (een laag die even verborgen was, een streek die meteen ongedaan is gemaakt), dus de video kan iets korter worden.
+	Recordings folder	Map met opnamen
+	Not chosen yet — see Settings	Nog niet gekozen — zie Instellingen
+	recorded {when}	opgenomen {when}
+	Recorded more since the last export.	Meer opgenomen sinds de laatste export.
+	Frames folder	Map met frames
+	Not chosen yet	Nog niet gekozen
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Hier worden de opgenomen frames bewaard. Video's worden opgeslagen waar je kiest bij het exporteren.
+	Choose folder…	Map kiezen…
+	Change folder…	Map wijzigen…
+	Recording quality	Opnamekwaliteit
+	Undoing something removes those recorded frames.	Iets ongedaan maken verwijdert die opgenomen frames.
+	Reference layers	Referentielagen
+	Name tag	Naamlabel
+	Layers with this in their name are left out of the timelapse.	Lagen met dit in hun naam blijven buiten de timelapse.
+	Work timer	Werktimer
+	Idle after	Inactief na
+	The timer stops counting after this long without activity.	De timer stopt na zo lang zonder activiteit.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (snel)
+	Dark grey	Donkergrijs
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 seconden
+	Run Two Presets…	Twee voorinstellingen uitvoeren…
+	Run Two Topaz Gigapixel Presets	Twee Topaz Gigapixel-voorinstellingen uitvoeren
+	Run	Uitvoeren
+	Set Shortcut…	Sneltoets instellen…
+	Action Shortcut	Sneltoets van handeling
+	No shortcut.	Geen sneltoets.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} is ook de sneltoets van {commands}: in plaats daarvan wordt deze handeling uitgevoerd.
+	Press the keys that play “{action}”.	Druk op de toetsen die ‘{action}’ uitvoeren.
+	Shortcut:	Sneltoets:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Elke toets werkt, met Ctrl, Alt en Shift. Backspace verwijdert de sneltoets.
+	The action no longer exists.	De handeling bestaat niet meer.

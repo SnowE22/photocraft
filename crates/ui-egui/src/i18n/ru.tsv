@@ -3330,3 +3330,100 @@ curves	Smooth	Сгладить
 	No upscale has come back from Topaz Gigapixel AI yet	Из Topaz Gigapixel AI еще не вернулось ни одного увеличения
 	Detail:	Детализация:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: увеличено в {scale}× до {w} × {h} пикс. (новый слой). Сохраните эти параметры: Наборы Topaz Gigapixel › Сохранить набор из последнего увеличения
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} сохранён (видео {seconds}).
+	Export failed: {error}	Не удалось экспортировать: {error}
+	Export cancelled.	Экспорт отменён.
+	just now	только что
+	{n} min ago	{n} мин назад
+	{n} h ago	{n} ч назад
+	yesterday	вчера
+	{n} days ago	{n} дн. назад
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Файлы меньше, запись быстрее всего. Подходит для быстрых набросков и предпросмотра.
+	Sharper video for big screens. Uses about twice the disk space.	Более чёткое видео для больших экранов. Занимает примерно вдвое больше места на диске.
+	Full-HD video, good for social media. Recommended.	Видео Full HD, подходит для соцсетей. Рекомендуется.
+	idle	простой
+	Record	Запись
+	Paused	Пауза
+	Click to resume recording	Нажмите, чтобы продолжить запись
+	Open a document to record it.	Откройте документ, чтобы записать его.
+	You'll be asked where to save recordings.	Вас спросят, куда сохранять записи.
+	Export again	Экспортировать снова
+	Export video	Экспорт видео
+	Show the export results	Показать результаты экспорта
+	Hide the export results	Скрыть результаты экспорта
+	≈ {seconds} video from {frames}.	≈ {seconds} видео из {frames}.
+	Confirm	Подтвердить
+	Cancel export	Отменить экспорт
+	Frames	Кадры
+	Timer	Время
+	On disk	На диске
+	Hide the live preview	Скрыть живой просмотр
+	Show the newest frame	Показать последний кадр
+	No frames yet — just start drawing	Кадров пока нет — просто начните рисовать
+	No frames yet	Кадров пока нет
+	No layer selected	Слой не выбран
+	{n} layers selected	Выбрано слоёв: {n}
+	Not recorded	Не записывается
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Опорный слой работает как обычный, но не попадает в таймлапс.
+	Back	Назад
+	Export settings	Параметры экспорта
+	Make video with	Создавать видео с помощью
+	Bars colour	Цвет полей
+	Bars fill the empty space when the canvas size changed during recording.	Поля заполняют пустое место, если размер холста менялся во время записи.
+	Show finished drawing first	Сначала готовый рисунок
+	Hold final image	Задержать итоговое изображение
+	Show work-time counter	Показывать счётчик рабочего времени
+	Record something in this document to see how long the video will be.	Запишите что-нибудь в этом документе, чтобы увидеть длину видео.
+	≈ {seconds} video	≈ {seconds} видео
+	{n} recorded frames	Записано кадров: {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	«Авто» показывает каждый кадр один раз (не меньше 5 с, не больше 1 мин).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Размер холста менялся во время записи; ранние кадры вписываются в итоговый размер.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Удаление мерцания пропускает кадры, которые лишь мелькают (ненадолго скрытый слой, сразу отменённый мазок), поэтому видео может стать немного короче.
+	Recordings folder	Папка записей
+	Not chosen yet — see Settings	Ещё не выбрана — см. «Настройки»
+	recorded {when}	записано {when}
+	Recorded more since the last export.	После последнего экспорта записано ещё.
+	Frames folder	Папка кадров
+	Not chosen yet	Ещё не выбрана
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Здесь хранятся записанные кадры. Видео сохраняется туда, куда вы укажете при экспорте.
+	Choose folder…	Выбрать папку…
+	Change folder…	Изменить папку…
+	Recording quality	Качество записи
+	Undoing something removes those recorded frames.	Отмена действия удаляет записанные кадры.
+	Reference layers	Опорные слои
+	Name tag	Метка в имени
+	Layers with this in their name are left out of the timelapse.	Слои с этим в имени не попадают в таймлапс.
+	Work timer	Таймер работы
+	Idle after	Простой после
+	The timer stops counting after this long without activity.	Таймер перестаёт считать после такого времени без действий.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (быстро)
+	Dark grey	Тёмно-серый
+	0.5 s	0,5 с
+	1 s	1 с
+	1.5 s	1,5 с
+	2 s	2 с
+	3 s	3 с
+	4 s	4 с
+	5 s	5 с
+	8 s	8 с
+	10 s	10 с
+	1 min	1 мин
+	1.5 min	1,5 мин
+	2 min	2 мин
+	3 min	3 мин
+	5 min	5 мин
+	45 seconds	45 секунд
+	Run Two Presets…	Запустить два набора…
+	Run Two Topaz Gigapixel Presets	Запустить два набора Topaz Gigapixel
+	Run	Запустить
+	Set Shortcut…	Задать сочетание клавиш…
+	Action Shortcut	Сочетание клавиш операции
+	No shortcut.	Без сочетания клавиш.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} также назначено для {commands}: вместо этого будет запускаться эта операция.
+	Press the keys that play “{action}”.	Нажмите клавиши, запускающие «{action}».
+	Shortcut:	Сочетание клавиш:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Подойдет любая клавиша, с Ctrl, Alt и Shift. Backspace удаляет сочетание.
+	The action no longer exists.	Операция больше не существует.

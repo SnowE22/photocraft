@@ -329,6 +329,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 DialogKind::Command if crate::duplicate_layer_ui::owns(&fields) => crate::duplicate_layer_ui::body(app, ui, &mut fields),
                 DialogKind::Command if crate::stack_dialog::owns(&fields) => crate::stack_dialog::body(app, ui, &mut fields, d.id),
                 DialogKind::Command if crate::gigapixel_ui::owns(&fields) => crate::gigapixel_ui::body(app, ui, &mut fields),
+                DialogKind::Command if crate::actions::owns_set_shortcut(&fields) => crate::actions::set_shortcut_body(app, ui, &mut fields),
                 DialogKind::Command if crate::tool_reset::owns(&fields) => crate::tool_reset::body(ui),
                 DialogKind::Command if crate::crop_presets::owns(&fields) => crate::crop_presets::body(app, ui, &mut fields),
                 DialogKind::Command if crate::variables_ui::owns(&fields) => crate::variables_ui::body(app, ui, &mut fields),
@@ -411,7 +412,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                         } else if d.fields.contains_key("__export") {
                             tl!("Export")
                         } else if crate::gigapixel_ui::owns(&d.fields) {
-                            tl!("Save")
+                            crate::gigapixel_ui::ok_label(&d.fields)
                         } else {
                             crate::file_ui::ok_label(&d.fields).unwrap_or(tl!("OK"))
                         };
@@ -631,6 +632,7 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
         DialogKind::Command if crate::duplicate_layer_ui::owns(&d.fields) => crate::duplicate_layer_ui::confirm(app, &d.fields),
         DialogKind::Command if crate::stack_dialog::owns(&d.fields) => crate::stack_dialog::confirm(app, &d.fields),
         DialogKind::Command if crate::gigapixel_ui::owns(&d.fields) => crate::gigapixel_ui::confirm(app, &d.fields),
+        DialogKind::Command if crate::actions::owns_set_shortcut(&d.fields) => crate::actions::set_shortcut_confirm(app, &d.fields),
         DialogKind::Command if crate::tool_reset::owns(&d.fields) => crate::tool_reset::confirm(app),
         DialogKind::Command if crate::crop_presets::owns(&d.fields) => crate::crop_presets::confirm(app, &d.fields),
         DialogKind::Command if crate::variables_ui::owns(&d.fields) => crate::variables_ui::confirm(app, &d.fields),

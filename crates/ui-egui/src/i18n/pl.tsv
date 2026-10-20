@@ -3958,3 +3958,100 @@ curves	Smooth	Wygładź
 	No upscale has come back from Topaz Gigapixel AI yet	Z Topaz Gigapixel AI nie wróciło jeszcze żadne powiększenie
 	Detail:	Szczegóły:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: powiększono {scale}× do {w} × {h} px (nowa warstwa). Zachowaj te ustawienia: Ustawienia Topaz Gigapixel › Zapisz ustawienie z ostatniego powiększenia
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Zapisano {name} (wideo {seconds}).
+	Export failed: {error}	Eksport nie powiódł się: {error}
+	Export cancelled.	Anulowano eksport.
+	just now	przed chwilą
+	{n} min ago	{n} min temu
+	{n} h ago	{n} godz. temu
+	yesterday	wczoraj
+	{n} days ago	{n} dni temu
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Mniejsze pliki i najszybsze przechwytywanie. Wystarczy do szybkich szkiców i podglądów.
+	Sharper video for big screens. Uses about twice the disk space.	Ostrzejsze wideo na duże ekrany. Zajmuje około dwa razy więcej miejsca na dysku.
+	Full-HD video, good for social media. Recommended.	Wideo Full HD, dobre do mediów społecznościowych. Zalecane.
+	idle	bezczynny
+	Record	Nagrywanie
+	Paused	Wstrzymano
+	Click to resume recording	Kliknij, aby wznowić nagrywanie
+	Open a document to record it.	Otwórz dokument, aby go nagrywać.
+	You'll be asked where to save recordings.	Zostaniesz zapytany, gdzie zapisywać nagrania.
+	Export again	Eksportuj ponownie
+	Export video	Eksportuj wideo
+	Show the export results	Pokaż wyniki eksportu
+	Hide the export results	Ukryj wyniki eksportu
+	≈ {seconds} video from {frames}.	≈ {seconds} wideo z {frames}.
+	Confirm	Potwierdź
+	Cancel export	Anuluj eksport
+	Frames	Klatki
+	Timer	Czas
+	On disk	Na dysku
+	Hide the live preview	Ukryj podgląd na żywo
+	Show the newest frame	Pokaż najnowszą klatkę
+	No frames yet — just start drawing	Jeszcze brak klatek — po prostu zacznij rysować
+	No frames yet	Jeszcze brak klatek
+	No layer selected	Nie zaznaczono warstwy
+	{n} layers selected	Zaznaczone warstwy: {n}
+	Not recorded	Nienagrywana
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Warstwa referencyjna działa jak zwykła warstwa, ale nie pojawia się w timelapse.
+	Back	Wstecz
+	Export settings	Ustawienia eksportu
+	Make video with	Utwórz wideo za pomocą
+	Bars colour	Kolor pasów
+	Bars fill the empty space when the canvas size changed during recording.	Pasy wypełniają puste miejsce, gdy rozmiar obszaru roboczego zmienił się podczas nagrywania.
+	Show finished drawing first	Najpierw gotowy rysunek
+	Hold final image	Przytrzymaj obraz końcowy
+	Show work-time counter	Pokaż licznik czasu pracy
+	Record something in this document to see how long the video will be.	Nagraj coś w tym dokumencie, aby zobaczyć długość wideo.
+	≈ {seconds} video	≈ {seconds} wideo
+	{n} recorded frames	Nagrane klatki: {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	Auto pokazuje każdą klatkę raz (co najmniej 5 s, najwyżej 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Rozmiar obszaru roboczego zmienił się podczas nagrywania; wcześniejsze klatki są dopasowywane do rozmiaru końcowego.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Usuwanie migotania pomija klatki, które tylko mignęły (warstwę ukrytą na chwilę, pociągnięcie od razu cofnięte), więc wideo może być nieco krótsze.
+	Recordings folder	Folder nagrań
+	Not chosen yet — see Settings	Jeszcze nie wybrano — zobacz Ustawienia
+	recorded {when}	nagrano {when}
+	Recorded more since the last export.	Nagrano więcej od ostatniego eksportu.
+	Frames folder	Folder klatek
+	Not chosen yet	Jeszcze nie wybrano
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Miejsce przechowywania nagranych klatek. Wideo zapisuje się tam, gdzie wybierzesz podczas eksportu.
+	Choose folder…	Wybierz folder…
+	Change folder…	Zmień folder…
+	Recording quality	Jakość nagrywania
+	Undoing something removes those recorded frames.	Cofnięcie czynności usuwa nagrane klatki.
+	Reference layers	Warstwy referencyjne
+	Name tag	Znacznik w nazwie
+	Layers with this in their name are left out of the timelapse.	Warstwy z tym w nazwie są pomijane w timelapse.
+	Work timer	Licznik czasu pracy
+	Idle after	Bezczynność po
+	The timer stops counting after this long without activity.	Licznik przestaje liczyć po tak długim braku aktywności.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (szybko)
+	Dark grey	Ciemnoszary
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 sekund
+	Run Two Presets…	Uruchom dwa ustawienia…
+	Run Two Topaz Gigapixel Presets	Uruchom dwa ustawienia Topaz Gigapixel
+	Run	Uruchom
+	Set Shortcut…	Ustaw skrót…
+	Action Shortcut	Skrót operacji
+	No shortcut.	Brak skrótu.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} jest też skrótem polecenia {commands}: zamiast niego uruchomi tę operację.
+	Press the keys that play “{action}”.	Naciśnij klawisze, które uruchomią „{action}”.
+	Shortcut:	Skrót:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Działa każdy klawisz, z Ctrl, Alt i Shift. Backspace usuwa skrót.
+	The action no longer exists.	Operacja już nie istnieje.

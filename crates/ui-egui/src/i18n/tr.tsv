@@ -4088,3 +4088,98 @@ cameraData	Lens	Lens
 	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI'dan henüz bir büyütme dönmedi
 	Detail:	Ayrıntı:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× büyütülerek {w} × {h} px oldu (yeni katman). Bu ayarları Topaz Gigapixel Hazır Ayarları › Son Büyütmeden Hazır Ayar Kaydet ile saklayın
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} kaydedildi ({seconds} video).
+	Export failed: {error}	Dışa aktarma başarısız: {error}
+	Export cancelled.	Dışa aktarma iptal edildi.
+	just now	az önce
+	{n} min ago	{n} dk önce
+	{n} h ago	{n} sa önce
+	yesterday	dün
+	{n} days ago	{n} gün önce
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Daha küçük dosyalar ve en hızlı yakalama. Hızlı eskizler ve önizlemeler için yeterli.
+	Sharper video for big screens. Uses about twice the disk space.	Büyük ekranlar için daha keskin video. Yaklaşık iki kat disk alanı kullanır.
+	Full-HD video, good for social media. Recommended.	Full HD video, sosyal medya için uygun. Önerilir.
+	idle	boşta
+	Record	Kayıt
+	Paused	Duraklatıldı
+	Click to resume recording	Kayda devam etmek için tıklayın
+	Open a document to record it.	Kaydetmek için bir belge açın.
+	You'll be asked where to save recordings.	Kayıtların nereye kaydedileceği sorulacak.
+	Export again	Yeniden dışa aktar
+	Export video	Videoyu dışa aktar
+	Show the export results	Dışa aktarma sonuçlarını göster
+	Hide the export results	Dışa aktarma sonuçlarını gizle
+	≈ {seconds} video from {frames}.	≈ {frames} ile {seconds} video.
+	Cancel export	Dışa aktarmayı iptal et
+	Frames	Kareler
+	Timer	Süre
+	On disk	Diskte
+	Hide the live preview	Canlı önizlemeyi gizle
+	Show the newest frame	En yeni kareyi göster
+	No frames yet — just start drawing	Henüz kare yok — çizmeye başlayın
+	No frames yet	Henüz kare yok
+	No layer selected	Katman seçilmedi
+	{n} layers selected	{n} katman seçildi
+	Not recorded	Kaydedilmiyor
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Referans katmanı normal bir katman gibi çalışır ama timelapse'te görünmez.
+	Export settings	Dışa aktarma ayarları
+	Make video with	Videoyu şununla oluştur
+	Bars colour	Şerit rengi
+	Bars fill the empty space when the canvas size changed during recording.	Kayıt sırasında tuval boyutu değiştiyse şeritler boş alanı doldurur.
+	Show finished drawing first	Önce bitmiş çizimi göster
+	Hold final image	Son görüntüyü beklet
+	Show work-time counter	Çalışma süresi sayacını göster
+	Record something in this document to see how long the video will be.	Videonun ne kadar süreceğini görmek için bu belgede bir şey kaydedin.
+	≈ {seconds} video	≈ {seconds} video
+	{n} recorded frames	{n} kaydedilmiş kare
+	Auto shows every frame once (at least 5 s, at most 1 min).	Otomatik her kareyi bir kez gösterir (en az 5 sn, en fazla 1 dk).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Kayıt sırasında tuval boyutu değişti; önceki kareler son boyuta sığdırılır.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Titremeyi kaldır, bir anlığına görünüp kaybolan kareleri atlar (kısa süre gizlenen bir katman, hemen geri alınan bir fırça darbesi); bu yüzden video biraz kısalabilir.
+	Recordings folder	Kayıt klasörü
+	Not chosen yet — see Settings	Henüz seçilmedi — Ayarlar'a bakın
+	recorded {when}	kaydedildi: {when}
+	Recorded more since the last export.	Son dışa aktarımdan bu yana daha fazla kaydedildi.
+	Frames folder	Kare klasörü
+	Not chosen yet	Henüz seçilmedi
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Kaydedilen karelerin tutulduğu yer. Videolar dışa aktarırken seçtiğiniz yere kaydedilir.
+	Choose folder…	Klasör seç…
+	Change folder…	Klasörü değiştir…
+	Recording quality	Kayıt kalitesi
+	Undoing something removes those recorded frames.	Bir şeyi geri almak o kaydedilmiş kareleri kaldırır.
+	Reference layers	Referans katmanları
+	Name tag	Ad etiketi
+	Layers with this in their name are left out of the timelapse.	Adında bu bulunan katmanlar timelapse'e alınmaz.
+	Work timer	Çalışma sayacı
+	Idle after	Boşta sayılma
+	The timer stops counting after this long without activity.	Sayaç bu kadar süre etkinlik olmazsa durur.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (hızlı)
+	Dark grey	Koyu gri
+	0.5 s	0,5 sn
+	1 s	1 sn
+	1.5 s	1,5 sn
+	2 s	2 sn
+	3 s	3 sn
+	4 s	4 sn
+	5 s	5 sn
+	8 s	8 sn
+	10 s	10 sn
+	1 min	1 dk
+	1.5 min	1,5 dk
+	2 min	2 dk
+	3 min	3 dk
+	5 min	5 dk
+	45 seconds	45 saniye
+	Run Two Presets…	İki Hazır Ayarı Çalıştır…
+	Run Two Topaz Gigapixel Presets	İki Topaz Gigapixel Hazır Ayarını Çalıştır
+	Run	Çalıştır
+	Set Shortcut…	Kısayol Ayarla…
+	Action Shortcut	Eylem Kısayolu
+	No shortcut.	Kısayol yok.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} aynı zamanda {commands} kısayolu: bunun yerine bu eylemi çalıştıracak.
+	Press the keys that play “{action}”.	“{action}” eylemini çalıştıracak tuşlara basın.
+	Shortcut:	Kısayol:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Ctrl, Alt ve Shift ile her tuş kullanılabilir. Backspace kısayolu kaldırır.
+	The action no longer exists.	Eylem artık yok.

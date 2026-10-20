@@ -4058,3 +4058,98 @@ curves	Smooth	Εξομάλυνση
 	No upscale has come back from Topaz Gigapixel AI yet	Δεν έχει επιστρέψει ακόμη καμία μεγέθυνση από το Topaz Gigapixel AI
 	Detail:	Λεπτομέρεια:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: μεγέθυνση {scale}× σε {w} × {h} px (νέο επίπεδο). Κρατήστε αυτές τις ρυθμίσεις με Προρυθμίσεις Topaz Gigapixel › Αποθήκευση προρύθμισης από την τελευταία μεγέθυνση
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Αποθηκεύτηκε το {name} (βίντεο {seconds}).
+	Export failed: {error}	Η εξαγωγή απέτυχε: {error}
+	Export cancelled.	Η εξαγωγή ακυρώθηκε.
+	just now	μόλις τώρα
+	{n} min ago	πριν από {n} λεπ.
+	{n} h ago	πριν από {n} ώρ.
+	yesterday	χθες
+	{n} days ago	πριν από {n} ημέρες
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Μικρότερα αρχεία και η πιο γρήγορη καταγραφή. Αρκεί για γρήγορα σκίτσα και προεπισκοπήσεις.
+	Sharper video for big screens. Uses about twice the disk space.	Πιο καθαρό βίντεο για μεγάλες οθόνες. Χρησιμοποιεί περίπου διπλάσιο χώρο στον δίσκο.
+	Full-HD video, good for social media. Recommended.	Βίντεο Full HD, κατάλληλο για τα μέσα κοινωνικής δικτύωσης. Συνιστάται.
+	idle	αδράνεια
+	Record	Εγγραφή
+	Paused	Σε παύση
+	Click to resume recording	Κάντε κλικ για συνέχιση της εγγραφής
+	Open a document to record it.	Ανοίξτε ένα έγγραφο για να το καταγράψετε.
+	You'll be asked where to save recordings.	Θα ερωτηθείτε πού να αποθηκεύονται οι εγγραφές.
+	Export again	Εξαγωγή ξανά
+	Export video	Εξαγωγή βίντεο
+	Show the export results	Εμφάνιση των αποτελεσμάτων εξαγωγής
+	Hide the export results	Απόκρυψη των αποτελεσμάτων εξαγωγής
+	≈ {seconds} video from {frames}.	≈ {seconds} βίντεο από {frames}.
+	Cancel export	Ακύρωση εξαγωγής
+	Frames	Καρέ
+	Timer	Χρόνος
+	On disk	Στον δίσκο
+	Hide the live preview	Απόκρυψη της ζωντανής προεπισκόπησης
+	Show the newest frame	Εμφάνιση του πιο πρόσφατου καρέ
+	No frames yet — just start drawing	Δεν υπάρχουν καρέ ακόμη — απλώς ξεκινήστε να σχεδιάζετε
+	No frames yet	Δεν υπάρχουν καρέ ακόμη
+	No layer selected	Δεν έχει επιλεγεί επίπεδο
+	{n} layers selected	{n} επίπεδα επιλεγμένα
+	Not recorded	Δεν καταγράφεται
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Ένα επίπεδο αναφοράς λειτουργεί σαν κανονικό επίπεδο, αλλά δεν εμφανίζεται στο timelapse.
+	Export settings	Ρυθμίσεις εξαγωγής
+	Make video with	Δημιουργία βίντεο με
+	Bars colour	Χρώμα μπαρών
+	Bars fill the empty space when the canvas size changed during recording.	Οι μπάρες γεμίζουν τον κενό χώρο όταν το μέγεθος του καμβά άλλαξε κατά την εγγραφή.
+	Show finished drawing first	Πρώτα το ολοκληρωμένο σχέδιο
+	Hold final image	Διατήρηση τελικής εικόνας
+	Show work-time counter	Εμφάνιση μετρητή χρόνου εργασίας
+	Record something in this document to see how long the video will be.	Καταγράψτε κάτι σε αυτό το έγγραφο για να δείτε πόσο θα διαρκεί το βίντεο.
+	≈ {seconds} video	≈ {seconds} βίντεο
+	{n} recorded frames	{n} καταγεγραμμένα καρέ
+	Auto shows every frame once (at least 5 s, at most 1 min).	Το Αυτόματο δείχνει κάθε καρέ μία φορά (τουλάχιστον 5 δ, το πολύ 1 λεπ.).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Το μέγεθος του καμβά άλλαξε κατά την εγγραφή· τα προηγούμενα καρέ προσαρμόζονται στο τελικό μέγεθος.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Η αφαίρεση τρεμοπαίγματος παραλείπει καρέ που εμφανίζονται και χάνονται (ένα επίπεδο κρυμμένο για λίγο, μια πινελιά που αναιρέθηκε αμέσως), οπότε το βίντεο μπορεί να βγει λίγο πιο σύντομο.
+	Recordings folder	Φάκελος εγγραφών
+	Not chosen yet — see Settings	Δεν έχει επιλεγεί ακόμη — δείτε τις Ρυθμίσεις
+	recorded {when}	καταγραφή {when}
+	Recorded more since the last export.	Έχουν καταγραφεί περισσότερα από την τελευταία εξαγωγή.
+	Frames folder	Φάκελος καρέ
+	Not chosen yet	Δεν έχει επιλεγεί ακόμη
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Εδώ φυλάσσονται τα καταγεγραμμένα καρέ. Τα βίντεο αποθηκεύονται όπου επιλέξετε κατά την εξαγωγή.
+	Choose folder…	Επιλογή φακέλου…
+	Change folder…	Αλλαγή φακέλου…
+	Recording quality	Ποιότητα εγγραφής
+	Undoing something removes those recorded frames.	Η αναίρεση αφαιρεί τα αντίστοιχα καταγεγραμμένα καρέ.
+	Reference layers	Επίπεδα αναφοράς
+	Name tag	Ετικέτα ονόματος
+	Layers with this in their name are left out of the timelapse.	Τα επίπεδα με αυτό στο όνομά τους μένουν έξω από το timelapse.
+	Work timer	Χρονομετρητής εργασίας
+	Idle after	Αδράνεια μετά από
+	The timer stops counting after this long without activity.	Ο χρονομετρητής σταματά να μετρά μετά από τόσο χρόνο χωρίς δραστηριότητα.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (γρήγορο)
+	Dark grey	Σκούρο γκρι
+	0.5 s	0,5 δ
+	1 s	1 δ
+	1.5 s	1,5 δ
+	2 s	2 δ
+	3 s	3 δ
+	4 s	4 δ
+	5 s	5 δ
+	8 s	8 δ
+	10 s	10 δ
+	1 min	1 λεπ.
+	1.5 min	1,5 λεπ.
+	2 min	2 λεπ.
+	3 min	3 λεπ.
+	5 min	5 λεπ.
+	45 seconds	45 δευτερόλεπτα
+	Run Two Presets…	Εκτέλεση δύο προρυθμίσεων…
+	Run Two Topaz Gigapixel Presets	Εκτέλεση δύο προρυθμίσεων Topaz Gigapixel
+	Run	Εκτέλεση
+	Set Shortcut…	Ορισμός συντόμευσης…
+	Action Shortcut	Συντόμευση ενέργειας
+	No shortcut.	Χωρίς συντόμευση.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	Το {shortcut} είναι και συντόμευση του {commands}: θα εκτελεί αντί γι’ αυτό αυτήν την ενέργεια.
+	Press the keys that play “{action}”.	Πατήστε τα πλήκτρα που εκτελούν το «{action}».
+	Shortcut:	Συντόμευση:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Λειτουργεί κάθε πλήκτρο, με Ctrl, Alt και Shift. Το Backspace αφαιρεί τη συντόμευση.
+	The action no longer exists.	Η ενέργεια δεν υπάρχει πια.

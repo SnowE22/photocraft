@@ -3365,3 +3365,103 @@ curves	Smooth	Lisser
 	No upscale has come back from Topaz Gigapixel AI yet	Aucun agrandissement n’est encore revenu de Topaz Gigapixel AI
 	Detail:	Détail :
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI : agrandie {scale}× à {w} × {h} px (nouveau calque). Conservez ces réglages avec Paramètres prédéfinis Topaz Gigapixel › Enregistrer un paramètre prédéfini du dernier agrandissement
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} enregistré (vidéo de {seconds}).
+	Export failed: {error}	Échec de l'exportation : {error}
+	Export cancelled.	Exportation annulée.
+	just now	à l'instant
+	{n} min ago	il y a {n} min
+	{n} h ago	il y a {n} h
+	yesterday	hier
+	{n} days ago	il y a {n} jours
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Fichiers plus petits et capture la plus rapide. Convient aux croquis rapides et aux aperçus.
+	Sharper video for big screens. Uses about twice the disk space.	Vidéo plus nette pour les grands écrans. Utilise environ deux fois plus d'espace disque.
+	Full-HD video, good for social media. Recommended.	Vidéo Full HD, adaptée aux réseaux sociaux. Recommandé.
+	idle	inactif
+	Record	Enregistrer
+	Paused	En pause
+	Click to resume recording	Cliquez pour reprendre l'enregistrement
+	Open a document to record it.	Ouvrez un document pour l'enregistrer.
+	You'll be asked where to save recordings.	On vous demandera où enregistrer les enregistrements.
+	Export again	Exporter à nouveau
+	Export video	Exporter la vidéo
+	Show the export results	Afficher les résultats de l'exportation
+	Hide the export results	Masquer les résultats de l'exportation
+	≈ {seconds} video from {frames}.	≈ {seconds} de vidéo à partir de {frames}.
+	Confirm	Confirmer
+	Cancel export	Annuler l'exportation
+	Frames	Images
+	Timer	Durée
+	On disk	Sur le disque
+	Hide the live preview	Masquer l'aperçu en direct
+	Show the newest frame	Afficher l'image la plus récente
+	No frames yet — just start drawing	Pas encore d'images — commencez simplement à dessiner
+	No frames yet	Pas encore d'images
+	No layer selected	Aucun calque sélectionné
+	{n} layers selected	{n} calques sélectionnés
+	Not recorded	Non enregistré
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Un calque de référence fonctionne comme un calque normal, mais n'apparaît pas dans le timelapse.
+	Back	Retour
+	Export settings	Paramètres d'exportation
+	Make video with	Créer la vidéo avec
+	Bars colour	Couleur des bandes
+	Bars fill the empty space when the canvas size changed during recording.	Les bandes remplissent l'espace vide si la taille de la zone de travail a changé pendant l'enregistrement.
+	Show finished drawing first	Montrer d'abord le dessin terminé
+	Hold final image	Maintenir l'image finale
+	Show work-time counter	Afficher le compteur de temps de travail
+	Record something in this document to see how long the video will be.	Enregistrez quelque chose dans ce document pour voir la durée de la vidéo.
+	≈ {seconds} video	≈ {seconds} de vidéo
+	{n} recorded frames	{n} images enregistrées
+	Auto shows every frame once (at least 5 s, at most 1 min).	Auto montre chaque image une fois (au moins 5 s, au plus 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	La taille de la zone de travail a changé pendant l'enregistrement ; les images précédentes sont ajustées à la taille finale.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Supprimer le scintillement omet les images qui apparaissent et disparaissent (un calque masqué un instant, un trait annulé aussitôt) : la vidéo peut être un peu plus courte.
+	Recordings folder	Dossier des enregistrements
+	Not chosen yet — see Settings	Pas encore choisi — voir Paramètres
+	recorded {when}	enregistré {when}
+	Recorded more since the last export.	Enregistré davantage depuis la dernière exportation.
+	Frames folder	Dossier des images
+	Not chosen yet	Pas encore choisi
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Là où les images enregistrées sont conservées. Les vidéos sont enregistrées là où vous le choisissez à l'exportation.
+	Choose folder…	Choisir un dossier…
+	Change folder…	Changer de dossier…
+	Recording quality	Qualité d'enregistrement
+	Undoing something removes those recorded frames.	Annuler une action retire les images enregistrées correspondantes.
+	Reference layers	Calques de référence
+	Name tag	Balise du nom
+	Layers with this in their name are left out of the timelapse.	Les calques dont le nom contient ceci sont exclus du timelapse.
+	Work timer	Chronomètre de travail
+	Idle after	Inactif après
+	The timer stops counting after this long without activity.	Le chronomètre s'arrête après cette durée sans activité.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (rapide)
+	Dark grey	Gris foncé
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 secondes
+
+# Window › Timelapse panel (more)
+	Length	Durée
+	Run Two Presets…	Exécuter deux paramètres prédéfinis…
+	Run Two Topaz Gigapixel Presets	Exécuter deux paramètres prédéfinis Topaz Gigapixel
+	Run	Exécuter
+	Set Shortcut…	Définir le raccourci…
+	Action Shortcut	Raccourci de l’action
+	No shortcut.	Aucun raccourci.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} est aussi le raccourci de {commands} : il exécutera plutôt cette action.
+	Press the keys that play “{action}”.	Appuyez sur les touches qui exécutent « {action} ».
+	Shortcut:	Raccourci :
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Toute touche convient, avec Ctrl, Alt et Maj. Retour arrière supprime le raccourci.
+	The action no longer exists.	L’action n’existe plus.

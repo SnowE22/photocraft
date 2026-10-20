@@ -4036,3 +4036,100 @@ curves	Smooth	スムーズ
 	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI からアップスケール結果がまだ戻っていません
 	Detail:	ディテール:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：{scale}× で {w} × {h} px に拡大しました（新規レイヤー）。この設定は Topaz Gigapixel プリセット › 最後のアップスケールからプリセットを保存 で保持できます
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} を保存しました（{seconds} のビデオ）。
+	Export failed: {error}	書き出しに失敗しました：{error}
+	Export cancelled.	書き出しをキャンセルしました。
+	just now	たった今
+	{n} min ago	{n} 分前
+	{n} h ago	{n} 時間前
+	yesterday	昨日
+	{n} days ago	{n} 日前
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	ファイルが小さく、最も速く記録できます。手早いスケッチやプレビュー向けです。
+	Sharper video for big screens. Uses about twice the disk space.	大画面向けのより鮮明なビデオ。ディスク容量は約 2 倍になります。
+	Full-HD video, good for social media. Recommended.	フル HD ビデオ。SNS に適しています。推奨。
+	idle	待機
+	Record	録画
+	Paused	一時停止中
+	Click to resume recording	クリックで録画を再開
+	Open a document to record it.	録画するドキュメントを開いてください。
+	You'll be asked where to save recordings.	録画の保存先を尋ねます。
+	Export again	もう一度書き出し
+	Export video	ビデオを書き出し
+	Show the export results	書き出し結果を表示
+	Hide the export results	書き出し結果を隠す
+	≈ {seconds} video from {frames}.	≈ {frames}から {seconds} のビデオ。
+	Confirm	確定
+	Cancel export	書き出しをキャンセル
+	Frames	フレーム
+	Timer	時間
+	On disk	ディスク上
+	Hide the live preview	ライブプレビューを隠す
+	Show the newest frame	最新のフレームを表示
+	No frames yet — just start drawing	まだフレームがありません — 描き始めてください
+	No frames yet	まだフレームがありません
+	No layer selected	レイヤーが選択されていません
+	{n} layers selected	{n} 個のレイヤーを選択
+	Not recorded	録画対象外
+	A reference layer works like a normal layer, but won't show up in the timelapse.	参照レイヤーは通常のレイヤーと同じように使えますが、タイムラプスには映りません。
+	Back	戻る
+	Export settings	書き出し設定
+	Make video with	ビデオの作成方法
+	Bars colour	帯の色
+	Bars fill the empty space when the canvas size changed during recording.	録画中にカンバスサイズが変わったとき、帯が空きを埋めます。
+	Show finished drawing first	最初に完成画を表示
+	Hold final image	最終画像を表示し続ける
+	Show work-time counter	作業時間カウンターを表示
+	Record something in this document to see how long the video will be.	このドキュメントで何か録画すると、ビデオの長さが表示されます。
+	≈ {seconds} video	≈ {seconds} のビデオ
+	{n} recorded frames	録画フレーム {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	自動ではすべてのフレームを 1 回ずつ表示します（最短 5 秒、最長 1 分）。
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	録画中にカンバスサイズが変わりました。以前のフレームは最終サイズに収まるよう調整されます。
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	ちらつきの除去では一瞬だけ現れるフレーム（一時的に非表示にしたレイヤー、すぐ取り消したストロークなど）を省くため、ビデオが少し短くなることがあります。
+	Recordings folder	録画フォルダー
+	Not chosen yet — see Settings	未選択 — 設定を参照
+	recorded {when}	録画 {when}
+	Recorded more since the last export.	前回の書き出し以降に追加で録画されています。
+	Frames folder	フレームフォルダー
+	Not chosen yet	未選択
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	録画したフレームの保存場所です。ビデオは書き出し時に選んだ場所に保存されます。
+	Choose folder…	フォルダーを選択…
+	Change folder…	フォルダーを変更…
+	Recording quality	録画品質
+	Undoing something removes those recorded frames.	取り消すと、その分の録画フレームも削除されます。
+	Reference layers	参照レイヤー
+	Name tag	名前タグ
+	Layers with this in their name are left out of the timelapse.	名前にこれを含むレイヤーはタイムラプスに含まれません。
+	Work timer	作業タイマー
+	Idle after	待機までの時間
+	The timer stops counting after this long without activity.	操作がないままこの時間が経つと、タイマーは止まります。
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg（高速）
+	Dark grey	ダークグレー
+	0.5 s	0.5 秒
+	1 s	1 秒
+	1.5 s	1.5 秒
+	2 s	2 秒
+	3 s	3 秒
+	4 s	4 秒
+	5 s	5 秒
+	8 s	8 秒
+	10 s	10 秒
+	1 min	1 分
+	1.5 min	1.5 分
+	2 min	2 分
+	3 min	3 分
+	5 min	5 分
+	45 seconds	45 秒
+	Run Two Presets…	2 つのプリセットを実行…
+	Run Two Topaz Gigapixel Presets	2 つの Topaz Gigapixel プリセットを実行
+	Run	実行
+	Set Shortcut…	ショートカットを設定…
+	Action Shortcut	アクションのショートカット
+	No shortcut.	ショートカットなし。
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} は {commands} のショートカットでもあります。代わりにこのアクションを実行します。
+	Press the keys that play “{action}”.	「{action}」を実行するキーを押してください。
+	Shortcut:	ショートカット:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	どのキーでも使えます（Ctrl、Alt、Shift と組み合わせ可）。Backspace でショートカットを削除します。
+	The action no longer exists.	このアクションはもうありません。

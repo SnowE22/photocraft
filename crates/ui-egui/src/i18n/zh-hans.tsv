@@ -2981,3 +2981,104 @@ curves	Smooth	平滑
 	No upscale has come back from Topaz Gigapixel AI yet	尚未从 Topaz Gigapixel AI 返回任何放大结果
 	Detail:	细节：
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新图层）。使用 Topaz Gigapixel 预设 › 从上次放大存储预设 保留这些设置
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	已保存 {name}（{seconds} 视频）。
+	Export failed: {error}	导出失败：{error}
+	Export cancelled.	已取消导出。
+	just now	刚刚
+	{n} min ago	{n} 分钟前
+	{n} h ago	{n} 小时前
+	yesterday	昨天
+	{n} days ago	{n} 天前
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	文件更小，录制最快。适合快速草图和预览。
+	Sharper video for big screens. Uses about twice the disk space.	适合大屏幕的更清晰视频。占用约两倍的磁盘空间。
+	Full-HD video, good for social media. Recommended.	全高清视频，适合社交媒体。推荐。
+	idle	空闲
+	Record	录制
+	Paused	已暂停
+	Click to resume recording	点击继续录制
+	Open a document to record it.	打开文档以录制。
+	You'll be asked where to save recordings.	会询问录制内容的保存位置。
+	Export again	再次导出
+	Export video	导出视频
+	Show the export results	显示导出结果
+	Hide the export results	隐藏导出结果
+	≈ {seconds} video from {frames}.	≈ 由 {frames}生成 {seconds} 视频。
+	Confirm	确认
+	Cancel export	取消导出
+	Frames	帧数
+	Timer	计时
+	On disk	占用空间
+	Hide the live preview	隐藏实时预览
+	Show the newest frame	显示最新的帧
+	No frames yet — just start drawing	还没有帧——开始绘画吧
+	No frames yet	还没有帧
+	No layer selected	未选择图层
+	{n} layers selected	已选择 {n} 个图层
+	Not recorded	不录制
+	A reference layer works like a normal layer, but won't show up in the timelapse.	参考图层和普通图层一样使用，但不会出现在延时视频中。
+	Back	返回
+	Export settings	导出设置
+	Make video with	视频生成方式
+	Bars colour	边条颜色
+	Bars fill the empty space when the canvas size changed during recording.	录制期间画布尺寸有变化时，边条会填充空白。
+	Show finished drawing first	先显示完成的画作
+	Hold final image	停留在最终画面
+	Show work-time counter	显示工作时长计数
+	Record something in this document to see how long the video will be.	在此文档中录制一些内容，即可查看视频时长。
+	≈ {seconds} video	≈ {seconds} 视频
+	{n} recorded frames	{n} 个已录制帧
+	Auto shows every frame once (at least 5 s, at most 1 min).	自动会将每一帧显示一次（至少 5 秒，最多 1 分钟）。
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	录制期间画布尺寸发生了变化；较早的帧会适应最终尺寸。
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	去除闪烁会略去一闪而过的帧（短暂隐藏的图层、立即撤销的笔画），因此视频可能会稍短一些。
+	Recordings folder	录制文件夹
+	Not chosen yet — see Settings	尚未选择——请看“设置”
+	recorded {when}	录制于{when}
+	Recorded more since the last export.	上次导出后又录制了新内容。
+	Frames folder	帧文件夹
+	Not chosen yet	尚未选择
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	录制的帧保存在这里。视频会保存到导出时选择的位置。
+	Choose folder…	选择文件夹…
+	Change folder…	更改文件夹…
+	Recording quality	录制质量
+	Undoing something removes those recorded frames.	撤销操作会移除对应的已录制帧。
+	Reference layers	参考图层
+	Name tag	名称标记
+	Layers with this in their name are left out of the timelapse.	名称中含有此标记的图层不会出现在延时视频中。
+	Work timer	工作计时
+	Idle after	闲置判定
+	The timer stops counting after this long without activity.	无操作达到此时长后，计时停止。
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg（快速）
+	Dark grey	深灰色
+	0.5 s	0.5 秒
+	1 s	1 秒
+	1.5 s	1.5 秒
+	2 s	2 秒
+	3 s	3 秒
+	4 s	4 秒
+	5 s	5 秒
+	8 s	8 秒
+	10 s	10 秒
+	1 min	1 分钟
+	1.5 min	1.5 分钟
+	2 min	2 分钟
+	3 min	3 分钟
+	5 min	5 分钟
+	45 seconds	45 秒
+
+# Window › Timelapse panel (more)
+	Length	时长
+	Result	结果
+	Run Two Presets…	运行两个预设…
+	Run Two Topaz Gigapixel Presets	运行两个 Topaz Gigapixel 预设
+	Run	运行
+	Set Shortcut…	设置快捷键…
+	Action Shortcut	动作快捷键
+	No shortcut.	无快捷键。
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} 也是 {commands} 的快捷键：改为运行此动作。
+	Press the keys that play “{action}”.	按下运行“{action}”的键。
+	Shortcut:	快捷键：
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	任意键均可，可配合 Ctrl、Alt 和 Shift。Backspace 删除快捷键。
+	The action no longer exists.	该动作已不存在。

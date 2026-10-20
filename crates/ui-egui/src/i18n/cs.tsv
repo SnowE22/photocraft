@@ -3967,3 +3967,98 @@ navigator	Zoom	Zvětšení
 	No upscale has come back from Topaz Gigapixel AI yet	Z Topaz Gigapixel AI se zatím nevrátilo žádné zvětšení
 	Detail:	Detail:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: zvětšeno {scale}× na {w} × {h} px (nová vrstva). Tato nastavení si ponecháte přes Přednastavení Topaz Gigapixel › Uložit přednastavení z posledního zvětšení
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Uloženo {name} (video {seconds}).
+	Export failed: {error}	Export se nezdařil: {error}
+	Export cancelled.	Export byl zrušen.
+	just now	právě teď
+	{n} min ago	před {n} min
+	{n} h ago	před {n} h
+	yesterday	včera
+	{n} days ago	před {n} dny
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Menší soubory a nejrychlejší zachytávání. Stačí pro rychlé skici a náhledy.
+	Sharper video for big screens. Uses about twice the disk space.	Ostřejší video pro velké obrazovky. Zabere asi dvojnásobek místa na disku.
+	Full-HD video, good for social media. Recommended.	Video ve Full HD, vhodné pro sociální sítě. Doporučeno.
+	idle	nečinné
+	Record	Nahrávat
+	Paused	Pozastaveno
+	Click to resume recording	Kliknutím obnovíte nahrávání
+	Open a document to record it.	Otevřete dokument, abyste ho mohli nahrávat.
+	You'll be asked where to save recordings.	Budete dotázáni, kam záznamy ukládat.
+	Export again	Exportovat znovu
+	Export video	Exportovat video
+	Show the export results	Zobrazit výsledky exportu
+	Hide the export results	Skrýt výsledky exportu
+	≈ {seconds} video from {frames}.	≈ {seconds} videa z {frames}.
+	Cancel export	Zrušit export
+	Frames	Snímky
+	Timer	Časovač
+	On disk	Na disku
+	Hide the live preview	Skrýt živý náhled
+	Show the newest frame	Zobrazit nejnovější snímek
+	No frames yet — just start drawing	Zatím žádné snímky — prostě začněte kreslit
+	No frames yet	Zatím žádné snímky
+	No layer selected	Není vybrána žádná vrstva
+	{n} layers selected	Vybrané vrstvy: {n}
+	Not recorded	Nenahrává se
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Referenční vrstva funguje jako běžná vrstva, ale v timelapse se neobjeví.
+	Export settings	Nastavení exportu
+	Make video with	Vytvořit video pomocí
+	Bars colour	Barva pruhů
+	Bars fill the empty space when the canvas size changed during recording.	Pruhy vyplní prázdné místo, když se během nahrávání změnila velikost plátna.
+	Show finished drawing first	Nejprve ukázat hotovou kresbu
+	Hold final image	Podržet konečný obrázek
+	Show work-time counter	Zobrazit počítadlo pracovního času
+	Record something in this document to see how long the video will be.	Nahrajte v tomto dokumentu něco, abyste viděli, jak dlouhé bude video.
+	≈ {seconds} video	≈ {seconds} videa
+	{n} recorded frames	Nahrané snímky: {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	Automaticky ukáže každý snímek jednou (nejméně 5 s, nejvýše 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Velikost plátna se během nahrávání změnila; dřívější snímky se vejdou do konečné velikosti.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Odstranění blikání vynechá snímky, které jen probliknou (vrstvu na chvíli skrytou, tah hned vrácený zpět), takže video může být o něco kratší.
+	Recordings folder	Složka záznamů
+	Not chosen yet — see Settings	Zatím nevybráno — viz Nastavení
+	recorded {when}	nahráno {when}
+	Recorded more since the last export.	Od posledního exportu bylo nahráno více.
+	Frames folder	Složka snímků
+	Not chosen yet	Zatím nevybráno
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Kde se uchovávají nahrané snímky. Videa se ukládají tam, kam zvolíte při exportu.
+	Choose folder…	Vybrat složku…
+	Change folder…	Změnit složku…
+	Recording quality	Kvalita záznamu
+	Undoing something removes those recorded frames.	Vrácení zpět odstraní příslušné nahrané snímky.
+	Reference layers	Referenční vrstvy
+	Name tag	Značka v názvu
+	Layers with this in their name are left out of the timelapse.	Vrstvy, které toto mají v názvu, se do timelapse nedostanou.
+	Work timer	Časovač práce
+	Idle after	Nečinnost po
+	The timer stops counting after this long without activity.	Časovač přestane počítat po této době bez činnosti.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (rychlé)
+	Dark grey	Tmavě šedá
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 sekund
+	Run Two Presets…	Spustit dvě přednastavení…
+	Run Two Topaz Gigapixel Presets	Spustit dvě přednastavení Topaz Gigapixel
+	Run	Spustit
+	Set Shortcut…	Nastavit klávesovou zkratku…
+	Action Shortcut	Klávesová zkratka akce
+	No shortcut.	Bez klávesové zkratky.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} je také zkratkou pro {commands}: místo toho spustí tuto akci.
+	Press the keys that play “{action}”.	Stiskněte klávesy, které spustí „{action}“.
+	Shortcut:	Klávesová zkratka:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Funguje jakákoli klávesa, s Ctrl, Alt a Shift. Backspace zkratku odebere.
+	The action no longer exists.	Akce už neexistuje.

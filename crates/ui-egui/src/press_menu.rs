@@ -127,6 +127,11 @@ impl PressCombo {
         gesture_owner(ctx) == Some(self.popup)
     }
 
+    /// The id egui keeps the combo box's list open under.
+    pub fn popup_id(&self) -> egui::Id {
+        self.popup
+    }
+
     /// Was option `item` (in the open list `ui`) chosen this frame: clicked, or the press-drag
     /// gesture that opened the list released on it? The list closes when it was.
     pub fn chosen(&self, ui: &Ui, item: &Response) -> bool {

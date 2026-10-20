@@ -3847,3 +3847,100 @@ curves	Smooth	Làm mượt
 	No upscale has come back from Topaz Gigapixel AI yet	Chưa có ảnh phóng to nào trở về từ Topaz Gigapixel AI
 	Detail:	Chi tiết:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: đã phóng to {scale}× lên {w} × {h} px (lớp mới). Giữ các thiết lập này bằng Thiết lập sẵn Topaz Gigapixel › Lưu thiết lập sẵn từ lần phóng to gần nhất
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Đã lưu {name} (video {seconds}).
+	Export failed: {error}	Xuất thất bại: {error}
+	Export cancelled.	Đã hủy xuất.
+	just now	vừa xong
+	{n} min ago	{n} phút trước
+	{n} h ago	{n} giờ trước
+	yesterday	hôm qua
+	{n} days ago	{n} ngày trước
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Tệp nhỏ hơn và ghi nhanh nhất. Đủ cho phác thảo nhanh và xem trước.
+	Sharper video for big screens. Uses about twice the disk space.	Video sắc nét hơn cho màn hình lớn. Dùng khoảng gấp đôi dung lượng đĩa.
+	Full-HD video, good for social media. Recommended.	Video Full HD, phù hợp mạng xã hội. Khuyến nghị.
+	idle	nghỉ
+	Record	Ghi
+	Paused	Đã tạm dừng
+	Click to resume recording	Bấm để tiếp tục ghi
+	Open a document to record it.	Mở một tài liệu để ghi nó.
+	You'll be asked where to save recordings.	Bạn sẽ được hỏi lưu bản ghi ở đâu.
+	Export again	Xuất lại
+	Export video	Xuất video
+	Show the export results	Hiện kết quả xuất
+	Hide the export results	Ẩn kết quả xuất
+	≈ {seconds} video from {frames}.	≈ video {seconds} từ {frames}.
+	Confirm	Xác nhận
+	Cancel export	Hủy xuất
+	Frames	Khung hình
+	Timer	Thời gian
+	On disk	Trên đĩa
+	Hide the live preview	Ẩn xem trước trực tiếp
+	Show the newest frame	Hiện khung hình mới nhất
+	No frames yet — just start drawing	Chưa có khung hình — cứ bắt đầu vẽ
+	No frames yet	Chưa có khung hình
+	No layer selected	Chưa chọn lớp
+	{n} layers selected	Đã chọn {n} lớp
+	Not recorded	Không được ghi
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Lớp tham chiếu hoạt động như lớp thường nhưng không xuất hiện trong timelapse.
+	Back	Quay lại
+	Export settings	Cài đặt xuất
+	Make video with	Tạo video bằng
+	Bars colour	Màu dải viền
+	Bars fill the empty space when the canvas size changed during recording.	Dải viền lấp khoảng trống khi kích thước canvas thay đổi trong lúc ghi.
+	Show finished drawing first	Hiện bức vẽ hoàn chỉnh trước
+	Hold final image	Giữ hình cuối
+	Show work-time counter	Hiện bộ đếm thời gian làm việc
+	Record something in this document to see how long the video will be.	Ghi gì đó trong tài liệu này để xem video dài bao lâu.
+	≈ {seconds} video	≈ video {seconds}
+	{n} recorded frames	{n} khung hình đã ghi
+	Auto shows every frame once (at least 5 s, at most 1 min).	Tự động hiện mỗi khung hình một lần (ít nhất 5 giây, nhiều nhất 1 phút).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Kích thước canvas đã thay đổi trong lúc ghi; các khung hình trước được đặt vừa kích thước cuối.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Loại bỏ nhấp nháy bỏ các khung hình chỉ lóe lên (lớp bị ẩn chốc lát, nét vẽ được hoàn tác ngay), nên video có thể ngắn hơn một chút.
+	Recordings folder	Thư mục bản ghi
+	Not chosen yet — see Settings	Chưa chọn — xem Cài đặt
+	recorded {when}	ghi {when}
+	Recorded more since the last export.	Đã ghi thêm từ lần xuất trước.
+	Frames folder	Thư mục khung hình
+	Not chosen yet	Chưa chọn
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Nơi lưu các khung hình đã ghi. Video được lưu ở nơi bạn chọn khi xuất.
+	Choose folder…	Chọn thư mục…
+	Change folder…	Đổi thư mục…
+	Recording quality	Chất lượng ghi
+	Undoing something removes those recorded frames.	Hoàn tác sẽ xóa các khung hình đã ghi đó.
+	Reference layers	Lớp tham chiếu
+	Name tag	Thẻ tên
+	Layers with this in their name are left out of the timelapse.	Các lớp có điều này trong tên sẽ bị loại khỏi timelapse.
+	Work timer	Bộ đếm thời gian làm việc
+	Idle after	Nghỉ sau
+	The timer stops counting after this long without activity.	Bộ đếm ngừng sau khoảng thời gian không hoạt động này.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (nhanh)
+	Dark grey	Xám đậm
+	0.5 s	0,5 giây
+	1 s	1 giây
+	1.5 s	1,5 giây
+	2 s	2 giây
+	3 s	3 giây
+	4 s	4 giây
+	5 s	5 giây
+	8 s	8 giây
+	10 s	10 giây
+	1 min	1 phút
+	1.5 min	1,5 phút
+	2 min	2 phút
+	3 min	3 phút
+	5 min	5 phút
+	45 seconds	45 giây
+	Run Two Presets…	Chạy hai thiết lập sẵn…
+	Run Two Topaz Gigapixel Presets	Chạy hai thiết lập sẵn Topaz Gigapixel
+	Run	Chạy
+	Set Shortcut…	Đặt phím tắt…
+	Action Shortcut	Phím tắt thao tác
+	No shortcut.	Không có phím tắt.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} cũng là phím tắt của {commands}: thay vào đó nó sẽ chạy thao tác này.
+	Press the keys that play “{action}”.	Nhấn các phím để chạy “{action}”.
+	Shortcut:	Phím tắt:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Dùng được mọi phím, kèm Ctrl, Alt và Shift. Backspace sẽ xóa phím tắt.
+	The action no longer exists.	Thao tác không còn tồn tại.

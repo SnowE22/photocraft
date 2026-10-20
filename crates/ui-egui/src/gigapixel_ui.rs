@@ -126,6 +126,11 @@ pub const MANAGE_ID: &str = "file.automate.topazGigapixel.presets.manage";
 /// The dialog's marker field.
 const MARK: &str = "__gigapixelPresets";
 
+/// Run Two Presets…: two saved presets on the image now, chained or each on its own layer.
+pub const RUN_TWO_ID: &str = "file.automate.topazGigapixel.presets.runTwo";
+/// The Run Two Presets dialog's marker field.
+const RUN_MARK: &str = "__gigapixelRunTwo";
+
 /// Save Preset from Last Upscale… (the settings Gigapixel's app last sent back).
 pub const LAST_ID: &str = "file.automate.topazGigapixel.presets.fromLast";
 
@@ -194,6 +199,7 @@ pub fn insert_menu_items(app: &PhotocraftApp, items: &mut Vec<MenuItem>) {
     if !rows.is_empty() {
         rows.push(item("---".into(), "---".into(), false));
     }
+    rows.push(item(RUN_TWO_ID.into(), "Run Two Presets…".into(), enabled && singles(&app.session.presets.gigapixel_presets).len() >= 2));
     rows.push(item(LAST_ID.into(), "Save Preset from Last Upscale…".into(), app.session.presets.gigapixel_last.is_some()));
     rows.push(item(MANAGE_ID.into(), "Manage Presets…".into(), true));
     for (k, row) in rows.into_iter().enumerate() {
@@ -209,6 +215,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
     if id == LAST_ID {
         return Some(app.session.presets.gigapixel_last.is_some());
     }
+    if id == RUN_TWO_ID {
+        return Some(singles(&app.session.presets.gigapixel_presets).len() >= 2 && app.session.is_enabled(photocraft_engine::gigapixel_cmds::ID));
+    }
     let i: usize = id.strip_prefix(PRESET_ITEM)?.parse().ok()?;
     Some(app.session.presets.gigapixel_presets.len() > i && app.session.is_enabled(photocraft_engine::gigapixel_cmds::ID))
 }
@@ -217,6 +226,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
 pub fn menu(app: &mut PhotocraftApp, id: &str) -> Option<Result<Value, String>> {
     if id == MANAGE_ID {
         return Some(Ok(json!({"dialog": open_manager(app)})));
+    }
+    if id == RUN_TWO_ID {
+        return Some(open_run_two(app).map(|d| json!({"dialog": d})).ok_or_else(|| tl!("Save two presets with their own settings first; then this one can run them together.").into()));
     }
     if id == LAST_ID {
         return Some(open_from_last(app).map(|d| json!({"dialog": d})).ok_or_else(|| tl!("No upscale has come back from Topaz Gigapixel AI yet").into()));
@@ -255,8 +267,36 @@ pub fn open_from_last(app: &mut PhotocraftApp) -> Option<u64> {
     Some(id)
 }
 
+/// The saved presets that are one upscale each (the ones that can be run together).
+fn singles(all: &[GigapixelPreset]) -> Vec<&GigapixelPreset> {
+    all.iter().filter(|p| p.combined().is_none()).collect()
+}
+
+/// Run Two Presets… (an open one comes back): the first two one-upscale presets, chained.
+/// `None` with fewer than two saved.
+pub fn open_run_two(app: &mut PhotocraftApp) -> Option<u64> {
+    if let Some(d) = app.ui.dialogs.iter().find(|d| d.fields.contains_key(RUN_MARK)) {
+        return Some(d.id);
+    }
+    let all = app.session.presets.gigapixel_presets.clone();
+    let names: Vec<String> = singles(&all).iter().map(|p| p.name.clone()).collect();
+    let (first, second) = (names.first()?.clone(), names.get(1)?.clone());
+    let mut f = Map::new();
+    f.insert(RUN_MARK.into(), json!(true));
+    f.insert("__label".into(), json!("Run Two Topaz Gigapixel Presets"));
+    f.insert("first".into(), json!(first));
+    f.insert("second".into(), json!(second));
+    f.insert("combine".into(), json!("chain"));
+    Some(app.ui.open_dialog(DialogKind::Command, f))
+}
+
 pub fn owns(f: &Map<String, Value>) -> bool {
-    f.contains_key(MARK)
+    f.contains_key(MARK) || f.contains_key(RUN_MARK)
+}
+
+/// The dialog's OK: Save in Manage Presets, Run in Run Two Presets.
+pub fn ok_label(f: &Map<String, Value>) -> &'static str {
+    if f.contains_key(RUN_MARK) { tl!("Run") } else { tl!("Save") }
 }
 
 fn text<'a>(f: &'a Map<String, Value>, k: &str) -> &'a str {
@@ -335,11 +375,18 @@ fn settings(f: &Map<String, Value>) -> Value {
 
 /// Save needs a name and, for two presets, two chosen.
 pub fn can_confirm(f: &Map<String, Value>) -> bool {
+    if f.contains_key(RUN_MARK) {
+        return !text(f, "first").is_empty() && !text(f, "second").is_empty();
+    }
     !owns(f) || (!text(f, "name").trim().is_empty() && (text(f, "kind") != "two" || (!text(f, "first").is_empty() && !text(f, "second").is_empty())))
 }
 
 /// Save: the preset (replacing the one being edited).
 pub fn confirm(app: &mut PhotocraftApp, f: &Map<String, Value>) -> Result<Value, String> {
+    if f.contains_key(RUN_MARK) {
+        let p = json!({"presets": [text(f, "first"), text(f, "second")], "combine": text(f, "combine")});
+        return app.run(photocraft_engine::gigapixel_cmds::ID, p);
+    }
     let editing = text(f, "editing");
     let mut p = json!({"name": text(f, "name").trim(), "settings": settings(f)});
     if !editing.is_empty() && app.session.presets.gigapixel_presets.iter().any(|g| g.name == editing) {
@@ -365,8 +412,39 @@ fn row(ui: &mut egui::Ui, label: &str, add: impl FnOnce(&mut egui::Ui)) {
     });
 }
 
+/// First / Then / Results, from the one-upscale presets `singles` (name, label).
+fn two_preset_rows(ui: &mut egui::Ui, f: &mut Map<String, Value>, singles: &[(String, &str)]) {
+    for (key, label) in [("first", tl!("First:")), ("second", tl!("Then:"))] {
+        let mut v = text(f, key).to_string();
+        row(ui, label, |ui| {
+            if widgets::dropdown_literal(ui, &format!("gigapixel-preset-{key}"), &mut v, singles, 220.0) {
+                f.insert(key.into(), json!(v));
+            }
+        });
+    }
+    let mut combine = text(f, "combine").to_string();
+    row(ui, tl!("Results:"), |ui| {
+        let options = [("chain".to_string(), tl!("One after the other")), ("layers".to_string(), tl!("Each on its own layer"))];
+        if widgets::dropdown(ui, "gigapixel-preset-combine", &mut combine, &options, 220.0) {
+            f.insert("combine".into(), json!(combine));
+        }
+    });
+    let hint = if combine == "layers" {
+        tl!("Both presets upscale the image; each result becomes a layer, to compare or blend.")
+    } else {
+        tl!("The second preset upscales the first one's result.")
+    };
+    ui.label(egui::RichText::new(hint).color(crate::theme::Tokens::get(ui.ctx()).text_dim));
+}
+
 pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     ui.set_min_width(420.0);
+    if f.contains_key(RUN_MARK) {
+        let all = app.session.presets.gigapixel_presets.clone();
+        let names: Vec<(String, &str)> = singles(&all).into_iter().map(|p| (p.name.clone(), p.name.as_str())).collect();
+        two_preset_rows(ui, f, &names);
+        return;
+    }
     let all = app.session.presets.gigapixel_presets.clone();
     // Which preset the fields edit: a saved one, or a new one ("").
     let mut editing = text(f, "editing").to_string();
@@ -416,27 +494,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             ui.label(egui::RichText::new(tl!("Save two presets with their own settings first; then this one can run them together.")).color(crate::theme::Tokens::get(ui.ctx()).text_dim));
             return;
         }
-        for (key, label) in [("first", tl!("First:")), ("second", tl!("Then:"))] {
-            let mut v = text(f, key).to_string();
-            row(ui, label, |ui| {
-                if widgets::dropdown_literal(ui, &format!("gigapixel-preset-{key}"), &mut v, &singles, 220.0) {
-                    f.insert(key.into(), json!(v));
-                }
-            });
-        }
-        let mut combine = text(f, "combine").to_string();
-        row(ui, tl!("Results:"), |ui| {
-            let options = [("chain".to_string(), tl!("One after the other")), ("layers".to_string(), tl!("Each on its own layer"))];
-            if widgets::dropdown(ui, "gigapixel-preset-combine", &mut combine, &options, 220.0) {
-                f.insert("combine".into(), json!(combine));
-            }
-        });
-        let hint = if combine == "layers" {
-            tl!("Both presets upscale the image; each result becomes a layer, to compare or blend.")
-        } else {
-            tl!("The second preset upscales the first one's result.")
-        };
-        ui.label(egui::RichText::new(hint).color(crate::theme::Tokens::get(ui.ctx()).text_dim));
+        two_preset_rows(ui, f, &singles);
         return;
     }
     let mut model = text(f, "model").to_string();
@@ -510,14 +568,18 @@ mod tests {
         };
         assert_eq!(
             rows(&app),
-            [(LAST_ID.to_string(), "Save Preset from Last Upscale…".to_string()), (MANAGE_ID.to_string(), "Manage Presets…".to_string())]
+            [
+                (RUN_TWO_ID.to_string(), "Run Two Presets…".to_string()),
+                (LAST_ID.to_string(), "Save Preset from Last Upscale…".to_string()),
+                (MANAGE_ID.to_string(), "Manage Presets…".to_string())
+            ]
         );
         assert!(!crate::menus::is_enabled(&app, LAST_ID), "no upscale came back yet");
         assert!(crate::menus::is_enabled(&app, MANAGE_ID));
         app.run(photocraft_engine::gigapixel_cmds::presets::SAVE_ID, json!({"name": "Faces 2x", "settings": {"model": "std", "scale": 2}})).unwrap();
         app.run(photocraft_engine::gigapixel_cmds::presets::SAVE_ID, json!({"name": "Art 4x", "settings": {"model": "art", "scale": 4}})).unwrap();
         let labels: Vec<String> = rows(&app).into_iter().map(|(_, l)| l).collect();
-        assert_eq!(labels, ["Faces 2x", "Art 4x", "---", "Save Preset from Last Upscale…", "Manage Presets…"]);
+        assert_eq!(labels, ["Faces 2x", "Art 4x", "---", "Run Two Presets…", "Save Preset from Last Upscale…", "Manage Presets…"]);
         // The submenu sits right after Topaz Gigapixel AI….
         let items = crate::menus::menu_items(&app);
         let at = items.iter().position(|i| i.id == photocraft_engine::gigapixel_cmds::ID).unwrap();
@@ -604,7 +666,11 @@ mod tests {
     #[test]
     fn the_submenu_opens_from_the_menu_bar() {
         use egui_kittest::kittest::Queryable;
-        let mut h = harness();
+        // Tall enough for the whole submenu below File › Automate.
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 1100.0)).with_max_steps(64).build_eframe(|cc| {
+            PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+            PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default())
+        });
         h.state_mut().run(photocraft_engine::gigapixel_cmds::presets::SAVE_ID, json!({"name": "Faces 2x", "settings": {"scale": 2}})).unwrap();
         h.run_steps(2);
         let hover = |h: &mut egui_kittest::Harness<'static, PhotocraftApp>, label: &str| {
@@ -665,6 +731,38 @@ mod tests {
         assert_eq!(model_key(&json!({"model": "art"})), "art");
         assert_eq!(model_key(&json!({"model": "std", "modelVersion": 1})), "std:1");
         assert_eq!(model_key(&json!({})), "");
+    }
+
+    /// Run Two Presets… offers the one-upscale presets, the first two chosen, and runs both on
+    /// the image: chained, or each on its own layer.
+    #[test]
+    fn run_two_presets_runs_both() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness();
+        let ctx = h.ctx.clone();
+        h.state_mut().run("file.new", json!({"width": 16, "height": 16})).unwrap();
+        let save = photocraft_engine::gigapixel_cmds::presets::SAVE_ID;
+        h.state_mut().run(save, json!({"name": "Faces", "settings": {"model": "std", "scale": 2}})).unwrap();
+        assert!(open_run_two(h.state_mut()).is_none(), "one preset isn't two");
+        h.state_mut().run(save, json!({"name": "Art", "settings": {"model": "art", "scale": 2}})).unwrap();
+        h.state_mut().run(save, json!({"name": "Both", "settings": {"presets": ["Faces", "Art"]}})).unwrap();
+        crate::menus::invoke(h.state_mut(), &ctx, RUN_TWO_ID, json!({})).unwrap();
+        h.run_steps(4);
+        let (id, f) = h.state().ui.dialogs.iter().find(|d| d.fields.contains_key(RUN_MARK)).map(|d| (d.id, d.fields.clone())).unwrap();
+        assert_eq!((text(&f, "first"), text(&f, "second"), text(&f, "combine")), ("Faces", "Art", "chain"));
+        for label in ["First:", "Then:", "Results:", "Run", "Cancel"] {
+            assert!(h.query_by_label(label).is_some(), "missing {label}");
+        }
+        h.state_mut().ui.dialog_mut(id).unwrap().fields.insert("combine".into(), json!("layers"));
+        // The run itself: Gigapixel is never started in tests, so it stops at launching, after
+        // the presets were found and checked.
+        photocraft_engine::gigapixel_cmds::disable_launching();
+        let mut f = f;
+        f.insert("combine".into(), json!("layers"));
+        let e = confirm(h.state_mut(), &f).unwrap_err();
+        assert!(e.contains("disabled"), "{e}");
+        f.insert("second".into(), json!("Both"));
+        assert!(!confirm(h.state_mut(), &f).unwrap_err().contains("disabled"), "a preset that combines others can't be one of the two");
     }
 
     #[test]

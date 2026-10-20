@@ -165,14 +165,17 @@ fn wheel_steps_in_the_open_list_keep_the_chosen_mode_in_view() {
     let mut h = harness(pixel_layer);
     let at = dropdown(&h).center();
     click(&mut h, at);
-    // Unscrolled, the list shows its first entry at the top and is at most 420 pt tall.
+    // The whole list shows at once, inside the window, as in Photoshop: Normal to Luminosity.
+    let window = h.ctx.content_rect();
     let (top, darken) = (entry(&h, "Normal").top(), entry(&h, "Darken").center());
+    let last = entry(&h, "Luminosity");
+    assert!(top >= window.top() && last.bottom() <= window.bottom(), "{top}..{last:?} in {window:?}");
     for _ in 0..22 {
         wheel(&mut h, darken, -1.0);
     }
     h.run_steps(30);
     assert_eq!(blend(&h), BlendMode::Divide);
-    let in_view = |r: Rect| r.top() >= top - 0.5 && r.bottom() <= top + 420.0 + 0.5;
+    let in_view = |r: Rect| r.top() >= top - 0.5 && r.bottom() <= window.bottom() + 0.5;
     let chosen = entry(&h, "Divide");
     assert!(in_view(chosen), "{chosen:?} in view below {top}");
     // The wheel over the button scrolls the open list along too.

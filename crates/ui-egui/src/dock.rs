@@ -41,11 +41,14 @@ pub enum Group {
     History,
     /// Layers | Channels | Paths.
     Layers,
+    /// Timelapse (File › Timelapse's panel; not in the default workspace, Window › Timelapse
+    /// opens it).
+    Timelapse,
 }
 
 impl Group {
     /// Photoshop Essentials order, top to bottom.
-    pub const ALL: [Group; 7] = [Group::Color, Group::Properties, Group::Character, Group::Brushes, Group::Navigator, Group::History, Group::Layers];
+    pub const ALL: [Group; 8] = [Group::Color, Group::Properties, Group::Character, Group::Brushes, Group::Navigator, Group::History, Group::Layers, Group::Timelapse];
 
     pub fn key(self) -> &'static str {
         match self {
@@ -56,6 +59,7 @@ impl Group {
             Group::Navigator => "navigator",
             Group::History => "history",
             Group::Layers => "layers",
+            Group::Timelapse => "timelapse",
         }
     }
 
@@ -70,6 +74,7 @@ impl Group {
             Group::Navigator => 210.0,
             Group::History => 200.0,
             Group::Layers => 320.0,
+            Group::Timelapse => 420.0,
         }
     }
 
@@ -84,6 +89,7 @@ impl Group {
             Group::Navigator => 140.0,
             Group::History => 130.0,
             Group::Layers => 200.0,
+            Group::Timelapse => 160.0,
         }
     }
 
@@ -93,6 +99,9 @@ impl Group {
         match self {
             Group::Layers => 500.0,
             Group::Brushes => 100.0,
+            // Opened, it sits at the bottom of the column: the groups above give way to their
+            // compact heights so its record button and stats show.
+            Group::Timelapse => 420.0,
             g => g.min_height(),
         }
     }
@@ -117,13 +126,14 @@ impl Group {
             Group::Navigator => &["Navigator", "Histogram", "Info"],
             Group::History => &["History", "Actions", "Layer Comps"],
             Group::Layers => &["Layers", "Channels", "Paths"],
+            Group::Timelapse => &["Timelapse"],
         }
     }
 
     /// Tabs that lay out their own scrolling list and footer, or size themselves to the group
     /// (the Navigator's preview grows with it, as in Photoshop: #2726).
     pub fn scrolls_itself(self, tab: usize) -> bool {
-        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::History, 1) | (Group::Navigator, 0) | (Group::Brushes, _))
+        matches!((self, tab), (Group::Layers, 0) | (Group::History, 0) | (Group::History, 1) | (Group::Navigator, 0) | (Group::Brushes, _) | (Group::Timelapse, _))
     }
 
     pub(crate) fn tab_mut(self, tabs: &mut DockTabs) -> &mut usize {
@@ -135,6 +145,7 @@ impl Group {
             Group::Navigator => &mut tabs.navigator,
             Group::History => &mut tabs.history,
             Group::Layers => &mut tabs.layers,
+            Group::Timelapse => &mut tabs.timelapse,
         }
     }
 
@@ -152,6 +163,7 @@ impl Group {
             Group::Navigator => panels.navigator,
             Group::History => panels.history,
             Group::Layers => panels.layers,
+            Group::Timelapse => panels.timelapse,
         }
     }
 
@@ -164,6 +176,7 @@ impl Group {
             Group::Navigator => &mut panels.navigator,
             Group::History => &mut panels.history,
             Group::Layers => &mut panels.layers,
+            Group::Timelapse => &mut panels.timelapse,
         }
     }
 }

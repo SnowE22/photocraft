@@ -23,6 +23,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("history", "History", Group::History),
     ("actions", "Actions", Group::History),
     ("layerComps", "Layer Comps", Group::History),
+    ("timelapse", "Timelapse", Group::Timelapse),
     ("layers", "Layers", Group::Layers),
     ("channels", "Channels", Group::Layers),
     ("paths", "Paths", Group::Layers),
@@ -91,6 +92,7 @@ fn legacy_layout(app: &PhotocraftApp, all: bool) -> Layout<String> {
             Group::Navigator => app.ui.dock_tabs.navigator,
             Group::History => app.ui.dock_tabs.history,
             Group::Layers => app.ui.dock_tabs.layers,
+            Group::Timelapse => app.ui.dock_tabs.timelapse,
         };
         let active = labels.get(selected).and_then(|label| normalize(label)).and_then(|id| panels.iter().position(|p| p == id)).unwrap_or(0);
         if group == Group::Properties && !pro {
@@ -941,6 +943,7 @@ pub(crate) fn prepare_legacy_update(
                 Group::Navigator => tabs.navigator,
                 Group::History => tabs.history,
                 Group::Layers => tabs.layers,
+                Group::Timelapse => tabs.timelapse,
             };
             let id = group.tabs(pro).get(index).and_then(|label| normalize(label)).ok_or("dockTabs index is outside the panel group")?;
             if visibility == Some(false) {

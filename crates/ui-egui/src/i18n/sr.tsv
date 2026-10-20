@@ -4431,3 +4431,98 @@ shape	Appearance	Izgled
 	No upscale has come back from Topaz Gigapixel AI yet	Iz Topaz Gigapixel AI se još nije vratilo nijedno uvećanje
 	Detail:	Detalji:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: uvećano {scale}× na {w} × {h} px (novi sloj). Zadržite ova podešavanja preko Topaz Gigapixel postavke › Sačuvaj postavku iz poslednjeg uvećanja
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Sačuvano {name} (video od {seconds}).
+	Export failed: {error}	Izvoz nije uspeo: {error}
+	Export cancelled.	Izvoz je otkazan.
+	just now	upravo sada
+	{n} min ago	pre {n} min
+	{n} h ago	pre {n} h
+	yesterday	juče
+	{n} days ago	pre {n} dana
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Manje datoteke i najbrže snimanje. Dovoljno za brze skice i preglede.
+	Sharper video for big screens. Uses about twice the disk space.	Oštriji video za velike ekrane. Zauzima otprilike dvostruko više prostora na disku.
+	Full-HD video, good for social media. Recommended.	Full HD video, dobar za društvene mreže. Preporučeno.
+	idle	neaktivno
+	Record	Snimanje
+	Paused	Pauzirano
+	Click to resume recording	Kliknite da nastavite snimanje
+	Open a document to record it.	Otvorite dokument da biste ga snimali.
+	You'll be asked where to save recordings.	Bićete upitani gde da se čuvaju snimci.
+	Export again	Izvezi ponovo
+	Export video	Izvezi video
+	Show the export results	Prikaži rezultate izvoza
+	Hide the export results	Sakrij rezultate izvoza
+	≈ {seconds} video from {frames}.	≈ {seconds} videa od {frames}.
+	Cancel export	Otkaži izvoz
+	Frames	Kadrovi
+	Timer	Vreme
+	On disk	Na disku
+	Hide the live preview	Sakrij pregled uživo
+	Show the newest frame	Prikaži najnoviji kadar
+	No frames yet — just start drawing	Još nema kadrova — samo počnite da crtate
+	No frames yet	Još nema kadrova
+	No layer selected	Nije izabran sloj
+	{n} layers selected	Izabrano slojeva: {n}
+	Not recorded	Ne snima se
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Referentni sloj radi kao običan sloj, ali se ne pojavljuje u timelapse-u.
+	Export settings	Podešavanja izvoza
+	Make video with	Napravi video pomoću
+	Bars colour	Boja traka
+	Bars fill the empty space when the canvas size changed during recording.	Trake popunjavaju prazan prostor kada se veličina platna promenila tokom snimanja.
+	Show finished drawing first	Prvo prikaži gotov crtež
+	Hold final image	Zadrži konačnu sliku
+	Show work-time counter	Prikaži brojač radnog vremena
+	Record something in this document to see how long the video will be.	Snimite nešto u ovom dokumentu da biste videli koliko će video trajati.
+	≈ {seconds} video	≈ {seconds} videa
+	{n} recorded frames	Snimljenih kadrova: {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	Automatski prikazuje svaki kadar jednom (najmanje 5 s, najviše 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Veličina platna se promenila tokom snimanja; raniji kadrovi se uklapaju u konačnu veličinu.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Uklanjanje treperenja izostavlja kadrove koji samo bljesnu (sloj sakriven na trenutak, potez odmah opozvan), pa video može biti malo kraći.
+	Recordings folder	Fascikla snimaka
+	Not chosen yet — see Settings	Još nije izabrana — pogledajte Podešavanja
+	recorded {when}	snimljeno {when}
+	Recorded more since the last export.	Snimljeno je još od poslednjeg izvoza.
+	Frames folder	Fascikla kadrova
+	Not chosen yet	Još nije izabrana
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Gde se čuvaju snimljeni kadrovi. Video se čuva gde izaberete pri izvozu.
+	Choose folder…	Izaberi fasciklu…
+	Change folder…	Promeni fasciklu…
+	Recording quality	Kvalitet snimanja
+	Undoing something removes those recorded frames.	Opoziv uklanja te snimljene kadrove.
+	Reference layers	Referentni slojevi
+	Name tag	Oznaka u imenu
+	Layers with this in their name are left out of the timelapse.	Slojevi sa ovim u imenu se izostavljaju iz timelapse-a.
+	Work timer	Merač radnog vremena
+	Idle after	Neaktivno nakon
+	The timer stops counting after this long without activity.	Merač prestaje da broji nakon ovoliko vremena bez aktivnosti.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (brzo)
+	Dark grey	Tamnosiva
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 sekundi
+	Run Two Presets…	Pokreni dve postavke…
+	Run Two Topaz Gigapixel Presets	Pokreni dve Topaz Gigapixel postavke
+	Run	Pokreni
+	Set Shortcut…	Postavi prečicu…
+	Action Shortcut	Prečica radnje
+	No shortcut.	Bez prečice.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} je i prečica za {commands}: umesto toga pokretaće ovu radnju.
+	Press the keys that play “{action}”.	Pritisnite tastere koji pokreću „{action}”.
+	Shortcut:	Prečica:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Radi bilo koji taster, sa Ctrl, Alt i Shift. Backspace uklanja prečicu.
+	The action no longer exists.	Radnja više ne postoji.

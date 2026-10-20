@@ -4106,7 +4106,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 // unless Preferences › Cursors › Other Cursors asks for the precise crosshair.
                 t if app.alt_sampling || (app.drag.is_none() && alt_samples(t, crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)))) => {
                     // While it samples (button held), the comparison ring replaces the cursor (#213).
-                    if let Some(icon) = eyedropper_ring(app, &painter, &xf, p, response.is_pointer_button_down_on()) {
+                    if samples_screen(app, &xf, p, app.alt_sampling) {
+                        egui::CursorIcon::Crosshair
+                    } else if let Some(icon) = eyedropper_ring(app, &painter, &xf, p, response.is_pointer_button_down_on()) {
                         icon
                     } else if app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise {
                         egui::CursorIcon::Crosshair
@@ -4169,7 +4171,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 // The Eyedropper: the comparison ring follows the pointer while it samples (#213);
                 // otherwise its pipette, or the crosshair for precise Other Cursors.
                 Tool::Eyedropper => {
-                    if let Some(icon) = eyedropper_ring(app, &painter, &xf, p, response.is_pointer_button_down_on()) {
+                    if samples_screen(app, &xf, p, response.is_pointer_button_down_on() || response.dragged()) {
+                        egui::CursorIcon::Crosshair
+                    } else if let Some(icon) = eyedropper_ring(app, &painter, &xf, p, response.is_pointer_button_down_on()) {
                         icon
                     } else if precise_other_cursor(app) {
                         egui::CursorIcon::Crosshair
@@ -5370,6 +5374,18 @@ fn alt_eyedropper(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
         ToolEvent::Up { .. } => app.alt_sampling = false,
     }
     true
+}
+
+/// Is a held sampling drag at screen point `p` off the image, so the screen is read there
+/// ([`sample_eyedropper`])? Then the cursor is the system's crosshair: a pipette PhotoCraft paints
+/// itself is in the window's pixels, and the screen read would pick the pipette's own outline over
+/// the pasteboard and panels (outside the window the system cursor never is).
+fn samples_screen(app: &PhotocraftApp, xf: &ViewXform, p: Pos2, held: bool) -> bool {
+    if !held || !cfg!(target_os = "windows") {
+        return false;
+    }
+    let [x, y] = xf.to_doc(p);
+    app.session.active().is_some_and(|st| !(x >= 0.0 && y >= 0.0 && x < f64::from(st.doc.size.width) && y < f64::from(st.doc.size.height)))
 }
 
 /// Sample at document point (x, y); `dragging` (a press that started on the canvas, moving): off
@@ -7664,6 +7680,22 @@ mod tests {
         // Transparency and points outside the canvas have nothing to compare.
         assert!(super::eyedropper_ring_colors(&mut app, 30.0, 10.0).is_none());
         assert!(super::eyedropper_ring_colors(&mut app, -1.0, 10.0).is_none());
+    }
+
+    /// A sampling drag off the image reads the screen, so the cursor there is the system's
+    /// crosshair: a painted pipette would be read instead of what's under it (Windows).
+    #[test]
+    fn a_drag_off_the_image_uses_the_system_cursor() {
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        app.run("file.new", json!({"width": 40, "height": 20})).unwrap();
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 400.0));
+        let xf = ViewXform { rect, zoom: 1.0, center: [20.0, 10.0], flip: false, rotation: 0.0, aspect: 1.0 };
+        let on = rect.center();
+        let off = egui::pos2(50.0, 200.0);
+        assert!(xf.to_doc(off)[0] < 0.0, "left of the image");
+        assert!(!super::samples_screen(&app, &xf, on, true), "on the image");
+        assert!(!super::samples_screen(&app, &xf, off, false), "not held");
+        assert_eq!(super::samples_screen(&app, &xf, off, true), cfg!(target_os = "windows"));
     }
 
     #[test]

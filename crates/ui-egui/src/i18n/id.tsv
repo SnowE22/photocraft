@@ -3352,3 +3352,103 @@ curves	Smooth	Haluskan
 	No upscale has come back from Topaz Gigapixel AI yet	Belum ada hasil perbesaran yang kembali dari Topaz Gigapixel AI
 	Detail:	Detail:
 	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: diperbesar {scale}× menjadi {w} × {h} px (lapisan baru). Simpan pengaturan ini dengan Prasetel Topaz Gigapixel › Simpan Prasetel dari Perbesaran Terakhir
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} disimpan (video {seconds}).
+	Export failed: {error}	Ekspor gagal: {error}
+	Export cancelled.	Ekspor dibatalkan.
+	just now	baru saja
+	{n} min ago	{n} mnt lalu
+	{n} h ago	{n} jam lalu
+	yesterday	kemarin
+	{n} days ago	{n} hari lalu
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	File lebih kecil dan perekaman tercepat. Cukup untuk sketsa cepat dan pratinjau.
+	Sharper video for big screens. Uses about twice the disk space.	Video lebih tajam untuk layar besar. Memakai sekitar dua kali ruang disk.
+	Full-HD video, good for social media. Recommended.	Video Full HD, cocok untuk media sosial. Disarankan.
+	idle	diam
+	Record	Rekam
+	Paused	Dijeda
+	Click to resume recording	Klik untuk melanjutkan rekaman
+	Open a document to record it.	Buka dokumen untuk merekamnya.
+	You'll be asked where to save recordings.	Anda akan ditanya di mana rekaman disimpan.
+	Export again	Ekspor lagi
+	Export video	Ekspor video
+	Show the export results	Tampilkan hasil ekspor
+	Hide the export results	Sembunyikan hasil ekspor
+	≈ {seconds} video from {frames}.	≈ video {seconds} dari {frames}.
+	Confirm	Konfirmasi
+	Cancel export	Batalkan ekspor
+	Frames	Bingkai
+	Timer	Waktu
+	On disk	Di disk
+	Hide the live preview	Sembunyikan pratinjau langsung
+	Show the newest frame	Tampilkan bingkai terbaru
+	No frames yet — just start drawing	Belum ada bingkai — mulai saja menggambar
+	No frames yet	Belum ada bingkai
+	No layer selected	Tidak ada lapisan dipilih
+	{n} layers selected	{n} lapisan dipilih
+	Not recorded	Tidak direkam
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Lapisan referensi berfungsi seperti lapisan biasa, tetapi tidak muncul di timelapse.
+	Back	Kembali
+	Export settings	Pengaturan ekspor
+	Make video with	Buat video dengan
+	Bars colour	Warna bilah
+	Bars fill the empty space when the canvas size changed during recording.	Bilah mengisi ruang kosong jika ukuran kanvas berubah selama perekaman.
+	Show finished drawing first	Tampilkan gambar jadi dulu
+	Hold final image	Tahan gambar akhir
+	Show work-time counter	Tampilkan penghitung waktu kerja
+	Record something in this document to see how long the video will be.	Rekam sesuatu di dokumen ini untuk melihat durasi videonya.
+	≈ {seconds} video	≈ video {seconds}
+	{n} recorded frames	{n} bingkai terekam
+	Auto shows every frame once (at least 5 s, at most 1 min).	Otomatis menampilkan setiap bingkai sekali (minimal 5 dtk, maksimal 1 mnt).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Ukuran kanvas berubah selama perekaman; bingkai sebelumnya dimuat ke ukuran akhir.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Hapus kedipan melewati bingkai yang muncul sekejap (lapisan yang disembunyikan sebentar, goresan yang langsung dibatalkan), jadi video bisa sedikit lebih pendek.
+	Recordings folder	Folder rekaman
+	Not chosen yet — see Settings	Belum dipilih — lihat Pengaturan
+	recorded {when}	direkam {when}
+	Recorded more since the last export.	Ada rekaman baru sejak ekspor terakhir.
+	Frames folder	Folder bingkai
+	Not chosen yet	Belum dipilih
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Tempat bingkai rekaman disimpan. Video disimpan di mana pun Anda pilih saat mengekspor.
+	Choose folder…	Pilih folder…
+	Change folder…	Ubah folder…
+	Recording quality	Kualitas rekaman
+	Undoing something removes those recorded frames.	Mengurungkan sesuatu menghapus bingkai rekaman tersebut.
+	Reference layers	Lapisan referensi
+	Name tag	Tag nama
+	Layers with this in their name are left out of the timelapse.	Lapisan yang namanya memuat ini tidak masuk ke timelapse.
+	Work timer	Penghitung waktu kerja
+	Idle after	Diam setelah
+	The timer stops counting after this long without activity.	Penghitung berhenti setelah selama ini tanpa aktivitas.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (cepat)
+	Dark grey	Abu-abu gelap
+	0.5 s	0,5 dtk
+	1 s	1 dtk
+	1.5 s	1,5 dtk
+	2 s	2 dtk
+	3 s	3 dtk
+	4 s	4 dtk
+	5 s	5 dtk
+	8 s	8 dtk
+	10 s	10 dtk
+	1 min	1 mnt
+	1.5 min	1,5 mnt
+	2 min	2 mnt
+	3 min	3 mnt
+	5 min	5 mnt
+	45 seconds	45 detik
+
+# Window › Timelapse panel (more)
+	Length	Durasi
+	Run Two Presets…	Jalankan Dua Prasetel…
+	Run Two Topaz Gigapixel Presets	Jalankan Dua Prasetel Topaz Gigapixel
+	Run	Jalankan
+	Set Shortcut…	Atur Pintasan…
+	Action Shortcut	Pintasan Aksi
+	No shortcut.	Tanpa pintasan.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} juga pintasan untuk {commands}: pintasan ini akan menjalankan aksi ini sebagai gantinya.
+	Press the keys that play “{action}”.	Tekan tombol yang menjalankan “{action}”.
+	Shortcut:	Pintasan:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Tombol apa pun bisa, dengan Ctrl, Alt, dan Shift. Backspace menghapus pintasan.
+	The action no longer exists.	Aksi tersebut sudah tidak ada.

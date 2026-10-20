@@ -7,10 +7,31 @@ plug-in's recordings, so a recording started in Photoshop can be continued or ex
 It is built in rather than a WebAssembly plug-in: recording has to follow every edit, undo and
 redo and capture frames in the background, and the plug-in ABI only runs pixel filters.
 
+## The panel
+
+**Window › Timelapse** opens the Timelapse panel, a dock panel like Layers or Brushes: it docks at
+the bottom of the panel column (the groups above give way to their compact heights), and it can be
+resized by its edges, collapsed, moved, grouped with other panels or floated (panel menu › Float
+Panel). It is laid out like the plug-in's panel:
+
+- **Record**: the RECORDING card (Auto record pill; the big record button, which reads Start
+  recording, green Recording with a pulsing dot (click to pause) or grey Paused; Export video /
+  Export again, which opens the export box with Length, Advanced settings and Confirm; progress
+  and Cancel export while exporting; then Play video and Show in folder), the FRAMES / TIMER /
+  ON DISK tiles with the document name and Preview ▸, and the REFERENCE LAYER card (the selected
+  layer, Normal / Reference).
+- **Export settings** (Advanced settings, ‹ Back): VIDEO (length, ffmpeg or JPEG frames, bars
+  colour), EXTRAS (finished drawing first and its length, flash, hold and its length, slow down,
+  remove flicker, work-time counter and its corner), RESULT (the video's length, frames and size).
+- **Library** and **Settings** (frames folder, recording quality Low / Default / High, remove
+  frames with undo, the reference tag, the work timer's idle limit, ffmpeg).
+
+Colours come from the theme (`Tokens::success` is the Recording green), so it follows every theme.
+
 ## Using it
 
-- **Window › Timelapse** opens the panel. **Start recording** (or File › Timelapse › Start
-  Recording) asks for a recordings folder the first time.
+- **Start recording** (or File › Timelapse › Start Recording) asks for a recordings folder the
+  first time.
 - A frame is saved shortly after each real edit: 350 ms after the last activity, at most 2.5 s
   after the first edit it covers. Frames are rendered on a worker thread from a copy-on-write
   snapshot, so painting never waits for a capture.
@@ -38,7 +59,7 @@ redo and capture frames in the background, and the plug-in ABI only runs pixel f
 
 ## Library
 
-The panel's **Library** section lists every recording in the folder (newest recording activity
+The panel's **Library** tab lists every recording in the folder (newest recording activity
 first): frames, size, work time, REC / EXPORTED / NOT EXPORTED, and whether more was recorded
 since the last export. **Open folder** shows it; **Delete frames** deletes its frames and flicker
 thumbnails but keeps the work time, the export history and your videos; once a recording has no

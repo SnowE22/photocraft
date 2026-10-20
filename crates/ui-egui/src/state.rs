@@ -413,6 +413,10 @@ pub struct Panels {
     /// Settings stays a separate floating panel).
     #[serde(default)]
     pub brushes: bool,
+    /// Window › Timelapse: File › Timelapse's panel, a dock panel of its own (not in the
+    /// default workspace).
+    #[serde(default)]
+    pub timelapse: bool,
     /// The toolbar's header chevron: two columns even when one fits (#1197).
     #[serde(default)]
     pub toolbar_double: bool,
@@ -459,6 +463,7 @@ impl Default for Panels {
             brush_settings: false,
             character: false,
             brushes: false,
+            timelapse: false,
             toolbar_double: false,
             toolbar_place: ToolbarPlace::Start,
             dock: true,
@@ -1090,6 +1095,8 @@ pub struct DockTabs {
     pub character: usize,
     /// Brushes (a group of one).
     pub brushes: usize,
+    /// Timelapse (a group of one).
+    pub timelapse: usize,
 }
 
 /// Color panel state.

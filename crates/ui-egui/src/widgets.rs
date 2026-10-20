@@ -1495,12 +1495,15 @@ fn dropdown_with<T: PartialEq + Clone>(
     let (press, close) = crate::press_menu::PressCombo::before(ui, id);
     // A blend mode menu shows every mode at once, in Photoshop's sections.
     let breaks = blend_breaks(&options.iter().map(|(_, l)| *l).collect::<Vec<_>>());
-    // The list opens below the button: when the window leaves too little room there, the rows
-    // tighten (to [`BLEND_MIN_ROW_H`]) so the whole menu still shows.
+    // A blend list opens at the button and moves up as far as it must to fit the window, as in
+    // Photoshop ([`blend_list`]): when even the whole window is too short, the rows tighten (to
+    // [`BLEND_MIN_ROW_H`]) so every mode still shows.
     // Fixed while the list is open, so its rows never shift under the pointer.
     let row_key = ui.make_persistent_id(id).with("blend-row-h");
+    let list_id = press.popup_id().with("blend-list");
     let open = egui::ComboBox::is_open(ui.ctx(), ui.make_persistent_id(id));
-    let below = ui.ctx().content_rect().bottom() - ui.cursor().top() - ui.spacing().interact_size.y - 20.0;
+    let room = blend_room(ui.ctx());
+    let below = room;
     let row_h = match (&breaks, open.then(|| ui.data(|d| d.get_temp::<f32>(row_key))).flatten()) {
         (Some(_), Some(kept)) => kept,
         // Never below the text's own height: every row stays the same size.
@@ -1513,8 +1516,13 @@ fn dropdown_with<T: PartialEq + Clone>(
     }
     let height = breaks.as_ref().map_or(420.0, |b| (options.len() as f32 * row_h + b.len() as f32 * BLEND_BREAK_H + 12.0).max(420.0));
     let texts: Vec<String> = options.iter().map(|(_, l)| shown(l)).collect();
-    let response =
-        egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(height).icon(chevron_icon).close_behavior(close).show_ui(ui, |ui| {
+    let blend = breaks.is_some();
+    // egui's own list for a blend menu is empty and invisible (it can't move above its button):
+    // while it is open, [`blend_list`] shows the rows, so opening, closing, Esc and press-drag stay
+    // egui's.
+    // Open as the frame began: the click choosing a row closes egui's list before the rows see it.
+    let listed = blend && egui::Popup::is_id_open(ui.ctx(), press.popup_id());
+    let mut list = |ui: &mut Ui| {
             if breaks.is_some() {
                 let sp = ui.spacing_mut();
                 sp.item_spacing.y = 0.0;
@@ -1575,7 +1583,21 @@ fn dropdown_with<T: PartialEq + Clone>(
             if hovered.is_none() {
                 hovered = nearest.map(|(_, v)| v.clone());
             }
-        });
+    };
+    let combo = egui::ComboBox::from_id_salt(id).selected_text(label).width(width).height(height).icon(chevron_icon).close_behavior(close);
+    let response = if blend {
+        combo.popup_style(egui::style::StyleModifier::new(invisible_popup)).show_ui(ui, |_| {})
+    } else {
+        combo.show_ui(ui, &mut list)
+    };
+    // Before `press.after`, as egui's list is: a press-drag gesture ends after its release was seen.
+    if blend && (listed || egui::Popup::is_id_open(ui.ctx(), press.popup_id())) {
+        let rows = breaks.as_ref().map_or(0.0, |b| options.len() as f32 * row_h + b.len() as f32 * BLEND_BREAK_H + 12.0);
+        if blend_list(&response.response, list_id, close, room, rows.min(room), &mut list) {
+            // A row chosen (or Esc) closes egui's list, which is what keeps the rows shown.
+            egui::Popup::close_id(ui.ctx(), press.popup_id());
+        }
+    }
     press.after(&response.response);
     if combo_box_arrow_keys(ui, &response.response, current, options) {
         chosen.push(current.clone());
@@ -1593,6 +1615,54 @@ fn dropdown_with<T: PartialEq + Clone>(
         hovered = None;
     }
     (chosen, hovered)
+}
+
+/// The height a blend list may take: the window's visible part, less the popup's frame and a gap.
+fn blend_room(ctx: &egui::Context) -> f32 {
+    (crate::work_area::visible_rect(ctx).height() - 2.0 * MENU_EDGE - 16.0).max(MENU_MIN_HEIGHT)
+}
+
+/// The style of egui's own list for a blend menu: nothing to see, nothing to hit.
+fn invisible_popup(style: &mut egui::Style) {
+    let v = &mut style.visuals;
+    v.window_fill = Color32::TRANSPARENT;
+    v.panel_fill = Color32::TRANSPARENT;
+    v.window_stroke = Stroke::NONE;
+    v.window_shadow = egui::Shadow::NONE;
+    v.popup_shadow = egui::Shadow::NONE;
+    style.spacing.menu_margin = egui::Margin::ZERO;
+    style.spacing.window_margin = egui::Margin::ZERO;
+}
+
+/// A blend menu's open list (`id`): its top at `button`'s top, moved up just enough for its
+/// `height` (the rows', [`dropdown_with`]) to fit the window, `room` tall at most, so all of
+/// Photoshop's modes show at once. True when it asks to close (a row chosen, Esc).
+fn blend_list(button: &Response, id: egui::Id, close: egui::PopupCloseBehavior, room: f32, height: f32, list: &mut dyn FnMut(&mut Ui)) -> bool {
+    let visible = crate::work_area::visible_rect(&button.ctx);
+    // The frame around the rows (menu margins and stroke).
+    let frame = button.ctx.global_style().spacing.menu_margin.sum().y + 2.0;
+    let bottom = visible.bottom() - MENU_EDGE - frame;
+    let top = button.rect.top().min(bottom - height).max(visible.top() + MENU_EDGE);
+    let top_left = egui::RectAlign { parent: egui::Align2::LEFT_TOP, child: egui::Align2::LEFT_TOP };
+    egui::Popup::new(id, button.ctx.clone(), egui::PopupAnchor::Position(egui::pos2(button.rect.left(), top)), button.layer_id)
+        .open(true)
+        .kind(egui::PopupKind::Menu)
+        .layout(egui::Layout::top_down_justified(egui::Align::Min))
+        .style(egui::containers::menu::menu_style)
+        .align(top_left)
+        .align_alternatives(&[])
+        .gap(0.0)
+        .width(button.rect.width())
+        .close_behavior(close)
+        .show(|ui| {
+            ui.set_min_width(ui.available_width());
+            // A popup's Ui starts 400 pt tall at most and keeps its size: ask for the rows' height.
+            egui::ScrollArea::vertical().max_height(room).min_scrolled_height(height).show(ui, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                list(ui);
+            });
+        })
+        .is_some_and(|r| r.response.should_close())
 }
 
 /// Makes an open dropdown list as wide as its widest option is when hovered, from the start. egui
