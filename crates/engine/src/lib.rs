@@ -56,6 +56,7 @@ pub mod fx_visibility_cmds;
 pub mod gallery_cmds;
 pub mod generative;
 pub mod gigapixel_cmds;
+pub mod timelapse_cmds;
 pub mod gradient_fill_cmds;
 pub mod group_view_cmds;
 pub mod guide_layout;
@@ -518,6 +519,8 @@ pub struct Session {
     /// document, source read-only)`. The shell takes them with [`Session::take_held_open`].
     held_opens: Vec<(u64, Document, bool)>,
     next_held_open: u64,
+    /// File › Timelapse: recordings of the open documents ([`timelapse_cmds`]).
+    pub timelapse: timelapse_cmds::Recorder,
 }
 
 /// Move item `i` of `v` to position `to`, clamped to the end. Returns where it went; `None` when

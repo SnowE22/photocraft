@@ -3946,3 +3946,93 @@ curves	Smooth	スムーズ
 	Sharpen:	シャープ:
 	Fix Compression:	圧縮を修正:
 	Face Recovery:	顔の復元:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	タイムラプス録画の保存フォルダーを選択してください
+	Saved {name} ({seconds} s timelapse)	{name} を保存しました（{seconds} 秒のタイムラプス）
+	Export Timelapse	タイムラプスを書き出し
+	Export Timelapse…	タイムラプスを書き出し…
+	Timelapse export cancelled	タイムラプスの書き出しをキャンセルしました
+	Timelapse	タイムラプス
+	Auto record	自動録画
+	Records whatever document you're on, unless you paused it yourself.	作業中のドキュメントを録画します（自分で一時停止したものを除く）。
+	Open a document to record a timelapse.	タイムラプスを録画するにはドキュメントを開いてください。
+	Recording (idle)	録画中（待機）
+	Recording	録画中
+	Click to pause	クリックで一時停止
+	Paused: click to resume	一時停止中：クリックで再開
+	Start recording	録画を開始
+	Start Recording	録画を開始
+	Pause Recording	録画を一時停止
+	Reference Layer	参照レイヤー
+	Reference layer	参照レイヤー
+	Recorded more since the last export	前回の書き出し以降に追加で録画されています
+	Select a layer	レイヤーを選択してください
+	Not recorded: you see it, the timelapse doesn't	録画対象外：あなたには見えますが、タイムラプスには映りません
+	Recorded	録画対象
+	{count} of {total} not recorded	{total} 件中 {count} 件は録画対象外
+	Reference	参照
+	Adds {tag} to the layer's name	レイヤー名に {tag} を付けます
+	Export again…	もう一度書き出し…
+	Export video…	ビデオを書き出し…
+	Play video	ビデオを再生
+	Show in folder	フォルダーに表示
+	Make:	作成:
+	Advanced settings	詳細設定
+	Show the finished drawing first	最初に完成画を表示
+	Flash before the final image	最終画像の前にフラッシュ
+	Hold the final image	最終画像を表示し続ける
+	Slow down at the end	最後をスローにする
+	Remove flicker	ちらつきを除去
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	一瞬だけ現れるフレームを省きます（一時的に非表示にしたレイヤー、すぐ取り消したストロークなど）。
+	Work-time counter	作業時間カウンター
+	Bars:	余白の帯:
+	Fills the edges when the canvas size changed during the recording.	録画中にカンバスサイズが変わったとき、余白を塗りつぶします。
+	Folder:	フォルダー:
+	not chosen yet	未選択
+	Remove frames with undo	取り消すとフレームも削除
+	Reference tag:	参照タグ:
+	Work timer stops after:	作業タイマーの停止まで:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	MP4 を作成します。自動の場合は PhotoCraft と同じ場所、次に PATH を探します。
+	Choose the ffmpeg program on this computer	このコンピューター上の ffmpeg プログラムを選択してください
+	Opening files isn't available here	ここではファイルを開けません
+	MP4 video (ffmpeg)	MP4 ビデオ（ffmpeg）
+	JPEG frames	JPEG フレーム
+	Bottom right	右下
+	Bottom left	左下
+	Top right	右上
+	Top left	左上
+	5 seconds	5 秒
+	10 seconds	10 秒
+	15 seconds	15 秒
+	20 seconds	20 秒
+	30 seconds	30 秒
+	1 minute	1 分
+	2 minutes	2 分
+	5 minutes	5 分
+@plural	{n} frame|{n} frames	{n} フレーム
+	Library	ライブラリ
+	Refresh	更新
+	Recordings will be listed here once you've chosen a folder.	フォルダーを選ぶと、ここに録画が表示されます。
+	No recordings yet.	録画はまだありません。
+	Open folder	フォルダーを開く
+	Delete frames	フレームを削除
+	Delete folder	フォルダーを削除
+	Pause the recording first	先に録画を一時停止してください
+	REC	REC
+	EXPORTED	書き出し済み
+	NOT EXPORTED	未書き出し
+	{time} work	作業 {time}
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	「{name}」はまだ書き出されていません。フレーム（{frames}）を削除すると、ビデオを作れなくなります。この操作は取り消せません。
+	Delete the {frames} of “{name}”?	「{name}」のフレーム（{frames}）を削除しますか？
+	You've recorded more since the last export, and that part isn't in the video.	前回の書き出し以降にも録画しており、その部分はビデオに含まれていません。
+	Your videos and the work time are kept. This can't be undone.	ビデオと作業時間は残ります。この操作は取り消せません。
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	「{name}」とそのフォルダーを削除しますか？作業時間とともにライブラリから削除されます。書き出したビデオは保存した場所に残ります。この操作は取り消せません。
+	Frames deleted.	フレームを削除しました。
+	Deleted “{name}”. Its folder holds other files, so it was kept.	「{name}」を削除しました。フォルダーに他のファイルがあるため、フォルダーは残しました。
+	Deleted “{name}”.	「{name}」を削除しました。
+@plural	{n} recording|{n} recordings	{n} 件の録画
+	Save Preset from Last Upscale…	最後のアップスケールからプリセットを保存…
+	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI からアップスケール結果がまだ戻っていません
+	Detail:	ディテール:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：{scale}× で {w} × {h} px に拡大しました（新規レイヤー）。この設定は Topaz Gigapixel プリセット › 最後のアップスケールからプリセットを保存 で保持できます

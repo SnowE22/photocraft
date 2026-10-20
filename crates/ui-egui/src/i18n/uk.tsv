@@ -3969,3 +3969,93 @@ curves	Smooth	Згладити
 	Sharpen:	Різкість:
 	Fix Compression:	Виправити стиснення:
 	Face Recovery:	Відновлення облич:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Виберіть папку для записів таймлапсу
+	Saved {name} ({seconds} s timelapse)	{name} збережено (таймлапс {seconds} с)
+	Export Timelapse	Експорт таймлапсу
+	Export Timelapse…	Експорт таймлапсу…
+	Timelapse export cancelled	Експорт таймлапсу скасовано
+	Timelapse	Таймлапс
+	Auto record	Автозапис
+	Records whatever document you're on, unless you paused it yourself.	Записує документ, з яким ви працюєте, якщо ви не призупинили його самі.
+	Open a document to record a timelapse.	Відкрийте документ, щоб записати таймлапс.
+	Recording (idle)	Запис (простій)
+	Recording	Запис
+	Click to pause	Натисніть, щоб призупинити
+	Paused: click to resume	Призупинено: натисніть, щоб продовжити
+	Start recording	Почати запис
+	Start Recording	Почати запис
+	Pause Recording	Призупинити запис
+	Reference Layer	Опорний шар
+	Reference layer	Опорний шар
+	Recorded more since the last export	Після останнього експорту записано ще
+	Select a layer	Виберіть шар
+	Not recorded: you see it, the timelapse doesn't	Не записується: ви його бачите, таймлапс — ні
+	Recorded	Записується
+	{count} of {total} not recorded	{count} з {total} не записуються
+	Reference	Опорний
+	Adds {tag} to the layer's name	Додає {tag} до назви шару
+	Export again…	Експортувати знову…
+	Export video…	Експорт відео…
+	Play video	Відтворити відео
+	Show in folder	Показати в папці
+	Make:	Створити:
+	Advanced settings	Додаткові параметри
+	Show the finished drawing first	Спочатку показати готовий малюнок
+	Flash before the final image	Спалах перед підсумковим зображенням
+	Hold the final image	Затримати підсумкове зображення
+	Slow down at the end	Сповільнити в кінці
+	Remove flicker	Прибрати мерехтіння
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Пропускає кадри, що лише блимають: ненадовго прихований шар, одразу скасований мазок.
+	Work-time counter	Лічильник робочого часу
+	Bars:	Смуги:
+	Fills the edges when the canvas size changed during the recording.	Заповнює краї, якщо розмір полотна змінювався під час запису.
+	Folder:	Папка:
+	not chosen yet	ще не вибрано
+	Remove frames with undo	Вилучати кадри під час скасування
+	Reference tag:	Мітка опорного шару:
+	Work timer stops after:	Таймер зупиняється через:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Створює MP4. «Автоматично» шукає поруч із PhotoCraft, потім у PATH.
+	Choose the ffmpeg program on this computer	Виберіть програму ffmpeg на цьому комп'ютері
+	Opening files isn't available here	Відкриття файлів тут недоступне
+	MP4 video (ffmpeg)	Відео MP4 (ffmpeg)
+	JPEG frames	Кадри JPEG
+	Bottom right	Праворуч унизу
+	Bottom left	Ліворуч унизу
+	Top right	Праворуч угорі
+	Top left	Ліворуч угорі
+	5 seconds	5 секунд
+	10 seconds	10 секунд
+	15 seconds	15 секунд
+	20 seconds	20 секунд
+	30 seconds	30 секунд
+	1 minute	1 хвилина
+	2 minutes	2 хвилини
+	5 minutes	5 хвилин
+@plural	{n} frame|{n} frames	{n} кадр|{n} кадри|{n} кадрів
+	Library	Бібліотека
+	Refresh	Оновити
+	Recordings will be listed here once you've chosen a folder.	Записи з'являться тут, щойно ви виберете папку.
+	No recordings yet.	Записів поки немає.
+	Open folder	Відкрити папку
+	Delete frames	Видалити кадри
+	Delete folder	Видалити папку
+	Pause the recording first	Спершу призупиніть запис
+	REC	REC
+	EXPORTED	ЕКСПОРТОВАНО
+	NOT EXPORTED	НЕ ЕКСПОРТОВАНО
+	{time} work	{time} роботи
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Запис «{name}» ще не експортовано. Якщо видалити його кадри ({frames}), зробити з нього відео вже не вдасться. Цю дію не можна скасувати.
+	Delete the {frames} of “{name}”?	Видалити кадри запису «{name}» ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Після останнього експорту ви записали ще, і ця частина не потрапила у відео.
+	Your videos and the work time are kept. This can't be undone.	Ваші відео та час роботи збережуться. Цю дію не можна скасувати.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Видалити запис «{name}» разом із папкою? Він зникне з бібліотеки разом із часом роботи. Експортовані відео залишаться там, де ви їх зберегли. Цю дію не можна скасувати.
+	Frames deleted.	Кадри видалено.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Запис «{name}» видалено. У папці є інші файли, тому папку збережено.
+	Deleted “{name}”.	Запис «{name}» видалено.
+@plural	{n} recording|{n} recordings	{n} запис|{n} записи|{n} записів
+	Save Preset from Last Upscale…	Зберегти набір з останнього збільшення…
+	No upscale has come back from Topaz Gigapixel AI yet	З Topaz Gigapixel AI ще не повернулося жодного збільшення
+	Detail:	Деталізація:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: збільшено в {scale}× до {w} × {h} пікс. (новий шар). Збережіть ці параметри: Набори Topaz Gigapixel › Зберегти набір з останнього збільшення

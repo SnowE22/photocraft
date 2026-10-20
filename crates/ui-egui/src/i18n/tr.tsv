@@ -3999,3 +3999,92 @@ cameraData	Lens	Lens
 	Sharpen:	Keskinleştir:
 	Fix Compression:	Sıkıştırmayı Düzelt:
 	Face Recovery:	Yüz Kurtarma:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Timelapse kayıtlarınız için bir klasör seçin
+	Saved {name} ({seconds} s timelapse)	{name} kaydedildi ({seconds} sn timelapse)
+	Export Timelapse	Timelapse'i Dışa Aktar
+	Export Timelapse…	Timelapse'i Dışa Aktar…
+	Timelapse export cancelled	Timelapse dışa aktarımı iptal edildi
+	Timelapse	Timelapse
+	Auto record	Otomatik kayıt
+	Records whatever document you're on, unless you paused it yourself.	Kendiniz duraklatmadıysanız üzerinde çalıştığınız belgeyi kaydeder.
+	Open a document to record a timelapse.	Timelapse kaydetmek için bir belge açın.
+	Recording (idle)	Kaydediliyor (boşta)
+	Recording	Kaydediliyor
+	Click to pause	Duraklatmak için tıklayın
+	Paused: click to resume	Duraklatıldı: devam etmek için tıklayın
+	Start recording	Kaydı başlat
+	Start Recording	Kaydı Başlat
+	Pause Recording	Kaydı Duraklat
+	Reference Layer	Referans Katmanı
+	Reference layer	Referans katmanı
+	Recorded more since the last export	Son dışa aktarımdan bu yana daha fazla kaydedildi
+	Select a layer	Bir katman seçin
+	Not recorded: you see it, the timelapse doesn't	Kaydedilmiyor: siz görürsünüz, timelapse görmez
+	Recorded	Kaydediliyor
+	{count} of {total} not recorded	{total} katmandan {count} tanesi kaydedilmiyor
+	Reference	Referans
+	Adds {tag} to the layer's name	Katman adına {tag} ekler
+	Export again…	Yeniden dışa aktar…
+	Export video…	Videoyu dışa aktar…
+	Play video	Videoyu oynat
+	Show in folder	Klasörde göster
+	Make:	Oluştur:
+	Advanced settings	Gelişmiş ayarlar
+	Show the finished drawing first	Önce bitmiş çizimi göster
+	Flash before the final image	Son görüntüden önce parlama
+	Hold the final image	Son görüntüyü beklet
+	Slow down at the end	Sonda yavaşlat
+	Remove flicker	Titremeyi kaldır
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Bir anlığına görünüp kaybolan kareleri atlar: kısa süre gizlenen bir katman, hemen geri alınan bir fırça darbesi.
+	Work-time counter	Çalışma süresi sayacı
+	Bars:	Kenar şeritleri:
+	Fills the edges when the canvas size changed during the recording.	Kayıt sırasında tuval boyutu değiştiyse kenarları doldurur.
+	Folder:	Klasör:
+	not chosen yet	henüz seçilmedi
+	Remove frames with undo	Geri alınca kareleri kaldır
+	Reference tag:	Referans etiketi:
+	Work timer stops after:	Çalışma sayacı şu süreden sonra durur:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	MP4'ü oluşturur. Otomatik, önce PhotoCraft'ın yanında, sonra PATH'te arar.
+	Choose the ffmpeg program on this computer	Bu bilgisayardaki ffmpeg programını seçin
+	Opening files isn't available here	Dosya açma burada kullanılamıyor
+	MP4 video (ffmpeg)	MP4 video (ffmpeg)
+	JPEG frames	JPEG kareleri
+	Bottom right	Sağ alt
+	Bottom left	Sol alt
+	Top right	Sağ üst
+	Top left	Sol üst
+	5 seconds	5 saniye
+	10 seconds	10 saniye
+	15 seconds	15 saniye
+	20 seconds	20 saniye
+	30 seconds	30 saniye
+	1 minute	1 dakika
+	2 minutes	2 dakika
+	5 minutes	5 dakika
+@plural	{n} frame|{n} frames	{n} kare
+	Refresh	Yenile
+	Recordings will be listed here once you've chosen a folder.	Bir klasör seçtiğinizde kayıtlar burada listelenir.
+	No recordings yet.	Henüz kayıt yok.
+	Open folder	Klasörü aç
+	Delete frames	Kareleri sil
+	Delete folder	Klasörü sil
+	Pause the recording first	Önce kaydı duraklatın
+	REC	REC
+	EXPORTED	DIŞA AKTARILDI
+	NOT EXPORTED	DIŞA AKTARILMADI
+	{time} work	{time} çalışma
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}” henüz dışa aktarılmadı. Karelerini ({frames}) silerseniz artık ondan video yapamazsınız. Bu işlem geri alınamaz.
+	Delete the {frames} of “{name}”?	“{name}” kareleri ({frames}) silinsin mi?
+	You've recorded more since the last export, and that part isn't in the video.	Son dışa aktarımdan bu yana daha fazla kayıt yaptınız; o kısım videoda yok.
+	Your videos and the work time are kept. This can't be undone.	Videolarınız ve çalışma süresi korunur. Bu işlem geri alınamaz.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	“{name}” ve klasörü silinsin mi? Kayıt, çalışma süresiyle birlikte kütüphaneden kaldırılır. Dışa aktardığınız videolar kaydettiğiniz yerde kalır. Bu işlem geri alınamaz.
+	Frames deleted.	Kareler silindi.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	“{name}” silindi. Klasöründe başka dosyalar olduğu için klasör korundu.
+	Deleted “{name}”.	“{name}” silindi.
+@plural	{n} recording|{n} recordings	{n} kayıt
+	Save Preset from Last Upscale…	Son Büyütmeden Hazır Ayar Kaydet…
+	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI'dan henüz bir büyütme dönmedi
+	Detail:	Ayrıntı:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× büyütülerek {w} × {h} px oldu (yeni katman). Bu ayarları Topaz Gigapixel Hazır Ayarları › Son Büyütmeden Hazır Ayar Kaydet ile saklayın

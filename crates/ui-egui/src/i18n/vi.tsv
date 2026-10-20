@@ -3756,3 +3756,94 @@ curves	Smooth	Làm mượt
 	Sharpen:	Làm nét:
 	Fix Compression:	Sửa nén:
 	Face Recovery:	Khôi phục khuôn mặt:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Chọn thư mục cho các bản ghi timelapse
+	Saved {name} ({seconds} s timelapse)	Đã lưu {name} (timelapse {seconds} giây)
+	Export Timelapse	Xuất timelapse
+	Export Timelapse…	Xuất timelapse…
+	Timelapse export cancelled	Đã hủy xuất timelapse
+	Timelapse	Timelapse
+	Auto record	Tự động ghi
+	Records whatever document you're on, unless you paused it yourself.	Ghi tài liệu bạn đang làm việc, trừ khi bạn tự tạm dừng nó.
+	Open a document to record a timelapse.	Mở một tài liệu để ghi timelapse.
+	Recording (idle)	Đang ghi (nghỉ)
+	Recording	Đang ghi
+	Click to pause	Bấm để tạm dừng
+	Paused: click to resume	Đã tạm dừng: bấm để tiếp tục
+	Start recording	Bắt đầu ghi
+	Start Recording	Bắt đầu ghi
+	Pause Recording	Tạm dừng ghi
+	Reference Layer	Lớp tham chiếu
+	Reference layer	Lớp tham chiếu
+	Recorded more since the last export	Đã ghi thêm từ lần xuất trước
+	Select a layer	Chọn một lớp
+	Not recorded: you see it, the timelapse doesn't	Không được ghi: bạn thấy nó, timelapse thì không
+	Recorded	Được ghi
+	{count} of {total} not recorded	{count}/{total} không được ghi
+	Reference	Tham chiếu
+	Adds {tag} to the layer's name	Thêm {tag} vào tên lớp
+	Export again…	Xuất lại…
+	Export video…	Xuất video…
+	Play video	Phát video
+	Show in folder	Hiện trong thư mục
+	Make:	Tạo:
+	Advanced settings	Cài đặt nâng cao
+	Show the finished drawing first	Hiện bức vẽ hoàn chỉnh trước
+	Flash before the final image	Lóe sáng trước hình cuối
+	Hold the final image	Giữ hình cuối
+	Slow down at the end	Chậm lại ở cuối
+	Remove flicker	Loại bỏ nhấp nháy
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Bỏ các khung hình chỉ lóe lên: một lớp bị ẩn trong chốc lát, một nét vẽ được hoàn tác ngay.
+	Work-time counter	Bộ đếm thời gian làm việc
+	Bars:	Dải viền:
+	Fills the edges when the canvas size changed during the recording.	Lấp viền khi kích thước canvas thay đổi trong lúc ghi.
+	Folder:	Thư mục:
+	not chosen yet	chưa chọn
+	Choose…	Chọn…
+	Remove frames with undo	Xóa khung hình khi hoàn tác
+	Reference tag:	Thẻ tham chiếu:
+	Work timer stops after:	Bộ đếm dừng sau:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Tạo tệp MP4. Tự động tìm cạnh PhotoCraft, rồi trong PATH.
+	Choose the ffmpeg program on this computer	Chọn chương trình ffmpeg trên máy này
+	Opening files isn't available here	Không thể mở tệp ở đây
+	MP4 video (ffmpeg)	Video MP4 (ffmpeg)
+	JPEG frames	Khung hình JPEG
+	Bottom right	Dưới bên phải
+	Bottom left	Dưới bên trái
+	Top right	Trên bên phải
+	Top left	Trên bên trái
+	5 seconds	5 giây
+	10 seconds	10 giây
+	15 seconds	15 giây
+	20 seconds	20 giây
+	30 seconds	30 giây
+	1 minute	1 phút
+	2 minutes	2 phút
+	5 minutes	5 phút
+@plural	{n} frame|{n} frames	{n} khung hình
+	Library	Thư viện
+	Refresh	Làm mới
+	Recordings will be listed here once you've chosen a folder.	Các bản ghi sẽ được liệt kê ở đây sau khi bạn chọn thư mục.
+	No recordings yet.	Chưa có bản ghi nào.
+	Open folder	Mở thư mục
+	Delete frames	Xóa khung hình
+	Delete folder	Xóa thư mục
+	Pause the recording first	Hãy tạm dừng ghi trước
+	REC	REC
+	EXPORTED	ĐÃ XUẤT
+	NOT EXPORTED	CHƯA XUẤT
+	{time} work	{time} làm việc
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}” chưa được xuất. Nếu bạn xóa các khung hình ({frames}), bạn sẽ không thể làm video từ bản ghi này nữa. Không thể hoàn tác thao tác này.
+	Delete the {frames} of “{name}”?	Xóa các khung hình của “{name}” ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Bạn đã ghi thêm kể từ lần xuất gần nhất, và phần đó không có trong video.
+	Your videos and the work time are kept. This can't be undone.	Video của bạn và thời gian làm việc được giữ lại. Không thể hoàn tác thao tác này.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Xóa “{name}” và thư mục của nó? Bản ghi bị gỡ khỏi thư viện, cùng với thời gian làm việc. Các video bạn đã xuất vẫn ở nơi bạn đã lưu. Không thể hoàn tác thao tác này.
+	Frames deleted.	Đã xóa khung hình.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Đã xóa “{name}”. Thư mục còn chứa tệp khác nên được giữ lại.
+	Deleted “{name}”.	Đã xóa “{name}”.
+@plural	{n} recording|{n} recordings	{n} bản ghi
+	Save Preset from Last Upscale…	Lưu thiết lập sẵn từ lần phóng to gần nhất…
+	No upscale has come back from Topaz Gigapixel AI yet	Chưa có ảnh phóng to nào trở về từ Topaz Gigapixel AI
+	Detail:	Chi tiết:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: đã phóng to {scale}× lên {w} × {h} px (lớp mới). Giữ các thiết lập này bằng Thiết lập sẵn Topaz Gigapixel › Lưu thiết lập sẵn từ lần phóng to gần nhất

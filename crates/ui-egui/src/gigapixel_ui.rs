@@ -96,8 +96,13 @@ fn arrived(app: &mut PhotocraftApp, path: &str, document: u64) {
             let (wd, ht) = (r["width"].as_u64().unwrap_or(0).to_string(), r["height"].as_u64().unwrap_or(0).to_string());
             let scale = format!("{:.2}", r["scale"].as_f64().unwrap_or(1.0)).trim_end_matches('0').trim_end_matches('.').to_string();
             app.ui.status_error = false;
-            app.ui.status =
-                crate::i18n::fmt(tl!("Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)"), &[("scale", &scale), ("w", &wd), ("h", &ht)]);
+            // Gigapixel embedded the settings it used: they can become a preset.
+            let message = if r["settings"].is_object() {
+                tl!("Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale")
+            } else {
+                tl!("Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)")
+            };
+            app.ui.status = crate::i18n::fmt(message, &[("scale", &scale), ("w", &wd), ("h", &ht)]);
         }
         Err(e) => {
             app.ui.status_error = true;
@@ -121,23 +126,61 @@ pub const MANAGE_ID: &str = "file.automate.topazGigapixel.presets.manage";
 /// The dialog's marker field.
 const MARK: &str = "__gigapixelPresets";
 
-/// Gigapixel's models as the CLI names them, with the names its app shows ("" lets it choose).
-pub const MODELS: [(&str, &str); 10] = [
+/// Save Preset from Last Upscale… (the settings Gigapixel's app last sent back).
+pub const LAST_ID: &str = "file.automate.topazGigapixel.presets.fromLast";
+
+/// Gigapixel's models as the dialog offers them: the CLI's name and version (`model:version`),
+/// with the names its app shows ("" lets it choose). Without a version Gigapixel 8.4 runs V2 of
+/// the models that have one.
+pub const MODELS: [(&str, &str); 14] = [
     ("", "Auto"),
-    ("std", "Standard"),
-    ("hf", "High Fidelity"),
-    ("lowres", "Low Resolution"),
+    ("std:2", "Standard V2"),
+    ("std:1", "Standard"),
+    ("hf:2", "High Fidelity V2"),
+    ("hf:1", "High Fidelity"),
+    ("lowres:2", "Low Resolution V2"),
+    ("lowres:1", "Low Resolution"),
     ("art", "Art & CG"),
     ("lines", "Lines"),
     ("text", "Text & Shapes"),
     ("vc", "Very Compressed"),
+    ("recovery:2", "Recovery V2"),
+    ("recovery:1", "Recovery"),
     ("redefine", "Redefine"),
-    ("recovery", "Recovery"),
 ];
 
+/// The models with versions, run at V2 when a preset names none.
+const VERSIONED: [&str; 4] = ["std", "hf", "lowres", "recovery"];
+
+/// The dialog's model key for a preset's `model` and `modelVersion`.
+fn model_key(settings: &Value) -> String {
+    let Some(model) = settings.get("model").and_then(Value::as_str) else { return String::new() };
+    match settings.get("modelVersion").and_then(Value::as_u64) {
+        Some(v) => format!("{model}:{v}"),
+        None if VERSIONED.contains(&model) => format!("{model}:2"),
+        None => model.to_string(),
+    }
+}
+
 /// The strengths a preset may set (Gigapixel picks them itself otherwise): param, label, default.
-const STRENGTHS: [(&str, &str, f64); 4] =
-    [("denoise", "Denoise:", 20.0), ("sharpen", "Sharpen:", 20.0), ("compression", "Fix Compression:", 20.0), ("faceRecovery", "Face Recovery:", 60.0)];
+/// Detail is Recovery's own; Recovery and Redefine take none of the other three.
+const STRENGTHS: [(&str, &str, f64); 5] = [
+    ("denoise", "Denoise:", 20.0),
+    ("sharpen", "Sharpen:", 20.0),
+    ("compression", "Fix Compression:", 20.0),
+    ("detail", "Detail:", 50.0),
+    ("faceRecovery", "Face Recovery:", 60.0),
+];
+
+/// Does the model (a dialog key) take strength `key`?
+fn takes(model: &str, key: &str) -> bool {
+    let model = model.split(':').next().unwrap_or("");
+    match key {
+        "detail" => model == "recovery",
+        "denoise" | "sharpen" | "compression" => !matches!(model, "recovery" | "redefine"),
+        _ => true,
+    }
+}
 
 /// Inserts the submenu after File › Automate › Topaz Gigapixel AI….
 pub fn insert_menu_items(app: &PhotocraftApp, items: &mut Vec<MenuItem>) {
@@ -151,6 +194,7 @@ pub fn insert_menu_items(app: &PhotocraftApp, items: &mut Vec<MenuItem>) {
     if !rows.is_empty() {
         rows.push(item("---".into(), "---".into(), false));
     }
+    rows.push(item(LAST_ID.into(), "Save Preset from Last Upscale…".into(), app.session.presets.gigapixel_last.is_some()));
     rows.push(item(MANAGE_ID.into(), "Manage Presets…".into(), true));
     for (k, row) in rows.into_iter().enumerate() {
         items.insert(at + 1 + k, row);
@@ -162,6 +206,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
     if id == MANAGE_ID {
         return Some(true);
     }
+    if id == LAST_ID {
+        return Some(app.session.presets.gigapixel_last.is_some());
+    }
     let i: usize = id.strip_prefix(PRESET_ITEM)?.parse().ok()?;
     Some(app.session.presets.gigapixel_presets.len() > i && app.session.is_enabled(photocraft_engine::gigapixel_cmds::ID))
 }
@@ -170,6 +217,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> Option<bool> {
 pub fn menu(app: &mut PhotocraftApp, id: &str) -> Option<Result<Value, String>> {
     if id == MANAGE_ID {
         return Some(Ok(json!({"dialog": open_manager(app)})));
+    }
+    if id == LAST_ID {
+        return Some(open_from_last(app).map(|d| json!({"dialog": d})).ok_or_else(|| tl!("No upscale has come back from Topaz Gigapixel AI yet").into()));
     }
     let i: usize = id.strip_prefix(PRESET_ITEM)?.parse().ok()?;
     let Some(name) = app.session.presets.gigapixel_presets.get(i).map(|p| p.name.clone()) else {
@@ -189,6 +239,20 @@ pub fn open_manager(app: &mut PhotocraftApp) -> u64 {
     let first = app.session.presets.gigapixel_presets.first().cloned();
     load(&mut f, first.as_ref(), &app.session.presets.gigapixel_presets);
     app.ui.open_dialog(DialogKind::Command, f)
+}
+
+/// Save Preset from Last Upscale…: Manage Presets… on a new preset holding the settings Gigapixel's
+/// app last sent back, named after them ("Low Resolution V2 2×"). `None` when none came back.
+pub fn open_from_last(app: &mut PhotocraftApp) -> Option<u64> {
+    let settings = app.session.presets.gigapixel_last.clone()?;
+    let all = app.session.presets.gigapixel_presets.clone();
+    let base = photocraft_engine::gigapixel_cmds::describe_settings(&settings);
+    let name = (1..).map(|n| if n == 1 { base.clone() } else { format!("{base} {n}") }).find(|n| !all.iter().any(|p| p.name.eq_ignore_ascii_case(n)))?;
+    let id = open_manager(app);
+    let d = app.ui.dialog_mut(id)?;
+    load(&mut d.fields, Some(&GigapixelPreset { name, settings }), &all);
+    d.fields.insert("editing".into(), json!(""));
+    Some(id)
 }
 
 pub fn owns(f: &Map<String, Value>) -> bool {
@@ -223,7 +287,8 @@ fn load(f: &mut Map<String, Value>, preset: Option<&GigapixelPreset>, all: &[Gig
     f.insert("first".into(), json!(names.first().and_then(Value::as_str).or(singles.first().copied()).unwrap_or("")));
     f.insert("second".into(), json!(names.get(1).and_then(Value::as_str).or(singles.get(1).copied()).unwrap_or("")));
     f.insert("combine".into(), json!(s.get("combine").and_then(Value::as_str).unwrap_or("chain")));
-    f.insert("model".into(), json!(s.get("model").and_then(Value::as_str).unwrap_or("")));
+    f.insert("model".into(), json!(model_key(&s)));
+    f.insert("faceRecoveryVersion".into(), s.get("faceRecoveryVersion").cloned().unwrap_or(Value::Null));
     let (size, amount) = ["width", "height"].iter().find_map(|k| s.get(*k).and_then(Value::as_f64).map(|v| (*k, v))).unwrap_or(("scale", s.get("scale").and_then(Value::as_f64).unwrap_or(2.0)));
     f.insert("size".into(), json!(size));
     f.insert("amount".into(), json!(amount));
@@ -240,8 +305,13 @@ fn settings(f: &Map<String, Value>) -> Value {
         return json!({"presets": [text(f, "first"), text(f, "second")], "combine": text(f, "combine")});
     }
     let mut s = Map::new();
-    if !text(f, "model").is_empty() {
-        s.insert("model".into(), json!(text(f, "model")));
+    let key = text(f, "model");
+    let (model, version) = key.split_once(':').map_or((key, None), |(m, v)| (m, v.parse::<u64>().ok()));
+    if !model.is_empty() {
+        s.insert("model".into(), json!(model));
+        if let Some(v) = version {
+            s.insert("modelVersion".into(), json!(v));
+        }
     }
     let size = match text(f, "size") {
         "width" => "width",
@@ -250,10 +320,15 @@ fn settings(f: &Map<String, Value>) -> Value {
     };
     let amount = num(f, "amount", 2.0);
     s.insert(size.into(), if size == "scale" { json!(amount) } else { json!(amount.round()) });
-    for (key, _, default) in STRENGTHS {
-        if flag(f, &format!("{key}On")) {
-            s.insert(key.into(), json!(num(f, key, default).round()));
+    for (k, _, default) in STRENGTHS {
+        if takes(key, k) && flag(f, &format!("{k}On")) {
+            s.insert(k.into(), json!(num(f, k, default).round()));
         }
+    }
+    if s.contains_key("faceRecovery")
+        && let Some(v) = f.get("faceRecoveryVersion").filter(|v| !v.is_null())
+    {
+        s.insert("faceRecoveryVersion".into(), v.clone());
     }
     Value::Object(s)
 }
@@ -387,7 +462,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
     f.insert("amount".into(), json!(f64::from(amount)));
     ui.add_space(4.0);
     // A strength is the preset's own, or Auto: Gigapixel picks it for each image.
-    for (key, label, default) in STRENGTHS {
+    for (key, label, default) in STRENGTHS.into_iter().filter(|(k, _, _)| takes(&model, k)) {
         let on_key = format!("{key}On");
         let mut auto = !flag(f, &on_key);
         let mut v = num(f, key, default) as f32;
@@ -433,12 +508,16 @@ mod tests {
         let rows = |app: &PhotocraftApp| -> Vec<(String, String)> {
             crate::menus::menu_items(app).into_iter().filter(|i| i.path == sub).map(|i| (i.id, i.label)).collect()
         };
-        assert_eq!(rows(&app), [(MANAGE_ID.to_string(), "Manage Presets…".to_string())]);
+        assert_eq!(
+            rows(&app),
+            [(LAST_ID.to_string(), "Save Preset from Last Upscale…".to_string()), (MANAGE_ID.to_string(), "Manage Presets…".to_string())]
+        );
+        assert!(!crate::menus::is_enabled(&app, LAST_ID), "no upscale came back yet");
         assert!(crate::menus::is_enabled(&app, MANAGE_ID));
         app.run(photocraft_engine::gigapixel_cmds::presets::SAVE_ID, json!({"name": "Faces 2x", "settings": {"model": "std", "scale": 2}})).unwrap();
         app.run(photocraft_engine::gigapixel_cmds::presets::SAVE_ID, json!({"name": "Art 4x", "settings": {"model": "art", "scale": 4}})).unwrap();
         let labels: Vec<String> = rows(&app).into_iter().map(|(_, l)| l).collect();
-        assert_eq!(labels, ["Faces 2x", "Art 4x", "---", "Manage Presets…"]);
+        assert_eq!(labels, ["Faces 2x", "Art 4x", "---", "Save Preset from Last Upscale…", "Manage Presets…"]);
         // The submenu sits right after Topaz Gigapixel AI….
         let items = crate::menus::menu_items(&app);
         let at = items.iter().position(|i| i.id == photocraft_engine::gigapixel_cmds::ID).unwrap();
@@ -464,7 +543,7 @@ mod tests {
         }
         let (_, f) = manager(&h).unwrap();
         assert_eq!(text(&f, "name"), "Upscale");
-        assert_eq!(settings(&f), json!({"model": "std", "scale": 2.0}));
+        assert_eq!(settings(&f), json!({"model": "std", "modelVersion": 2, "scale": 2.0}));
         set(&mut h, "name", json!("Faces 2x"));
         set(&mut h, "faceRecoveryOn", json!(true));
         set(&mut h, "faceRecovery", json!(55.4));
@@ -473,7 +552,7 @@ mod tests {
         assert!(manager(&h).is_none(), "closed");
         let saved = h.state().session.presets.gigapixel_presets.clone();
         assert_eq!(saved.len(), 1);
-        assert_eq!(saved[0].settings, json!({"model": "std", "scale": 2.0, "faceRecovery": 55.0}));
+        assert_eq!(saved[0].settings, json!({"model": "std", "modelVersion": 2, "scale": 2.0, "faceRecovery": 55.0}));
 
         // Reopened on the saved preset: rename it and size it by width.
         crate::menus::invoke(h.state_mut(), &ctx, MANAGE_ID, json!({})).unwrap();
@@ -548,6 +627,44 @@ mod tests {
         h.get_by_label("Manage Presets…").click();
         h.run_steps(4);
         assert!(manager(&h).is_some(), "Manage Presets… opened the dialog");
+    }
+
+    /// Save Preset from Last Upscale… opens a new preset holding the settings Gigapixel's app
+    /// last sent back, named after them, which Save keeps as they are.
+    #[test]
+    fn a_preset_is_made_from_the_last_upscale() {
+        use egui_kittest::kittest::Queryable;
+        let mut h = harness();
+        let ctx = h.ctx.clone();
+        assert!(crate::menus::invoke(h.state_mut(), &ctx, LAST_ID, json!({})).is_err(), "nothing came back yet");
+        let last = json!({"model": "recovery", "modelVersion": 2, "scale": 4.0, "detail": 50.0, "faceRecovery": 80.0, "faceRecoveryVersion": 2});
+        h.state_mut().session.presets.gigapixel_last = Some(last.clone());
+        h.state_mut().run(photocraft_engine::gigapixel_cmds::presets::SAVE_ID, json!({"name": "Recovery V2 4×", "settings": {"scale": 2}})).unwrap();
+        assert!(crate::menus::is_enabled(h.state(), LAST_ID));
+        crate::menus::invoke(h.state_mut(), &ctx, LAST_ID, json!({})).unwrap();
+        h.run_steps(4);
+        let (_, f) = manager(&h).unwrap();
+        assert_eq!(text(&f, "editing"), "", "a new preset");
+        assert_eq!(text(&f, "name"), "Recovery V2 4× 2", "named after the settings, not over a saved one");
+        assert_eq!(text(&f, "model"), "recovery:2");
+        assert_eq!(settings(&f), last);
+        // Recovery shows its Detail and not the strengths it doesn't take.
+        assert!(h.query_by_label("Detail:").is_some());
+        assert!(h.query_by_label("Denoise:").is_none());
+        h.get_by_label("Save").click();
+        h.run_steps(3);
+        let saved = h.state().session.presets.gigapixel_presets.clone();
+        assert_eq!(saved.len(), 2);
+        assert_eq!((saved[1].name.as_str(), &saved[1].settings), ("Recovery V2 4× 2", &last));
+        // Another model drops the strengths Recovery used that it doesn't take.
+        let mut f = f;
+        f.insert("model".into(), json!("art"));
+        assert_eq!(settings(&f), json!({"model": "art", "scale": 4.0, "faceRecovery": 80.0, "faceRecoveryVersion": 2}));
+        // Presets saved without a version read as the V2 Gigapixel runs.
+        assert_eq!(model_key(&json!({"model": "hf"})), "hf:2");
+        assert_eq!(model_key(&json!({"model": "art"})), "art");
+        assert_eq!(model_key(&json!({"model": "std", "modelVersion": 1})), "std:1");
+        assert_eq!(model_key(&json!({})), "");
     }
 
     #[test]

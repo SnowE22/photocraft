@@ -4188,3 +4188,92 @@ cameraRaw	Yellow	Sárga
 	Sharpen:	Élesítés:
 	Fix Compression:	Tömörítés javítása:
 	Face Recovery:	Arc-helyreállítás:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Válasszon mappát a timelapse-felvételeknek
+	Saved {name} ({seconds} s timelapse)	{name} mentve ({seconds} mp-es timelapse)
+	Export Timelapse	Timelapse exportálása
+	Export Timelapse…	Timelapse exportálása…
+	Timelapse export cancelled	A timelapse exportálása megszakítva
+	Timelapse	Timelapse
+	Auto record	Automatikus felvétel
+	Records whatever document you're on, unless you paused it yourself.	Azt a dokumentumot rögzíti, amelyen éppen dolgozik, hacsak nem szüneteltette saját maga.
+	Open a document to record a timelapse.	Nyisson meg egy dokumentumot a timelapse rögzítéséhez.
+	Recording (idle)	Felvétel (tétlen)
+	Recording	Felvétel
+	Click to pause	Kattintson a szüneteltetéshez
+	Paused: click to resume	Szüneteltetve: kattintson a folytatáshoz
+	Start recording	Felvétel indítása
+	Start Recording	Felvétel indítása
+	Pause Recording	Felvétel szüneteltetése
+	Reference Layer	Referenciaréteg
+	Reference layer	Referenciaréteg
+	Recorded more since the last export	Az utolsó exportálás óta több készült
+	Select a layer	Jelöljön ki egy réteget
+	Not recorded: you see it, the timelapse doesn't	Nem kerül a felvételbe: Ön látja, a timelapse nem
+	Recorded	Felvételre kerül
+	{count} of {total} not recorded	{total} rétegből {count} nem kerül a felvételbe
+	Reference	Referencia
+	Adds {tag} to the layer's name	Hozzáadja a(z) {tag} jelölést a réteg nevéhez
+	Export again…	Újbóli exportálás…
+	Export video…	Videó exportálása…
+	Play video	Videó lejátszása
+	Show in folder	Megjelenítés a mappában
+	Make:	Kimenet:
+	Advanced settings	Speciális beállítások
+	Show the finished drawing first	Először a kész rajz megjelenítése
+	Flash before the final image	Felvillanás a végső kép előtt
+	Hold the final image	Végső kép kitartása
+	Slow down at the end	Lassítás a végén
+	Remove flicker	Villogás eltávolítása
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Kihagyja a felvillanó képkockákat: egy pillanatra elrejtett réteget, egy azonnal visszavont vonást.
+	Work-time counter	Munkaidő-számláló
+	Bars:	Sávok:
+	Fills the edges when the canvas size changed during the recording.	Kitölti a széleket, ha a vászon mérete megváltozott a felvétel közben.
+	Folder:	Mappa:
+	not chosen yet	még nincs kiválasztva
+	Remove frames with undo	Képkockák eltávolítása visszavonáskor
+	Reference tag:	Referenciacímke:
+	Work timer stops after:	A munkaidő-mérő leáll ennyi után:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Ez készíti az MP4-et. Az Automatikus a PhotoCraft mellett, majd a PATH-ban keres.
+	Choose the ffmpeg program on this computer	Válassza ki az ffmpeg programot ezen a számítógépen
+	Opening files isn't available here	A fájlok megnyitása itt nem érhető el
+	MP4 video (ffmpeg)	MP4-videó (ffmpeg)
+	JPEG frames	JPEG-képkockák
+	Bottom right	Jobbra lent
+	Bottom left	Balra lent
+	Top right	Jobbra fent
+	Top left	Balra fent
+	5 seconds	5 másodperc
+	10 seconds	10 másodperc
+	15 seconds	15 másodperc
+	20 seconds	20 másodperc
+	30 seconds	30 másodperc
+	1 minute	1 perc
+	2 minutes	2 perc
+	5 minutes	5 perc
+@plural	{n} frame|{n} frames	{n} képkocka
+	Refresh	Frissítés
+	Recordings will be listed here once you've chosen a folder.	A felvételek itt jelennek meg, miután kiválasztott egy mappát.
+	No recordings yet.	Még nincs felvétel.
+	Open folder	Mappa megnyitása
+	Delete frames	Képkockák törlése
+	Delete folder	Mappa törlése
+	Pause the recording first	Előbb szüneteltesse a felvételt
+	REC	REC
+	EXPORTED	EXPORTÁLVA
+	NOT EXPORTED	NINCS EXPORTÁLVA
+	{time} work	{time} munka
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	A(z) „{name}” felvétel még nincs exportálva. Ha törli a képkockáit ({frames}), többé nem készíthet belőle videót. Ez nem vonható vissza.
+	Delete the {frames} of “{name}”?	Törli a(z) „{name}” felvétel képkockáit ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Az utolsó exportálás óta többet rögzített, és ez a rész nincs benne a videóban.
+	Your videos and the work time are kept. This can't be undone.	A videói és a munkaidő megmaradnak. Ez nem vonható vissza.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Törli a(z) „{name}” felvételt és a mappáját? A munkaidejével együtt kikerül a könyvtárból. Az exportált videók ott maradnak, ahová mentette őket. Ez nem vonható vissza.
+	Frames deleted.	Képkockák törölve.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	A(z) „{name}” felvétel törölve. A mappája más fájlokat is tartalmaz, ezért megmaradt.
+	Deleted “{name}”.	A(z) „{name}” felvétel törölve.
+@plural	{n} recording|{n} recordings	{n} felvétel
+	Save Preset from Last Upscale…	Készlet mentése az utolsó felskálázásból…
+	No upscale has come back from Topaz Gigapixel AI yet	A Topaz Gigapixel AI-ból még nem jött vissza felskálázás
+	Detail:	Részletesség:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× nagyítás {w} × {h} képpontra (új réteg). A beállítások megtartása: Topaz Gigapixel-készletek › Készlet mentése az utolsó felskálázásból

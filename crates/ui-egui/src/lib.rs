@@ -101,6 +101,7 @@ mod font_preview;
 pub mod frame_tool;
 pub mod gallery_ui;
 pub mod gigapixel_ui;
+pub mod timelapse_ui;
 pub mod gpu_canvas;
 pub mod gpu_status;
 pub mod gradient_ui;
@@ -834,6 +835,8 @@ pub struct PhotocraftApp {
     pub(crate) prefs_rt: prefs_ui::Runtime,
     /// File › Automate › Topaz Gigapixel AI… waiting for Gigapixel's export (see `gigapixel_ui`).
     pub(crate) gigapixel: Option<gigapixel_ui::Waiting>,
+    /// Window › Timelapse (see `timelapse_ui`).
+    pub(crate) timelapse: timelapse_ui::TimelapseUi,
     /// Close, Revert or Exit parked behind the unsaved-changes prompt (see `discard_ui`).
     pub(crate) discard: Option<discard_ui::Prompt>,
     /// The Open or Save dialog in progress, and the action waiting on it (see `file_dialog`).
@@ -997,6 +1000,7 @@ impl PhotocraftApp {
             stroke_trace: stroke_trace::StrokeTrace::from_env(),
             prefs_rt: Default::default(),
             gigapixel: None,
+            timelapse: Default::default(),
             discard: None,
             file_dialog: None,
             tiff_options: None,
@@ -2188,6 +2192,8 @@ impl PhotocraftApp {
         last_brush::persist(self, &ctx);
         // Topaz Gigapixel AI's export, once it is there (and the strip while waiting).
         gigapixel_ui::frame(self, &ctx);
+        // File › Timelapse: follow edits, capture frames, and the Timelapse panel.
+        timelapse_ui::frame(self, &ctx);
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
         // So are View › Extras, Show and Snap To (#3762).

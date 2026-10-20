@@ -4231,3 +4231,92 @@ navigator	Zoom	Zoom
 	Sharpen:	Enfocar:
 	Fix Compression:	Corregir compresión:
 	Face Recovery:	Recuperación de caras:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Elija una carpeta para sus grabaciones de timelapse
+	Saved {name} ({seconds} s timelapse)	Se guardó {name} (timelapse de {seconds} s)
+	Export Timelapse	Exportar timelapse
+	Export Timelapse…	Exportar timelapse…
+	Timelapse export cancelled	Exportación de timelapse cancelada
+	Timelapse	Timelapse
+	Auto record	Grabación automática
+	Records whatever document you're on, unless you paused it yourself.	Graba el documento en el que esté trabajando, salvo que usted lo haya pausado.
+	Open a document to record a timelapse.	Abra un documento para grabar un timelapse.
+	Recording (idle)	Grabando (inactivo)
+	Recording	Grabando
+	Click to pause	Haga clic para pausar
+	Paused: click to resume	En pausa: haga clic para reanudar
+	Start recording	Iniciar grabación
+	Start Recording	Iniciar grabación
+	Pause Recording	Pausar grabación
+	Reference Layer	Capa de referencia
+	Reference layer	Capa de referencia
+	Recorded more since the last export	Se grabó más desde la última exportación
+	Select a layer	Seleccione una capa
+	Not recorded: you see it, the timelapse doesn't	No se graba: usted la ve, el timelapse no
+	Recorded	Se graba
+	{count} of {total} not recorded	{count} de {total} no se graban
+	Reference	Referencia
+	Adds {tag} to the layer's name	Añade {tag} al nombre de la capa
+	Export again…	Exportar de nuevo…
+	Export video…	Exportar vídeo…
+	Play video	Reproducir vídeo
+	Show in folder	Mostrar en la carpeta
+	Make:	Crear:
+	Advanced settings	Ajustes avanzados
+	Show the finished drawing first	Mostrar primero el dibujo terminado
+	Flash before the final image	Destello antes de la imagen final
+	Hold the final image	Mantener la imagen final
+	Slow down at the end	Ralentizar al final
+	Remove flicker	Eliminar parpadeo
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Omite los fotogramas que aparecen y desaparecen: una capa oculta un momento, un trazo deshecho al instante.
+	Work-time counter	Contador de tiempo de trabajo
+	Bars:	Barras:
+	Fills the edges when the canvas size changed during the recording.	Rellena los bordes si el tamaño del lienzo cambió durante la grabación.
+	Folder:	Carpeta:
+	not chosen yet	aún sin elegir
+	Remove frames with undo	Quitar fotogramas al deshacer
+	Reference tag:	Etiqueta de referencia:
+	Work timer stops after:	El temporizador se detiene tras:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Crea el MP4. Automático busca junto a PhotoCraft y después en el PATH.
+	Choose the ffmpeg program on this computer	Elija el programa ffmpeg en este equipo
+	Opening files isn't available here	Abrir archivos no está disponible aquí
+	MP4 video (ffmpeg)	Vídeo MP4 (ffmpeg)
+	JPEG frames	Fotogramas JPEG
+	Bottom right	Abajo a la derecha
+	Bottom left	Abajo a la izquierda
+	Top right	Arriba a la derecha
+	Top left	Arriba a la izquierda
+	5 seconds	5 segundos
+	10 seconds	10 segundos
+	15 seconds	15 segundos
+	20 seconds	20 segundos
+	30 seconds	30 segundos
+	1 minute	1 minuto
+	2 minutes	2 minutos
+	5 minutes	5 minutos
+@plural	{n} frame|{n} frames	{n} fotograma|{n} fotogramas
+	Refresh	Actualizar
+	Recordings will be listed here once you've chosen a folder.	Las grabaciones aparecerán aquí cuando haya elegido una carpeta.
+	No recordings yet.	Todavía no hay grabaciones.
+	Open folder	Abrir carpeta
+	Delete frames	Eliminar fotogramas
+	Delete folder	Eliminar carpeta
+	Pause the recording first	Pause primero la grabación
+	REC	REC
+	EXPORTED	EXPORTADA
+	NOT EXPORTED	SIN EXPORTAR
+	{time} work	{time} de trabajo
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	«{name}» aún no se ha exportado. Si elimina sus fotogramas ({frames}), ya no podrá hacer un vídeo con ella. No se puede deshacer.
+	Delete the {frames} of “{name}”?	¿Eliminar los fotogramas de «{name}» ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Ha grabado más desde la última exportación y esa parte no está en el vídeo.
+	Your videos and the work time are kept. This can't be undone.	Sus vídeos y el tiempo de trabajo se conservan. No se puede deshacer.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	¿Eliminar «{name}» y su carpeta? Se quita de la biblioteca junto con su tiempo de trabajo. Los vídeos exportados se quedan donde los guardó. No se puede deshacer.
+	Frames deleted.	Fotogramas eliminados.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	«{name}» eliminada. Su carpeta contiene otros archivos, así que se ha conservado.
+	Deleted “{name}”.	«{name}» eliminada.
+@plural	{n} recording|{n} recordings	{n} grabación|{n} grabaciones
+	Save Preset from Last Upscale…	Guardar ajuste preestablecido de la última ampliación…
+	No upscale has come back from Topaz Gigapixel AI yet	Todavía no ha vuelto ninguna ampliación de Topaz Gigapixel AI
+	Detail:	Detalle:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: ampliada {scale}× a {w} × {h} px (capa nueva). Conserve estos ajustes con Ajustes preestablecidos de Topaz Gigapixel › Guardar ajuste preestablecido de la última ampliación

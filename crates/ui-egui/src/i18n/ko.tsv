@@ -3449,3 +3449,94 @@ curves	Smooth	매끄럽게
 	Sharpen:	선명 효과:
 	Fix Compression:	압축 보정:
 	Face Recovery:	얼굴 복원:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	타임랩스 녹화를 저장할 폴더를 선택하세요
+	Saved {name} ({seconds} s timelapse)	{name} 저장됨({seconds}초 타임랩스)
+	Export Timelapse	타임랩스 내보내기
+	Export Timelapse…	타임랩스 내보내기…
+	Timelapse export cancelled	타임랩스 내보내기가 취소됨
+	Timelapse	타임랩스
+	Auto record	자동 녹화
+	Records whatever document you're on, unless you paused it yourself.	직접 일시 정지한 문서가 아니면 작업 중인 문서를 녹화합니다.
+	Open a document to record a timelapse.	타임랩스를 녹화하려면 문서를 여세요.
+	Recording (idle)	녹화 중(유휴)
+	Recording	녹화 중
+	Click to pause	클릭하여 일시 정지
+	Paused: click to resume	일시 정지됨: 클릭하여 재개
+	Start recording	녹화 시작
+	Start Recording	녹화 시작
+	Pause Recording	녹화 일시 정지
+	Reference Layer	참조 레이어
+	Reference layer	참조 레이어
+	Recorded more since the last export	마지막 내보내기 이후 더 녹화됨
+	Select a layer	레이어를 선택하세요
+	Not recorded: you see it, the timelapse doesn't	녹화 안 됨: 사용자에게는 보이지만 타임랩스에는 나오지 않음
+	Recorded	녹화됨
+	{count} of {total} not recorded	{total}개 중 {count}개 녹화 안 됨
+	Reference	참조
+	Adds {tag} to the layer's name	레이어 이름에 {tag}을(를) 추가합니다
+	Export again…	다시 내보내기…
+	Export video…	비디오 내보내기…
+	Play video	비디오 재생
+	Show in folder	폴더에서 보기
+	Make:	만들기:
+	Advanced settings	고급 설정
+	Show the finished drawing first	완성된 그림을 먼저 표시
+	Flash before the final image	최종 이미지 전에 플래시
+	Hold the final image	최종 이미지 유지
+	Slow down at the end	끝부분 느리게
+	Remove flicker	깜박임 제거
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	잠깐 나타났다 사라지는 프레임을 뺍니다. 잠시 숨긴 레이어, 바로 취소한 획 등.
+	Work-time counter	작업 시간 카운터
+	Bars:	여백 막대:
+	Fills the edges when the canvas size changed during the recording.	녹화 중 캔버스 크기가 바뀌었을 때 가장자리를 채웁니다.
+	Folder:	폴더:
+	not chosen yet	아직 선택 안 됨
+	Choose…	선택…
+	Remove frames with undo	실행 취소 시 프레임 제거
+	Reference tag:	참조 태그:
+	Work timer stops after:	작업 타이머 정지 시간:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	MP4를 만듭니다. 자동은 PhotoCraft 옆을 먼저, 그다음 PATH를 찾습니다.
+	Choose the ffmpeg program on this computer	이 컴퓨터의 ffmpeg 프로그램을 선택하세요
+	Opening files isn't available here	여기서는 파일을 열 수 없습니다
+	MP4 video (ffmpeg)	MP4 비디오(ffmpeg)
+	JPEG frames	JPEG 프레임
+	Bottom right	오른쪽 아래
+	Bottom left	왼쪽 아래
+	Top right	오른쪽 위
+	Top left	왼쪽 위
+	5 seconds	5초
+	10 seconds	10초
+	15 seconds	15초
+	20 seconds	20초
+	30 seconds	30초
+	1 minute	1분
+	2 minutes	2분
+	5 minutes	5분
+@plural	{n} frame|{n} frames	프레임 {n}개
+	Library	라이브러리
+	Refresh	새로 고침
+	Recordings will be listed here once you've chosen a folder.	폴더를 선택하면 여기에 녹화가 표시됩니다.
+	No recordings yet.	아직 녹화가 없습니다.
+	Open folder	폴더 열기
+	Delete frames	프레임 삭제
+	Delete folder	폴더 삭제
+	Pause the recording first	먼저 녹화를 일시 정지하세요
+	REC	REC
+	EXPORTED	내보냄
+	NOT EXPORTED	내보내지 않음
+	{time} work	작업 {time}
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	‘{name}’은(는) 아직 내보내지 않았습니다. 프레임({frames})을 삭제하면 더 이상 비디오를 만들 수 없습니다. 이 작업은 취소할 수 없습니다.
+	Delete the {frames} of “{name}”?	‘{name}’의 프레임({frames})을 삭제할까요?
+	You've recorded more since the last export, and that part isn't in the video.	마지막 내보내기 이후 더 녹화했으며, 그 부분은 비디오에 없습니다.
+	Your videos and the work time are kept. This can't be undone.	비디오와 작업 시간은 유지됩니다. 이 작업은 취소할 수 없습니다.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	‘{name}’과(와) 해당 폴더를 삭제할까요? 작업 시간과 함께 라이브러리에서 제거됩니다. 내보낸 비디오는 저장한 위치에 그대로 남습니다. 이 작업은 취소할 수 없습니다.
+	Frames deleted.	프레임을 삭제했습니다.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	‘{name}’을(를) 삭제했습니다. 폴더에 다른 파일이 있어 폴더는 유지했습니다.
+	Deleted “{name}”.	‘{name}’을(를) 삭제했습니다.
+@plural	{n} recording|{n} recordings	녹화 {n}개
+	Save Preset from Last Upscale…	마지막 업스케일에서 사전 설정 저장…
+	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI에서 아직 돌아온 업스케일이 없습니다
+	Detail:	디테일:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× 확대하여 {w} × {h} px (새 레이어). 이 설정은 Topaz Gigapixel 사전 설정 › 마지막 업스케일에서 사전 설정 저장으로 보관합니다

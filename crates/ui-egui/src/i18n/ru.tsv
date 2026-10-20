@@ -3240,3 +3240,93 @@ curves	Smooth	Сгладить
 	Sharpen:	Резкость:
 	Fix Compression:	Исправить сжатие:
 	Face Recovery:	Восстановление лиц:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Выберите папку для записей таймлапса
+	Saved {name} ({seconds} s timelapse)	{name} сохранён (таймлапс {seconds} с)
+	Export Timelapse	Экспорт таймлапса
+	Export Timelapse…	Экспорт таймлапса…
+	Timelapse export cancelled	Экспорт таймлапса отменён
+	Timelapse	Таймлапс
+	Auto record	Автозапись
+	Records whatever document you're on, unless you paused it yourself.	Записывает документ, с которым вы работаете, если вы не поставили его на паузу сами.
+	Open a document to record a timelapse.	Откройте документ, чтобы записать таймлапс.
+	Recording (idle)	Запись (простой)
+	Recording	Запись
+	Click to pause	Нажмите, чтобы приостановить
+	Paused: click to resume	Пауза: нажмите, чтобы продолжить
+	Start recording	Начать запись
+	Start Recording	Начать запись
+	Pause Recording	Приостановить запись
+	Reference Layer	Опорный слой
+	Reference layer	Опорный слой
+	Recorded more since the last export	После последнего экспорта записано ещё
+	Select a layer	Выберите слой
+	Not recorded: you see it, the timelapse doesn't	Не записывается: вы его видите, таймлапс — нет
+	Recorded	Записывается
+	{count} of {total} not recorded	{count} из {total} не записываются
+	Reference	Опорный
+	Adds {tag} to the layer's name	Добавляет {tag} к имени слоя
+	Export again…	Экспортировать снова…
+	Export video…	Экспорт видео…
+	Play video	Воспроизвести видео
+	Show in folder	Показать в папке
+	Make:	Создать:
+	Advanced settings	Дополнительные параметры
+	Show the finished drawing first	Сначала показать готовый рисунок
+	Flash before the final image	Вспышка перед итоговым изображением
+	Hold the final image	Задержать итоговое изображение
+	Slow down at the end	Замедлить в конце
+	Remove flicker	Убрать мерцание
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Пропускает кадры, которые лишь мелькают: ненадолго скрытый слой, сразу отменённый мазок.
+	Work-time counter	Счётчик рабочего времени
+	Bars:	Поля:
+	Fills the edges when the canvas size changed during the recording.	Заполняет края, если размер холста менялся во время записи.
+	Folder:	Папка:
+	not chosen yet	ещё не выбрана
+	Remove frames with undo	Удалять кадры при отмене
+	Reference tag:	Метка опорного слоя:
+	Work timer stops after:	Таймер останавливается через:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Создаёт MP4. «Автоматически» ищет рядом с PhotoCraft, затем в PATH.
+	Choose the ffmpeg program on this computer	Выберите программу ffmpeg на этом компьютере
+	Opening files isn't available here	Открытие файлов здесь недоступно
+	MP4 video (ffmpeg)	Видео MP4 (ffmpeg)
+	JPEG frames	Кадры JPEG
+	Bottom right	Справа внизу
+	Bottom left	Слева внизу
+	Top right	Справа вверху
+	Top left	Слева вверху
+	5 seconds	5 секунд
+	10 seconds	10 секунд
+	15 seconds	15 секунд
+	20 seconds	20 секунд
+	30 seconds	30 секунд
+	1 minute	1 минута
+	2 minutes	2 минуты
+	5 minutes	5 минут
+@plural	{n} frame|{n} frames	{n} кадр|{n} кадра|{n} кадров
+	Library	Библиотека
+	Refresh	Обновить
+	Recordings will be listed here once you've chosen a folder.	Записи появятся здесь, когда вы выберете папку.
+	No recordings yet.	Записей пока нет.
+	Open folder	Открыть папку
+	Delete frames	Удалить кадры
+	Delete folder	Удалить папку
+	Pause the recording first	Сначала приостановите запись
+	REC	REC
+	EXPORTED	ЭКСПОРТИРОВАНО
+	NOT EXPORTED	НЕ ЭКСПОРТИРОВАНО
+	{time} work	{time} работы
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Запись «{name}» ещё не экспортирована. Если удалить её кадры ({frames}), видео из неё сделать уже не получится. Это действие нельзя отменить.
+	Delete the {frames} of “{name}”?	Удалить кадры записи «{name}» ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	После последнего экспорта вы записали ещё, и эта часть не попала в видео.
+	Your videos and the work time are kept. This can't be undone.	Ваши видео и время работы сохранятся. Это действие нельзя отменить.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Удалить запись «{name}» вместе с папкой? Она исчезнет из библиотеки вместе со временем работы. Экспортированные видео останутся там, где вы их сохранили. Это действие нельзя отменить.
+	Frames deleted.	Кадры удалены.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Запись «{name}» удалена. В папке есть другие файлы, поэтому папка сохранена.
+	Deleted “{name}”.	Запись «{name}» удалена.
+@plural	{n} recording|{n} recordings	{n} запись|{n} записи|{n} записей
+	Save Preset from Last Upscale…	Сохранить набор из последнего увеличения…
+	No upscale has come back from Topaz Gigapixel AI yet	Из Topaz Gigapixel AI еще не вернулось ни одного увеличения
+	Detail:	Детализация:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: увеличено в {scale}× до {w} × {h} пикс. (новый слой). Сохраните эти параметры: Наборы Topaz Gigapixel › Сохранить набор из последнего увеличения

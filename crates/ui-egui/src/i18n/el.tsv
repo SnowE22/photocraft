@@ -3969,3 +3969,92 @@ curves	Smooth	Εξομάλυνση
 	Sharpen:	Όξυνση:
 	Fix Compression:	Διόρθωση συμπίεσης:
 	Face Recovery:	Αποκατάσταση προσώπων:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Επιλέξτε φάκελο για τις εγγραφές timelapse
+	Saved {name} ({seconds} s timelapse)	Αποθηκεύτηκε το {name} (timelapse {seconds} δ)
+	Export Timelapse	Εξαγωγή timelapse
+	Export Timelapse…	Εξαγωγή timelapse…
+	Timelapse export cancelled	Η εξαγωγή timelapse ακυρώθηκε
+	Timelapse	Timelapse
+	Auto record	Αυτόματη εγγραφή
+	Records whatever document you're on, unless you paused it yourself.	Καταγράφει όποιο έγγραφο έχετε ανοιχτό, εκτός αν το έχετε θέσει σε παύση εσείς.
+	Open a document to record a timelapse.	Ανοίξτε ένα έγγραφο για να καταγράψετε timelapse.
+	Recording (idle)	Εγγραφή (αδράνεια)
+	Recording	Εγγραφή
+	Click to pause	Κάντε κλικ για παύση
+	Paused: click to resume	Σε παύση: κάντε κλικ για συνέχεια
+	Start recording	Έναρξη εγγραφής
+	Start Recording	Έναρξη εγγραφής
+	Pause Recording	Παύση εγγραφής
+	Reference Layer	Επίπεδο αναφοράς
+	Reference layer	Επίπεδο αναφοράς
+	Recorded more since the last export	Έχουν καταγραφεί περισσότερα από την τελευταία εξαγωγή
+	Select a layer	Επιλέξτε ένα επίπεδο
+	Not recorded: you see it, the timelapse doesn't	Δεν καταγράφεται: εσείς το βλέπετε, το timelapse όχι
+	Recorded	Καταγράφεται
+	{count} of {total} not recorded	{count} από {total} δεν καταγράφονται
+	Reference	Αναφορά
+	Adds {tag} to the layer's name	Προσθέτει το {tag} στο όνομα του επιπέδου
+	Export again…	Εξαγωγή ξανά…
+	Export video…	Εξαγωγή βίντεο…
+	Play video	Αναπαραγωγή βίντεο
+	Show in folder	Εμφάνιση στον φάκελο
+	Make:	Δημιουργία:
+	Advanced settings	Ρυθμίσεις για προχωρημένους
+	Show the finished drawing first	Εμφάνιση πρώτα του ολοκληρωμένου σχεδίου
+	Flash before the final image	Λάμψη πριν από την τελική εικόνα
+	Hold the final image	Διατήρηση της τελικής εικόνας
+	Slow down at the end	Επιβράδυνση στο τέλος
+	Remove flicker	Αφαίρεση τρεμοπαίγματος
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Παραλείπει καρέ που εμφανίζονται και χάνονται: ένα επίπεδο κρυμμένο για λίγο, μια πινελιά που αναιρέθηκε αμέσως.
+	Work-time counter	Μετρητής χρόνου εργασίας
+	Bars:	Μπάρες:
+	Fills the edges when the canvas size changed during the recording.	Γεμίζει τις άκρες όταν το μέγεθος του καμβά άλλαξε κατά την εγγραφή.
+	Folder:	Φάκελος:
+	not chosen yet	δεν έχει επιλεγεί ακόμη
+	Remove frames with undo	Αφαίρεση καρέ με την αναίρεση
+	Reference tag:	Ετικέτα αναφοράς:
+	Work timer stops after:	Ο χρονομετρητής σταματά μετά από:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Δημιουργεί το MP4. Το Αυτόματα ψάχνει δίπλα στο PhotoCraft και μετά στο PATH.
+	Choose the ffmpeg program on this computer	Επιλέξτε το πρόγραμμα ffmpeg σε αυτόν τον υπολογιστή
+	Opening files isn't available here	Το άνοιγμα αρχείων δεν είναι διαθέσιμο εδώ
+	MP4 video (ffmpeg)	Βίντεο MP4 (ffmpeg)
+	JPEG frames	Καρέ JPEG
+	Bottom right	Κάτω δεξιά
+	Bottom left	Κάτω αριστερά
+	Top right	Πάνω δεξιά
+	Top left	Πάνω αριστερά
+	5 seconds	5 δευτερόλεπτα
+	10 seconds	10 δευτερόλεπτα
+	15 seconds	15 δευτερόλεπτα
+	20 seconds	20 δευτερόλεπτα
+	30 seconds	30 δευτερόλεπτα
+	1 minute	1 λεπτό
+	2 minutes	2 λεπτά
+	5 minutes	5 λεπτά
+@plural	{n} frame|{n} frames	{n} καρέ|{n} καρέ
+	Refresh	Ανανέωση
+	Recordings will be listed here once you've chosen a folder.	Οι εγγραφές θα εμφανιστούν εδώ μόλις επιλέξετε φάκελο.
+	No recordings yet.	Δεν υπάρχουν εγγραφές ακόμη.
+	Open folder	Άνοιγμα φακέλου
+	Delete frames	Διαγραφή καρέ
+	Delete folder	Διαγραφή φακέλου
+	Pause the recording first	Πρώτα θέστε την εγγραφή σε παύση
+	REC	REC
+	EXPORTED	ΕΞΑΧΘΗΚΕ
+	NOT EXPORTED	ΔΕΝ ΕΞΑΧΘΗΚΕ
+	{time} work	{time} εργασίας
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Η εγγραφή «{name}» δεν έχει εξαχθεί ακόμη. Αν διαγράψετε τα καρέ της ({frames}), δεν θα μπορείτε πια να φτιάξετε βίντεο από αυτήν. Η ενέργεια δεν αναιρείται.
+	Delete the {frames} of “{name}”?	Διαγραφή των καρέ της εγγραφής «{name}» ({frames});
+	You've recorded more since the last export, and that part isn't in the video.	Καταγράψατε κι άλλο μετά την τελευταία εξαγωγή και αυτό το τμήμα δεν υπάρχει στο βίντεο.
+	Your videos and the work time are kept. This can't be undone.	Τα βίντεό σας και ο χρόνος εργασίας διατηρούνται. Η ενέργεια δεν αναιρείται.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Διαγραφή της εγγραφής «{name}» και του φακέλου της; Αφαιρείται από τη βιβλιοθήκη μαζί με τον χρόνο εργασίας. Τα βίντεο που εξαγάγατε μένουν εκεί που τα αποθηκεύσατε. Η ενέργεια δεν αναιρείται.
+	Frames deleted.	Τα καρέ διαγράφηκαν.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Η εγγραφή «{name}» διαγράφηκε. Ο φάκελός της περιέχει άλλα αρχεία, οπότε διατηρήθηκε.
+	Deleted “{name}”.	Η εγγραφή «{name}» διαγράφηκε.
+@plural	{n} recording|{n} recordings	{n} εγγραφή|{n} εγγραφές
+	Save Preset from Last Upscale…	Αποθήκευση προρύθμισης από την τελευταία μεγέθυνση…
+	No upscale has come back from Topaz Gigapixel AI yet	Δεν έχει επιστρέψει ακόμη καμία μεγέθυνση από το Topaz Gigapixel AI
+	Detail:	Λεπτομέρεια:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: μεγέθυνση {scale}× σε {w} × {h} px (νέο επίπεδο). Κρατήστε αυτές τις ρυθμίσεις με Προρυθμίσεις Topaz Gigapixel › Αποθήκευση προρύθμισης από την τελευταία μεγέθυνση

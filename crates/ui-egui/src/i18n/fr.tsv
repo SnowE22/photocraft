@@ -3275,3 +3275,93 @@ curves	Smooth	Lisser
 	Sharpen:	Netteté :
 	Fix Compression:	Corriger la compression :
 	Face Recovery:	Restauration des visages :
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Choisissez un dossier pour vos enregistrements timelapse
+	Saved {name} ({seconds} s timelapse)	{name} enregistré (timelapse de {seconds} s)
+	Export Timelapse	Exporter le timelapse
+	Export Timelapse…	Exporter le timelapse…
+	Timelapse export cancelled	Exportation du timelapse annulée
+	Timelapse	Timelapse
+	Auto record	Enregistrement automatique
+	Records whatever document you're on, unless you paused it yourself.	Enregistre le document sur lequel vous travaillez, sauf si vous l'avez mis en pause vous-même.
+	Open a document to record a timelapse.	Ouvrez un document pour enregistrer un timelapse.
+	Recording (idle)	Enregistrement (inactif)
+	Recording	Enregistrement
+	Click to pause	Cliquez pour mettre en pause
+	Paused: click to resume	En pause : cliquez pour reprendre
+	Start recording	Démarrer l'enregistrement
+	Start Recording	Démarrer l'enregistrement
+	Pause Recording	Suspendre l'enregistrement
+	Reference Layer	Calque de référence
+	Reference layer	Calque de référence
+	Recorded more since the last export	Enregistré davantage depuis la dernière exportation
+	Select a layer	Sélectionnez un calque
+	Not recorded: you see it, the timelapse doesn't	Non enregistré : vous le voyez, le timelapse non
+	Recorded	Enregistré
+	{count} of {total} not recorded	{count} sur {total} non enregistrés
+	Reference	Référence
+	Adds {tag} to the layer's name	Ajoute {tag} au nom du calque
+	Export again…	Exporter à nouveau…
+	Export video…	Exporter la vidéo…
+	Play video	Lire la vidéo
+	Show in folder	Afficher dans le dossier
+	Make:	Créer :
+	Advanced settings	Paramètres avancés
+	Show the finished drawing first	Montrer d'abord le dessin terminé
+	Flash before the final image	Flash avant l'image finale
+	Hold the final image	Maintenir l'image finale
+	Slow down at the end	Ralentir à la fin
+	Remove flicker	Supprimer le scintillement
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Omet les images qui apparaissent et disparaissent : un calque masqué un instant, un trait annulé aussitôt.
+	Work-time counter	Compteur de temps de travail
+	Bars:	Bandes :
+	Fills the edges when the canvas size changed during the recording.	Remplit les bords si la taille de la zone de travail a changé pendant l'enregistrement.
+	Folder:	Dossier :
+	not chosen yet	pas encore choisi
+	Remove frames with undo	Retirer les images à l'annulation
+	Reference tag:	Balise de référence :
+	Work timer stops after:	Le chronomètre s'arrête après :
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Crée le MP4. Automatique cherche à côté de PhotoCraft, puis dans le PATH.
+	Choose the ffmpeg program on this computer	Choisissez le programme ffmpeg sur cet ordinateur
+	Opening files isn't available here	L'ouverture de fichiers n'est pas disponible ici
+	MP4 video (ffmpeg)	Vidéo MP4 (ffmpeg)
+	JPEG frames	Images JPEG
+	Bottom right	En bas à droite
+	Bottom left	En bas à gauche
+	Top right	En haut à droite
+	Top left	En haut à gauche
+	5 seconds	5 secondes
+	10 seconds	10 secondes
+	15 seconds	15 secondes
+	20 seconds	20 secondes
+	30 seconds	30 secondes
+	1 minute	1 minute
+	2 minutes	2 minutes
+	5 minutes	5 minutes
+@plural	{n} frame|{n} frames	{n} image|{n} images
+	Library	Bibliothèque
+	Refresh	Actualiser
+	Recordings will be listed here once you've chosen a folder.	Les enregistrements apparaîtront ici une fois un dossier choisi.
+	No recordings yet.	Aucun enregistrement pour l’instant.
+	Open folder	Ouvrir le dossier
+	Delete frames	Supprimer les images
+	Delete folder	Supprimer le dossier
+	Pause the recording first	Mettez d’abord l’enregistrement en pause
+	REC	REC
+	EXPORTED	EXPORTÉ
+	NOT EXPORTED	NON EXPORTÉ
+	{time} work	{time} de travail
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	« {name} » n’a pas encore été exporté. Si vous supprimez ses images ({frames}), vous ne pourrez plus en faire de vidéo. Cette action est irréversible.
+	Delete the {frames} of “{name}”?	Supprimer les images de « {name} » ({frames}) ?
+	You've recorded more since the last export, and that part isn't in the video.	Vous avez enregistré davantage depuis la dernière exportation ; cette partie n’est pas dans la vidéo.
+	Your videos and the work time are kept. This can't be undone.	Vos vidéos et le temps de travail sont conservés. Cette action est irréversible.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Supprimer « {name} » et son dossier ? Il est retiré de la bibliothèque, avec son temps de travail. Les vidéos exportées restent là où vous les avez enregistrées. Cette action est irréversible.
+	Frames deleted.	Images supprimées.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	« {name} » supprimé. Son dossier contient d’autres fichiers ; il a été conservé.
+	Deleted “{name}”.	« {name} » supprimé.
+@plural	{n} recording|{n} recordings	{n} enregistrement|{n} enregistrements
+	Save Preset from Last Upscale…	Enregistrer un paramètre prédéfini du dernier agrandissement…
+	No upscale has come back from Topaz Gigapixel AI yet	Aucun agrandissement n’est encore revenu de Topaz Gigapixel AI
+	Detail:	Détail :
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI : agrandie {scale}× à {w} × {h} px (nouveau calque). Conservez ces réglages avec Paramètres prédéfinis Topaz Gigapixel › Enregistrer un paramètre prédéfini du dernier agrandissement

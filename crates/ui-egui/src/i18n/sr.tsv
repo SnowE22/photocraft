@@ -4342,3 +4342,92 @@ shape	Appearance	Izgled
 	Sharpen:	Izoštravanje:
 	Fix Compression:	Ispravi kompresiju:
 	Face Recovery:	Oporavak lica:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Izaberite fasciklu za snimke timelapse-a
+	Saved {name} ({seconds} s timelapse)	Sačuvano {name} (timelapse od {seconds} s)
+	Export Timelapse	Izvezi timelapse
+	Export Timelapse…	Izvezi timelapse…
+	Timelapse export cancelled	Izvoz timelapse-a je otkazan
+	Timelapse	Timelapse
+	Auto record	Automatsko snimanje
+	Records whatever document you're on, unless you paused it yourself.	Snima dokument na kojem radite, osim ako ste ga sami pauzirali.
+	Open a document to record a timelapse.	Otvorite dokument da biste snimili timelapse.
+	Recording (idle)	Snimanje (neaktivno)
+	Recording	Snimanje
+	Click to pause	Kliknite za pauzu
+	Paused: click to resume	Pauzirano: kliknite za nastavak
+	Start recording	Pokreni snimanje
+	Start Recording	Pokreni snimanje
+	Pause Recording	Pauziraj snimanje
+	Reference Layer	Referentni sloj
+	Reference layer	Referentni sloj
+	Recorded more since the last export	Snimljeno je još od poslednjeg izvoza
+	Select a layer	Izaberite sloj
+	Not recorded: you see it, the timelapse doesn't	Ne snima se: vi ga vidite, timelapse ne
+	Recorded	Snima se
+	{count} of {total} not recorded	{count} od {total} se ne snima
+	Reference	Referentni
+	Adds {tag} to the layer's name	Dodaje {tag} u ime sloja
+	Export again…	Izvezi ponovo…
+	Export video…	Izvezi video…
+	Play video	Pusti video
+	Show in folder	Prikaži u fascikli
+	Make:	Napravi:
+	Advanced settings	Napredna podešavanja
+	Show the finished drawing first	Prvo prikaži gotov crtež
+	Flash before the final image	Blesak pre konačne slike
+	Hold the final image	Zadrži konačnu sliku
+	Slow down at the end	Uspori na kraju
+	Remove flicker	Ukloni treperenje
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Izostavlja kadrove koji samo bljesnu: sloj sakriven na trenutak, potez odmah opozvan.
+	Work-time counter	Brojač radnog vremena
+	Bars:	Trake:
+	Fills the edges when the canvas size changed during the recording.	Popunjava ivice kada se veličina platna promenila tokom snimanja.
+	Folder:	Fascikla:
+	not chosen yet	još nije izabrana
+	Remove frames with undo	Uklanjaj kadrove pri opozivu
+	Reference tag:	Oznaka reference:
+	Work timer stops after:	Merač vremena staje nakon:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Pravi MP4. Automatski traži pored PhotoCraft-a, pa u PATH-u.
+	Choose the ffmpeg program on this computer	Izaberite program ffmpeg na ovom računaru
+	Opening files isn't available here	Otvaranje datoteka ovde nije dostupno
+	MP4 video (ffmpeg)	MP4 video (ffmpeg)
+	JPEG frames	JPEG kadrovi
+	Bottom right	Dole desno
+	Bottom left	Dole levo
+	Top right	Gore desno
+	Top left	Gore levo
+	5 seconds	5 sekundi
+	10 seconds	10 sekundi
+	15 seconds	15 sekundi
+	20 seconds	20 sekundi
+	30 seconds	30 sekundi
+	1 minute	1 minut
+	2 minutes	2 minuta
+	5 minutes	5 minuta
+@plural	{n} frame|{n} frames	{n} kadar|{n} kadra|{n} kadrova
+	Refresh	Osveži
+	Recordings will be listed here once you've chosen a folder.	Snimci će se pojaviti ovde kada izaberete fasciklu.
+	No recordings yet.	Još nema snimaka.
+	Open folder	Otvori fasciklu
+	Delete frames	Obriši kadrove
+	Delete folder	Obriši fasciklu
+	Pause the recording first	Prvo pauzirajte snimanje
+	REC	REC
+	EXPORTED	IZVEZENO
+	NOT EXPORTED	NIJE IZVEZENO
+	{time} work	{time} rada
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Snimak „{name}” još nije izvezen. Ako obrišete njegove kadrove ({frames}), od njega više nećete moći da napravite video. Ovo se ne može opozvati.
+	Delete the {frames} of “{name}”?	Obrisati kadrove snimka „{name}” ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Od poslednjeg izvoza snimili ste još, i taj deo nije u videu.
+	Your videos and the work time are kept. This can't be undone.	Vaši video snimci i vreme rada ostaju sačuvani. Ovo se ne može opozvati.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Obrisati snimak „{name}” i njegovu fasciklu? Uklanja se iz biblioteke, zajedno sa vremenom rada. Izvezeni video snimci ostaju tamo gde ste ih sačuvali. Ovo se ne može opozvati.
+	Frames deleted.	Kadrovi obrisani.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Snimak „{name}” je obrisan. Fascikla sadrži druge datoteke, pa je zadržana.
+	Deleted “{name}”.	Snimak „{name}” je obrisan.
+@plural	{n} recording|{n} recordings	{n} snimak|{n} snimka|{n} snimaka
+	Save Preset from Last Upscale…	Sačuvaj postavku iz poslednjeg uvećanja…
+	No upscale has come back from Topaz Gigapixel AI yet	Iz Topaz Gigapixel AI se još nije vratilo nijedno uvećanje
+	Detail:	Detalji:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: uvećano {scale}× na {w} × {h} px (novi sloj). Zadržite ova podešavanja preko Topaz Gigapixel postavke › Sačuvaj postavku iz poslednjeg uvećanja

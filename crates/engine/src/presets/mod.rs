@@ -87,6 +87,9 @@ pub struct PresetState {
     pub export_presets: Vec<crate::export_preset_cmds::ExportPreset>,
     /// File › Automate › Topaz Gigapixel Presets: saved upscale settings.
     pub gigapixel_presets: Vec<crate::gigapixel_cmds::presets::GigapixelPreset>,
+    /// The settings of the last upscale Gigapixel's app sent back (Save Preset from Last
+    /// Upscale); not saved.
+    pub gigapixel_last: Option<Value>,
     pub clone: clone_source::CloneSources,
     /// The user defaults "Make Default" in the Layer Style dialog saves
     /// (effect kind → param set); "Reset to Default" restores them.
@@ -111,6 +114,7 @@ impl Default for PresetState {
             recent_documents: Vec::new(),
             export_presets: Vec::new(),
             gigapixel_presets: Vec::new(),
+            gigapixel_last: None,
             clone: Default::default(),
             layer_defaults: BTreeMap::new(),
             swatches: swatches::builtin(),

@@ -2872,3 +2872,97 @@ curves	Smooth	平滑
 	Sharpen:	銳利化：
 	Fix Compression:	修正壓縮：
 	Face Recovery:	臉部復原：
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	選擇用於儲存縮時錄製的資料夾
+	Saved {name} ({seconds} s timelapse)	已儲存 {name}（{seconds} 秒縮時影片）
+	Export Timelapse	轉存縮時影片
+	Export Timelapse…	轉存縮時影片…
+	Timelapse export cancelled	已取消轉存縮時影片
+	Timelapse	縮時攝影
+	Auto record	自動錄製
+	Records whatever document you're on, unless you paused it yourself.	錄製你正在處理的文件，除非你自行暫停了它。
+	Open a document to record a timelapse.	開啟文件以錄製縮時影片。
+	Recording (idle)	錄製中（閒置）
+	Recording	錄製中
+	Click to pause	按一下以暫停
+	Paused: click to resume	已暫停：按一下以繼續
+	Start recording	開始錄製
+	Start Recording	開始錄製
+	Pause Recording	暫停錄製
+	Reference Layer	參考圖層
+	Reference layer	參考圖層
+	Recorded more since the last export	上次轉存後又錄製了新內容
+	Select a layer	選取一個圖層
+	Not recorded: you see it, the timelapse doesn't	不錄製：你看得到，縮時影片裡沒有
+	Recorded	會錄製
+	{count} of {total} not recorded	{total} 個中有 {count} 個不錄製
+	Reference	參考
+	Adds {tag} to the layer's name	在圖層名稱後加上 {tag}
+	Export again…	再次轉存…
+	Export video…	轉存影片…
+	Play video	播放影片
+	Show in folder	在資料夾中顯示
+	Make:	產生：
+	Advanced settings	進階設定
+	Show the finished drawing first	先顯示完成的畫作
+	Flash before the final image	最終畫面前閃白
+	Hold the final image	停留在最終畫面
+	Slow down at the end	結尾減速
+	Remove flicker	去除閃爍
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	略去一閃而過的影格：短暫隱藏的圖層、立即復原的筆畫。
+	Work-time counter	工作時長計數
+	Bars:	邊條：
+	Fills the edges when the canvas size changed during the recording.	錄製期間版面尺寸有變化時，填滿邊緣。
+	Settings	設定
+	Folder:	資料夾：
+	not chosen yet	尚未選擇
+	Choose…	選擇…
+	Remove frames with undo	復原時移除影格
+	Reference tag:	參考標記：
+	Work timer stops after:	計時停止於閒置：
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	用於產生 MP4。自動會先在 PhotoCraft 旁尋找，再在 PATH 中尋找。
+	Choose the ffmpeg program on this computer	選擇這台電腦上的 ffmpeg 程式
+	Opening files isn't available here	此處無法開啟檔案
+	MP4 video (ffmpeg)	MP4 影片（ffmpeg）
+	JPEG frames	JPEG 影格
+	Bottom right	右下
+	Bottom left	左下
+	Top right	右上
+	Top left	左上
+	Low	低
+	High	高
+	5 seconds	5 秒
+	10 seconds	10 秒
+	15 seconds	15 秒
+	20 seconds	20 秒
+	30 seconds	30 秒
+	1 minute	1 分鐘
+	2 minutes	2 分鐘
+	5 minutes	5 分鐘
+@plural	{n} frame|{n} frames	{n} 個影格
+	Library	資料庫
+	Refresh	重新整理
+	Recordings will be listed here once you've chosen a folder.	選擇資料夾後，錄製內容會列在這裡。
+	No recordings yet.	還沒有錄製。
+	Open folder	開啟資料夾
+	Delete frames	刪除影格
+	Delete folder	刪除資料夾
+	Pause the recording first	請先暫停錄製
+	REC	REC
+	EXPORTED	已轉存
+	NOT EXPORTED	未轉存
+	{time} work	工作 {time}
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	「{name}」尚未轉存。如果刪除它的影格（{frames}），就無法再用它製作影片。此動作無法還原。
+	Delete the {frames} of “{name}”?	要刪除「{name}」的影格（{frames}）嗎？
+	You've recorded more since the last export, and that part isn't in the video.	上次轉存後你又錄製了新內容，這部分不在影片中。
+	Your videos and the work time are kept. This can't be undone.	你的影片和工作時間會保留。此動作無法還原。
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	要刪除「{name}」及其資料夾嗎？它會連同工作時間一起從資料庫中移除。轉存的影片仍留在你儲存的位置。此動作無法還原。
+	Frames deleted.	已刪除影格。
+	Deleted “{name}”. Its folder holds other files, so it was kept.	已刪除「{name}」。它的資料夾中還有其他檔案，因此保留了資料夾。
+	Deleted “{name}”.	已刪除「{name}」。
+@plural	{n} recording|{n} recordings	{n} 個錄製
+	Save Preset from Last Upscale…	從上次放大儲存預設集…
+	No upscale has come back from Topaz Gigapixel AI yet	尚未從 Topaz Gigapixel AI 傳回任何放大結果
+	Detail:	細節：
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新圖層）。使用 Topaz Gigapixel 預設集 › 從上次放大儲存預設集 保留這些設定

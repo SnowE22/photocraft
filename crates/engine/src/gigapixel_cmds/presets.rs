@@ -25,7 +25,8 @@ const MAX_PRESETS: usize = 256;
 /// The most presets one run combines.
 pub const MAX_STEPS: usize = 4;
 /// The settings of one upscale.
-const UPSCALE_KEYS: [&str; 9] = ["model", "modelVersion", "scale", "width", "height", "denoise", "sharpen", "compression", "faceRecovery"];
+const UPSCALE_KEYS: [&str; 11] =
+    ["model", "modelVersion", "scale", "width", "height", "denoise", "sharpen", "compression", "detail", "faceRecovery", "faceRecoveryVersion"];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GigapixelPreset {
@@ -202,9 +203,9 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "List Topaz Gigapixel Presets",
             menu: &[],
             shortcut: None,
-            params: "{} -> {presets:[{name,settings}]}",
+            params: "{} -> {presets:[{name,settings}],last} (last: the settings of the last upscale Gigapixel's app sent back, or null)",
             enabled: always,
-            run: |s, _| Ok(json!({"presets": s.presets.gigapixel_presets})),
+            run: |s, _| Ok(json!({"presets": s.presets.gigapixel_presets, "last": s.presets.gigapixel_last})),
             journal: false,
         },
         CommandSpec {

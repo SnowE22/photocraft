@@ -151,6 +151,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     if let Some(r) = crate::gigapixel_ui::menu(app, id) {
         return r;
     }
+    // Window › Timelapse, and File › Timelapse items that need the panel or a folder first.
+    if let Some(r) = crate::timelapse_ui::menu(app, id, &params) {
+        return r;
+    }
     if id == "window.panel.brushSettings" {
         app.ui.brush_tab = 0;
     }
@@ -686,7 +690,7 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     if crate::analysis_ui::handles(id) {
         return true;
     }
-    if crate::preset_panels::handles(id) || crate::type_panels_ui::handles(id) || crate::timeline_ui::handles(id) {
+    if crate::preset_panels::handles(id) || crate::type_panels_ui::handles(id) || crate::timeline_ui::handles(id) || crate::timelapse_ui::handles(id) {
         return true;
     }
     if let Some(e) = crate::view_cmds::is_enabled(app, id) {
@@ -782,7 +786,7 @@ fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
     if let Some(c) = crate::preset_panels::checked(app, id) {
         return Some(c);
     }
-    if let Some(c) = crate::timeline_ui::checked(app, id) {
+    if let Some(c) = crate::timeline_ui::checked(app, id).or_else(|| crate::timelapse_ui::checked(app, id)) {
         return Some(c);
     }
     if let Some(c) = crate::type_panels_ui::checked(app, id) {
@@ -910,6 +914,7 @@ pub fn is_live(id: &str) -> bool {
         || crate::preset_panels::handles(id)
         || crate::type_panels_ui::handles(id)
         || crate::timeline_ui::handles(id)
+        || crate::timelapse_ui::handles(id)
 }
 
 /// Commands outside the catalogue that belong right after a catalogue item: `(id, after)`.

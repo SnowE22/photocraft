@@ -2887,3 +2887,97 @@ curves	Smooth	平滑
 	Sharpen:	锐化：
 	Fix Compression:	修复压缩：
 	Face Recovery:	面部恢复：
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	选择用于保存延时录制的文件夹
+	Saved {name} ({seconds} s timelapse)	已保存 {name}（{seconds} 秒延时视频）
+	Export Timelapse	导出延时视频
+	Export Timelapse…	导出延时视频…
+	Timelapse export cancelled	已取消导出延时视频
+	Timelapse	延时摄影
+	Auto record	自动录制
+	Records whatever document you're on, unless you paused it yourself.	录制你正在处理的文档，除非你自己暂停了它。
+	Open a document to record a timelapse.	打开文档以录制延时视频。
+	Recording (idle)	录制中（空闲）
+	Recording	录制中
+	Click to pause	点击暂停
+	Paused: click to resume	已暂停：点击继续
+	Start recording	开始录制
+	Start Recording	开始录制
+	Pause Recording	暂停录制
+	Reference Layer	参考图层
+	Reference layer	参考图层
+	Recorded more since the last export	上次导出后又录制了新内容
+	Select a layer	选择一个图层
+	Not recorded: you see it, the timelapse doesn't	不录制：你能看到，延时视频里没有
+	Recorded	会录制
+	{count} of {total} not recorded	{total} 个中有 {count} 个不录制
+	Reference	参考
+	Adds {tag} to the layer's name	在图层名称后加上 {tag}
+	Export again…	再次导出…
+	Export video…	导出视频…
+	Play video	播放视频
+	Show in folder	在文件夹中显示
+	Make:	生成：
+	Advanced settings	高级设置
+	Show the finished drawing first	先显示完成的画作
+	Flash before the final image	最终画面前闪白
+	Hold the final image	停留在最终画面
+	Slow down at the end	结尾减速
+	Remove flicker	去除闪烁
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	略去一闪而过的帧：短暂隐藏的图层、立即撤销的笔画。
+	Work-time counter	工作时长计数
+	Bars:	边条：
+	Fills the edges when the canvas size changed during the recording.	录制期间画布尺寸有变化时，填充边缘。
+	Settings	设置
+	Folder:	文件夹：
+	not chosen yet	尚未选择
+	Choose…	选择…
+	Remove frames with undo	撤销时移除帧
+	Reference tag:	参考标记：
+	Work timer stops after:	计时停止于闲置：
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	用于生成 MP4。自动会先在 PhotoCraft 旁查找，再在 PATH 中查找。
+	Choose the ffmpeg program on this computer	选择这台电脑上的 ffmpeg 程序
+	Opening files isn't available here	此处无法打开文件
+	MP4 video (ffmpeg)	MP4 视频（ffmpeg）
+	JPEG frames	JPEG 帧
+	Bottom right	右下
+	Bottom left	左下
+	Top right	右上
+	Top left	左上
+	Low	低
+	High	高
+	5 seconds	5 秒
+	10 seconds	10 秒
+	15 seconds	15 秒
+	20 seconds	20 秒
+	30 seconds	30 秒
+	1 minute	1 分钟
+	2 minutes	2 分钟
+	5 minutes	5 分钟
+@plural	{n} frame|{n} frames	{n} 帧
+	Library	库
+	Refresh	刷新
+	Recordings will be listed here once you've chosen a folder.	选择文件夹后，录制内容会列在这里。
+	No recordings yet.	还没有录制。
+	Open folder	打开文件夹
+	Delete frames	删除帧
+	Delete folder	删除文件夹
+	Pause the recording first	请先暂停录制
+	REC	REC
+	EXPORTED	已导出
+	NOT EXPORTED	未导出
+	{time} work	工作 {time}
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}”尚未导出。如果删除它的帧（{frames}），就无法再用它制作视频。此操作无法撤销。
+	Delete the {frames} of “{name}”?	要删除“{name}”的帧（{frames}）吗？
+	You've recorded more since the last export, and that part isn't in the video.	上次导出后你又录制了新内容，这部分不在视频中。
+	Your videos and the work time are kept. This can't be undone.	你的视频和工作时间会保留。此操作无法撤销。
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	要删除“{name}”及其文件夹吗？它会连同工作时间一起从库中移除。导出的视频仍留在你保存的位置。此操作无法撤销。
+	Frames deleted.	已删除帧。
+	Deleted “{name}”. Its folder holds other files, so it was kept.	已删除“{name}”。它的文件夹中还有其他文件，因此保留了文件夹。
+	Deleted “{name}”.	已删除“{name}”。
+@plural	{n} recording|{n} recordings	{n} 个录制
+	Save Preset from Last Upscale…	从上次放大存储预设…
+	No upscale has come back from Topaz Gigapixel AI yet	尚未从 Topaz Gigapixel AI 返回任何放大结果
+	Detail:	细节：
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新图层）。使用 Topaz Gigapixel 预设 › 从上次放大存储预设 保留这些设置

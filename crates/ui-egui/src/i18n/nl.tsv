@@ -4029,3 +4029,92 @@ curves	Smooth	Vloeiend maken
 	Sharpen:	Verscherpen:
 	Fix Compression:	Compressie herstellen:
 	Face Recovery:	Gezichtsherstel:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Kies een map voor je timelapse-opnamen
+	Saved {name} ({seconds} s timelapse)	{name} opgeslagen (timelapse van {seconds} s)
+	Export Timelapse	Timelapse exporteren
+	Export Timelapse…	Timelapse exporteren…
+	Timelapse export cancelled	Timelapse-export geannuleerd
+	Timelapse	Timelapse
+	Auto record	Automatisch opnemen
+	Records whatever document you're on, unless you paused it yourself.	Neemt het document op waaraan je werkt, tenzij je het zelf hebt gepauzeerd.
+	Open a document to record a timelapse.	Open een document om een timelapse op te nemen.
+	Recording (idle)	Opnemen (inactief)
+	Recording	Opnemen
+	Click to pause	Klik om te pauzeren
+	Paused: click to resume	Gepauzeerd: klik om verder te gaan
+	Start recording	Opname starten
+	Start Recording	Opname starten
+	Pause Recording	Opname pauzeren
+	Reference Layer	Referentielaag
+	Reference layer	Referentielaag
+	Recorded more since the last export	Meer opgenomen sinds de laatste export
+	Select a layer	Selecteer een laag
+	Not recorded: you see it, the timelapse doesn't	Niet opgenomen: jij ziet hem, de timelapse niet
+	Recorded	Wordt opgenomen
+	{count} of {total} not recorded	{count} van {total} niet opgenomen
+	Reference	Referentie
+	Adds {tag} to the layer's name	Voegt {tag} toe aan de laagnaam
+	Export again…	Opnieuw exporteren…
+	Export video…	Video exporteren…
+	Play video	Video afspelen
+	Show in folder	In map weergeven
+	Make:	Maken:
+	Advanced settings	Geavanceerde instellingen
+	Show the finished drawing first	Eerst de afgemaakte tekening tonen
+	Flash before the final image	Flits voor het eindbeeld
+	Hold the final image	Eindbeeld vasthouden
+	Slow down at the end	Vertragen aan het eind
+	Remove flicker	Flikkering verwijderen
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Laat frames weg die even opflitsen: een laag die even verborgen was, een streek die meteen ongedaan is gemaakt.
+	Work-time counter	Werktijdteller
+	Bars:	Balken:
+	Fills the edges when the canvas size changed during the recording.	Vult de randen als het canvasformaat tijdens de opname is veranderd.
+	Folder:	Map:
+	not chosen yet	nog niet gekozen
+	Remove frames with undo	Frames verwijderen bij ongedaan maken
+	Reference tag:	Referentielabel:
+	Work timer stops after:	Werktimer stopt na:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Maakt de MP4. Automatisch zoekt naast PhotoCraft, daarna in PATH.
+	Choose the ffmpeg program on this computer	Kies het programma ffmpeg op deze computer
+	Opening files isn't available here	Bestanden openen is hier niet beschikbaar
+	MP4 video (ffmpeg)	MP4-video (ffmpeg)
+	JPEG frames	JPEG-frames
+	Bottom right	Rechtsonder
+	Bottom left	Linksonder
+	Top right	Rechtsboven
+	Top left	Linksboven
+	5 seconds	5 seconden
+	10 seconds	10 seconden
+	15 seconds	15 seconden
+	20 seconds	20 seconden
+	30 seconds	30 seconden
+	1 minute	1 minuut
+	2 minutes	2 minuten
+	5 minutes	5 minuten
+@plural	{n} frame|{n} frames	{n} frame|{n} frames
+	Refresh	Vernieuwen
+	Recordings will be listed here once you've chosen a folder.	Opnamen verschijnen hier zodra je een map hebt gekozen.
+	No recordings yet.	Nog geen opnamen.
+	Open folder	Map openen
+	Delete frames	Frames verwijderen
+	Delete folder	Map verwijderen
+	Pause the recording first	Pauzeer eerst de opname
+	REC	REC
+	EXPORTED	GEËXPORTEERD
+	NOT EXPORTED	NIET GEËXPORTEERD
+	{time} work	{time} werk
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	‘{name}’ is nog niet geëxporteerd. Als je de frames verwijdert ({frames}), kun je er geen video meer van maken. Dit kan niet ongedaan worden gemaakt.
+	Delete the {frames} of “{name}”?	Frames van ‘{name}’ verwijderen ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Je hebt sinds de laatste export meer opgenomen; dat deel zit niet in de video.
+	Your videos and the work time are kept. This can't be undone.	Je video's en de werktijd blijven bewaard. Dit kan niet ongedaan worden gemaakt.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	‘{name}’ en de map verwijderen? De opname verdwijnt uit de bibliotheek, samen met de werktijd. Geëxporteerde video's blijven waar je ze hebt opgeslagen. Dit kan niet ongedaan worden gemaakt.
+	Frames deleted.	Frames verwijderd.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	‘{name}’ verwijderd. De map bevat andere bestanden en is bewaard.
+	Deleted “{name}”.	‘{name}’ verwijderd.
+@plural	{n} recording|{n} recordings	{n} opname|{n} opnamen
+	Save Preset from Last Upscale…	Voorinstelling opslaan van laatste opschaling…
+	No upscale has come back from Topaz Gigapixel AI yet	Er is nog geen opschaling teruggekomen uit Topaz Gigapixel AI
+	Detail:	Detail:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× vergroot tot {w} × {h} px (nieuwe laag). Bewaar deze instellingen met Topaz Gigapixel-voorinstellingen › Voorinstelling opslaan van laatste opschaling

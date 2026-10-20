@@ -4059,3 +4059,92 @@ layerLabel	No Color	Sem cor
 	Sharpen:	Nitidez:
 	Fix Compression:	Corrigir compressão:
 	Face Recovery:	Recuperação de rostos:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Escolha uma pasta para suas gravações de timelapse
+	Saved {name} ({seconds} s timelapse)	{name} salvo (timelapse de {seconds} s)
+	Export Timelapse	Exportar timelapse
+	Export Timelapse…	Exportar timelapse…
+	Timelapse export cancelled	Exportação de timelapse cancelada
+	Timelapse	Timelapse
+	Auto record	Gravação automática
+	Records whatever document you're on, unless you paused it yourself.	Grava o documento em que você está trabalhando, a menos que você o tenha pausado.
+	Open a document to record a timelapse.	Abra um documento para gravar um timelapse.
+	Recording (idle)	Gravando (ocioso)
+	Recording	Gravando
+	Click to pause	Clique para pausar
+	Paused: click to resume	Pausado: clique para retomar
+	Start recording	Iniciar gravação
+	Start Recording	Iniciar gravação
+	Pause Recording	Pausar gravação
+	Reference Layer	Camada de referência
+	Reference layer	Camada de referência
+	Recorded more since the last export	Gravado mais desde a última exportação
+	Select a layer	Selecione uma camada
+	Not recorded: you see it, the timelapse doesn't	Não gravada: você a vê, o timelapse não
+	Recorded	Gravada
+	{count} of {total} not recorded	{count} de {total} não gravadas
+	Reference	Referência
+	Adds {tag} to the layer's name	Adiciona {tag} ao nome da camada
+	Export again…	Exportar novamente…
+	Export video…	Exportar vídeo…
+	Play video	Reproduzir vídeo
+	Show in folder	Mostrar na pasta
+	Make:	Criar:
+	Advanced settings	Configurações avançadas
+	Show the finished drawing first	Mostrar primeiro o desenho pronto
+	Flash before the final image	Clarão antes da imagem final
+	Hold the final image	Manter a imagem final
+	Slow down at the end	Desacelerar no final
+	Remove flicker	Remover cintilação
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Omite quadros que piscam: uma camada ocultada por um instante, um traço desfeito logo em seguida.
+	Work-time counter	Contador de tempo de trabalho
+	Bars:	Barras:
+	Fills the edges when the canvas size changed during the recording.	Preenche as bordas quando o tamanho da tela mudou durante a gravação.
+	Folder:	Pasta:
+	not chosen yet	ainda não escolhida
+	Remove frames with undo	Remover quadros ao desfazer
+	Reference tag:	Marcador de referência:
+	Work timer stops after:	O cronômetro para após:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Cria o MP4. Automático procura ao lado do PhotoCraft e depois no PATH.
+	Choose the ffmpeg program on this computer	Escolha o programa ffmpeg neste computador
+	Opening files isn't available here	Abrir arquivos não está disponível aqui
+	MP4 video (ffmpeg)	Vídeo MP4 (ffmpeg)
+	JPEG frames	Quadros JPEG
+	Bottom right	Inferior direito
+	Bottom left	Inferior esquerdo
+	Top right	Superior direito
+	Top left	Superior esquerdo
+	5 seconds	5 segundos
+	10 seconds	10 segundos
+	15 seconds	15 segundos
+	20 seconds	20 segundos
+	30 seconds	30 segundos
+	1 minute	1 minuto
+	2 minutes	2 minutos
+	5 minutes	5 minutos
+@plural	{n} frame|{n} frames	{n} quadro|{n} quadros
+	Refresh	Atualizar
+	Recordings will be listed here once you've chosen a folder.	As gravações aparecerão aqui depois que você escolher uma pasta.
+	No recordings yet.	Nenhuma gravação ainda.
+	Open folder	Abrir pasta
+	Delete frames	Excluir quadros
+	Delete folder	Excluir pasta
+	Pause the recording first	Pause a gravação primeiro
+	REC	REC
+	EXPORTED	EXPORTADA
+	NOT EXPORTED	NÃO EXPORTADA
+	{time} work	{time} de trabalho
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}” ainda não foi exportada. Se você excluir os quadros ({frames}), não poderá mais fazer um vídeo dela. Isso não pode ser desfeito.
+	Delete the {frames} of “{name}”?	Excluir os quadros de “{name}” ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Você gravou mais desde a última exportação, e essa parte não está no vídeo.
+	Your videos and the work time are kept. This can't be undone.	Seus vídeos e o tempo de trabalho são mantidos. Isso não pode ser desfeito.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Excluir “{name}” e a pasta? A gravação sai da biblioteca, junto com o tempo de trabalho. Os vídeos exportados ficam onde você os salvou. Isso não pode ser desfeito.
+	Frames deleted.	Quadros excluídos.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	“{name}” excluída. A pasta contém outros arquivos, então foi mantida.
+	Deleted “{name}”.	“{name}” excluída.
+@plural	{n} recording|{n} recordings	{n} gravação|{n} gravações
+	Save Preset from Last Upscale…	Salvar predefinição da última ampliação…
+	No upscale has come back from Topaz Gigapixel AI yet	Nenhuma ampliação voltou do Topaz Gigapixel AI ainda
+	Detail:	Detalhe:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: ampliada {scale}× para {w} × {h} px (nova camada). Mantenha estas configurações com Predefinições do Topaz Gigapixel › Salvar predefinição da última ampliação

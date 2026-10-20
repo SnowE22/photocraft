@@ -3262,3 +3262,93 @@ curves	Smooth	Haluskan
 	Sharpen:	Pertajam:
 	Fix Compression:	Perbaiki Kompresi:
 	Face Recovery:	Pemulihan Wajah:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Pilih folder untuk rekaman timelapse Anda
+	Saved {name} ({seconds} s timelapse)	{name} disimpan (timelapse {seconds} dtk)
+	Export Timelapse	Ekspor Timelapse
+	Export Timelapse…	Ekspor Timelapse…
+	Timelapse export cancelled	Ekspor timelapse dibatalkan
+	Timelapse	Timelapse
+	Auto record	Rekam otomatis
+	Records whatever document you're on, unless you paused it yourself.	Merekam dokumen yang sedang Anda kerjakan, kecuali Anda menjedanya sendiri.
+	Open a document to record a timelapse.	Buka dokumen untuk merekam timelapse.
+	Recording (idle)	Merekam (diam)
+	Recording	Merekam
+	Click to pause	Klik untuk menjeda
+	Paused: click to resume	Dijeda: klik untuk melanjutkan
+	Start recording	Mulai merekam
+	Start Recording	Mulai Merekam
+	Pause Recording	Jeda Rekaman
+	Reference Layer	Lapisan Referensi
+	Reference layer	Lapisan referensi
+	Recorded more since the last export	Ada rekaman baru sejak ekspor terakhir
+	Select a layer	Pilih lapisan
+	Not recorded: you see it, the timelapse doesn't	Tidak direkam: Anda melihatnya, timelapse tidak
+	Recorded	Direkam
+	{count} of {total} not recorded	{count} dari {total} tidak direkam
+	Reference	Referensi
+	Adds {tag} to the layer's name	Menambahkan {tag} ke nama lapisan
+	Export again…	Ekspor lagi…
+	Export video…	Ekspor video…
+	Play video	Putar video
+	Show in folder	Tampilkan di folder
+	Make:	Buat:
+	Advanced settings	Pengaturan lanjutan
+	Show the finished drawing first	Tampilkan gambar jadi terlebih dahulu
+	Flash before the final image	Kilatan sebelum gambar akhir
+	Hold the final image	Tahan gambar akhir
+	Slow down at the end	Perlambat di akhir
+	Remove flicker	Hapus kedipan
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Melewati bingkai yang muncul sekejap: lapisan yang disembunyikan sebentar, goresan yang langsung dibatalkan.
+	Work-time counter	Penghitung waktu kerja
+	Bars:	Bilah:
+	Fills the edges when the canvas size changed during the recording.	Mengisi tepi jika ukuran kanvas berubah selama perekaman.
+	Folder:	Folder:
+	not chosen yet	belum dipilih
+	Remove frames with undo	Hapus bingkai saat urungkan
+	Reference tag:	Tag referensi:
+	Work timer stops after:	Penghitung waktu berhenti setelah:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Membuat MP4. Otomatis mencari di samping PhotoCraft, lalu di PATH.
+	Choose the ffmpeg program on this computer	Pilih program ffmpeg di komputer ini
+	Opening files isn't available here	Membuka file tidak tersedia di sini
+	MP4 video (ffmpeg)	Video MP4 (ffmpeg)
+	JPEG frames	Bingkai JPEG
+	Bottom right	Kanan bawah
+	Bottom left	Kiri bawah
+	Top right	Kanan atas
+	Top left	Kiri atas
+	5 seconds	5 detik
+	10 seconds	10 detik
+	15 seconds	15 detik
+	20 seconds	20 detik
+	30 seconds	30 detik
+	1 minute	1 menit
+	2 minutes	2 menit
+	5 minutes	5 menit
+@plural	{n} frame|{n} frames	{n} bingkai
+	Library	Pustaka
+	Refresh	Segarkan
+	Recordings will be listed here once you've chosen a folder.	Rekaman akan tercantum di sini setelah Anda memilih folder.
+	No recordings yet.	Belum ada rekaman.
+	Open folder	Buka folder
+	Delete frames	Hapus bingkai
+	Delete folder	Hapus folder
+	Pause the recording first	Jeda rekaman terlebih dahulu
+	REC	REC
+	EXPORTED	SUDAH DIEKSPOR
+	NOT EXPORTED	BELUM DIEKSPOR
+	{time} work	{time} kerja
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}” belum diekspor. Jika Anda menghapus bingkainya ({frames}), Anda tidak bisa lagi membuat video darinya. Tindakan ini tidak dapat diurungkan.
+	Delete the {frames} of “{name}”?	Hapus bingkai “{name}” ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Anda merekam lebih banyak sejak ekspor terakhir, dan bagian itu tidak ada di video.
+	Your videos and the work time are kept. This can't be undone.	Video Anda dan waktu kerja tetap disimpan. Tindakan ini tidak dapat diurungkan.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Hapus “{name}” beserta foldernya? Rekaman dihapus dari pustaka, bersama waktu kerjanya. Video yang sudah Anda ekspor tetap di tempat Anda menyimpannya. Tindakan ini tidak dapat diurungkan.
+	Frames deleted.	Bingkai dihapus.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	“{name}” dihapus. Foldernya berisi file lain, jadi folder tetap disimpan.
+	Deleted “{name}”.	“{name}” dihapus.
+@plural	{n} recording|{n} recordings	{n} rekaman
+	Save Preset from Last Upscale…	Simpan Prasetel dari Perbesaran Terakhir…
+	No upscale has come back from Topaz Gigapixel AI yet	Belum ada hasil perbesaran yang kembali dari Topaz Gigapixel AI
+	Detail:	Detail:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: diperbesar {scale}× menjadi {w} × {h} px (lapisan baru). Simpan pengaturan ini dengan Prasetel Topaz Gigapixel › Simpan Prasetel dari Perbesaran Terakhir

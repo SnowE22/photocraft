@@ -266,10 +266,10 @@ fn open_in_app(_: &mut Session) -> Result<Value> {
 pub const MODELS: &[&str] = &["std", "hf", "lowres", "art", "lines", "text", "vc", "redefine", "recovery"];
 
 /// `gigapixel` arguments for `p` (`model`, `modelVersion`, `scale` | `width` | `height`,
-/// `denoise`, `sharpen`, `compression`, `faceRecovery`), reading `input` and writing into `out`.
-/// Without a model Gigapixel picks its own (Standard V2 in Gigapixel 8.4); `std` alone means
-/// version 2, since Gigapixel 8.4 reads a bare `-m std` as a version 0 it may not have installed
-/// ("Could not load model").
+/// `denoise`, `sharpen`, `compression`, `detail`, `faceRecovery`, `faceRecoveryVersion`), reading
+/// `input` and writing into `out`. Without a model Gigapixel picks its own (Standard V2 in
+/// Gigapixel 8.4); `std` and `hf` alone mean version 2, since Gigapixel 8.4 reads a bare `-m std`
+/// or `-m hf` as a version 0 it may not have installed ("Error encountered while processing").
 pub fn cli_args(p: &Value, input: &Path, out: &Path) -> Result<Vec<String>> {
     let mut a: Vec<String> = vec!["-i".into(), input.to_string_lossy().into_owned(), "-o".into(), out.to_string_lossy().into_owned(), "--cf".into()];
     let model = p.get("model").filter(|m| !m.is_null()).map(|m| m.as_str().ok_or_else(|| bad("`model` must be a name"))).transpose()?;
@@ -284,7 +284,7 @@ pub fn cli_args(p: &Value, input: &Path, out: &Path) -> Result<Vec<String>> {
         a.extend(["-m".into(), m.into()]);
         match (version, m) {
             (Some(v), _) => a.extend(["--mv".into(), v.to_string()]),
-            (None, "std") => a.extend(["--mv".into(), "2".into()]),
+            (None, "std" | "hf") => a.extend(["--mv".into(), "2".into()]),
             (None, _) => {}
         }
     } else if version.is_some() {
@@ -311,14 +311,184 @@ pub fn cli_args(p: &Value, input: &Path, out: &Path) -> Result<Vec<String>> {
     if let Some(x) = num("height", 1.0, 65_000.0)? {
         a.extend(["--height".into(), format!("{}", x.round())]);
     }
-    for (key, flag) in [("denoise", "--dn"), ("sharpen", "--sh"), ("compression", "--cm"), ("faceRecovery", "--fr")] {
+    for (key, flag) in [("denoise", "--dn"), ("sharpen", "--sh"), ("compression", "--cm"), ("detail", "--dt"), ("faceRecovery", "--fr")] {
         if let Some(x) = num(key, 0.0, 100.0)? {
             a.extend([flag.into(), format!("{x}")]);
         }
     }
+    if let Some(v) = num("faceRecoveryVersion", 1.0, 9.0)? {
+        if v.fract() != 0.0 {
+            return Err(bad("`faceRecoveryVersion` must be a whole number from 1 to 9"));
+        }
+        a.extend(["--frv".into(), format!("{v}")]);
+    }
     // A TIFF back, at the input's bit depth.
     a.extend(["-f".into(), "tif".into(), "--bd".into(), "0".into(), "-q".into()]);
     Ok(a)
+}
+
+/// What Gigapixel writes into every image it exports ("Embed image settings", on by default).
+const DESCRIPTION_START: &[u8] = b"Upscaled with Gigapixel";
+
+/// Gigapixel's description of how it made the image at `path`: the text in its metadata that
+/// starts "Upscaled with Gigapixel" (EXIF ImageDescription, PNG text, TIFF ImageDescription).
+/// Only the first and last few megabytes are read: metadata sits at one end of the file.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn embedded_description(path: &Path) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const WINDOW: u64 = 4 << 20;
+    let mut f = std::fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    let mut head = Vec::new();
+    f.by_ref().take(WINDOW).read_to_end(&mut head).ok()?;
+    let mut tail = Vec::new();
+    if len > WINDOW {
+        f.seek(SeekFrom::Start(len.saturating_sub(WINDOW).max(WINDOW))).ok()?;
+        f.take(WINDOW).read_to_end(&mut tail).ok()?;
+    }
+    [head, tail].iter().find_map(|bytes| {
+        let at = bytes.windows(DESCRIPTION_START.len()).position(|w| w == DESCRIPTION_START)?;
+        let text: Vec<u8> = bytes.get(at..)?.iter().take(4096).take_while(|b| (0x20..0x7f).contains(*b)).copied().collect();
+        String::from_utf8(text).ok()
+    })
+}
+
+/// Gigapixel's model names as its description writes them → the command-line tool's model and
+/// version (checked against Gigapixel 8.4.4, which writes "CGI" for Art & CG, "Compression" for
+/// Lines, "High Compression" for Very Compressed, "RecoveryXL" for Redefine).
+const DESCRIBED_MODELS: &[(&str, &str, Option<u64>)] = &[
+    ("standard v2", "std", Some(2)),
+    ("standard", "std", Some(1)),
+    ("high fidelity v2", "hf", Some(2)),
+    ("high fidelity", "hf", Some(1)),
+    ("low resolution v2", "lowres", Some(2)),
+    ("low resolution", "lowres", Some(1)),
+    ("cgi", "art", None),
+    ("art & cg", "art", None),
+    ("compression", "lines", None),
+    ("lines", "lines", None),
+    ("text refine", "text", None),
+    ("text & shapes", "text", None),
+    ("high compression", "vc", None),
+    ("very compressed", "vc", None),
+    ("recoveryv2", "recovery", Some(2)),
+    ("recovery v2", "recovery", Some(2)),
+    ("rescue", "recovery", Some(1)),
+    ("recovery", "recovery", None),
+    ("recoveryxl", "redefine", None),
+    ("redefine", "redefine", None),
+];
+
+/// The settings in Gigapixel's description, as `file.automate.topazGigapixel` (and a preset) takes
+/// them: model and version, scale (or the width past 16×), and the strengths it used (Gigapixel
+/// writes 0–1; the tool takes 0–100), face recovery included. `None` when it isn't one.
+///
+/// "Upscaled with Gigapixel v8.4.4. 3072x4096 => 6144x8192 (2x) Model: Low Resolution V2,
+/// denoise: 0.0758, sharpen: 0.694, decompression: 0.856 Face recovery version: 2, strength: 0.8,
+/// creativity: 0 (Realistic), selectedFaces: 1"
+pub fn settings_from_description(text: &str) -> Option<Value> {
+    let rest = text.strip_prefix("Upscaled with Gigapixel")?;
+    let mut s = serde_json::Map::new();
+    // "W1xH1 => W2xH2 (Nx)": the scale, or the width when it is past the tool's 16×.
+    let sizes = rest.split_once("=>").and_then(|(a, b)| {
+        let size = |t: &str| -> Option<(f64, f64)> {
+            let (w, h) = t.split_whitespace().last()?.split_once('x')?;
+            Some((w.parse().ok()?, h.parse().ok()?))
+        };
+        let to = b.split_whitespace().next()?;
+        Some((size(a)?, size(to)?))
+    });
+    if let Some(((w1, _), (w2, _))) = sizes.filter(|((w1, h1), _)| *w1 > 0.0 && *h1 > 0.0) {
+        let scale = w2 / w1;
+        if scale > 16.0 {
+            s.insert("width".into(), json!(w2));
+        } else {
+            s.insert("scale".into(), json!((scale.max(1.0) * 100.0).round() / 100.0));
+        }
+    } else {
+        s.insert("scale".into(), json!(2));
+    }
+    let (_, model_part) = rest.split_once("Model:")?;
+    let (model_part, face) = match model_part.split_once("Face recovery") {
+        Some((m, f)) => (m, Some(f)),
+        None => (model_part, None),
+    };
+    let mut fields = model_part.split(',');
+    let name = fields.next()?.trim().to_lowercase();
+    let &(_, model, version) = DESCRIBED_MODELS.iter().find(|(n, _, _)| *n == name)?;
+    s.insert("model".into(), json!(model));
+    if let Some(v) = version {
+        s.insert("modelVersion".into(), json!(v));
+    }
+    // "key: value" pairs; Redefine's are not the strengths the tool takes, so they're left out.
+    let pairs = |part: &str| -> Vec<(String, f64)> {
+        part.split(',').filter_map(|kv| {
+            let (k, v) = kv.split_once(':')?;
+            let v: f64 = v.split_whitespace().next()?.parse().ok()?;
+            v.is_finite().then(|| (k.trim().to_lowercase(), v))
+        }).collect()
+    };
+    let percent = |v: f64| (v.clamp(0.0, 1.0) * 100.0).round();
+    if model != "redefine" {
+        for (k, v) in pairs(fields.collect::<Vec<_>>().join(",").as_str()) {
+            let key = match k.as_str() {
+                "denoise" => "denoise",
+                "sharpen" => "sharpen",
+                "decompression" => "compression",
+                "detail" => "detail",
+                _ => continue,
+            };
+            s.insert(key.into(), json!(percent(v)));
+        }
+    }
+    if let Some(face) = face {
+        for (k, v) in pairs(face) {
+            match k.as_str() {
+                "version" if (1.0..=9.0).contains(&v) && v.fract() == 0.0 => {
+                    s.insert("faceRecoveryVersion".into(), json!(v as u64));
+                }
+                "strength" => {
+                    s.insert("faceRecovery".into(), json!(percent(v)));
+                }
+                _ => {}
+            }
+        }
+    }
+    let settings = Value::Object(s);
+    cli_args(&settings, Path::new("in.tif"), Path::new("out")).ok()?;
+    Some(settings)
+}
+
+/// A name for a preset made from `settings`: "Low Resolution V2 2×".
+pub fn describe_settings(settings: &Value) -> String {
+    let model = settings.get("model").and_then(Value::as_str).unwrap_or("");
+    let version = settings.get("modelVersion").and_then(Value::as_u64);
+    let name = match model {
+        "std" => "Standard",
+        "hf" => "High Fidelity",
+        "lowres" => "Low Resolution",
+        "art" => "Art & CG",
+        "lines" => "Lines",
+        "text" => "Text & Shapes",
+        "vc" => "Very Compressed",
+        "redefine" => "Redefine",
+        "recovery" => "Recovery",
+        _ => "Gigapixel",
+    };
+    let name = match version {
+        Some(v) if v >= 2 => format!("{name} V{v}"),
+        _ => name.to_string(),
+    };
+    let size = if let Some(x) = settings.get("scale").and_then(Value::as_f64) {
+        format!("{x}×")
+    } else if let Some(w) = settings.get("width").and_then(Value::as_f64) {
+        format!("{w} px wide")
+    } else if let Some(h) = settings.get("height").and_then(Value::as_f64) {
+        format!("{h} px high")
+    } else {
+        String::new()
+    };
+    format!("{name} {size}").trim().to_string()
 }
 
 /// One Gigapixel run: the preset it comes from (if any) and its command-line settings.
@@ -536,7 +706,20 @@ fn apply(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("the document the image came from is closed"));
     }
     let image = import_result(Path::new(&path))?;
-    apply_image(s, document, image, LAYER_NAME)
+    let mut r = apply_image(s, document, image, LAYER_NAME)?;
+    // The settings Gigapixel used, for File › Automate › Topaz Gigapixel Presets › Save Preset from
+    // Last Upscale.
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(text) = embedded_description(Path::new(&path)) {
+        let settings = settings_from_description(&text);
+        if settings.is_some() {
+            s.presets.gigapixel_last.clone_from(&settings);
+            s.presets.rev += 1;
+        }
+        r["settings"] = settings.unwrap_or(Value::Null);
+        r["description"] = json!(text);
+    }
+    Ok(r)
 }
 
 /// Resize document `document` (default the active one) to `src` and add `src` on top as `name`.
@@ -591,7 +774,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Apply Topaz Gigapixel AI Result",
             menu: &[],
             shortcut: None,
-            params: r##"{"result":path,"document":id? (default the active one)} → {layer,width,height,scale} (the document resized to the upscaled image, which is added on top as "Topaz Gigapixel layer", as Photoshop's plug-in leaves it)"##,
+            params: r##"{"result":path,"document":id? (default the active one)} → {layer,width,height,scale} (the document resized to the upscaled image, which is added on top as "Topaz Gigapixel layer", as Photoshop's plug-in leaves it); with the settings Gigapixel embedded in the image, also {description, settings} (settings as a preset saves them)"##,
             enabled: has_document,
             run: apply,
             journal: true,

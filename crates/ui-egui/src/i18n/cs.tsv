@@ -3877,3 +3877,93 @@ navigator	Zoom	Zvětšení
 	Sharpen:	Doostření:
 	Fix Compression:	Opravit kompresi:
 	Face Recovery:	Obnova tváří:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Vyberte složku pro záznamy timelapse
+	Saved {name} ({seconds} s timelapse)	Uloženo {name} (timelapse {seconds} s)
+	Export Timelapse	Exportovat timelapse
+	Export Timelapse…	Exportovat timelapse…
+	Timelapse export cancelled	Export timelapse byl zrušen
+	Timelapse	Timelapse
+	Auto record	Automatické nahrávání
+	Records whatever document you're on, unless you paused it yourself.	Nahrává dokument, se kterým právě pracujete, pokud jste ho sami nepozastavili.
+	Open a document to record a timelapse.	Otevřete dokument, abyste mohli nahrát timelapse.
+	Recording (idle)	Nahrávání (nečinné)
+	Recording	Nahrávání
+	Click to pause	Kliknutím pozastavíte
+	Paused: click to resume	Pozastaveno: kliknutím pokračujte
+	Start recording	Spustit nahrávání
+	Start Recording	Spustit nahrávání
+	Pause Recording	Pozastavit nahrávání
+	Reference Layer	Referenční vrstva
+	Reference layer	Referenční vrstva
+	Recorded more since the last export	Od posledního exportu bylo nahráno více
+	Select a layer	Vyberte vrstvu
+	Not recorded: you see it, the timelapse doesn't	Nenahrává se: vy ji vidíte, timelapse ne
+	Recorded	Nahrává se
+	{count} of {total} not recorded	{count} z {total} se nenahrává
+	Reference	Referenční
+	Adds {tag} to the layer's name	Přidá {tag} k názvu vrstvy
+	Export again…	Exportovat znovu…
+	Export video…	Exportovat video…
+	Play video	Přehrát video
+	Show in folder	Zobrazit ve složce
+	Make:	Vytvořit:
+	Advanced settings	Pokročilá nastavení
+	Show the finished drawing first	Nejprve ukázat hotovou kresbu
+	Flash before the final image	Záblesk před konečným obrázkem
+	Hold the final image	Podržet konečný obrázek
+	Slow down at the end	Zpomalit na konci
+	Remove flicker	Odstranit blikání
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Vynechá snímky, které jen probliknou: vrstvu na chvíli skrytou, tah hned vrácený zpět.
+	Work-time counter	Počítadlo pracovního času
+	Bars:	Pruhy:
+	Fills the edges when the canvas size changed during the recording.	Vyplní okraje, když se během nahrávání změnila velikost plátna.
+	Folder:	Složka:
+	not chosen yet	zatím nevybráno
+	Choose…	Vybrat…
+	Remove frames with undo	Odstraňovat snímky při vrácení zpět
+	Reference tag:	Značka reference:
+	Work timer stops after:	Časovač práce se zastaví po:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Vytváří MP4. Automaticky hledá vedle PhotoCraftu, pak v PATH.
+	Choose the ffmpeg program on this computer	Vyberte program ffmpeg v tomto počítači
+	Opening files isn't available here	Otevírání souborů zde není k dispozici
+	MP4 video (ffmpeg)	Video MP4 (ffmpeg)
+	JPEG frames	Snímky JPEG
+	Bottom right	Vpravo dole
+	Bottom left	Vlevo dole
+	Top right	Vpravo nahoře
+	Top left	Vlevo nahoře
+	5 seconds	5 sekund
+	10 seconds	10 sekund
+	15 seconds	15 sekund
+	20 seconds	20 sekund
+	30 seconds	30 sekund
+	1 minute	1 minuta
+	2 minutes	2 minuty
+	5 minutes	5 minut
+@plural	{n} frame|{n} frames	{n} snímek|{n} snímky|{n} snímků
+	Refresh	Obnovit
+	Recordings will be listed here once you've chosen a folder.	Záznamy se tu zobrazí, jakmile zvolíte složku.
+	No recordings yet.	Zatím žádné záznamy.
+	Open folder	Otevřít složku
+	Delete frames	Smazat snímky
+	Delete folder	Smazat složku
+	Pause the recording first	Nejprve nahrávání pozastavte
+	REC	REC
+	EXPORTED	EXPORTOVÁNO
+	NOT EXPORTED	NEEXPORTOVÁNO
+	{time} work	{time} práce
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Záznam „{name}“ ještě nebyl exportován. Pokud smažete jeho snímky ({frames}), už z něj nevytvoříte video. Tuto akci nelze vrátit.
+	Delete the {frames} of “{name}”?	Smazat snímky záznamu „{name}“ ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Od posledního exportu jste nahráli víc a tato část ve videu není.
+	Your videos and the work time are kept. This can't be undone.	Vaše videa a čas práce zůstanou zachovány. Tuto akci nelze vrátit.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Smazat záznam „{name}“ i jeho složku? Zmizí z knihovny i s časem práce. Exportovaná videa zůstanou tam, kam jste je uložili. Tuto akci nelze vrátit.
+	Frames deleted.	Snímky smazány.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Záznam „{name}“ smazán. Složka obsahuje jiné soubory, proto byla ponechána.
+	Deleted “{name}”.	Záznam „{name}“ smazán.
+@plural	{n} recording|{n} recordings	{n} záznam|{n} záznamy|{n} záznamů
+	Save Preset from Last Upscale…	Uložit přednastavení z posledního zvětšení…
+	No upscale has come back from Topaz Gigapixel AI yet	Z Topaz Gigapixel AI se zatím nevrátilo žádné zvětšení
+	Detail:	Detail:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: zvětšeno {scale}× na {w} × {h} px (nová vrstva). Tato nastavení si ponecháte přes Přednastavení Topaz Gigapixel › Uložit přednastavení z posledního zvětšení
