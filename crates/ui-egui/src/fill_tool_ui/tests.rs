@@ -119,7 +119,7 @@ fn the_options_reach_the_command() {
     assert_eq!(app.ui.tool_options.fill_tool, FillToolOptions::default());
     // Saved options without the Fill tool's load with its defaults.
     let o: crate::state::ToolOptions = serde_json::from_value(json!({})).unwrap();
-    assert_eq!(o.fill_tool.close_gap, 3.0);
+    assert_eq!(o.fill_tool.close_gap, GAP_LEVELS[1]);
 }
 
 #[test]
@@ -141,4 +141,70 @@ fn the_options_bar_and_the_layer_menu_offer_the_fill_tool() {
     assert_eq!(item(&lines), Some("Clear Reference Layer"));
     assert_eq!(item(&colour), Some("Set as Reference Layer"));
     assert!(crate::layer_menu_ui::entries(&colour, true, false).into_iter().flatten().all(|(_, id)| id != "layer.setReference"));
+}
+
+/// The click fills on the press (before the release), and dragging on fills each further area
+/// like the first that the pointer reaches, as one undo step.
+#[test]
+fn a_press_fills_at_once_and_a_drag_fills_on() {
+    let (mut app, colour) = inked();
+    let none = egui::Modifiers::NONE;
+    let steps = app.session.active().unwrap().history.past_len();
+    tool_event(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 }, none);
+    assert_eq!(alpha(&app, colour, 20, 20), 1.0, "filled on the press");
+    assert_eq!(alpha(&app, colour, 0, 0), 0.0, "the gap held");
+    // Out across the line to the outside: filled too, the line itself not.
+    for x in [16.0, 10.0, 5.0, 2.0] {
+        tool_event(&mut app, ToolEvent::Move { x, y: 20.0, pressure: 1.0 }, none);
+    }
+    tool_event(&mut app, ToolEvent::Up { x: 2.0, y: 20.0 }, none);
+    assert_eq!(alpha(&app, colour, 0, 0), 1.0, "the drag reached the outside and filled it");
+    assert!(app.fill_drag.is_none(), "the release ends the drag");
+    assert_eq!(app.session.active().unwrap().history.past_len(), steps + 1, "one undo step");
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(alpha(&app, colour, 20, 20), 0.0);
+    assert_eq!(alpha(&app, colour, 0, 0), 0.0);
+}
+
+/// Close Gap is five buttons: each picks its gap, and the chosen one again turns it off.
+#[test]
+fn close_gap_is_five_buttons() {
+    use egui_kittest::kittest::Queryable;
+    let mut gap = 0.0f32;
+    for (button, want) in [(3, GAP_LEVELS[2]), (1, GAP_LEVELS[0]), (1, 0.0), (5, GAP_LEVELS[4])] {
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(300.0, 40.0)).build_ui(|ui| {
+            ui.horizontal(|ui| close_gap_buttons(ui, &mut gap, "fill"));
+        });
+        h.run();
+        h.get_by_label(&format!("fill close gap {button}")).click();
+        h.run();
+        drop(h);
+        assert_eq!(gap, want, "button {button}");
+    }
+}
+
+/// The Magic Wand with Close Gap on stops at the gap, and dragging on adds the like areas it
+/// reaches, as one step. Off, it is Photoshop's wand: it runs out through the gap.
+#[test]
+fn the_wand_closes_gaps_and_drags_on_like_the_fill() {
+    let (mut app, _colour) = inked();
+    app.ui.tool = Tool::MagicWand;
+    app.ui.tool_options.anti_alias = false;
+    app.ui.tool_options.sample_all_layers = true;
+    let none = egui::Modifiers::NONE;
+    let sel = |app: &PhotocraftApp, x, y| app.session.active().unwrap().doc.selection.as_ref().map_or(0.0, |m| m.sample_channel(x, y, 0));
+    tool_event(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 }, none);
+    tool_event(&mut app, ToolEvent::Up { x: 20.0, y: 20.0 }, none);
+    assert!(sel(&app, 20, 20) > 0.5 && sel(&app, 1, 1) > 0.5, "off: through the gap");
+    app.run("select.deselect", json!({})).unwrap();
+    app.ui.tool_options.wand_fill.close_gap = GAP_LEVELS[1];
+    let steps = app.session.active().unwrap().history.past_len();
+    tool_event(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 }, none);
+    assert!(sel(&app, 20, 20) > 0.5 && sel(&app, 1, 1) < 0.5, "on: selected on the press, the gap held");
+    for x in [12.0, 6.0, 2.0] {
+        tool_event(&mut app, ToolEvent::Move { x, y: 20.0, pressure: 1.0 }, none);
+    }
+    tool_event(&mut app, ToolEvent::Up { x: 2.0, y: 20.0 }, none);
+    assert!(sel(&app, 20, 20) > 0.5 && sel(&app, 1, 1) > 0.5, "the drag added the outside");
+    assert_eq!(app.session.active().unwrap().history.past_len(), steps + 1);
 }

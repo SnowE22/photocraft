@@ -243,3 +243,86 @@ fn the_kept_reference_follows_every_change_to_the_line_art() {
     assert_eq!(r["filled"], true);
     assert!(is_red(rgba(&s, colour, 2, 2)) && is_red(rgba(&s, colour, 20, 12)), "faint lines no longer stop it");
 }
+
+/// With Refer to All Layers each fill changes a referenced layer, so the next click's composite
+/// is the kept one patched where that fill painted: the same pixels as compositing everything
+/// again, with an adjustment layer, a group and a layer mask in the document.
+#[test]
+fn all_layers_patch_the_kept_composite_where_the_last_fill_painted() {
+    let (mut s, _lines, colour) = inked(8);
+    s.execute("layer.newAdjustmentLayer.curves", json!({"points": [[0, 0], [128, 150], [255, 255]]})).unwrap();
+    s.execute("layer.new.layer", json!({"name": "In group"})).unwrap();
+    s.execute("select.rect", json!({"x": 30, "y": 30, "width": 8, "height": 8})).unwrap();
+    s.execute("edit.fill", json!({"color": "#2040ff"})).unwrap();
+    s.execute("select.deselect", json!({})).unwrap();
+    s.execute("layer.groupLayers", json!({})).unwrap();
+    s.execute("layer.select", json!({"layer": colour.0})).unwrap();
+    let full = |s: &Session| {
+        let doc = s.active().unwrap().doc.clone();
+        composite_rgba8(&doc, doc.bounds())
+    };
+    let read = |s: &Session| reference_image(s, Reference::All, Exclude::default(), &json!({})).unwrap().1;
+    for (i, (x, y, c)) in [(20, 20, "#ff0000"), (2, 2, "#00ff00"), (20, 25, "#0000ff"), (37, 2, "#ffff00")].into_iter().enumerate() {
+        s.execute(FILL_ID, json!({"x": x, "y": y, "reference": "all", "closeGap": 4, "color": c})).unwrap();
+        // What the next click reads: the kept composite, patched where this fill painted (or
+        // made again when the fill covered most of the page).
+        let now = read(&s);
+        assert_eq!(*now, full(&s), "click {i}: the patched composite is the full one");
+    }
+    // On a page much bigger than a tile, a small change is patched into the kept composite in
+    // place.
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 1024, "height": 1024, "background": "white"})).unwrap();
+    s.execute("layer.newAdjustmentLayer.curves", json!({"points": [[0, 0], [128, 150], [255, 255]]})).unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    s.execute(FILL_ID, json!({"x": 5, "y": 5, "reference": "all", "tolerance": 0, "color": RED})).unwrap();
+    let first = Arc::as_ptr(&read(&s));
+    s.execute("select.rect", json!({"x": 600, "y": 600, "width": 30, "height": 30})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff00ff"})).unwrap();
+    let now = read(&s);
+    assert_eq!(Arc::as_ptr(&now), first, "patched in place, not made again");
+    assert_eq!(*now, full(&s));
+}
+
+/// A drag going on from its click (`gesture`) fills each further area like the first one it
+/// reaches, skips what it filled and areas unlike the first (the lines), and is one undo step.
+#[test]
+fn a_drag_fills_each_like_area_it_reaches_in_one_step() {
+    let (mut s, _lines, colour) = inked(8);
+    let fill = |s: &mut Session, x: i32, y: i32| {
+        s.execute(FILL_ID, json!({"x": x, "y": y, "reference": "all", "closeGap": 4, "antiAlias": false, "color": RED, "gesture": "g1", "coalesce": "g1"})).unwrap()["filled"].clone()
+    };
+    let steps = s.active().unwrap().history.past_len();
+    assert_eq!(fill(&mut s, 20, 20), true, "the click fills the box");
+    assert_eq!(fill(&mut s, 25, 25), false, "already filled by this drag");
+    assert_eq!(fill(&mut s, 5, 12), false, "a line is unlike the white the drag started on");
+    assert_eq!(fill(&mut s, 2, 2), true, "the white outside the box is like it: filled too");
+    assert!(is_red(rgba(&s, colour, 20, 20)) && is_red(rgba(&s, colour, 2, 2)));
+    assert_eq!(s.active().unwrap().history.past_len(), steps + 1, "one undo step for the drag");
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(!is_red(rgba(&s, colour, 20, 20)) && !is_red(rgba(&s, colour, 2, 2)));
+    // A new gesture starts from its own click again.
+    let r = s.execute(FILL_ID, json!({"x": 5, "y": 12, "reference": "all", "gesture": "g2"})).unwrap();
+    assert_eq!(r["filled"], true, "a new drag starting on a line fills the line");
+    assert!(s.execute(FILL_ID, json!({"x": 1, "y": 1, "gesture": 5})).is_err());
+}
+
+/// The Magic Wand with the Fill tool's options selects what that fill would fill.
+#[test]
+fn the_magic_wand_closes_gaps_like_the_fill() {
+    let (mut s, _lines, _colour) = inked(8);
+    let sel = |s: &Session, x: i32, y: i32| s.active().unwrap().doc.selection.as_ref().map_or(0.0, |m| m.sample_channel(x, y, 0));
+    s.execute("select.magicWand", json!({"x": 20, "y": 20, "tolerance": 25, "sampleAllLayers": true, "antiAlias": false})).unwrap();
+    assert!(sel(&s, 20, 20) > 0.5 && sel(&s, 2, 2) > 0.5, "without Close Gap it runs out through the gap");
+    s.execute("select.magicWand", json!({"x": 20, "y": 20, "tolerance": 25, "closeGap": 4, "reference": "all", "antiAlias": false})).unwrap();
+    assert!(sel(&s, 20, 20) > 0.5 && sel(&s, 2, 2) < 0.5, "with Close Gap it stops at the gap");
+    // A drag adds the next like area once, as one step.
+    let steps = s.active().unwrap().history.past_len();
+    let r = s.execute("select.magicWand", json!({"x": 20, "y": 20, "closeGap": 4, "reference": "all", "gesture": "w", "coalesce": "w"})).unwrap();
+    assert_eq!(r["selected"], true);
+    let r = s.execute("select.magicWand", json!({"x": 22, "y": 22, "closeGap": 4, "reference": "all", "gesture": "w", "coalesce": "w", "mode": "add"})).unwrap();
+    assert_eq!(r["added"], false, "already selected by this drag");
+    s.execute("select.magicWand", json!({"x": 2, "y": 2, "closeGap": 4, "reference": "all", "gesture": "w", "coalesce": "w", "mode": "add"})).unwrap();
+    assert!(sel(&s, 20, 20) > 0.5 && sel(&s, 2, 2) > 0.5);
+    assert_eq!(s.active().unwrap().history.past_len(), steps + 1);
+}

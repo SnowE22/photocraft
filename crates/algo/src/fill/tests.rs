@@ -388,3 +388,51 @@ fn a_line_touching_the_edge_keeps_the_spots_apart() {
         assert!(!filled(&r, 30, 0) && !filled(&r, 30, 10), "border {border}: the fill crossed the line");
     }
 }
+
+/// A long white stroke between ink that tapers to a point, its edges jagged as drawn line art
+/// is: with gaps closed, a click in its wide end fills it to the point (it isn't a gap: nothing
+/// is on the other side), as Clip Studio does. Before, every place where the jagged narrow part
+/// briefly widened past the gap became an area of its own, and the fill stopped at the first.
+#[test]
+fn a_stroke_tapering_to_a_point_fills_to_its_tip() {
+    let (w, h) = (60, 260);
+    let mut img = Img::new(w, h, INK);
+    let mut s = 12345u32;
+    let mut jitter = move || {
+        s = s.wrapping_mul(1103515245).wrapping_add(12345);
+        ((s >> 16) % 3) as f32 - 1.0
+    };
+    for y in 10..250 {
+        let t = (y - 10) as f32 / 240.0;
+        let half = 12.0 * (1.0 - t) + 0.6;
+        let (l, r) = (30.0 - half + jitter() * 0.8, 30.0 + half + jitter() * 0.8);
+        for x in 0..w {
+            if (x as f32) >= l && (x as f32) < r {
+                img.set(x, y, CLEAR);
+            }
+        }
+    }
+    for gap in [3.0, 5.0, 8.0] {
+        let o = FillOptions { close_gap: gap, ..hard() };
+        let r = click_region(&img.px, img.area(), (30, 20), &o).unwrap();
+        let reached = (10..250).rev().find(|&y| (0..w as i32).any(|x| filled(&r, x, y) && img.px[y as usize * w + x as usize] == CLEAR)).unwrap();
+        assert!(reached >= 240, "gap {gap}: the fill stopped at row {reached} of a stroke reaching row 249");
+    }
+}
+
+/// A cell behind a gap in its wall stays apart from the area outside it, as before: only the
+/// small bits a jagged narrow part leaves join their neighbour.
+#[test]
+fn a_real_cell_behind_a_gap_stays_apart() {
+    let mut img = Img::new(80, 60, CLEAR);
+    // A 26 × 26 box with a 4 px gap in its left wall, in a big open page.
+    img.outline(40, 15, 66, 41);
+    for y in 26..30 {
+        img.set(40, y, CLEAR);
+    }
+    let o = FillOptions { close_gap: 5.0, ..hard() };
+    let outside = click_region(&img.px, img.area(), (10, 10), &o).unwrap();
+    assert!(filled(&outside, 10, 50) && !filled(&outside, 53, 28), "the fill stopped at the gap");
+    let inside = click_region(&img.px, img.area(), (53, 28), &o).unwrap();
+    assert!(filled(&inside, 60, 35) && !filled(&inside, 10, 10));
+}

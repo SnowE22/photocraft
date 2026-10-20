@@ -750,6 +750,8 @@ pub struct PhotocraftApp {
     pub(crate) automation_input: bool,
     /// An action the Actions panel is playing step by step (Playback Options), one step a frame.
     pub(crate) action_run: Option<actions::Run>,
+    /// A Fill tool click (or Magic Wand click) being dragged on, filling each area it reaches.
+    pub(crate) fill_drag: Option<fill_tool_ui::DragFill>,
     /// Levels/Curves histogram cache: (document, adjustment layer, revision it is valid for).
     pub(crate) tone_hist: Option<(DocId, photocraft_doc::LayerId, u64, std::sync::Arc<tone::Histograms>)>,
     /// The Levels/Curves histogram being computed on a worker thread (`tone::histograms`).
@@ -968,6 +970,7 @@ impl PhotocraftApp {
             synthetic: Vec::new(),
             automation_input: false,
             action_run: None,
+            fill_drag: None,
             channel_thumbs: None,
             channel_views: HashMap::new(),
             type_layout: None,

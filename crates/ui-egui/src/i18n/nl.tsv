@@ -4319,3 +4319,5 @@ curves	Smooth	Vloeiend maken
 	Layer Has Vector Mask	Laag heeft vectormasker
 	Layer Has Effects	Laag heeft effecten
 	Pick a menu item first	Kies eerst een menuopdracht
+	Close gaps up to {px} px	Openingen tot {px} px sluiten
+	Grow the selection under the lines, or shrink it	De selectie onder de lijnen uitbreiden of verkleinen

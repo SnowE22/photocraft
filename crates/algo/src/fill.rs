@@ -85,11 +85,15 @@ pub struct FillOptions {
     pub anti_alias: bool,
     /// Refer to image border: the canvas edge closes gaps as a line does.
     pub image_border: bool,
+    /// The colour a click must be like, when it goes on from an earlier one (a drag filling each
+    /// area it reaches): a seed further from it than the colour margin fills nothing, and the
+    /// fill follows this colour rather than the seed's.
+    pub match_color: Option<[u8; 4]>,
 }
 
 impl Default for FillOptions {
     fn default() -> Self {
-        Self { tolerance: 10.0, contiguous: true, close_gap: 0.0, scale: 0.0, scaling: Scaling::Darkest, anti_alias: true, image_border: false }
+        Self { tolerance: 10.0, contiguous: true, close_gap: 0.0, scale: 0.0, scaling: Scaling::Darkest, anti_alias: true, image_border: false, match_color: None }
     }
 }
 
@@ -103,9 +107,12 @@ pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptio
     }
     let (w, h) = dims(img, area)?;
     let si = (seed.1 - area.y0) as usize * w + (seed.0 - area.x0) as usize;
-    let target = premul(*img.get(si)?);
-    let strength = strengths(img, |p| difference(p, target));
     let margin = margin(o.tolerance);
+    let target = premul(o.match_color.unwrap_or(*img.get(si)?));
+    if difference(*img.get(si)?, target) > margin {
+        return None;
+    }
+    let strength = strengths(img, |p| difference(p, target));
     let free: Vec<bool> = crate::par::map(strength.len(), strength.len() >= 65_536, |i| strength.get(i).is_some_and(|s| *s <= margin));
     let gap = finite(o.close_gap, MAX_GAP);
     if !o.contiguous {
@@ -409,6 +416,23 @@ fn watershed(free: &[bool], w: usize, h: usize, gap: f32, seed: Option<usize>) -
     let open: Vec<bool> = free.iter().zip(&dist).map(|(f, d)| *f && *d >= r).collect();
     let mut labels = components(&open, w, h);
     drop(open);
+    // Each area's deepest point and how big its deep part is. Where two areas meet, the
+    // shallower one is kept apart only if it rises well above the meeting point and its deep
+    // part is bigger than a few gaps: a real spot behind a gap. Along a stroke that tapers to a
+    // point, jagged edges widen it past the gap now and then; those bits are small or barely rise,
+    // and join the area they belong to, so the fill runs on to the tip.
+    let count = labels.iter().copied().max().unwrap_or(0) as usize + 1;
+    let mut peak = vec![0f32; count];
+    let mut size = vec![0usize; count];
+    for (l, d) in labels.iter().zip(&dist) {
+        if let (Some(p), Some(n)) = (peak.get_mut(*l as usize), size.get_mut(*l as usize)) {
+            *p = p.max(*d);
+            *n += 1;
+        }
+    }
+    let small = (8.0 * r * r) as usize;
+    let mut parent: Vec<u32> = (0..count as u32).collect();
+    let rise = (r * 0.4).max(1.0);
     const SEAM: u32 = u32::MAX;
     let key = |d: f32| (d.clamp(0.0, 1e6) * 64.0) as u32;
     let labelled = |labels: &[u32], j: usize| labels.get(j).is_some_and(|l| *l != 0 && *l != SEAM);
@@ -426,20 +450,37 @@ fn watershed(free: &[bool], w: usize, h: usize, gap: f32, seed: Option<usize>) -
     }
     // Farthest from the lines first; equally far, first come first served.
     while let Some((_, _, i)) = heap.pop() {
-        let mut got = 0u32;
-        let mut seam = false;
+        let here = dist.get(i).copied().unwrap_or(0.0);
+        let mut met: Vec<u32> = Vec::new();
         for j in neighbours(i, w, h).into_iter().flatten() {
             if labelled(&labels, j) {
-                let l = labels.get(j).copied().unwrap_or(0);
-                if got == 0 {
-                    got = l;
-                } else if got != l {
-                    seam = true;
+                let root = find(&mut parent, labels.get(j).copied().unwrap_or(0));
+                if !met.contains(&root) {
+                    met.push(root);
                 }
             }
         }
-        if got == 0 {
+        if met.is_empty() {
             continue;
+        }
+        // The deepest area takes in the ones that barely rise above this meeting point.
+        met.sort_by(|a, b| peak.get(*b as usize).copied().unwrap_or(0.0).total_cmp(&peak.get(*a as usize).copied().unwrap_or(0.0)));
+        let got = met[0];
+        let mut seam = false;
+        for &other in &met[1..] {
+            let (o, g) = (other as usize, got as usize);
+            if peak.get(o).copied().unwrap_or(0.0) - here < rise || size.get(o).copied().unwrap_or(0) < small {
+                if let Some(p) = parent.get_mut(o) {
+                    *p = got;
+                }
+                let (po, so) = (peak.get(o).copied().unwrap_or(0.0), size.get(o).copied().unwrap_or(0));
+                if let (Some(p), Some(n)) = (peak.get_mut(g), size.get_mut(g)) {
+                    *p = p.max(po);
+                    *n += so;
+                }
+            } else {
+                seam = true;
+            }
         }
         if let Some(v) = labels.get_mut(i) {
             *v = if seam { SEAM } else { got };
@@ -458,12 +499,25 @@ fn watershed(free: &[bool], w: usize, h: usize, gap: f32, seed: Option<usize>) -
         }
     }
     for l in &mut labels {
-        if *l == SEAM {
-            *l = 0;
-        }
+        *l = if *l == SEAM { 0 } else { find(&mut parent, *l) };
     }
     let seed_label = top.and_then(|t| labels.get(t).copied()).filter(|l| *l != 0);
     (labels, seed_label)
+}
+
+/// The area label `l` was merged into (union-find, with path halving).
+fn find(parent: &mut [u32], mut l: u32) -> u32 {
+    while let Some(&p) = parent.get(l as usize) {
+        if p == l {
+            break;
+        }
+        let gp = parent.get(p as usize).copied().unwrap_or(p);
+        if let Some(slot) = parent.get_mut(l as usize) {
+            *slot = gp;
+        }
+        l = gp;
+    }
+    l
 }
 
 /// Adds to `fill` the seams beside it: the pixels within the margin that no area got (see

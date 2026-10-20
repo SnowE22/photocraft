@@ -3192,3 +3192,5 @@ curves	Smooth	平滑
 	Layer Has Effects	图层有效果
 	Pick a menu item first	请先选择一个菜单项目
 	Find	查找
+	Close gaps up to {px} px	封闭 {px} 像素以内的间隙
+	Grow the selection under the lines, or shrink it	将选区扩展到线条下方，或收缩选区

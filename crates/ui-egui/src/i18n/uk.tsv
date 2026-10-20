@@ -4264,3 +4264,5 @@ curves	Smooth	Згладити
 	Layer Has Effects	Шар має ефекти
 	Pick a menu item first	Спочатку виберіть пункт меню
 	Find	Знайти
+	Close gaps up to {px} px	Закривати розриви до {px} пікс.
+	Grow the selection under the lines, or shrink it	Розширити виділення під лінії або звузити його

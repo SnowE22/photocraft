@@ -3740,7 +3740,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         // Live painting tools start on the press, not once the pointer passes egui's click
         // distance: the first dab shows at once. The drag recognised later continues that stroke,
         // and a click (or a long press that never moved) just ends it.
-        if strokes_live(tool)
+        if (strokes_live(tool) || crate::fill_tool_ui::acts_on_press(app, tool))
             && app.drag.is_none()
             && response.is_pointer_button_down_on()
             && ui.input(|i| i.pointer.primary_pressed())
@@ -4018,6 +4018,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         // Eyedropper's Sample on Alt asks for it.
         let active_view = app.session.active_index() == Some(idx);
         crate::alt_pick::frame(app, ui.ctx(), tool, response.hover_pos().map(|p| xf.to_doc(p)), active_view);
+        if active_view {
+            crate::alt_pick::draw_flash(app, &painter, &xf);
+        }
         // Tool cursors (Photoshop-style).
         let guide_hover = response.hover_pos().and_then(|p| {
             let d = xf.to_doc(p);
@@ -5804,16 +5807,22 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                     return;
                 }
                 Tool::MagicWand => {
-                    let o = app.ui.tool_options.clone();
                     let mode = selection_mode(app, mods);
-                    let _ = app.run("select.magicWand", json!({"x": x.floor(), "y": y.floor(), "tolerance": o.tolerance, "contiguous": o.contiguous, "antiAlias": o.anti_alias, "sampleAllLayers": o.sample_all_layers, "mode": mode}));
+                    crate::fill_tool_ui::wand_press(app, x, y, mode);
+                    // The press took the click (so the release doesn't select again); with the
+                    // fill's options on, dragging on adds each like area it reaches.
+                    app.drag = Some(Drag::new(tool, [x, y], vec![[x, y, 1.0]], mods, false));
                     return;
                 }
                 Tool::MagicEraser => {
                     crate::eraser_ui::click(app, tool, x, y);
                     return;
                 }
-                Tool::Fill if crate::fill_tool_ui::press(app, x, y) => return,
+                Tool::Fill if crate::fill_tool_ui::press(app, x, y) => {
+                    // The click filled on the press; dragging on fills each like area it reaches.
+                    app.drag = Some(Drag::new(tool, [x, y], vec![[x, y, 1.0]], mods, false));
+                    return;
+                }
                 Tool::PaintBucket => {
                     let o = app.ui.tool_options.clone();
                     let contents = if o.bucket_fill_pattern { "pattern" } else { "foreground" };
@@ -5882,6 +5891,9 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
             }
             tool_move(app, x, y, pressure, mods);
             feed_live_stroke(app);
+            if app.fill_drag.is_some() && app.drag.as_ref().is_some_and(|d| matches!(d.tool, Tool::Fill | Tool::MagicWand)) {
+                crate::fill_tool_ui::drag_to(app, x, y);
+            }
         }
         ToolEvent::Up { x, y } => {
             if tool.is_type()
@@ -6204,6 +6216,7 @@ pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
         Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => crate::type_tool::pointer_up(app, d.start, [end[0], end[1]]),
         Tool::Brush | Tool::Pencil | Tool::Eraser => commit_brush_stroke(app, &d),
         Tool::Fill => crate::fill_tool_ui::finish(app, &d.points),
+        Tool::MagicWand => app.fill_drag = None,
         Tool::RectMarquee | Tool::EllipseMarquee => {
             // Exactly what the drag showed (`marquee_preview_px`); a click deselects.
             let Some([x0, y0, x1, y1]) = marquee_preview_px(&app.ui.tool_options, &d, app.point_zoom()) else {

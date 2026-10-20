@@ -3569,3 +3569,5 @@ curves	Smooth	Glätten
 	Layer Has Vector Mask	Ebene hat Vektormaske
 	Layer Has Effects	Ebene hat Effekte
 	Pick a menu item first	Zuerst einen Menübefehl auswählen
+	Close gaps up to {px} px	Lücken bis {px} px schließen
+	Grow the selection under the lines, or shrink it	Die Auswahl unter die Linien erweitern oder verkleinern

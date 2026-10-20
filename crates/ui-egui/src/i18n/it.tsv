@@ -4680,3 +4680,5 @@ shape	Appearance	Aspetto
 	Layer Has Vector Mask	Il livello ha una maschera vettoriale
 	Layer Has Effects	Il livello ha effetti
 	Pick a menu item first	Prima scegli una voce di menu
+	Close gaps up to {px} px	Chiudi le interruzioni fino a {px} px
+	Grow the selection under the lines, or shrink it	Allarga la selezione sotto le linee, o restringila

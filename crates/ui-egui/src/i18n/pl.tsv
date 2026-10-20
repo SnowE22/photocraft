@@ -4163,3 +4163,5 @@ curves	Smooth	Wygładź
 	Layer Has Effects	Warstwa ma efekty
 	Pick a menu item first	Najpierw wybierz polecenie menu
 	Find	Znajdź
+	Close gaps up to {px} px	Zamykaj przerwy do {px} px
+	Grow the selection under the lines, or shrink it	Powiększ zaznaczenie pod liniami lub je zmniejsz

@@ -4478,3 +4478,5 @@ cameraRaw	Yellow	Sárga
 	Layer Has Vector Mask	A rétegnek vektormaszkja van
 	Layer Has Effects	A rétegnek effektusai vannak
 	Pick a menu item first	Előbb válasszon menüelemet
+	Close gaps up to {px} px	Hézagok bezárása {px} px-ig
+	Grow the selection under the lines, or shrink it	A kijelölés kiterjesztése a vonalak alá, vagy szűkítése

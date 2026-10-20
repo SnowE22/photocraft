@@ -459,6 +459,8 @@ pub struct Session {
     pub style_clipboard: Option<CopiedStyle>,
     /// The Fill tool's referenced composite, kept between clicks while its layers are unchanged.
     pub(crate) fill_reference: std::sync::Mutex<Option<fill_tool_cmds::ReferenceCache>>,
+    /// The Fill tool's (and the Magic Wand's) drag going on from its click.
+    pub(crate) fill_gesture: std::sync::Mutex<Option<fill_tool_cmds::Gesture>>,
     /// Shape path context menu: copied vector fill and stroke styles.
     pub path_fill_clipboard: Option<photocraft_doc::Fill>,
     pub path_stroke_clipboard: Option<photocraft_doc::ShapeStroke>,

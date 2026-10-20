@@ -4260,3 +4260,5 @@ curves	Smooth	Εξομάλυνση
 	Layer Has Vector Mask	Το επίπεδο έχει διανυσματική μάσκα
 	Layer Has Effects	Το επίπεδο έχει εφέ
 	Pick a menu item first	Επιλέξτε πρώτα ένα στοιχείο μενού
+	Close gaps up to {px} px	Κλείσιμο κενών έως {px} px
+	Grow the selection under the lines, or shrink it	Επέκταση της επιλογής κάτω από τις γραμμές ή σμίκρυνσή της

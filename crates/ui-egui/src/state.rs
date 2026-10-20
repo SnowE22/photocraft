@@ -586,6 +586,9 @@ pub struct ToolOptions {
     /// The Fill tool's options (its opacity is `fill_opacity`, shared with the Paint Bucket).
     #[serde(default)]
     pub fill_tool: crate::fill_tool_ui::FillToolOptions,
+    /// The Magic Wand's Close Gap, Area Scaling and Refer (the Fill tool's, off by default).
+    #[serde(default)]
+    pub wand_fill: crate::fill_tool_ui::WandFill,
     /// How holding a brush key ([ ] ⇧[ ⇧]) repeats: the pause before it starts and the time
     /// between steps (the gear beside the brush picker's Size field).
     #[serde(default)]
@@ -852,6 +855,7 @@ impl Default for ToolOptions {
             fill_opacity: 100.0,
             bucket_fill_pattern: false,
             fill_tool: Default::default(),
+            wand_fill: Default::default(),
             brush_key_repeat: Default::default(),
             type_font: "Inter".into(),
             type_style: "Regular".into(),

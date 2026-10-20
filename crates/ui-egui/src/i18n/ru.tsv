@@ -3535,3 +3535,5 @@ curves	Smooth	Сгладить
 	Layer Has Effects	У слоя есть эффекты
 	Pick a menu item first	Сначала выберите пункт меню
 	Find	Найти
+	Close gaps up to {px} px	Закрывать разрывы до {px} пикс.
+	Grow the selection under the lines, or shrink it	Расширить выделение под линии или сузить его

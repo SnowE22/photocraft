@@ -4289,3 +4289,5 @@ cameraData	Lens	Lens
 	Layer Has Vector Mask	Katmanda Vektör Maskesi Var
 	Layer Has Effects	Katmanda Efektler Var
 	Pick a menu item first	Önce bir menü öğesi seçin
+	Close gaps up to {px} px	{px} px’e kadar boşlukları kapat
+	Grow the selection under the lines, or shrink it	Seçimi çizgilerin altına genişlet veya daralt

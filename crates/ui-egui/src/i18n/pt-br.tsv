@@ -4349,3 +4349,5 @@ layerLabel	No Color	Sem cor
 	Layer Has Vector Mask	A camada tem máscara vetorial
 	Layer Has Effects	A camada tem efeitos
 	Pick a menu item first	Escolha um item de menu primeiro
+	Close gaps up to {px} px	Fechar lacunas de até {px} px
+	Grow the selection under the lines, or shrink it	Expandir a seleção sob as linhas, ou reduzi-la

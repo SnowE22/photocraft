@@ -4240,3 +4240,5 @@ curves	Smooth	スムーズ
 	Layer Has Effects	レイヤーに効果がある
 	Pick a menu item first	先にメニュー項目を選んでください
 	Find	検索
+	Close gaps up to {px} px	{px} px までの隙間を閉じる
+	Grow the selection under the lines, or shrink it	選択範囲を線の下まで広げる、または縮める

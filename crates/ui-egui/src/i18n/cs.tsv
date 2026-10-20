@@ -4169,3 +4169,5 @@ navigator	Zoom	Zvětšení
 	Layer Has Vector Mask	Vrstva má vektorovou masku
 	Layer Has Effects	Vrstva má efekty
 	Pick a menu item first	Nejprve vyberte položku nabídky
+	Close gaps up to {px} px	Uzavřít mezery do {px} px
+	Grow the selection under the lines, or shrink it	Rozšířit výběr pod čáry, nebo ho zmenšit

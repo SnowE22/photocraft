@@ -4521,3 +4521,5 @@ navigator	Zoom	Zoom
 	Layer Has Vector Mask	La capa tiene máscara vectorial
 	Layer Has Effects	La capa tiene efectos
 	Pick a menu item first	Elija primero un elemento de menú
+	Close gaps up to {px} px	Cerrar huecos de hasta {px} px
+	Grow the selection under the lines, or shrink it	Ampliar la selección bajo las líneas, o reducirla

@@ -88,3 +88,16 @@ fn only_a_plain_alt_press_over_the_canvas_picks() {
     app.ui.tool_options.eyedropper_alt_hold_ms = f32::NAN;
     assert!(eyedropper_shows(&app, 5.0));
 }
+
+/// A pick on Alt shows a brief ring of the colour at the pointer.
+#[test]
+fn a_pick_on_alt_flashes_at_the_pointer() {
+    let mut app = app();
+    app.ui.tool_options.eyedropper_alt_instant = true;
+    let ctx = egui::Context::default();
+    assert!(!flashing(&app));
+    frame_at(&ctx, &mut app, 2.0, Modifiers::ALT, Some([1.0, 1.0]));
+    assert!(flashing(&app), "the pick shows");
+    frame_at(&ctx, &mut app, 2.1, Modifiers::NONE, Some([1.0, 1.0]));
+    assert!(flashing(&app), "letting go of Alt doesn't cut it short");
+}

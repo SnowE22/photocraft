@@ -4052,3 +4052,5 @@ curves	Smooth	Làm mượt
 	Layer Has Effects	Lớp có hiệu ứng
 	Pick a menu item first	Hãy chọn một mục menu trước
 	Find	Tìm
+	Close gaps up to {px} px	Đóng khe hở đến {px} px
+	Grow the selection under the lines, or shrink it	Mở rộng vùng chọn dưới nét vẽ, hoặc thu nhỏ
