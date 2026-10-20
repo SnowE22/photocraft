@@ -558,119 +558,134 @@ impl TypesetterUi {
         widgets::hairline(ui);
         ui.add_space(2.0);
 
-        // --- 2. СРЕДНИЙ БЛОК: СПИСОК РЕПЛИК С НУМЕРАЦИЕЙ, ПРИЦЕЛОМ (◎) И БЫСТРОЙ ВСТАВКОЙ (➔) ---
+        // --- 2. СРЕДНИЙ БЛОК: БЕЛОЕ ПОСТРОЧНОЕ ОКОШКО СЦЕНАРИЯ С РАЗДЕЛИТЕЛЬНЫМИ ЛИНИЯМИ ---
         let mut line_to_set = None;
         let mut line_to_insert = None;
 
         let script_list_height = 145.0;
-        ScrollArea::vertical()
-            .id_salt("typer_script_scroll")
-            .max_height(script_list_height)
-            .auto_shrink([false, false])
+        Frame::NONE
+            .fill(Color32::WHITE)
+            .stroke(Stroke::new(1.0, Color32::from_rgb(175, 180, 190)))
+            .corner_radius(CornerRadius::same(3))
+            .inner_margin(Margin::same(2))
             .show(ui, |ui| {
-                if total_lines == 0 {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(10.0);
-                        ui.label(RichText::new("Сценарий не загружен").color(t.text_faint).small());
-                        if ui.button("📥 Загрузить файл сценария (.txt)...").clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter("Текстовые файлы (*.txt)", &["txt"])
-                                .set_title("Выберите файл сценария")
-                                .pick_file()
-                            {
-                                if let Ok(content) = std::fs::read_to_string(&path) {
-                                    self.script_input_buffer = content.clone();
-                                    self.state.load_script(&content);
-                                    self.auto_save();
+                ScrollArea::vertical()
+                    .id_salt("typer_script_scroll")
+                    .max_height(script_list_height)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if total_lines == 0 {
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(14.0);
+                                ui.label(RichText::new("Сценарий не загружен").color(Color32::from_rgb(130, 135, 145)).small());
+                                if ui.button("📥 Загрузить файл сценария (.txt)...").clicked() {
+                                    if let Some(path) = rfd::FileDialog::new()
+                                        .add_filter("Текстовые файлы (*.txt)", &["txt"])
+                                        .set_title("Выберите файл сценария")
+                                        .pick_file()
+                                    {
+                                        if let Ok(content) = std::fs::read_to_string(&path) {
+                                            self.script_input_buffer = content.clone();
+                                            self.state.load_script(&content);
+                                            self.auto_save();
+                                        }
+                                    }
+                                }
+                            });
+                        } else {
+                            for (idx, line) in self.state.lines.iter().enumerate() {
+                                let is_active = idx == self.state.current_line_idx;
+
+                                // Актуальная строка, которая будет ставиться — ярко выделена (TypeR active)
+                                let (row_bg, row_border, text_color, num_color) = if is_active {
+                                    (
+                                        Color32::from_rgb(204, 232, 255), // Небесно-голубой фон
+                                        Color32::from_rgb(0, 120, 215),   // Синяя рамка выделения
+                                        Color32::from_rgb(10, 25, 50),    // Четкий темный текст
+                                        Color32::from_rgb(0, 90, 180),    // Синий номер строки
+                                    )
+                                } else if line.is_applied {
+                                    (
+                                        Color32::from_rgb(250, 250, 252),
+                                        Color32::TRANSPARENT,
+                                        Color32::from_rgb(150, 155, 165),
+                                        Color32::from_rgb(170, 175, 185),
+                                    )
+                                } else {
+                                    (
+                                        Color32::WHITE,
+                                        Color32::TRANSPARENT,
+                                        Color32::from_rgb(20, 25, 35),
+                                        Color32::from_rgb(110, 115, 125),
+                                    )
+                                };
+
+                                let row_frame = Frame::NONE
+                                    .fill(row_bg)
+                                    .stroke(Stroke::new(if is_active { 1.5 } else { 0.0 }, row_border))
+                                    .corner_radius(CornerRadius::same(2))
+                                    .inner_margin(Margin::symmetric(4, 3));
+
+                                let row_resp = row_frame.show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        let avail = ui.available_width();
+                                        let num_w = 20.0;
+                                        let target_w = 22.0;
+                                        let btn_w = 24.0;
+                                        let spacing = 4.0;
+                                        ui.spacing_mut().item_spacing.x = spacing;
+
+                                        let text_w = (avail - num_w - target_w - btn_w - spacing * 4.0).max(40.0);
+
+                                        // 1. Номер строки
+                                        ui.add_sized(
+                                            vec2(num_w, 18.0),
+                                            egui::Label::new(RichText::new(format!("{:2}", idx + 1)).color(num_color).monospace().small()),
+                                        );
+
+                                        // 2. Иконка прицела: ● если активна, ◎ если неактивна
+                                        let target_icon = if is_active { "●" } else { "◎" };
+                                        if ui.small_button(target_icon).on_hover_text("Сделать эту строку текущей").clicked() {
+                                            line_to_set = Some(idx);
+                                        }
+
+                                        // 3. Текст строки — выравнивание ВЛЕВО (Left-aligned)
+                                        let text_label = egui::Label::new(
+                                            RichText::new(&line.text)
+                                                .color(text_color)
+                                                .strong(),
+                                        ).truncate();
+                                        let text_resp = ui.add_sized(vec2(text_w, 18.0), text_label.sense(Sense::click()));
+                                        if text_resp.clicked() {
+                                            line_to_set = Some(idx);
+                                        }
+
+                                        // 4. Кнопка быстрой вставки ▶ на правом краю
+                                        let insert_btn = egui::Button::new(
+                                            RichText::new("▶").color(Color32::WHITE).strong()
+                                        )
+                                        .fill(Color32::from_rgb(0, 120, 215))
+                                        .min_size(vec2(22.0, 16.0));
+
+                                        if ui.add(insert_btn).on_hover_text("Вставить эту строку в баббл (Enter)").clicked() {
+                                            line_to_insert = Some((idx, line.clone()));
+                                        }
+                                    });
+                                });
+
+                                if is_active {
+                                    row_resp.response.scroll_to_me(Some(Align::Center));
+                                }
+
+                                // Четкая горизонтальная разделительная линия между строками текста
+                                if idx + 1 < total_lines {
+                                    let avail_w = ui.available_width();
+                                    let (rect, _resp) = ui.allocate_exact_size(vec2(avail_w, 1.0), Sense::hover());
+                                    ui.painter().hline(rect.x_range(), rect.center().y, Stroke::new(1.0, Color32::from_rgb(220, 224, 232)));
                                 }
                             }
                         }
                     });
-                } else {
-                    for (idx, line) in self.state.lines.iter().enumerate() {
-                        let is_active = idx == self.state.current_line_idx;
-
-                        let row_frame = if is_active {
-                            // Подсветка активной строки как в TypeR: светлый акцентный фон
-                            Frame::NONE
-                                .fill(Color32::from_rgb(160, 200, 240))
-                                .corner_radius(CornerRadius::same(2))
-                                .inner_margin(Margin::symmetric(4, 2))
-                        } else {
-                            Frame::NONE
-                                .fill(Color32::TRANSPARENT)
-                                .inner_margin(Margin::symmetric(4, 2))
-                        };
-
-                        let row_resp = row_frame.show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let avail = ui.available_width();
-                                let num_w = 20.0;
-                                let target_w = 22.0;
-                                let btn_w = 24.0;
-                                let spacing = 4.0;
-                                ui.spacing_mut().item_spacing.x = spacing;
-
-                                let text_w = (avail - num_w - target_w - btn_w - spacing * 4.0).max(40.0);
-
-                                // 1. Номер строки
-                                let num_color = if is_active {
-                                    Color32::from_rgb(20, 25, 35)
-                                } else {
-                                    t.text_dim
-                                };
-                                ui.add_sized(
-                                    vec2(num_w, 18.0),
-                                    egui::Label::new(RichText::new(format!("{:2}", idx + 1)).color(num_color).monospace().small()),
-                                );
-
-                                // 2. Иконка прицела: ● если активна, ◎ если неактивна
-                                let target_icon = if is_active { "●" } else { "◎" };
-                                if ui.small_button(target_icon).on_hover_text("Сделать эту строку текущей").clicked() {
-                                    line_to_set = Some(idx);
-                                }
-
-                                // 3. Текст строки — выравнивание ВЛЕВО (Left-aligned)
-                                let text_color = if is_active {
-                                    Color32::from_rgb(15, 20, 30)
-                                } else if line.is_applied {
-                                    t.text_faint
-                                } else {
-                                    t.text
-                                };
-                                let text_label = egui::Label::new(
-                                    RichText::new(&line.text)
-                                        .color(text_color)
-                                        .strong(),
-                                ).truncate();
-                                let text_resp = ui.add_sized(vec2(text_w, 18.0), text_label.sense(Sense::click()));
-                                if text_resp.clicked() {
-                                    line_to_set = Some(idx);
-                                }
-
-                                // 4. Кнопка быстрой вставки ▶ на правом краю
-                                let btn_fill = if is_active { Color32::from_rgb(120, 180, 240) } else { t.accent };
-                                let btn_text = if is_active { Color32::from_rgb(20, 25, 35) } else { t.accent_text };
-                                let insert_btn = egui::Button::new(
-                                    RichText::new("▶").color(btn_text).strong()
-                                )
-                                .fill(btn_fill)
-                                .min_size(vec2(22.0, 16.0));
-
-                                if ui.add(insert_btn).on_hover_text("Вставить эту строку в баббл").clicked() {
-                                    line_to_insert = Some((idx, line.clone()));
-                                }
-                            });
-                        });
-
-                        if is_active {
-                            row_resp.response.scroll_to_me(Some(Align::Center));
-                        }
-
-                        // Разделитель строк
-                        widgets::hairline(ui);
-                    }
-                }
             });
 
         if let Some(idx) = line_to_set {
