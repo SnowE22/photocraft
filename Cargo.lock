@@ -5031,6 +5031,7 @@ dependencies = [
 name = "photocraft-ui-egui"
 version = "0.10.0"
 dependencies = [
+ "arboard",
  "base64 0.22.1",
  "craft-print",
  "craft-ui",

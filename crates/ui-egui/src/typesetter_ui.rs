@@ -97,6 +97,8 @@ pub struct TypesetterUi {
     pub show_full_text_window: bool,
     pub creating_new_folder: bool,
     pub new_folder_name_buffer: String,
+    pub show_script_editor_modal: bool,
+    pub script_editor_buffer: String,
 }
 
 impl Default for TypesetterUi {
@@ -121,6 +123,8 @@ impl Default for TypesetterUi {
             show_full_text_window: false,
             creating_new_folder: false,
             new_folder_name_buffer: String::new(),
+            show_script_editor_modal: false,
+            script_editor_buffer: String::new(),
         };
         ui.auto_load();
         ui
@@ -130,6 +134,60 @@ impl Default for TypesetterUi {
 impl TypesetterUi {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Вставить сценарий напрямую из буфера обмена.
+    pub fn paste_script_from_clipboard(&mut self) {
+        let text_opt = arboard::Clipboard::new().ok().and_then(|mut cb| cb.get_text().ok());
+        if let Some(text) = text_opt {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                self.script_input_buffer = text.clone();
+                self.script_editor_buffer = text.clone();
+                self.state.load_script(&text);
+                self.auto_save();
+                self.status_message = Some(format!("Загружено реплик из буфера: {}", self.state.lines.len()));
+                self.status_error = false;
+                return;
+            }
+        }
+        // Если буфер пуст или недоступен — открываем окно редактора для ручного ввода
+        self.open_script_editor();
+        self.status_message = Some("Буфер пуст. Вставьте текст вручную в окно редактора".into());
+        self.status_error = false;
+    }
+
+    /// Открыть модальное окно редактора сценария.
+    pub fn open_script_editor(&mut self) {
+        if self.script_editor_buffer.trim().is_empty() && !self.state.lines.is_empty() {
+            // Если буфер редактора пуст, подставляем текущие реплики
+            self.script_editor_buffer = self.state.lines.iter().map(|l| l.text.as_str()).collect::<Vec<_>>().join("\n");
+        }
+        self.show_script_editor_modal = true;
+    }
+
+    /// Диалог выбора .txt файла сценария.
+    pub fn open_script_file_dialog(&mut self) {
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Текстовые файлы (*.txt)", &["txt"])
+            .set_title("Выберите файл сценария")
+            .pick_file()
+        {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    self.script_input_buffer = content.clone();
+                    self.script_editor_buffer = content.clone();
+                    self.state.load_script(&content);
+                    self.auto_save();
+                    self.status_message = Some(format!("Загружено реплик из файла: {}", self.state.lines.len()));
+                    self.status_error = false;
+                }
+                Err(err) => {
+                    self.status_message = Some(format!("Ошибка чтения файла: {}", err));
+                    self.status_error = true;
+                }
+            }
+        }
     }
 
     /// Автоматическое сохранение состояния и пресетов в файл настроек.
@@ -294,6 +352,24 @@ impl TypesetterUi {
             }
         }
 
+        // Модальное окно ввода и редактирования текста сценария
+        if self.show_script_editor_modal {
+            let mut close_modal = false;
+            Window::new("📝 Ввод и редактирование сценария")
+                .collapsible(false)
+                .resizable(true)
+                .default_width(520.0)
+                .default_height(420.0)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(&ctx, |ui| {
+                    self.render_script_editor_modal(ui, &mut close_modal);
+                });
+
+            if close_modal {
+                self.show_script_editor_modal = false;
+            }
+        }
+
         self.is_open = open_flag;
         action
     }
@@ -338,6 +414,28 @@ impl TypesetterUi {
                 ui.menu_button("···", |ui| {
                     widgets::style_spectrum_popup_menu(ui);
 
+                    ui.label(RichText::new("Сценарий").size(11.0).color(t.text_dim).strong());
+
+                    if ui.button("📋 Вставить / Редактировать...").clicked() {
+                        ui.close();
+                        self.open_script_editor();
+                    }
+
+                    if ui.button("📥 Загрузить файл (.txt)...").clicked() {
+                        ui.close();
+                        self.open_script_file_dialog();
+                    }
+
+                    if !self.state.lines.is_empty() {
+                        if ui.button("🗑 Очистить сценарий").clicked() {
+                            ui.close();
+                            self.state.lines.clear();
+                            self.state.current_line_idx = 0;
+                            self.auto_save();
+                        }
+                    }
+
+                    ui.separator();
                     ui.label(RichText::new("Стили TypeR").size(11.0).color(t.text_dim).strong());
 
                     if ui.button("Импорт TypeR JSON...").clicked() {
@@ -549,6 +647,34 @@ impl TypesetterUi {
         widgets::hairline(ui);
         ui.add_space(2.0);
 
+        // Панель сценария с быстрыми кнопками вставки и открытия
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Сценарий:").color(t.text_dim).small().strong());
+
+            if ui.small_button("📋 Вставить").on_hover_text("Вставить текст сценария из буфера обмена (Ctrl+V)").clicked() {
+                self.paste_script_from_clipboard();
+            }
+
+            if ui.small_button("📝 Редактор").on_hover_text("Открыть окно редактора сценария").clicked() {
+                self.open_script_editor();
+            }
+
+            if ui.small_button("📥 .txt").on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+                self.open_script_file_dialog();
+            }
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if total_lines > 0 {
+                    ui.label(
+                        RichText::new(format!("{}/{}", if total_lines == 0 { 0 } else { cur_idx + 1 }, total_lines))
+                            .color(t.text_dim)
+                            .small(),
+                    );
+                }
+            });
+        });
+        ui.add_space(2.0);
+
         // --- 2. СРЕДНИЙ БЛОК: БЕЛОЕ ПОСТРОЧНОЕ ОКОШКО СЦЕНАРИЯ С РАЗДЕЛИТЕЛЬНЫМИ ЛИНИЯМИ ---
         let mut line_to_set = None;
         let mut line_to_insert = None;
@@ -569,19 +695,19 @@ impl TypesetterUi {
                             ui.vertical_centered(|ui| {
                                 ui.add_space(14.0);
                                 ui.label(RichText::new("Сценарий не загружен").color(Color32::from_rgb(130, 135, 145)).small());
-                                if ui.button("📥 Загрузить файл сценария (.txt)...").clicked() {
-                                    if let Some(path) = rfd::FileDialog::new()
-                                        .add_filter("Текстовые файлы (*.txt)", &["txt"])
-                                        .set_title("Выберите файл сценария")
-                                        .pick_file()
-                                    {
-                                        if let Ok(content) = std::fs::read_to_string(&path) {
-                                            self.script_input_buffer = content.clone();
-                                            self.state.load_script(&content);
-                                            self.auto_save();
-                                        }
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    if ui.button(RichText::new("📋 Вставить").strong()).on_hover_text("Вставить текст из буфера обмена (Ctrl+V)").clicked() {
+                                        self.paste_script_from_clipboard();
                                     }
-                                }
+                                    if ui.button("📥 Файл (.txt)").on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+                                        self.open_script_file_dialog();
+                                    }
+                                    if ui.button("📝 Редактор").on_hover_text("Открыть окно ручного ввода").clicked() {
+                                        self.open_script_editor();
+                                    }
+                                });
+                                ui.add_space(10.0);
                             });
                         } else {
                             for (idx, line) in self.state.lines.iter().enumerate() {
@@ -962,6 +1088,33 @@ impl TypesetterUi {
         let applied_count = self.state.lines.iter().filter(|l| l.is_applied).count();
         let pending_count = total_lines.saturating_sub(applied_count);
 
+        // Верхняя панель действий со сценарием
+        ui.horizontal(|ui| {
+            if ui.button(RichText::new("📋 Вставить").strong()).on_hover_text("Вставить текст сценария из буфера обмена (Ctrl+V)").clicked() {
+                self.paste_script_from_clipboard();
+            }
+
+            if ui.button(RichText::new("📝 Редактор").strong()).on_hover_text("Открыть редактор текста сценария").clicked() {
+                self.open_script_editor();
+            }
+
+            if ui.button("📥 Открыть .txt").on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+                self.open_script_file_dialog();
+            }
+
+            if total_lines > 0 {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.small_button("🗑").on_hover_text("Очистить весь сценарий").clicked() {
+                        self.state.lines.clear();
+                        self.state.current_line_idx = 0;
+                        self.auto_save();
+                    }
+                });
+            }
+        });
+        widgets::hairline(ui);
+        ui.add_space(2.0);
+
         // Панель управления текстом
         ui.horizontal(|ui| {
             if ui.button("◀").on_hover_text("Предыдущая страница").clicked() {
@@ -1016,20 +1169,20 @@ impl TypesetterUi {
         if total_lines == 0 {
             ui.vertical_centered(|ui| {
                 ui.add_space(20.0);
-                ui.label(RichText::new("Сценарий не загружен").weak());
-                if ui.button("📥 Загрузить .txt файл сценария").clicked() {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Текстовые файлы (*.txt)", &["txt"])
-                        .set_title("Выберите файл сценария")
-                        .pick_file()
-                    {
-                        if let Ok(content) = std::fs::read_to_string(&path) {
-                            self.script_input_buffer = content.clone();
-                            self.state.load_script(&content);
-                            self.auto_save();
-                        }
+                ui.label(RichText::new("Сценарий не загружен").strong().color(t.text_dim));
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new("📋 Вставить из буфера").strong()).on_hover_text("Вставить текст из буфера обмена (Ctrl+V)").clicked() {
+                        self.paste_script_from_clipboard();
                     }
-                }
+                    if ui.button("📥 Загрузить .txt").on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+                        self.open_script_file_dialog();
+                    }
+                    if ui.button("📝 Ввести в редакторе").on_hover_text("Ввести сценарий вручную").clicked() {
+                        self.open_script_editor();
+                    }
+                });
+                ui.add_space(16.0);
             });
             return;
         }
@@ -1062,66 +1215,81 @@ impl TypesetterUi {
                     }
 
                     let is_active = idx == self.state.current_line_idx;
-                    let (card_bg, card_border) = if is_active {
-                        (t.row_selected, t.accent)
+                    let (card_bg, card_border, text_color, num_color) = if is_active {
+                        (
+                            Color32::from_rgb(204, 232, 255), // Sky-blue active TypeR selection
+                            Color32::from_rgb(0, 120, 215),   // Blue border
+                            Color32::from_rgb(10, 25, 50),
+                            Color32::from_rgb(0, 90, 180),
+                        )
                     } else if line.is_applied {
-                        (t.card, t.card_border)
+                        (
+                            Color32::from_rgb(246, 248, 250),
+                            Color32::from_rgb(220, 225, 232),
+                            Color32::from_rgb(140, 145, 155),
+                            Color32::from_rgb(160, 165, 175),
+                        )
                     } else {
-                        (t.card, t.card_border)
+                        (
+                            Color32::WHITE,
+                            Color32::from_rgb(215, 220, 228),
+                            Color32::from_rgb(20, 25, 35),
+                            Color32::from_rgb(100, 105, 115),
+                        )
                     };
 
-                    Frame::NONE
+                    let row_resp = Frame::NONE
                         .fill(card_bg)
                         .stroke(Stroke::new(if is_active { 1.5 } else { 1.0 }, card_border))
-                        .corner_radius(CornerRadius::same(t.radius_sm as u8))
-                        .inner_margin(Margin::symmetric(8, 6))
+                        .corner_radius(CornerRadius::same(3))
+                        .inner_margin(Margin::symmetric(6, 4))
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                let avail = ui.available_width();
-                                let tag_w = 26.0;
-                                let btn_w = if is_active { 26.0 } else { 52.0 };
-                                let spacing = 4.0;
-                                ui.spacing_mut().item_spacing.x = spacing;
-                                let text_w = (avail - tag_w - btn_w - spacing * 3.0).max(40.0);
+                                // Номер строки
+                                let num_str = format!("{:2}", idx + 1);
+                                ui.label(RichText::new(num_str).color(num_color).monospace().small());
 
-                                if is_active {
-                                    ui.add_sized(vec2(tag_w, 18.0), egui::Label::new(RichText::new("▶").color(t.accent).strong().small()));
-                                } else if line.is_applied {
-                                    ui.add_sized(vec2(tag_w, 18.0), egui::Label::new(RichText::new("✓").color(t.text_faint).small()));
-                                } else {
-                                    ui.add_sized(vec2(tag_w, 18.0), egui::Label::new(RichText::new(format!("{:2}", idx + 1)).color(t.text_dim).small()));
-                                }
-
-                                let text_color = if is_active {
-                                    t.text
-                                } else if line.is_applied {
-                                    t.text_faint
-                                } else {
-                                    t.text
-                                };
-                                let label = egui::Label::new(RichText::new(&line.text).color(text_color).strong()).truncate();
-                                let text_resp = ui.add_sized(vec2(text_w, 18.0), label.sense(Sense::click()));
-                                if text_resp.clicked() {
+                                // Иконка прицела: ● если активна, ◎ если неактивна
+                                let target_icon = if is_active { "●" } else { "◎" };
+                                if ui.small_button(target_icon).on_hover_text("Сделать эту реплику текущей").clicked() {
                                     line_to_set = Some(idx);
                                 }
 
-                                if !is_active && ui.small_button("◎").on_hover_text("Сделать эту реплику текущей").clicked() {
-                                    line_to_set = Some(idx);
-                                }
+                                // Кнопка вставки на правом краю, текст между ними не уезжает за границу!
+                                let mut do_insert = false;
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    let btn_fill = if is_active { Color32::from_rgb(0, 120, 215) } else { t.accent };
+                                    let insert_btn = egui::Button::new(
+                                        RichText::new("▶").color(Color32::WHITE).strong()
+                                    )
+                                    .fill(btn_fill)
+                                    .min_size(vec2(22.0, 16.0));
 
-                                let btn_fill = if is_active { Color32::from_rgb(120, 180, 240) } else { t.accent };
-                                let btn_text = if is_active { Color32::from_rgb(20, 25, 35) } else { t.accent_text };
-                                let insert_btn = egui::Button::new(
-                                    RichText::new("▶").color(btn_text).strong()
-                                )
-                                .fill(btn_fill)
-                                .min_size(vec2(22.0, 16.0));
+                                    if ui.add(insert_btn).on_hover_text("Вставить эту реплику в текущее выделение (Enter)").clicked() {
+                                        do_insert = true;
+                                    }
 
-                                if ui.add(insert_btn).on_hover_text("Вставить эту реплику в текущее выделение").clicked() {
+                                    ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                        let label = egui::Label::new(
+                                            RichText::new(&line.text).color(text_color).strong()
+                                        ).truncate();
+                                        let text_resp = ui.add(label.sense(Sense::click()));
+                                        if text_resp.clicked() {
+                                            line_to_set = Some(idx);
+                                        }
+                                    });
+                                });
+
+                                if do_insert {
                                     line_to_insert = Some((idx, line.clone()));
                                 }
                             });
                         });
+
+                    if is_active {
+                        row_resp.response.scroll_to_me(Some(Align::Center));
+                    }
+
                     ui.add_space(2.0);
                 }
 
@@ -1140,6 +1308,90 @@ impl TypesetterUi {
                     }
                 }
             });
+    }
+
+    /// Модальное окно для прямого ввода, вставки (Ctrl+V) и редактирования текста сценария.
+    fn render_script_editor_modal(&mut self, ui: &mut egui::Ui, close_modal: &mut bool) {
+        let t = Tokens::get(ui.ctx());
+
+        ui.horizontal(|ui| {
+            if ui.button("📋 Вставить из буфера (Ctrl+V)").on_hover_text("Вставить скопированный текст из буфера обмена").clicked() {
+                if let Ok(mut cb) = arboard::Clipboard::new() {
+                    if let Ok(text) = cb.get_text() {
+                        if !text.trim().is_empty() {
+                            self.script_editor_buffer = text;
+                        }
+                    }
+                }
+            }
+
+            if ui.button("📥 Загрузить файл (.txt)...").clicked() {
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Текстовые файлы (*.txt)", &["txt"])
+                    .set_title("Выберите файл сценария")
+                    .pick_file()
+                {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        self.script_editor_buffer = content;
+                    }
+                }
+            }
+
+            if ui.button("🗑 Очистить").clicked() {
+                self.script_editor_buffer.clear();
+            }
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let line_count = self.script_editor_buffer.lines().filter(|l| !l.trim().is_empty()).count();
+                ui.label(RichText::new(format!("Строк: {}", line_count)).color(t.text_dim).small());
+            });
+        });
+
+        ui.add_space(4.0);
+        ui.label(
+            RichText::new("💡 Каждая строка станет отдельной репликой в очереди. Метки [Стр. 1] или [1] делят по страницам.")
+                .color(t.text_dim)
+                .small(),
+        );
+        ui.add_space(4.0);
+
+        let available_h = ui.available_height() - 42.0;
+        egui::ScrollArea::vertical()
+            .max_height(available_h.max(160.0))
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.script_editor_buffer)
+                        .hint_text("Вставьте сюда текст сценария (Ctrl+V) или напишите реплики...")
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace)
+                        .lock_focus(true),
+                );
+            });
+
+        ui.add_space(6.0);
+        widgets::hairline(ui);
+        ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            let has_text = !self.script_editor_buffer.trim().is_empty();
+            let apply_btn = egui::Button::new(
+                RichText::new("✓ Загрузить в тайпсеттер").color(t.accent_text).strong()
+            )
+            .fill(t.accent);
+
+            if ui.add_enabled(has_text, apply_btn).clicked() {
+                self.script_input_buffer = self.script_editor_buffer.clone();
+                self.state.load_script(&self.script_editor_buffer);
+                self.auto_save();
+                self.status_message = Some(format!("Загружено реплик: {}", self.state.lines.len()));
+                self.status_error = false;
+                *close_modal = true;
+            }
+
+            if ui.button("Отмена").clicked() {
+                *close_modal = true;
+            }
+        });
     }
 
 
