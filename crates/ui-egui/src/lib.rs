@@ -158,6 +158,9 @@ pub mod paint_mouse;
 pub mod palette;
 mod panel_docking;
 pub mod panels;
+pub mod brush_key_repeat;
+pub mod alt_pick;
+pub mod fill_tool_ui;
 pub mod parity;
 pub mod patch_preview;
 pub(crate) mod pattern_fill_ui;
@@ -658,6 +661,10 @@ pub struct PhotocraftApp {
     /// This press began with ⌥ (Alt) held on a painting tool, so it samples colours instead of
     /// painting until it is released (`canvas::alt_eyedropper`, #417).
     pub(crate) alt_sampling: bool,
+    /// A brush key ([ ] ⇧[ ⇧]) held down, stepping on the app's clock (`brush_key_repeat`).
+    pub(crate) brush_key_held: Option<brush_key_repeat::Held>,
+    /// Alt's press with a painting tool, for the Eyedropper's Sample on Alt (`alt_pick`).
+    pub(crate) alt_pick: alt_pick::AltPick,
     /// Caps Lock toggled on, read from the OS each frame (`services.caps_lock`): painting tools
     /// show the precise crosshair whatever the cursor preference (#1758).
     pub caps_lock: bool,
@@ -916,6 +923,8 @@ impl PhotocraftApp {
             quick_pick: false,
             brush_resize_armed: false,
             alt_sampling: false,
+            brush_key_held: None,
+            alt_pick: Default::default(),
             caps_lock: false,
             opacity_keys: None,
             control_rx: None,

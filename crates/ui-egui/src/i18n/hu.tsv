@@ -4372,3 +4372,45 @@ cameraRaw	Yellow	Sárga
 	Shortcut:	Billentyűparancs:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Bármely billentyű megfelel, Ctrl, Alt és Shift billentyűvel. A Backspace törli a billentyűparancsot.
 	The action no longer exists.	A művelet már nem létezik.
+	Fill Tool	Kitöltés eszköz
+	Nothing to fill there	Ott nincs mit kitölteni
+	No enclosed area to fill there	Ott nincs kitölthető zárt terület
+	Fill: click an area	Kitöltés: kattintson egy területre
+	Enclose and Fill: draw round the areas to fill	Körülrajzolás és kitöltés: rajzolja körbe a kitöltendő területeket
+	Paint Unfilled Area: paint over the gaps a fill left	Kitöltetlen terület festése: fessen át a kitöltés hagyta réseken
+	Refer	Hivatkozás
+	Editing Layer	Szerkesztett réteg
+	Selected Layers	Kijelölt rétegek
+	Layers in Folder	Rétegek a mappában
+	Reference Layers	Referenciarétegek
+	Exclude	Kizárás
+	Editing layer	Szerkesztett réteg
+	Text layers	Szövegrétegek
+	Locked layers	Zárolt rétegek
+	Layers the fill doesn't read	Rétegek, amelyeket a kitöltés nem olvas
+	Close Gap	Rés bezárása
+	Treat gaps in the lines up to this wide as closed (0: off)	Az eddig a szélességig érő réseket a vonalakban zártnak veszi (0: ki)
+	Area Scaling	Terület méretezése
+	Grow the fill under the lines, or shrink it	A kitöltés kiterjesztése a vonalak alá vagy szűkítése
+	To Darkest Pixel	A legsötétebb képpontig
+	Follow Adjacent Pixels	Szomszédos képpontok követése
+	White and Transparent	Fehér és átlátszó
+	Image Border	Képszegély
+	The canvas edge closes gaps as a line does	A vászon széle vonalként zárja a réseket
+	Reference layer: the Fill tool reads it	Referenciaréteg: a Kitöltés eszköz olvassa
+	Set as Reference Layer	Beállítás referenciarétegként
+	Clear Reference Layer	Referenciaréteg megszüntetése
+	Fill Tool Options	Kitöltés eszköz beállításai
+	Size Key Repeat	Méretbillentyűk ismétlése
+	Holding [ or ] to resize the brush	A [ vagy ] lenyomva tartása az ecset átméretezéséhez
+	Pause before repeating	Szünet az ismétlés előtt
+	Wait half a second before the size keeps changing, as typing does	Fél másodperc várakozás, mielőtt a méret tovább változik, mint gépeléskor
+	Change every	Változtatás ennyi időnként:
+	Sample on Alt	Mintavétel Alt-ra
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Festőeszközzel az Alt lenyomása azonnal felveszi a mutató alatti színt
+	Hold:	Tartás:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Mennyi ideig kell tartani az Alt billentyűt, mielőtt a szokásos Pipettaként működik: pipetta, és kattintás a mintavételhez
+	Move Layer Mask	Rétegmaszk áthelyezése
+	Copy Layer Mask	Rétegmaszk másolása
+	Move Vector Mask	Vektormaszk áthelyezése
+	Copy Vector Mask	Vektormaszk másolása

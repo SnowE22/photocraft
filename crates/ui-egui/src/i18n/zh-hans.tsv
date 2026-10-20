@@ -3082,3 +3082,46 @@ curves	Smooth	平滑
 	Shortcut:	快捷键：
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	任意键均可，可配合 Ctrl、Alt 和 Shift。Backspace 删除快捷键。
 	The action no longer exists.	该动作已不存在。
+	Fill Tool	填充工具
+	Nothing to fill there	那里没有可填充的区域
+	No enclosed area to fill there	那里没有可填充的封闭区域
+	Fill: click an area	填充：单击一个区域
+	Enclose and Fill: draw round the areas to fill	围住填充：围绕要填充的区域绘制
+	Paint Unfilled Area: paint over the gaps a fill left	填充遗漏区域：在填充遗漏的空隙上涂抹
+	Refer	参照
+	Editing Layer	编辑中的图层
+	Selected Layers	选定的图层
+	Layers in Folder	文件夹中的图层
+	Reference Layers	参考图层
+	Exclude	排除
+	Editing layer	编辑中的图层
+	Text layers	文字图层
+	Locked layers	锁定的图层
+	Layers the fill doesn't read	填充不读取的图层
+	Close Gap	闭合间隙
+	Treat gaps in the lines up to this wide as closed (0: off)	将不超过此宽度的线条间隙视为闭合（0：关闭）
+	Area Scaling	区域缩放
+	Grow the fill under the lines, or shrink it	将填充扩展到线条下方或收缩
+	To Darkest Pixel	到最暗像素
+	Follow Adjacent Pixels	仅限相邻像素
+	Target	目标
+	White and Transparent	白色和透明
+	Image Border	图像边缘
+	The canvas edge closes gaps as a line does	画布边缘像线条一样闭合间隙
+	Reference layer: the Fill tool reads it	参考图层：填充工具会读取它
+	Set as Reference Layer	设为参考图层
+	Clear Reference Layer	取消参考图层
+	Fill Tool Options	填充工具选项
+	Size Key Repeat	大小键重复
+	Holding [ or ] to resize the brush	按住 [ 或 ] 调整画笔大小
+	Pause before repeating	重复前暂停
+	Wait half a second before the size keeps changing, as typing does	像打字时一样，在大小持续变化前等待半秒
+	Change every	变化间隔
+	Sample on Alt	按 Alt 时取样
+	With a painting tool, pressing Alt picks the colour under the pointer at once	使用绘画工具时，按下 Alt 立即吸取指针下的颜色
+	Hold:	按住：
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	按住 Alt 多久后才像通常的吸管工具一样工作：吸管指针，单击取样
+	Move Layer Mask	移动图层蒙版
+	Copy Layer Mask	复制图层蒙版
+	Move Vector Mask	移动矢量蒙版
+	Copy Vector Mask	复制矢量蒙版

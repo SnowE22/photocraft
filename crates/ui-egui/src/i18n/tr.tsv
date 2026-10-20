@@ -4183,3 +4183,45 @@ cameraData	Lens	Lens
 	Shortcut:	Kısayol:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Ctrl, Alt ve Shift ile her tuş kullanılabilir. Backspace kısayolu kaldırır.
 	The action no longer exists.	Eylem artık yok.
+	Fill Tool	Doldurma Aracı
+	Nothing to fill there	Orada doldurulacak bir şey yok
+	No enclosed area to fill there	Orada doldurulacak kapalı alan yok
+	Fill: click an area	Doldurma: bir alana tıklayın
+	Enclose and Fill: draw round the areas to fill	Çevrele ve Doldur: doldurulacak alanların çevresini çizin
+	Paint Unfilled Area: paint over the gaps a fill left	Doldurulmamış Alanı Boya: dolgunun bıraktığı boşlukların üzerine boyayın
+	Refer	Başvuru
+	Editing Layer	Düzenlenen Katman
+	Selected Layers	Seçili Katmanlar
+	Layers in Folder	Klasördeki Katmanlar
+	Reference Layers	Başvuru Katmanları
+	Exclude	Hariç Tut
+	Editing layer	Düzenlenen katman
+	Text layers	Metin katmanları
+	Locked layers	Kilitli katmanlar
+	Layers the fill doesn't read	Dolgunun okumadığı katmanlar
+	Close Gap	Boşlukları Kapat
+	Treat gaps in the lines up to this wide as closed (0: off)	Çizgilerdeki bu genişliğe kadar boşlukları kapalı say (0: kapalı)
+	Area Scaling	Alan Ölçekleme
+	Grow the fill under the lines, or shrink it	Dolguyu çizgilerin altına genişlet veya daralt
+	To Darkest Pixel	En Koyu Piksele Kadar
+	Follow Adjacent Pixels	Bitişik Pikselleri İzle
+	White and Transparent	Beyaz ve Saydam
+	Image Border	Görüntü Kenarı
+	The canvas edge closes gaps as a line does	Tuval kenarı boşlukları bir çizgi gibi kapatır
+	Reference layer: the Fill tool reads it	Başvuru katmanı: Doldurma Aracı bunu okur
+	Set as Reference Layer	Başvuru Katmanı Olarak Ayarla
+	Clear Reference Layer	Başvuru Katmanını Kaldır
+	Fill Tool Options	Doldurma Aracı Seçenekleri
+	Size Key Repeat	Boyut Tuşu Tekrarı
+	Holding [ or ] to resize the brush	Fırçayı yeniden boyutlandırmak için [ veya ] tuşunu basılı tutma
+	Pause before repeating	Tekrarlamadan önce duraklat
+	Wait half a second before the size keeps changing, as typing does	Yazarken olduğu gibi, boyut değişmeye devam etmeden önce yarım saniye bekle
+	Change every	Değiştirme aralığı
+	Sample on Alt	Alt ile Örnekle
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Bir boyama aracıyla Alt'a basmak işaretçinin altındaki rengi hemen alır
+	Hold:	Basılı tut:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Alt'ın normal Damlalık gibi çalışması için ne kadar basılı tutulması gerektiği: damlalık imleci ve örneklemek için tıklama
+	Move Layer Mask	Katman Maskesini Taşı
+	Copy Layer Mask	Katman Maskesini Kopyala
+	Move Vector Mask	Vektör Maskesini Taşı
+	Copy Vector Mask	Vektör Maskesini Kopyala

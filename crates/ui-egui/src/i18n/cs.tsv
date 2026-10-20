@@ -4062,3 +4062,45 @@ navigator	Zoom	Zvětšení
 	Shortcut:	Klávesová zkratka:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Funguje jakákoli klávesa, s Ctrl, Alt a Shift. Backspace zkratku odebere.
 	The action no longer exists.	Akce už neexistuje.
+	Fill Tool	Nástroj Výplň
+	Nothing to fill there	Tam není co vyplnit
+	No enclosed area to fill there	Není tam žádná uzavřená oblast k vyplnění
+	Fill: click an area	Výplň: klepněte na oblast
+	Enclose and Fill: draw round the areas to fill	Ohraničit a vyplnit: obtáhněte oblasti k vyplnění
+	Paint Unfilled Area: paint over the gaps a fill left	Vybarvit nevyplněné: přetřete mezery, které výplň vynechala
+	Refer	Odkaz
+	Editing Layer	Upravovaná vrstva
+	Selected Layers	Vybrané vrstvy
+	Layers in Folder	Vrstvy ve složce
+	Reference Layers	Referenční vrstvy
+	Exclude	Vyloučit
+	Editing layer	Upravovaná vrstva
+	Text layers	Textové vrstvy
+	Locked layers	Zamčené vrstvy
+	Layers the fill doesn't read	Vrstvy, které výplň nečte
+	Close Gap	Uzavřít mezeru
+	Treat gaps in the lines up to this wide as closed (0: off)	Mezery v čarách až do této šířky brát jako uzavřené (0: vypnuto)
+	Area Scaling	Změna velikosti oblasti
+	Grow the fill under the lines, or shrink it	Rozšířit výplň pod čáry, nebo ji zmenšit
+	To Darkest Pixel	K nejtmavšímu pixelu
+	Follow Adjacent Pixels	Sledovat sousední pixely
+	White and Transparent	Bílá a průhledná
+	Image Border	Okraj obrazu
+	The canvas edge closes gaps as a line does	Okraj plátna uzavírá mezery jako čára
+	Reference layer: the Fill tool reads it	Referenční vrstva: čte ji nástroj Výplň
+	Set as Reference Layer	Nastavit jako referenční vrstvu
+	Clear Reference Layer	Zrušit referenční vrstvu
+	Fill Tool Options	Možnosti nástroje Výplň
+	Size Key Repeat	Opakování kláves velikosti
+	Holding [ or ] to resize the brush	Držení [ nebo ] pro změnu velikosti štětce
+	Pause before repeating	Pauza před opakováním
+	Wait half a second before the size keeps changing, as typing does	Počkat půl sekundy, než se velikost začne dál měnit, jako při psaní
+	Change every	Měnit každých
+	Sample on Alt	Vzorkovat při Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Při kreslicím nástroji stisk Alt hned převezme barvu pod ukazatelem
+	Hold:	Držet:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Jak dlouho držet Alt, než bude fungovat jako obvyklé Kapátko: pipeta a vzorkování kliknutím
+	Move Layer Mask	Přesunout masku vrstvy
+	Copy Layer Mask	Kopírovat masku vrstvy
+	Move Vector Mask	Přesunout vektorovou masku
+	Copy Vector Mask	Kopírovat vektorovou masku

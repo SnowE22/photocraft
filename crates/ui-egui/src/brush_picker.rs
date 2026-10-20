@@ -217,6 +217,7 @@ pub fn body(
     current: Option<&str>,
     st: &mut BrushesPanelState,
     size: egui::Vec2,
+    repeat: &mut crate::brush_key_repeat::KeyRepeat,
 ) -> Vec<Pick> {
     let t = Tokens::get(ui.ctx());
     let mut picks = Vec::new();
@@ -234,6 +235,8 @@ pub fn body(
         ui.horizontal(|ui| {
             ui.label(RichText::new(tl!("Size")).color(t.text_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Right of the field: how holding [ / ] repeats.
+                crate::brush_key_repeat::settings_button(ui, repeat);
                 let mut size = b.size;
                 if widgets::value_field(ui, &mut size, 1.0..=MAX_BRUSH_SIZE, "px", 72.0).changed() {
                     b.size = size.round().clamp(1.0, MAX_BRUSH_SIZE);

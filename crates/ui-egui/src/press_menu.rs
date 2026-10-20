@@ -16,6 +16,12 @@ fn gesture_owner(ctx: &egui::Context) -> Option<egui::Id> {
     ctx.data(|d| d.get_temp::<egui::Id>(gesture_id()))
 }
 
+/// The box whose press opened the combo list of the gesture under way.
+fn pressed_box(ctx: &egui::Context) -> Option<egui::Rect> {
+    gesture_owner(ctx)?;
+    ctx.data(|d| d.get_temp::<egui::Rect>(gesture_id().with("box")))
+}
+
 /// This frame's open/close command for `button`'s popup: a primary press opens a closed menu
 /// (starting a press-drag gesture) or closes an open one, a secondary click opens it, and the
 /// primary release never toggles, so the menu doesn't blink.
@@ -133,9 +139,13 @@ impl PressCombo {
     }
 
     /// Was option `item` (in the open list `ui`) chosen this frame: clicked, or the press-drag
-    /// gesture that opened the list released on it? The list closes when it was.
+    /// gesture that opened the list released on it? The list closes when it was. A release over
+    /// the box it was pressed on is never a choice, even on a row: a blend mode list moves up over
+    /// its box to show every mode, and a slow or pen-tablet click there (not a click to egui) then
+    /// picked the row under it and shut the list at once (user report).
     pub fn chosen(&self, ui: &Ui, item: &Response) -> bool {
-        let released_on = item.enabled() && item.contains_pointer() && ui.input(|i| i.pointer.primary_released()) && self.owns_gesture(ui.ctx());
+        let on_box = ui.input(|i| i.pointer.interact_pos()).is_some_and(|p| pressed_box(ui.ctx()).is_some_and(|r| r.contains(p)));
+        let released_on = item.enabled() && item.contains_pointer() && ui.input(|i| i.pointer.primary_released()) && self.owns_gesture(ui.ctx()) && !on_box;
         if released_on {
             ui.close();
         }
@@ -150,7 +160,10 @@ impl PressCombo {
         if pressed && !Popup::is_id_open(ctx, self.popup) {
             // Opened now, the list counts as open this frame and egui shows it from the next.
             Popup::open_id(ctx, self.popup);
-            ctx.data_mut(|d| d.insert_temp(gesture_id(), self.popup));
+            ctx.data_mut(|d| {
+                d.insert_temp(gesture_id(), self.popup);
+                d.insert_temp(gesture_id().with("box"), button.rect);
+            });
             ctx.request_repaint();
         } else if self.owns_gesture(ctx) && ctx.input(|i| i.pointer.primary_released() || !i.pointer.primary_down()) {
             ctx.data_mut(|d| d.remove::<egui::Id>(gesture_id()));

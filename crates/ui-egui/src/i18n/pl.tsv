@@ -4055,3 +4055,46 @@ curves	Smooth	Wygładź
 	Shortcut:	Skrót:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Działa każdy klawisz, z Ctrl, Alt i Shift. Backspace usuwa skrót.
 	The action no longer exists.	Operacja już nie istnieje.
+	Fill Tool	Narzędzie Wypełnienie
+	Nothing to fill there	Nie ma tu nic do wypełnienia
+	No enclosed area to fill there	Nie ma tu zamkniętego obszaru do wypełnienia
+	Fill: click an area	Wypełnienie: kliknij obszar
+	Enclose and Fill: draw round the areas to fill	Otocz i wypełnij: obrysuj obszary do wypełnienia
+	Paint Unfilled Area: paint over the gaps a fill left	Maluj niewypełnione: zamaluj luki pozostawione przez wypełnienie
+	Refer	Odniesienie
+	Editing Layer	Edytowana warstwa
+	Selected Layers	Zaznaczone warstwy
+	Layers in Folder	Warstwy w folderze
+	Reference Layers	Warstwy odniesienia
+	Exclude	Wyklucz
+	Editing layer	Edytowana warstwa
+	Text layers	Warstwy tekstowe
+	Locked layers	Zablokowane warstwy
+	Layers the fill doesn't read	Warstwy, których wypełnienie nie czyta
+	Close Gap	Zamknij luki
+	Treat gaps in the lines up to this wide as closed (0: off)	Traktuj luki w liniach do tej szerokości jako zamknięte (0: wył.)
+	Area Scaling	Skalowanie obszaru
+	Grow the fill under the lines, or shrink it	Rozszerz wypełnienie pod linie lub je zmniejsz
+	To Darkest Pixel	Do najciemniejszego piksela
+	Follow Adjacent Pixels	Śledź sąsiednie piksele
+	Target	Cel
+	White and Transparent	Biały i przezroczysty
+	Image Border	Krawędź obrazu
+	The canvas edge closes gaps as a line does	Krawędź obszaru roboczego zamyka luki jak linia
+	Reference layer: the Fill tool reads it	Warstwa odniesienia: czyta ją narzędzie Wypełnienie
+	Set as Reference Layer	Ustaw jako warstwę odniesienia
+	Clear Reference Layer	Usuń warstwę odniesienia
+	Fill Tool Options	Opcje narzędzia Wypełnienie
+	Size Key Repeat	Powtarzanie klawiszy rozmiaru
+	Holding [ or ] to resize the brush	Przytrzymanie [ lub ] zmienia rozmiar pędzla
+	Pause before repeating	Przerwa przed powtarzaniem
+	Wait half a second before the size keeps changing, as typing does	Odczekaj pół sekundy, zanim rozmiar zacznie się dalej zmieniać, jak przy pisaniu
+	Change every	Zmieniaj co
+	Sample on Alt	Próbkuj po naciśnięciu Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	W narzędziu malarskim naciśnięcie Alt od razu pobiera kolor spod wskaźnika
+	Hold:	Przytrzymanie:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Jak długo trzeba trzymać Alt, zanim zadziała jak zwykły Kroplomierz: pipeta i kliknięcie, by pobrać próbkę
+	Move Layer Mask	Przenieś maskę warstwy
+	Copy Layer Mask	Kopiuj maskę warstwy
+	Move Vector Mask	Przenieś maskę wektorową
+	Copy Vector Mask	Kopiuj maskę wektorową

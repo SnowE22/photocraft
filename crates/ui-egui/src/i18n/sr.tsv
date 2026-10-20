@@ -4526,3 +4526,45 @@ shape	Appearance	Izgled
 	Shortcut:	Prečica:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Radi bilo koji taster, sa Ctrl, Alt i Shift. Backspace uklanja prečicu.
 	The action no longer exists.	Radnja više ne postoji.
+	Fill Tool	Alatka za popunjavanje
+	Nothing to fill there	Tu nema šta da se popuni
+	No enclosed area to fill there	Tu nema zatvorene oblasti za popunjavanje
+	Fill: click an area	Popunjavanje: kliknite oblast
+	Enclose and Fill: draw round the areas to fill	Okruži i popuni: nacrtajte oko oblasti za popunjavanje
+	Paint Unfilled Area: paint over the gaps a fill left	Oboj nepopunjeno: prebojite praznine koje je popunjavanje ostavilo
+	Refer	Referenca
+	Editing Layer	Sloj koji se uređuje
+	Selected Layers	Izabrani slojevi
+	Layers in Folder	Slojevi u fascikli
+	Reference Layers	Referentni slojevi
+	Exclude	Izuzmi
+	Editing layer	Sloj koji se uređuje
+	Text layers	Slojevi teksta
+	Locked layers	Zaključani slojevi
+	Layers the fill doesn't read	Slojevi koje popunjavanje ne čita
+	Close Gap	Zatvori praznine
+	Treat gaps in the lines up to this wide as closed (0: off)	Praznine u linijama do ove širine smatraj zatvorenim (0: isključeno)
+	Area Scaling	Skaliranje oblasti
+	Grow the fill under the lines, or shrink it	Proširi popunjavanje ispod linija ili ga smanji
+	To Darkest Pixel	Do najtamnijeg piksela
+	Follow Adjacent Pixels	Prati susedne piksele
+	White and Transparent	Bela i providna
+	Image Border	Ivica slike
+	The canvas edge closes gaps as a line does	Ivica platna zatvara praznine kao linija
+	Reference layer: the Fill tool reads it	Referentni sloj: alatka za popunjavanje ga čita
+	Set as Reference Layer	Postavi kao referentni sloj
+	Clear Reference Layer	Ukloni referentni sloj
+	Fill Tool Options	Opcije alatke za popunjavanje
+	Size Key Repeat	Ponavljanje tastera za veličinu
+	Holding [ or ] to resize the brush	Držanje [ ili ] za promenu veličine četkice
+	Pause before repeating	Pauza pre ponavljanja
+	Wait half a second before the size keeps changing, as typing does	Sačekaj pola sekunde pre nego što veličina nastavi da se menja, kao pri kucanju
+	Change every	Menjaj svakih
+	Sample on Alt	Uzorkuj na Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Sa alatkom za crtanje, pritisak na Alt odmah uzima boju ispod pokazivača
+	Hold:	Držanje:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Koliko dugo držati Alt pre nego što radi kao obična Pipeta: pipeta i klik za uzorkovanje
+	Move Layer Mask	Premesti masku sloja
+	Copy Layer Mask	Kopiraj masku sloja
+	Move Vector Mask	Premesti vektorsku masku
+	Copy Vector Mask	Kopiraj vektorsku masku

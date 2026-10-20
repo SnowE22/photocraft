@@ -659,6 +659,9 @@ pub struct Layer {
     pub advanced: AdvancedBlending,
     /// Layer › Video Layers frame stack (None for a normal layer).
     pub video: Option<VideoData>,
+    /// A reference layer, as in Clip Studio Paint: the line art the Fill tool reads when its
+    /// Reference is Reference Layers. Saved in `.pcraft`; PSD has no place for it.
+    pub reference: bool,
 }
 
 impl Layer {
@@ -692,6 +695,7 @@ impl Layer {
             blend_if: BlendIf::default(),
             advanced: AdvancedBlending::default(),
             video: None,
+            reference: false,
         }
     }
     pub fn raster(name: impl Into<String>, format: PixelFormat) -> Self {

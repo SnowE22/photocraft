@@ -55,11 +55,20 @@ pub fn sample_stops(stops: &[(f32, [f32; 4])], t: f32) -> [f32; 4] {
     }
 }
 
+/// How a fill lays its colour down.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FillPaint {
+    /// Blends the colour in with a blend mode.
+    Blend(BlendMode),
+    /// Clears the pixels instead (the Fill tool's transparent colour): coverage takes alpha away.
+    Erase,
+}
+
 /// Composites `color(i)` over `area` of the surface with per-pixel coverage.
 fn composite_area(
     s: &mut Surface,
     area: Rect,
-    blend_mode: BlendMode,
+    paint: FillPaint,
     coverage: impl Fn(i32, i32) -> f32 + Sync,
     color: impl Fn(i32, i32) -> [f32; 4] + Sync,
     lock_transparency: bool,
@@ -89,7 +98,10 @@ fn composite_area(
                 let i = ((y - r.y0) as usize * w + (x - r.x0) as usize) * n;
                 let px = &mut region[i..i + n];
                 let d = photocraft_raster::to_rgba(&fmt, px);
-                let mut o = blend::composite(blend_mode, d, color(x, y), k);
+                let mut o = match paint {
+                    FillPaint::Blend(mode) => blend::composite(mode, d, color(x, y), k),
+                    FillPaint::Erase => [d[0], d[1], d[2], d[3] * (1.0 - k.clamp(0.0, 1.0))],
+                };
                 if lock_transparency {
                     o[3] = d[3];
                 }
@@ -97,7 +109,7 @@ fn composite_area(
                 // A colour picked as CMYK inks replaces fully covered pixels of a CMYK target as it is.
                 if let Some(i) = inks
                     && fmt.mode == photocraft_color::ColorMode::Cmyk
-                    && blend_mode == BlendMode::Normal
+                    && paint == FillPaint::Blend(BlendMode::Normal)
                     && k >= 1.0
                 {
                     enc[..4].copy_from_slice(&i);
@@ -138,7 +150,7 @@ pub fn paint_gradient(
     composite_area(
         s,
         area,
-        blend_mode,
+        FillPaint::Blend(blend_mode),
         |x, y| opacity * selection.map_or(1.0, |m| m.sample_channel(x, y, 0)),
         |x, y| {
             let t = tool_gradient_t(shape, from, to, x as f32 + 0.5, y as f32 + 0.5);
@@ -242,12 +254,27 @@ pub fn bucket_fill_region_inks(
     src: impl Fn(i32, i32) -> [f32; 4] + Sync,
     inks: Option<[f32; 4]>,
 ) {
+    fill_region(s, region, opacity, FillPaint::Blend(BlendMode::Normal), selection, lock_transparency, src, inks);
+}
+
+/// [`bucket_fill_region_inks`] laid down with `paint`: the Fill tool's blend mode, or its
+/// transparent colour.
+#[allow(clippy::too_many_arguments)]
+pub fn fill_region(
+    s: &mut Surface,
+    region: &crate::selection::Region,
+    opacity: f32,
+    paint: FillPaint,
+    selection: Option<&Surface>,
+    lock_transparency: bool,
+    src: impl Fn(i32, i32) -> [f32; 4] + Sync,
+    inks: Option<[f32; 4]>,
+) {
     // Composite only over the filled region's box.
-    let b = region.bbox;
     composite_area(
         s,
-        b,
-        BlendMode::Normal,
+        region.bbox,
+        paint,
         |x, y| region.at(x, y) * opacity * selection.map_or(1.0, |m| m.sample_channel(x, y, 0)),
         src,
         lock_transparency,

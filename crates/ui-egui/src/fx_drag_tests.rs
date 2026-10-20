@@ -136,3 +136,39 @@ fn right_clicking_an_effect_row_offers_create_layer_for_that_layer() {
     assert!(names.contains(&"a's Drop Shadow") && names.contains(&"a's Color Overlay"), "{names:?}");
     assert!(h.query_by_label("Create Layer").is_none(), "the menu closed");
 }
+
+/// A mask thumbnail dragged onto another layer's row moves the mask there; ⌥-drag copies it
+/// (user request, as in Photoshop). The layers stay where they are.
+#[test]
+fn dragging_a_mask_onto_a_layer_moves_it_and_alt_copies() {
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    let a = LayerId(s.execute("layer.new.layer", json!({"name": "a"})).unwrap()["layer"].as_u64().unwrap());
+    s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+    let b = LayerId(s.execute("layer.new.layer", json!({"name": "b"})).unwrap()["layer"].as_u64().unwrap());
+    let c = LayerId(s.execute("layer.new.layer", json!({"name": "c"})).unwrap()["layer"].as_u64().unwrap());
+    let mut h = Harness::builder().with_size(vec2(1440.0, 900.0)).with_max_steps(64).build_eframe(move |cc| {
+        PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+        PhotocraftApp::new(s, crate::Services::default())
+    });
+    h.run_steps(8);
+    let has_mask = |h: &Harness<'_, PhotocraftApp>, id: LayerId| h.state().session.active().unwrap().doc.layer(id).unwrap().mask.is_some();
+    let thumb = |h: &Harness<'_, PhotocraftApp>, id: LayerId| {
+        let (thumbs, _) = crate::mask_thumbs_ui::recorded(&h.ctx, id.0).expect("mask thumbnail drawn");
+        thumbs.iter().find(|(k, _)| *k == crate::mask_thumbs_ui::MaskKind::Pixel).unwrap().1.center()
+    };
+    let steps = h.state().session.active().unwrap().history.past_len();
+    // Drag `a`'s mask onto `b`: it moves.
+    let (from, to) = (thumb(&h, a), row(&h, b).row.center());
+    drag(&mut h, from, to, Modifiers::NONE);
+    assert!(!has_mask(&h, a) && has_mask(&h, b), "moved to b");
+    assert_eq!(h.state().session.active().unwrap().history.past_len(), steps + 1, "one history step");
+    assert_eq!(h.state().session.active().unwrap().history.undo_label(), Some("Move Layer Mask"));
+    // ⌥-drag `b`'s mask onto `c`: copied.
+    let (from, to) = (thumb(&h, b), row(&h, c).row.center());
+    drag(&mut h, from, to, Modifiers::ALT);
+    assert!(has_mask(&h, b) && has_mask(&h, c), "copied to c");
+    assert_eq!(h.state().session.active().unwrap().history.undo_label(), Some("Copy Layer Mask"));
+    // The layers kept their order: c above b above a.
+    assert!(row(&h, c).row.top() < row(&h, b).row.top() && row(&h, b).row.top() < row(&h, a).row.top());
+}

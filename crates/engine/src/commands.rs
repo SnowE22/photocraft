@@ -1435,6 +1435,8 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::magnetic_cmds::specs());
     v.extend(crate::select_extra_cmds::specs());
     v.extend(crate::paint_cmds::specs());
+    v.extend(crate::fill_tool_cmds::specs());
+    v.extend(crate::mask_transfer_cmds::specs());
     v.extend(crate::extra_cmds::specs());
     v.extend(crate::background_cmds::specs());
     v.extend(crate::file_cmds::specs());

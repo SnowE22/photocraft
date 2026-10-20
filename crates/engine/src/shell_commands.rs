@@ -127,6 +127,7 @@ pub const TOOLS: &[(&str, &str, Option<&str>)] = &[
     ("tools.select.magicEraser", "Magic Eraser Tool", Some("E")),
     ("tools.select.gradient", "Gradient Tool", Some("G")),
     ("tools.select.paintBucket", "Paint Bucket Tool", Some("G")),
+    ("tools.select.fill", "Fill Tool", Some("G")),
     ("tools.select.type", "Horizontal Type Tool", Some("T")),
     ("tools.select.verticalType", "Vertical Type Tool", Some("T")),
     ("tools.select.horizontalTypeMask", "Horizontal Type Mask Tool", Some("T")),

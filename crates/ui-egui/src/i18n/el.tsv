@@ -4153,3 +4153,46 @@ curves	Smooth	Εξομάλυνση
 	Shortcut:	Συντόμευση:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Λειτουργεί κάθε πλήκτρο, με Ctrl, Alt και Shift. Το Backspace αφαιρεί τη συντόμευση.
 	The action no longer exists.	Η ενέργεια δεν υπάρχει πια.
+	Fill Tool	Εργαλείο γεμίσματος
+	Nothing to fill there	Δεν υπάρχει τίποτα για γέμισμα εκεί
+	No enclosed area to fill there	Δεν υπάρχει κλειστή περιοχή για γέμισμα εκεί
+	Fill: click an area	Γέμισμα: κάντε κλικ σε μια περιοχή
+	Enclose and Fill: draw round the areas to fill	Περίκλειση και γέμισμα: σχεδιάστε γύρω από τις περιοχές
+	Paint Unfilled Area: paint over the gaps a fill left	Βάψιμο κενών: βάψτε πάνω από τα κενά που άφησε το γέμισμα
+	Refer	Αναφορά
+	Editing Layer	Επίπεδο επεξεργασίας
+	Selected Layers	Επιλεγμένα επίπεδα
+	Layers in Folder	Επίπεδα στον φάκελο
+	Reference Layers	Επίπεδα αναφοράς
+	Exclude	Εξαίρεση
+	Editing layer	Επίπεδο επεξεργασίας
+	Text layers	Επίπεδα κειμένου
+	Locked layers	Κλειδωμένα επίπεδα
+	Layers the fill doesn't read	Επίπεδα που δεν διαβάζει το γέμισμα
+	Close Gap	Κλείσιμο κενών
+	Treat gaps in the lines up to this wide as closed (0: off)	Τα κενά στις γραμμές έως αυτό το πλάτος θεωρούνται κλειστά (0: όχι)
+	Area Scaling	Κλιμάκωση περιοχής
+	Grow the fill under the lines, or shrink it	Επέκταση του γεμίσματος κάτω από τις γραμμές ή σμίκρυνση
+	To Darkest Pixel	Έως το πιο σκούρο pixel
+	Follow Adjacent Pixels	Γειτονικά pixel
+	Target	Στόχος
+	White and Transparent	Λευκό και διαφανές
+	Image Border	Περίγραμμα εικόνας
+	The canvas edge closes gaps as a line does	Το άκρο του καμβά κλείνει κενά όπως μια γραμμή
+	Reference layer: the Fill tool reads it	Επίπεδο αναφοράς: το διαβάζει το εργαλείο γεμίσματος
+	Set as Reference Layer	Ορισμός ως επιπέδου αναφοράς
+	Clear Reference Layer	Κατάργηση επιπέδου αναφοράς
+	Fill Tool Options	Επιλογές εργαλείου γεμίσματος
+	Size Key Repeat	Επανάληψη πλήκτρων μεγέθους
+	Holding [ or ] to resize the brush	Κράτημα [ ή ] για αλλαγή μεγέθους πινέλου
+	Pause before repeating	Παύση πριν από την επανάληψη
+	Wait half a second before the size keeps changing, as typing does	Αναμονή μισού δευτερολέπτου πριν συνεχίσει να αλλάζει το μέγεθος, όπως στην πληκτρολόγηση
+	Change every	Αλλαγή κάθε
+	Sample on Alt	Δειγματοληψία με Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Με εργαλείο ζωγραφικής, το πάτημα του Alt επιλέγει αμέσως το χρώμα κάτω από τον δείκτη
+	Hold:	Κράτημα:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Πόση ώρα πρέπει να κρατηθεί το Alt πριν λειτουργήσει ως το συνηθισμένο σταγονόμετρο: η πιπέτα και κλικ για δειγματοληψία
+	Move Layer Mask	Μετακίνηση μάσκας επιπέδου
+	Copy Layer Mask	Αντιγραφή μάσκας επιπέδου
+	Move Vector Mask	Μετακίνηση διανυσματικής μάσκας
+	Copy Vector Mask	Αντιγραφή διανυσματικής μάσκας

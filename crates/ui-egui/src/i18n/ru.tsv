@@ -3427,3 +3427,46 @@ curves	Smooth	Сгладить
 	Shortcut:	Сочетание клавиш:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Подойдет любая клавиша, с Ctrl, Alt и Shift. Backspace удаляет сочетание.
 	The action no longer exists.	Операция больше не существует.
+	Fill Tool	Инструмент «Заливка»
+	Nothing to fill there	Здесь нечего заливать
+	No enclosed area to fill there	Здесь нет замкнутой области для заливки
+	Fill: click an area	Заливка: щёлкните область
+	Enclose and Fill: draw round the areas to fill	Обвести и залить: обведите области для заливки
+	Paint Unfilled Area: paint over the gaps a fill left	Закрасить пропуски: проведите по пропускам заливки
+	Refer	Ссылка
+	Editing Layer	Редактируемый слой
+	Selected Layers	Выбранные слои
+	Layers in Folder	Слои в папке
+	Reference Layers	Опорные слои
+	Exclude	Исключить
+	Editing layer	Редактируемый слой
+	Text layers	Текстовые слои
+	Locked layers	Закреплённые слои
+	Layers the fill doesn't read	Слои, которые заливка не учитывает
+	Close Gap	Закрыть зазоры
+	Treat gaps in the lines up to this wide as closed (0: off)	Считать закрытыми зазоры в линиях до этой ширины (0: выкл.)
+	Area Scaling	Масштаб области
+	Grow the fill under the lines, or shrink it	Расширить заливку под линии или сузить её
+	To Darkest Pixel	До самого тёмного пикселя
+	Follow Adjacent Pixels	Только смежные пиксели
+	Target	Цель
+	White and Transparent	Белый и прозрачный
+	Image Border	Край изображения
+	The canvas edge closes gaps as a line does	Край холста закрывает зазоры, как линия
+	Reference layer: the Fill tool reads it	Опорный слой: его учитывает инструмент «Заливка»
+	Set as Reference Layer	Сделать опорным слоем
+	Clear Reference Layer	Отменить опорный слой
+	Fill Tool Options	Параметры инструмента «Заливка»
+	Size Key Repeat	Повтор клавиш размера
+	Holding [ or ] to resize the brush	Удерживание [ или ] для изменения размера кисти
+	Pause before repeating	Пауза перед повтором
+	Wait half a second before the size keeps changing, as typing does	Ждать полсекунды, прежде чем размер продолжит меняться, как при наборе текста
+	Change every	Менять каждые
+	Sample on Alt	Образец по Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	При инструменте рисования нажатие Alt сразу берёт цвет под указателем
+	Hold:	Удержание:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Сколько удерживать Alt, прежде чем он заработает как обычная Пипетка: указатель пипетки и щелчок для образца
+	Move Layer Mask	Переместить слой-маску
+	Copy Layer Mask	Копировать слой-маску
+	Move Vector Mask	Переместить векторную маску
+	Copy Vector Mask	Копировать векторную маску

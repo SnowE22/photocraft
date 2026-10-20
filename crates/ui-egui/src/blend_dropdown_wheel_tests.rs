@@ -214,3 +214,77 @@ fn a_wheel_step_ends_the_hover_preview_until_the_pointer_moves() {
     h.run_steps(3);
     assert_eq!(previewed(&mut h), Some(BlendMode::Multiply), "a moved pointer previews again");
 }
+
+/// A quick click, its press and release in one frame (user report: "it will open for a split
+/// second, and then close again"): the whole list opens and stays open, and a click on a mode
+/// picks it.
+#[test]
+fn a_quick_click_opens_the_blend_list_and_it_stays_open() {
+    let mut h = harness(pixel_layer);
+    let at = dropdown(&h).center();
+    h.hover_at(at);
+    h.run_steps(1);
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() });
+    }
+    h.run_steps(6);
+    assert!(h.query_by_label("Multiply").is_some(), "the list is still open");
+    let multiply = entry(&h, "Multiply").center();
+    h.hover_at(multiply);
+    h.run_steps(1);
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: multiply, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() });
+    }
+    h.run_steps(6);
+    assert_eq!(blend(&h), BlendMode::Multiply);
+    assert!(h.query_by_label("Luminosity").is_none(), "choosing closes it");
+    // A quick click on the box again opens it again, and another closes it.
+    h.hover_at(at);
+    h.run_steps(1);
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: Default::default() });
+    }
+    h.run_steps(6);
+    assert!(h.query_by_label("Luminosity").is_some(), "open again");
+}
+
+/// A slow click, or a pen-tablet one that moves a little (neither a click to egui), released on
+/// the box: the list, which moved up over the box to show every mode, stays open and nothing is
+/// picked (user report: "it will open for a split second, and then close again"). A real
+/// press-drag onto a mode still picks it.
+#[test]
+fn a_slow_click_on_the_box_keeps_the_blend_list_open() {
+    for (moves, holds) in [(0.0, 4), (3.0, 4), (8.0, 1)] {
+        let mut h = harness(pixel_layer);
+        let at = dropdown(&h).center();
+        h.hover_at(at);
+        h.run_steps(1);
+        h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+        h.run_steps(1);
+        let to = at + vec2(moves, 0.0);
+        h.event(egui::Event::PointerMoved(to));
+        h.run_steps(holds);
+        h.event(egui::Event::PointerButton { pos: to, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+        h.run_steps(6);
+        assert!(h.query_by_label("Luminosity").is_some(), "moved {moves}, held {holds} steps: still open");
+        assert_eq!(blend(&h), BlendMode::Normal, "nothing picked");
+        // Now a click on a mode picks it.
+        let screen = entry(&h, "Screen").center();
+        click(&mut h, screen);
+        assert_eq!(blend(&h), BlendMode::Screen);
+    }
+    // Press on the box, drag onto a mode away from it, release: picked.
+    let mut h = harness(pixel_layer);
+    let at = dropdown(&h).center();
+    h.hover_at(at);
+    h.run_steps(1);
+    h.event(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: Default::default() });
+    h.run_steps(2);
+    let multiply = entry(&h, "Multiply").center();
+    h.event(egui::Event::PointerMoved(multiply));
+    h.run_steps(1);
+    h.event(egui::Event::PointerButton { pos: multiply, button: egui::PointerButton::Primary, pressed: false, modifiers: Default::default() });
+    h.run_steps(4);
+    assert_eq!(blend(&h), BlendMode::Multiply);
+    assert!(h.query_by_label("Luminosity").is_none());
+}

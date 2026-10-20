@@ -3460,3 +3460,46 @@ curves	Smooth	Glätten
 	Shortcut:	Tastaturbefehl:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Jede Taste funktioniert, mit Strg, Alt und Umschalt. Rücktaste entfernt den Tastaturbefehl.
 	The action no longer exists.	Die Aktion gibt es nicht mehr.
+	Fill Tool	Füllwerkzeug
+	Nothing to fill there	Dort gibt es nichts zu füllen
+	No enclosed area to fill there	Dort gibt es keinen geschlossenen Bereich zum Füllen
+	Fill: click an area	Füllen: auf einen Bereich klicken
+	Enclose and Fill: draw round the areas to fill	Umschließen und füllen: um die zu füllenden Bereiche zeichnen
+	Paint Unfilled Area: paint over the gaps a fill left	Ungefüllte Bereiche malen: über die Lücken einer Füllung malen
+	Refer	Bezug
+	Editing Layer	Bearbeitete Ebene
+	Selected Layers	Ausgewählte Ebenen
+	Layers in Folder	Ebenen im Ordner
+	Reference Layers	Referenzebenen
+	Exclude	Ausschließen
+	Editing layer	Bearbeitete Ebene
+	Text layers	Textebenen
+	Locked layers	Fixierte Ebenen
+	Layers the fill doesn't read	Ebenen, die die Füllung nicht liest
+	Close Gap	Lücke schließen
+	Treat gaps in the lines up to this wide as closed (0: off)	Lücken in den Linien bis zu dieser Breite als geschlossen behandeln (0: aus)
+	Area Scaling	Bereichsskalierung
+	Grow the fill under the lines, or shrink it	Die Füllung unter die Linien erweitern oder verkleinern
+	To Darkest Pixel	Bis zum dunkelsten Pixel
+	Follow Adjacent Pixels	Angrenzende Pixel
+	Target	Ziel
+	White and Transparent	Weiß und transparent
+	Image Border	Bildrand
+	The canvas edge closes gaps as a line does	Der Arbeitsflächenrand schließt Lücken wie eine Linie
+	Reference layer: the Fill tool reads it	Referenzebene: das Füllwerkzeug liest sie
+	Set as Reference Layer	Als Referenzebene festlegen
+	Clear Reference Layer	Referenzebene aufheben
+	Fill Tool Options	Optionen für das Füllwerkzeug
+	Size Key Repeat	Wiederholung der Größentasten
+	Holding [ or ] to resize the brush	[ oder ] gedrückt halten, um die Pinselgröße zu ändern
+	Pause before repeating	Pause vor dem Wiederholen
+	Wait half a second before the size keeps changing, as typing does	Eine halbe Sekunde warten, bevor sich die Größe weiter ändert, wie beim Tippen
+	Change every	Ändern alle
+	Sample on Alt	Bei Alt aufnehmen
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Mit einem Malwerkzeug nimmt Alt sofort die Farbe unter dem Zeiger auf
+	Hold:	Halten:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Wie lange Alt gehalten werden muss, bevor es wie die übliche Pipette wirkt: Pipettenzeiger, Klicken zum Aufnehmen
+	Move Layer Mask	Ebenenmaske verschieben
+	Copy Layer Mask	Ebenenmaske kopieren
+	Move Vector Mask	Vektormaske verschieben
+	Copy Vector Mask	Vektormaske kopieren

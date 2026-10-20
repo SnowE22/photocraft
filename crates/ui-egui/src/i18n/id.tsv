@@ -3452,3 +3452,46 @@ curves	Smooth	Haluskan
 	Shortcut:	Pintasan:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Tombol apa pun bisa, dengan Ctrl, Alt, dan Shift. Backspace menghapus pintasan.
 	The action no longer exists.	Aksi tersebut sudah tidak ada.
+	Fill Tool	Alat Isian
+	Nothing to fill there	Tidak ada yang bisa diisi di sana
+	No enclosed area to fill there	Tidak ada area tertutup untuk diisi di sana
+	Fill: click an area	Isian: klik sebuah area
+	Enclose and Fill: draw round the areas to fill	Lingkupi dan Isi: gambar di sekeliling area yang akan diisi
+	Paint Unfilled Area: paint over the gaps a fill left	Lukis Area Belum Terisi: lukis di atas celah yang terlewat
+	Refer	Rujukan
+	Editing Layer	Layer yang Diedit
+	Selected Layers	Layer Terpilih
+	Layers in Folder	Layer dalam Folder
+	Reference Layers	Layer Referensi
+	Exclude	Kecualikan
+	Editing layer	Layer yang diedit
+	Text layers	Layer teks
+	Locked layers	Layer terkunci
+	Layers the fill doesn't read	Layer yang tidak dibaca isian
+	Close Gap	Tutup Celah
+	Treat gaps in the lines up to this wide as closed (0: off)	Anggap celah garis hingga selebar ini tertutup (0: mati)
+	Area Scaling	Penskalaan Area
+	Grow the fill under the lines, or shrink it	Perluas isian ke bawah garis, atau perkecil
+	To Darkest Pixel	Ke Piksel Tergelap
+	Follow Adjacent Pixels	Ikuti Piksel Berdekatan
+	Target	Target
+	White and Transparent	Putih dan Transparan
+	Image Border	Batas Gambar
+	The canvas edge closes gaps as a line does	Tepi kanvas menutup celah seperti garis
+	Reference layer: the Fill tool reads it	Layer referensi: dibaca oleh Alat Isian
+	Set as Reference Layer	Atur sebagai Layer Referensi
+	Clear Reference Layer	Hapus Layer Referensi
+	Fill Tool Options	Opsi Alat Isian
+	Size Key Repeat	Pengulangan Tombol Ukuran
+	Holding [ or ] to resize the brush	Menahan [ atau ] untuk mengubah ukuran kuas
+	Pause before repeating	Jeda sebelum mengulang
+	Wait half a second before the size keeps changing, as typing does	Tunggu setengah detik sebelum ukuran terus berubah, seperti saat mengetik
+	Change every	Ubah setiap
+	Sample on Alt	Ambil Sampel saat Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Dengan alat lukis, menekan Alt langsung mengambil warna di bawah penunjuk
+	Hold:	Tahan:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Berapa lama Alt harus ditahan sebelum berfungsi sebagai Penetes biasa: pipet, dan klik untuk mengambil sampel
+	Move Layer Mask	Pindahkan Mask Layer
+	Copy Layer Mask	Salin Mask Layer
+	Move Vector Mask	Pindahkan Mask Vektor
+	Copy Vector Mask	Salin Mask Vektor

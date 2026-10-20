@@ -242,6 +242,9 @@ pub struct LayerM {
     pub advanced: photocraft_doc::AdvancedBlending,
     #[serde(default)]
     pub video: Option<VideoDataM>,
+    /// A reference layer for the Fill tool (missing in older files = not one).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reference: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -341,6 +344,10 @@ pub struct ChannelM {
     pub opacity: f32,
     #[serde(default)]
     pub indicates: photocraft_doc::ColorIndicates,
+}
+
+fn is_false(v: &bool) -> bool {
+    !v
 }
 
 fn is_zero_u32(v: &u32) -> bool {

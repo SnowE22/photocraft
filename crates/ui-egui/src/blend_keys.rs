@@ -67,6 +67,12 @@ pub fn press(app: &mut PhotocraftApp, step: i32) {
                 crate::gradient_ui::options_changed(app, &before);
             }
         }
+        Tool::Fill => {
+            let o = &mut app.ui.tool_options.fill_tool;
+            if let Some(mode) = stepped(&BlendMode::LAYER_MODES, o.mode, step) {
+                o.mode = mode;
+            }
+        }
         // Their blend mode isn't the brush's (the Eraser has none): leave them alone.
         t if t.is_brushlike() || t == Tool::MagicEraser || t == Tool::PaintBucket => {}
         _ => {

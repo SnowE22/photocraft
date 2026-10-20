@@ -34,7 +34,7 @@ fn target(tool: Tool) -> Target {
     match tool {
         Tool::Brush | Tool::Eraser => Target::Brush { flow: true },
         Tool::Pencil => Target::Brush { flow: false },
-        Tool::Gradient | Tool::PaintBucket => Target::ToolOpacity,
+        Tool::Gradient | Tool::PaintBucket | Tool::Fill => Target::ToolOpacity,
         // Their options-bar number is a strength, exposure or tolerance, not this opacity.
         t if t.is_brushlike() || t == Tool::MagicEraser => Target::None,
         _ => Target::Layer,

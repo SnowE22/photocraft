@@ -91,6 +91,9 @@ pub enum Tool {
     MagicEraser,
     Gradient,
     PaintBucket,
+    /// Clip Studio Paint's Fill tool (`paint.fill`): fills from line art on other layers, closes
+    /// gaps and tucks under the lines; with Enclose and Fill and Paint Unfilled Area sub tools.
+    Fill,
     Type,
     VerticalType,
     /// Horizontal Type Mask: types a selection in the shape of the glyphs, no type layer.
@@ -138,7 +141,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 67] = [
+    pub const ALL: [Tool; 68] = [
         Tool::Move,
         Tool::Artboard,
         Tool::RectMarquee,
@@ -165,6 +168,7 @@ impl Tool {
         Tool::MagicEraser,
         Tool::Gradient,
         Tool::PaintBucket,
+        Tool::Fill,
         Tool::Type,
         Tool::VerticalType,
         Tool::HorizontalTypeMask,
@@ -239,6 +243,7 @@ impl Tool {
             Tool::Frame => "Frame Tool",
             Tool::Gradient => "Gradient Tool",
             Tool::PaintBucket => "Paint Bucket Tool",
+            Tool::Fill => "Fill Tool",
             Tool::Type => "Horizontal Type Tool",
             Tool::VerticalType => "Vertical Type Tool",
             Tool::HorizontalTypeMask => "Horizontal Type Mask Tool",
@@ -327,7 +332,7 @@ impl Tool {
             Tool::MagicWand => 'W',
             Tool::Crop | Tool::PerspectiveCrop | Tool::Slice | Tool::SliceSelect => 'C',
             Tool::Frame => 'K',
-            Tool::Gradient | Tool::PaintBucket => 'G',
+            Tool::Gradient | Tool::PaintBucket | Tool::Fill => 'G',
             Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => 'T',
             Tool::Hand => 'H',
             Tool::RotateView => 'R',
@@ -359,7 +364,7 @@ impl Tool {
             Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => "L",
             Tool::MagicWand => "W",
             Tool::Crop => "C",
-            Tool::Gradient | Tool::PaintBucket => "G",
+            Tool::Gradient | Tool::PaintBucket | Tool::Fill => "G",
             Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => "T",
             Tool::Hand => "✋",
             Tool::RotateView => "🧭",
@@ -578,6 +583,13 @@ pub struct ToolOptions {
     pub fill_opacity: f32,
     /// Paint Bucket fill source: false = Foreground colour, true = Pattern (Patterns panel selection).
     pub bucket_fill_pattern: bool,
+    /// The Fill tool's options (its opacity is `fill_opacity`, shared with the Paint Bucket).
+    #[serde(default)]
+    pub fill_tool: crate::fill_tool_ui::FillToolOptions,
+    /// How holding a brush key ([ ] ⇧[ ⇧]) repeats: the pause before it starts and the time
+    /// between steps (the gear beside the brush picker's Size field).
+    #[serde(default)]
+    pub brush_key_repeat: crate::brush_key_repeat::KeyRepeat,
     /// Type tool: family, style name, size (pt), anti-aliasing and paragraph alignment.
     pub type_font: String,
     pub type_style: String,
@@ -755,6 +767,17 @@ pub struct ToolOptions {
     /// Eyedropper › Show Sampling Ring.
     #[serde(default = "yes")]
     pub eyedropper_ring: bool,
+    /// Eyedropper › Sample on Alt: pressing Alt with a painting tool picks the colour under the
+    /// pointer at once (`alt_pick`); Alt works as the usual temporary Eyedropper once held for
+    /// `eyedropper_alt_hold_ms`.
+    #[serde(default)]
+    pub eyedropper_alt_instant: bool,
+    #[serde(default = "default_alt_hold_ms")]
+    pub eyedropper_alt_hold_ms: f32,
+}
+
+fn default_alt_hold_ms() -> f32 {
+    250.0
 }
 
 fn yes() -> bool {
@@ -828,6 +851,8 @@ impl Default for ToolOptions {
             gradient_blend_mode: photocraft_color::BlendMode::Normal,
             fill_opacity: 100.0,
             bucket_fill_pattern: false,
+            fill_tool: Default::default(),
+            brush_key_repeat: Default::default(),
             type_font: "Inter".into(),
             type_style: "Regular".into(),
             type_size: 48.0,
@@ -910,6 +935,8 @@ impl Default for ToolOptions {
             eyedropper_size: 1,
             eyedropper_sample: default_eyedropper_sample(),
             eyedropper_ring: true,
+            eyedropper_alt_instant: false,
+            eyedropper_alt_hold_ms: default_alt_hold_ms(),
         }
     }
 }
@@ -1516,7 +1543,7 @@ mod tests {
         assert!(!Tool::RedEye.is_brushlike());
         assert_eq!(Tool::from_name("patternStamp"), Some(Tool::PatternStamp));
         assert_eq!(Tool::from_name("Pattern Stamp Tool"), Some(Tool::PatternStamp));
-        assert_eq!(Tool::ALL.len(), 67);
+        assert_eq!(Tool::ALL.len(), 68);
         assert_eq!(Tool::from_name("Vertical Type Mask Tool"), Some(Tool::VerticalTypeMask));
         assert_eq!(Tool::from_name("addAnchorPoint"), Some(Tool::AddAnchorPoint));
         assert_eq!(Tool::from_name("Delete Anchor Point Tool"), Some(Tool::DeleteAnchorPoint));

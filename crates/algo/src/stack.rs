@@ -69,6 +69,30 @@ fn entropy(v: &[f32], scratch: &mut EntropyScratch) -> f32 {
     h / n.log2()
 }
 
+/// The k-th central moment `Σ pow(x − mean) / n`, with `pow` one of [`square`], [`cube`],
+/// [`fourth`]. Generic, so every call site has its power written out as plain multiplications.
+fn moment(v: &[f32], mean: f32, n: f32, pow: impl Fn(f32) -> f32) -> f32 {
+    v.iter().map(|&x| pow(x - mean)).sum::<f32>() / n
+}
+
+// Powers by repeated squaring: the multiplications LLVM emits for `powi` with a constant exponent.
+// Not `powi` itself. Its precision is unspecified: when the exponent is not a compile-time constant
+// at the call (the old `m = |k| ... .powi(k)` closure, once not inlined) it becomes a libm call
+// (`powf` on x86_64-pc-windows-msvc, Rust 1.99) that differs in the last bit for about half of
+// all inputs at k = 4, so an inlining decision used to change Kurtosis results.
+fn square(d: f32) -> f32 {
+    d * d
+}
+
+fn cube(d: f32) -> f32 {
+    d * (d * d)
+}
+
+fn fourth(d: f32) -> f32 {
+    let s = d * d;
+    s * s
+}
+
 fn stat(v: &mut [f32], s: Stat, scratch: &mut EntropyScratch) -> f32 {
     let n = v.len() as f32;
     if v.is_empty() {
@@ -97,20 +121,19 @@ fn stat(v: &mut [f32], s: Stat, scratch: &mut EntropyScratch) -> f32 {
         _ => {}
     }
     let mean = v.iter().sum::<f32>() / n;
-    let m = |k: i32| v.iter().map(|x| (x - mean).powi(k)).sum::<f32>() / n;
     match s {
         Stat::Mean => mean,
-        Stat::Variance => m(2),
-        Stat::StandardDeviation => m(2).sqrt(),
+        Stat::Variance => moment(v, mean, n, square),
+        Stat::StandardDeviation => moment(v, mean, n, square).sqrt(),
         Stat::Skewness => {
-            let sd = m(2).sqrt();
+            let sd = moment(v, mean, n, square).sqrt();
             // Map −2..2 to 0..1 (0.5 = symmetric).
-            if sd < 1e-6 { 0.5 } else { (m(3) / sd.powi(3) / 4.0 + 0.5).clamp(0.0, 1.0) }
+            if sd < 1e-6 { 0.5 } else { (moment(v, mean, n, cube) / cube(sd) / 4.0 + 0.5).clamp(0.0, 1.0) }
         }
         Stat::Kurtosis => {
-            let var = m(2);
+            let var = moment(v, mean, n, square);
             // 0..10 → 0..1.
-            if var < 1e-12 { 0.0 } else { (m(4) / (var * var) / 10.0).clamp(0.0, 1.0) }
+            if var < 1e-12 { 0.0 } else { (moment(v, mean, n, fourth) / (var * var) / 10.0).clamp(0.0, 1.0) }
         }
         // Handled above; a no-op keeps the match exhaustive without a panic path.
         Stat::Summation | Stat::Minimum | Stat::Maximum | Stat::Range | Stat::Median | Stat::Entropy => 0.0,

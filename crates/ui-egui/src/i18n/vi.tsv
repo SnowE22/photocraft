@@ -3944,3 +3944,45 @@ curves	Smooth	Làm mượt
 	Shortcut:	Phím tắt:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Dùng được mọi phím, kèm Ctrl, Alt và Shift. Backspace sẽ xóa phím tắt.
 	The action no longer exists.	Thao tác không còn tồn tại.
+	Fill Tool	Công cụ Tô màu
+	Nothing to fill there	Không có gì để tô ở đó
+	No enclosed area to fill there	Không có vùng khép kín nào để tô ở đó
+	Fill: click an area	Tô màu: nhấp vào một vùng
+	Enclose and Fill: draw round the areas to fill	Bao quanh và tô: vẽ quanh các vùng cần tô
+	Paint Unfilled Area: paint over the gaps a fill left	Tô vùng chưa tô: tô lên các khe hở mà lần tô bỏ sót
+	Refer	Tham chiếu
+	Editing Layer	Lớp đang sửa
+	Selected Layers	Các lớp đã chọn
+	Layers in Folder	Các lớp trong thư mục
+	Reference Layers	Các lớp tham chiếu
+	Exclude	Loại trừ
+	Editing layer	Lớp đang sửa
+	Text layers	Lớp văn bản
+	Locked layers	Lớp bị khóa
+	Layers the fill doesn't read	Các lớp mà lần tô không đọc
+	Close Gap	Đóng khe hở
+	Treat gaps in the lines up to this wide as closed (0: off)	Coi khe hở trong nét đến độ rộng này là kín (0: tắt)
+	Area Scaling	Co giãn vùng
+	Grow the fill under the lines, or shrink it	Mở rộng vùng tô vào dưới nét, hoặc thu nhỏ
+	To Darkest Pixel	Đến điểm ảnh tối nhất
+	Follow Adjacent Pixels	Theo các điểm ảnh liền kề
+	White and Transparent	Trắng và trong suốt
+	Image Border	Viền ảnh
+	The canvas edge closes gaps as a line does	Mép canvas đóng khe hở như một nét
+	Reference layer: the Fill tool reads it	Lớp tham chiếu: công cụ Tô màu đọc lớp này
+	Set as Reference Layer	Đặt làm lớp tham chiếu
+	Clear Reference Layer	Bỏ lớp tham chiếu
+	Fill Tool Options	Tùy chọn công cụ Tô màu
+	Size Key Repeat	Lặp phím kích thước
+	Holding [ or ] to resize the brush	Giữ [ hoặc ] để đổi kích thước cọ
+	Pause before repeating	Tạm dừng trước khi lặp
+	Wait half a second before the size keeps changing, as typing does	Chờ nửa giây trước khi kích thước tiếp tục thay đổi, như khi gõ phím
+	Change every	Đổi mỗi
+	Sample on Alt	Lấy mẫu khi nhấn Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Với công cụ vẽ, nhấn Alt sẽ lấy ngay màu dưới con trỏ
+	Hold:	Giữ:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Cần giữ Alt bao lâu trước khi nó hoạt động như Ống hút màu thông thường: con trỏ ống hút, và nhấp để lấy mẫu
+	Move Layer Mask	Di chuyển mặt nạ lớp
+	Copy Layer Mask	Sao chép mặt nạ lớp
+	Move Vector Mask	Di chuyển mặt nạ vectơ
+	Copy Vector Mask	Sao chép mặt nạ vectơ

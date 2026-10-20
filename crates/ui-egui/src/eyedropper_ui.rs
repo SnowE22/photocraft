@@ -47,6 +47,14 @@ pub fn options(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     widgets::dropdown(ui, "eyedropper-sample", &mut o.eyedropper_sample, &layer_options(), 190.0);
     widgets::checkbox(ui, &mut o.eyedropper_ring, tl!("Show Sampling Ring"));
     widgets::vline(ui, 22.0);
+    widgets::checkbox(ui, &mut o.eyedropper_alt_instant, tl!("Sample on Alt"))
+        .on_hover_text(tl!("With a painting tool, pressing Alt picks the colour under the pointer at once"));
+    if o.eyedropper_alt_instant {
+        opt(ui, tl!("Hold:"));
+        widgets::value_field(ui, &mut o.eyedropper_alt_hold_ms, 0.0..=crate::alt_pick::MAX_HOLD_MS, "ms", 70.0)
+            .on_hover_text(tl!("How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample"));
+    }
+    widgets::vline(ui, 22.0);
     let t = Tokens::get(ui.ctx());
     ui.label(
         egui::RichText::new(crate::i18n::fmt(

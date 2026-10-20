@@ -31,7 +31,7 @@ const TOOL_SECTIONS: &[&[&[Tool]]] = &[
         &[Tool::CloneStamp, Tool::PatternStamp],
         &[Tool::HistoryBrush],
         &[Tool::Eraser, Tool::BackgroundEraser, Tool::MagicEraser],
-        &[Tool::Gradient, Tool::PaintBucket],
+        &[Tool::Gradient, Tool::PaintBucket, Tool::Fill],
         &[Tool::Blur, Tool::Sharpen, Tool::Smudge],
         &[Tool::Dodge, Tool::Burn, Tool::Sponge],
     ],
@@ -1417,6 +1417,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             let _ = crate::menus::invoke(app, ui.ctx(), "select.selectAndMask", json!({}));
                         }
                     }
+                    Tool::Fill => crate::fill_tool_ui::options_bar(app, ui),
                     Tool::PaintBucket if t.pro => {
                         opt_label(ui, tl!("Fill"));
                         let mut src = u8::from(app.ui.tool_options.bucket_fill_pattern);
@@ -1802,7 +1803,7 @@ fn body_text_width(ui: &egui::Ui, s: &str) -> f32 {
 
 /// Options-bar label: Photoshop writes "Size:" with a colon.
 /// An options-bar label; one right before a value field scrubs it when dragged (Photoshop).
-fn opt_label(ui: &mut egui::Ui, s: &str) {
+pub(crate) fn opt_label(ui: &mut egui::Ui, s: &str) {
     let t = Tokens::get(ui.ctx());
     let text = if t.pro && !s.ends_with(':') { format!("{s}:") } else { s.to_string() };
     let label = ui.add(egui::Label::new(RichText::new(tl!(&text)).color(t.text_dim)).selectable(false));
@@ -2742,6 +2743,10 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     {
         let label = if kind == MaskKind::Vector { tl!("Vector Mask") } else { tl!("Layer Mask") };
         crate::layer_transfer::ghost(&ctx, p, label);
+        // ⌥ copies the mask to the layer it's dropped on instead of moving it.
+        if ctx.input(|i| i.modifiers.alt) {
+            ctx.set_cursor_icon(egui::CursorIcon::Copy);
+        }
     }
     // End any layer drag after every row has had a chance to accept the drop.
     if ctx.input(|i| i.pointer.any_released()) {
@@ -3154,6 +3159,7 @@ fn layer_row(
     let mask_drag = mask_drag.is_some();
     layer_drag_and_drop(app, ctx, ui, l, rect, &resp, actions);
     fx_drop(ctx, ui, l, rect, actions);
+    mask_drop(ctx, ui, l, rect, actions);
     crate::smart_ui::drop_on_row(ctx, ui, l, rect, actions);
     if resp.drag_started() && !mask_drag {
         crate::layer_transfer::begin_from_panel(app, ctx, l.id);
@@ -4152,7 +4158,10 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
         ui.painter().add(mesh);
         ui.painter().rect_stroke(field, 0.0, Stroke::new(1.0, t.separator), StrokeKind::Outside);
-        if (fresp.dragged() || fresp.clicked())
+        // The press picks, not its release (user report): a drag only starts once the pointer
+        // has moved, and a click ends on the release.
+        let picking = |r: &egui::Response| r.is_pointer_button_down_on() || r.clicked() || r.dragged();
+        if picking(&fresp)
             && let Some(p) = fresp.interact_pointer_pos()
         {
             hsva.s = ((p.x - field.left()) / field.width()).clamp(0.0, 1.0);
@@ -4177,7 +4186,7 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             m2.add_triangle(a, a + 3, a + 2);
         }
         ui.painter().add(m2);
-        if (sresp.dragged() || sresp.clicked())
+        if picking(&sresp)
             && let Some(p) = sresp.interact_pointer_pos()
         {
             hsva.h = 1.0 - ((p.y - strip.top()) / strip.height()).clamp(0.0, 0.9999);
@@ -4185,7 +4194,7 @@ fn color_field(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         let y = strip.top() + (1.0 - hsva.h) * strip.height();
         let tri = vec![pos2(strip.right() + 1.0, y), pos2(strip.right() + 6.0, y - 4.0), pos2(strip.right() + 6.0, y + 4.0)];
         ui.painter().add(egui::Shape::convex_polygon(tri, t.text, Stroke::NONE));
-        if fresp.dragged() || fresp.clicked() || sresp.dragged() || sresp.clicked() {
+        if picking(&fresp) || picking(&sresp) {
             if bg_active {
                 app.session.tools.background = hsva_srgb(hsva);
             } else {
@@ -4608,6 +4617,23 @@ fn fx_drop(ctx: &egui::Context, ui: &egui::Ui, l: &Layer, rect: Rect, actions: &
     }
 }
 
+/// A layer row accepts the mask thumbnail being dragged: outlined while the pointer is over it;
+/// on release the mask moves there, or with ⌥ held is copied (Photoshop).
+fn mask_drop(ctx: &egui::Context, ui: &egui::Ui, l: &Layer, rect: Rect, actions: &mut Vec<(String, Value)>) {
+    let Some((from, kind)) = ctx.data(|d| d.get_temp::<MaskDrag>(mask_drag_key())) else { return };
+    let Some(p) = ctx.input(|i| i.pointer.interact_pos()) else { return };
+    if from == l.id.0 || !rect.contains(p) {
+        return;
+    }
+    let t = Tokens::get(ctx);
+    ui.painter().rect_stroke(rect.shrink(1.0), t.radius_sm, Stroke::new(2.0, t.accent), StrokeKind::Inside);
+    if ctx.input(|i| i.pointer.any_released()) {
+        let kind = if kind == MaskKind::Vector { "vector" } else { "pixel" };
+        let copy = ctx.input(|i| i.modifiers.alt);
+        actions.push((photocraft_engine::mask_transfer_cmds::TRANSFER_ID.into(), json!({"from": from, "to": l.id.0, "copy": copy, "kind": kind})));
+    }
+}
+
 /// Photoshop shows a layer's effects as indented sub-rows ("Effects", then each effect). The eye
 /// on "Effects" shows or hides them all, the eye on an effect's row just that one (#1622).
 fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usize, actions: &mut Vec<(String, Value)>) {
@@ -4963,6 +4989,46 @@ mod color_tests {
         h.run_steps(2);
         assert!(h.query_by_role(egui::accesskit::Role::TextInput).is_none(), "no hex field");
         assert!(h.query_by_role(egui::accesskit::Role::SpinButton).is_none(), "no R, G, B fields");
+    }
+
+    /// The colour square and the hue strip pick on the press, before the button is let go (user
+    /// report: the click registered only on its release).
+    #[test]
+    fn the_color_field_and_hue_strip_pick_on_the_press() {
+        use egui::{Event, Modifiers, PointerButton, pos2};
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.session.tools.foreground = [0.5, 0.5, 0.5, 1.0];
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(300.0, 200.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    color_field(app, ui);
+                }
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ProMedium);
+        h.run_steps(2);
+        let press = |h: &mut egui_kittest::Harness<'_, PhotocraftApp>, at: egui::Pos2| {
+            h.event(Event::PointerMoved(at));
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+            h.run_steps(2);
+        };
+        let release = |h: &mut egui_kittest::Harness<'_, PhotocraftApp>, at: egui::Pos2| {
+            h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+            h.run_steps(2);
+        };
+        // Near the square's top-right corner: a bright, saturated colour, still held down.
+        let corner = pos2(250.0, 12.0);
+        press(&mut h, corner);
+        let fg = h.state().session.tools.foreground;
+        assert!(fg[0].max(fg[1]).max(fg[2]) > 0.9 && fg[0].min(fg[1]).min(fg[2]) < 0.3, "picked on the press: {fg:?}");
+        release(&mut h, corner);
+        // The hue strip at the right edge: a different hue, on the press.
+        let before = h.state().session.tools.foreground;
+        let strip = pos2(285.0, 70.0);
+        press(&mut h, strip);
+        assert_ne!(h.state().session.tools.foreground, before, "the hue changed on the press");
+        release(&mut h, strip);
     }
 
     #[test]

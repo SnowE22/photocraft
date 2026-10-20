@@ -1,7 +1,8 @@
 //! Layers panel row: the right-hand indicators and the name between them and the thumbnails
 //! (#144).
 //!
-//! The indicators (lock, fx badge with its effects triangle, link, the blend-mode label) are
+//! The indicators (lock, fx badge with its effects triangle, link, the Fill tool's reference-layer
+//! mark, the blend-mode label) are
 //! laid out first, from the row's right edge inward; the name gets the width that is left and
 //! is cut with an ellipsis, so a long name never runs under an indicator at any panel width or
 //! UI scale. The blend-mode label is optional: it is dropped before the name gets too narrow.
@@ -34,6 +35,8 @@ pub enum Indicator {
     FxTriangle,
     Fx,
     Link,
+    /// A reference layer for the Fill tool (`layer.setReference`).
+    Reference,
     Blend,
 }
 
@@ -78,6 +81,9 @@ pub fn reserved_width(l: &Layer) -> f32 {
         w += TRIANGLE_W + 1.0 + 13.0 + GAP;
     }
     if l.link_group.is_some() {
+        w += ICON_W + GAP;
+    }
+    if l.reference {
         w += ICON_W + GAP;
     }
     w
@@ -144,6 +150,9 @@ pub fn indicators(
     if l.link_group.is_some() {
         items.push((Indicator::Link, ICON_W));
     }
+    if l.reference {
+        items.push((Indicator::Reference, ICON_W));
+    }
     if let Some(g) = &blend_galley {
         items.push((Indicator::Blend, g.size().x));
     }
@@ -154,6 +163,10 @@ pub fn indicators(
         match kind {
             Indicator::Lock => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "lock", 12.0, t.text_faint),
             Indicator::Link => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "link-2", 12.0, t.text_faint),
+            Indicator::Reference => {
+                icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "fill-tool", 12.0, t.accent);
+                ui.interact(r, ui.id().with(("reference-mark", l.id.0)), Sense::hover()).on_hover_text(tl!("Reference layer: the Fill tool reads it"));
+            }
             Indicator::Fx => {
                 if let Some(g) = fx_galley.clone() {
                     painter.galley(pos2(r.left(), cy - g.size().y / 2.0), g, t.text_dim);

@@ -105,6 +105,11 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
     v.push(Some((tl!("Link Layers"), "layer.linkLayers")));
     v.push(Some((tl!("Select Linked Layers"), "layer.selectLinkedLayers")));
     v.push(None);
+    // Clip Studio Paint's reference layer: the line art the Fill tool reads.
+    if !multi {
+        v.push(Some((if l.reference { tl!("Clear Reference Layer") } else { tl!("Set as Reference Layer") }, photocraft_engine::fill_tool_cmds::REFERENCE_ID)));
+        v.push(None);
+    }
     v.push(Some((tl!("Copy Layer Style"), "layer.layerStyle.copyLayerStyle")));
     v.push(Some((tl!("Paste Layer Style"), "layer.layerStyle.pasteLayerStyle")));
     v.push(Some((tl!("Clear Layer Style"), "layer.layerStyle.clear")));

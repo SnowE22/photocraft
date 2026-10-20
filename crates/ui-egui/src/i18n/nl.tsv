@@ -4213,3 +4213,45 @@ curves	Smooth	Vloeiend maken
 	Shortcut:	Sneltoets:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Elke toets werkt, met Ctrl, Alt en Shift. Backspace verwijdert de sneltoets.
 	The action no longer exists.	De handeling bestaat niet meer.
+	Fill Tool	Vulgereedschap
+	Nothing to fill there	Daar valt niets te vullen
+	No enclosed area to fill there	Daar is geen ingesloten gebied om te vullen
+	Fill: click an area	Vullen: klik op een gebied
+	Enclose and Fill: draw round the areas to fill	Omsluiten en vullen: teken rond de te vullen gebieden
+	Paint Unfilled Area: paint over the gaps a fill left	Niet-gevuld gebied verven: verf over de gaten die een vulling liet
+	Refer	Verwijzing
+	Editing Layer	Bewerkte laag
+	Selected Layers	Geselecteerde lagen
+	Layers in Folder	Lagen in map
+	Reference Layers	Referentielagen
+	Exclude	Uitsluiten
+	Editing layer	Bewerkte laag
+	Text layers	Tekstlagen
+	Locked layers	Vergrendelde lagen
+	Layers the fill doesn't read	Lagen die de vulling niet leest
+	Close Gap	Openingen sluiten
+	Treat gaps in the lines up to this wide as closed (0: off)	Gaten in de lijnen tot deze breedte als gesloten behandelen (0: uit)
+	Area Scaling	Gebied schalen
+	Grow the fill under the lines, or shrink it	De vulling onder de lijnen uitbreiden of verkleinen
+	To Darkest Pixel	Tot donkerste pixel
+	Follow Adjacent Pixels	Aangrenzende pixels volgen
+	White and Transparent	Wit en transparant
+	Image Border	Afbeeldingsrand
+	The canvas edge closes gaps as a line does	De canvasrand sluit gaten zoals een lijn
+	Reference layer: the Fill tool reads it	Referentielaag: het vulgereedschap leest deze
+	Set as Reference Layer	Instellen als referentielaag
+	Clear Reference Layer	Referentielaag opheffen
+	Fill Tool Options	Opties voor vulgereedschap
+	Size Key Repeat	Herhaling van groottetoetsen
+	Holding [ or ] to resize the brush	[ of ] ingedrukt houden om het penseel te vergroten of verkleinen
+	Pause before repeating	Pauze voor herhalen
+	Wait half a second before the size keeps changing, as typing does	Een halve seconde wachten voordat de grootte blijft veranderen, zoals bij typen
+	Change every	Wijzigen elke
+	Sample on Alt	Monster nemen bij Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Met een tekengereedschap neemt Alt meteen de kleur onder de aanwijzer op
+	Hold:	Vasthouden:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Hoe lang Alt moet worden vastgehouden voordat het werkt als het gewone pipet: de pipet, en klikken om op te nemen
+	Move Layer Mask	Laagmasker verplaatsen
+	Copy Layer Mask	Laagmasker kopiëren
+	Move Vector Mask	Vectormasker verplaatsen
+	Copy Vector Mask	Vectormasker kopiëren

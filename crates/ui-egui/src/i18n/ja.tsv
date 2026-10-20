@@ -4133,3 +4133,45 @@ curves	Smooth	スムーズ
 	Shortcut:	ショートカット:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	どのキーでも使えます（Ctrl、Alt、Shift と組み合わせ可）。Backspace でショートカットを削除します。
 	The action no longer exists.	このアクションはもうありません。
+	Fill Tool	塗りつぶしツール
+	Nothing to fill there	そこには塗りつぶす場所がありません
+	No enclosed area to fill there	そこには囲まれた領域がありません
+	Fill: click an area	塗りつぶし：領域をクリック
+	Enclose and Fill: draw round the areas to fill	囲って塗る：塗りつぶす領域を囲みます
+	Paint Unfilled Area: paint over the gaps a fill left	塗り残し部分に塗る：塗り残しの上をなぞります
+	Refer	参照
+	Editing Layer	編集中のレイヤー
+	Selected Layers	選択したレイヤー
+	Layers in Folder	フォルダー内のレイヤー
+	Reference Layers	参照レイヤー
+	Exclude	除外
+	Editing layer	編集中のレイヤー
+	Text layers	テキストレイヤー
+	Locked layers	ロックされたレイヤー
+	Layers the fill doesn't read	塗りつぶしが参照しないレイヤー
+	Close Gap	隙間閉じ
+	Treat gaps in the lines up to this wide as closed (0: off)	この幅までの線の隙間を閉じているものとみなします（0：オフ）
+	Area Scaling	領域拡縮
+	Grow the fill under the lines, or shrink it	塗りつぶしを線の下まで広げる、または縮める
+	To Darkest Pixel	最も濃いピクセルまで
+	Follow Adjacent Pixels	隣接ピクセルをたどる
+	White and Transparent	白と透明
+	Image Border	画像の端
+	The canvas edge closes gaps as a line does	キャンバスの端を線と同じように扱って隙間を閉じます
+	Reference layer: the Fill tool reads it	参照レイヤー：塗りつぶしツールが参照します
+	Set as Reference Layer	参照レイヤーに設定
+	Clear Reference Layer	参照レイヤーを解除
+	Fill Tool Options	塗りつぶしツールのオプション
+	Size Key Repeat	サイズキーのリピート
+	Holding [ or ] to resize the brush	[ または ] を押し続けてブラシサイズを変更
+	Pause before repeating	リピート前に一時停止
+	Wait half a second before the size keeps changing, as typing does	入力時と同様に、サイズが変わり続ける前に 0.5 秒待ちます
+	Change every	変更間隔
+	Sample on Alt	Alt で採取
+	With a painting tool, pressing Alt picks the colour under the pointer at once	ペイントツールで Alt を押すと、ポインターの下の色をすぐに取得します
+	Hold:	長押し：
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	通常のスポイトとして機能する（スポイトカーソル、クリックで採取）までに Alt を押し続ける時間
+	Move Layer Mask	レイヤーマスクを移動
+	Copy Layer Mask	レイヤーマスクをコピー
+	Move Vector Mask	ベクトルマスクを移動
+	Copy Vector Mask	ベクトルマスクをコピー

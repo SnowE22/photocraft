@@ -3640,3 +3640,46 @@ curves	Smooth	매끄럽게
 	Shortcut:	바로 가기 키:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Ctrl, Alt, Shift와 함께 어떤 키든 사용할 수 있습니다. Backspace는 바로 가기 키를 제거합니다.
 	The action no longer exists.	액션이 더 이상 없습니다.
+	Fill Tool	채우기 도구
+	Nothing to fill there	그곳에는 채울 영역이 없습니다
+	No enclosed area to fill there	그곳에는 채울 닫힌 영역이 없습니다
+	Fill: click an area	채우기: 영역을 클릭
+	Enclose and Fill: draw round the areas to fill	둘러싸서 채우기: 채울 영역을 둘러 그리세요
+	Paint Unfilled Area: paint over the gaps a fill left	빈 영역 칠하기: 채우기가 남긴 빈틈 위에 칠하세요
+	Refer	참조
+	Editing Layer	편집 중인 레이어
+	Selected Layers	선택한 레이어
+	Layers in Folder	폴더 안의 레이어
+	Reference Layers	참조 레이어
+	Exclude	제외
+	Editing layer	편집 중인 레이어
+	Text layers	텍스트 레이어
+	Locked layers	잠긴 레이어
+	Layers the fill doesn't read	채우기가 읽지 않는 레이어
+	Close Gap	틈 닫기
+	Treat gaps in the lines up to this wide as closed (0: off)	이 너비까지의 선 틈을 닫힌 것으로 처리합니다(0: 끔)
+	Area Scaling	영역 크기 조정
+	Grow the fill under the lines, or shrink it	채우기를 선 아래로 넓히거나 줄입니다
+	To Darkest Pixel	가장 어두운 픽셀까지
+	Follow Adjacent Pixels	인접 픽셀 따라가기
+	Target	대상
+	White and Transparent	흰색 및 투명
+	Image Border	이미지 가장자리
+	The canvas edge closes gaps as a line does	캔버스 가장자리가 선처럼 틈을 닫습니다
+	Reference layer: the Fill tool reads it	참조 레이어: 채우기 도구가 읽습니다
+	Set as Reference Layer	참조 레이어로 설정
+	Clear Reference Layer	참조 레이어 해제
+	Fill Tool Options	채우기 도구 옵션
+	Size Key Repeat	크기 키 반복
+	Holding [ or ] to resize the brush	[ 또는 ]를 누르고 있으면 브러시 크기 변경
+	Pause before repeating	반복 전 잠시 멈춤
+	Wait half a second before the size keeps changing, as typing does	입력할 때처럼 크기가 계속 바뀌기 전에 0.5초 기다립니다
+	Change every	변경 간격
+	Sample on Alt	Alt로 샘플링
+	With a painting tool, pressing Alt picks the colour under the pointer at once	페인팅 도구에서 Alt를 누르면 포인터 아래의 색을 바로 가져옵니다
+	Hold:	누르기:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Alt가 일반 스포이드처럼 작동하기까지(스포이드 커서, 클릭하여 샘플링) 눌러야 하는 시간
+	Move Layer Mask	레이어 마스크 이동
+	Copy Layer Mask	레이어 마스크 복사
+	Move Vector Mask	벡터 마스크 이동
+	Copy Vector Mask	벡터 마스크 복사

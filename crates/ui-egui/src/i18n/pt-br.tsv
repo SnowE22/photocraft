@@ -4243,3 +4243,45 @@ layerLabel	No Color	Sem cor
 	Shortcut:	Atalho:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Qualquer tecla funciona, com Ctrl, Alt e Shift. Backspace remove o atalho.
 	The action no longer exists.	A ação não existe mais.
+	Fill Tool	Ferramenta Preenchimento
+	Nothing to fill there	Nada para preencher aí
+	No enclosed area to fill there	Não há área fechada para preencher aí
+	Fill: click an area	Preenchimento: clique em uma área
+	Enclose and Fill: draw round the areas to fill	Cercar e preencher: desenhe ao redor das áreas a preencher
+	Paint Unfilled Area: paint over the gaps a fill left	Pintar área não preenchida: pinte sobre as falhas deixadas
+	Refer	Referência
+	Editing Layer	Camada em edição
+	Selected Layers	Camadas selecionadas
+	Layers in Folder	Camadas na pasta
+	Reference Layers	Camadas de referência
+	Exclude	Excluir
+	Editing layer	Camada em edição
+	Text layers	Camadas de texto
+	Locked layers	Camadas bloqueadas
+	Layers the fill doesn't read	Camadas que o preenchimento não lê
+	Close Gap	Fechar lacunas
+	Treat gaps in the lines up to this wide as closed (0: off)	Tratar lacunas nas linhas até esta largura como fechadas (0: desligado)
+	Area Scaling	Escala da área
+	Grow the fill under the lines, or shrink it	Ampliar o preenchimento sob as linhas ou reduzi-lo
+	To Darkest Pixel	Até o pixel mais escuro
+	Follow Adjacent Pixels	Seguir pixels adjacentes
+	White and Transparent	Branco e transparente
+	Image Border	Borda da imagem
+	The canvas edge closes gaps as a line does	A borda da tela fecha lacunas como uma linha
+	Reference layer: the Fill tool reads it	Camada de referência: a ferramenta Preenchimento a lê
+	Set as Reference Layer	Definir como camada de referência
+	Clear Reference Layer	Remover camada de referência
+	Fill Tool Options	Opções da ferramenta Preenchimento
+	Size Key Repeat	Repetição das teclas de tamanho
+	Holding [ or ] to resize the brush	Segurar [ ou ] para redimensionar o pincel
+	Pause before repeating	Pausa antes de repetir
+	Wait half a second before the size keeps changing, as typing does	Aguardar meio segundo antes de o tamanho continuar mudando, como ao digitar
+	Change every	Alterar a cada
+	Sample on Alt	Amostrar ao pressionar Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Com uma ferramenta de pintura, pressionar Alt pega na hora a cor sob o ponteiro
+	Hold:	Segurar:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Quanto tempo segurar Alt antes que funcione como o Conta-gotas habitual: a pipeta e clique para amostrar
+	Move Layer Mask	Mover máscara de camada
+	Copy Layer Mask	Copiar máscara de camada
+	Move Vector Mask	Mover máscara vetorial
+	Copy Vector Mask	Copiar máscara vetorial

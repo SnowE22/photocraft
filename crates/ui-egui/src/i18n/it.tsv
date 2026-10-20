@@ -4574,3 +4574,45 @@ shape	Appearance	Aspetto
 	Shortcut:	Scelta rapida:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Va bene qualsiasi tasto, con Ctrl, Alt e Maiusc. Backspace rimuove la scelta rapida.
 	The action no longer exists.	L’azione non esiste più.
+	Fill Tool	Strumento Riempimento
+	Nothing to fill there	Niente da riempire qui
+	No enclosed area to fill there	Nessuna area chiusa da riempire qui
+	Fill: click an area	Riempimento: fai clic su un’area
+	Enclose and Fill: draw round the areas to fill	Racchiudi e riempi: disegna attorno alle aree da riempire
+	Paint Unfilled Area: paint over the gaps a fill left	Dipingi area non riempita: dipingi sui vuoti lasciati dal riempimento
+	Refer	Riferimento
+	Editing Layer	Livello in modifica
+	Selected Layers	Livelli selezionati
+	Layers in Folder	Livelli nella cartella
+	Reference Layers	Livelli di riferimento
+	Exclude	Escludi
+	Editing layer	Livello in modifica
+	Text layers	Livelli di testo
+	Locked layers	Livelli bloccati
+	Layers the fill doesn't read	Livelli che il riempimento non legge
+	Close Gap	Chiudi spazi
+	Treat gaps in the lines up to this wide as closed (0: off)	Considera chiusi gli spazi nelle linee fino a questa larghezza (0: no)
+	Area Scaling	Scala area
+	Grow the fill under the lines, or shrink it	Estendi il riempimento sotto le linee o riducilo
+	To Darkest Pixel	Fino al pixel più scuro
+	Follow Adjacent Pixels	Segui pixel adiacenti
+	White and Transparent	Bianco e trasparente
+	Image Border	Bordo immagine
+	The canvas edge closes gaps as a line does	Il bordo della tela chiude gli spazi come una linea
+	Reference layer: the Fill tool reads it	Livello di riferimento: lo legge lo strumento Riempimento
+	Set as Reference Layer	Imposta come livello di riferimento
+	Clear Reference Layer	Rimuovi livello di riferimento
+	Fill Tool Options	Opzioni dello strumento Riempimento
+	Size Key Repeat	Ripetizione tasti dimensione
+	Holding [ or ] to resize the brush	Tenere premuto [ o ] per ridimensionare il pennello
+	Pause before repeating	Pausa prima di ripetere
+	Wait half a second before the size keeps changing, as typing does	Attendi mezzo secondo prima che la dimensione continui a cambiare, come durante la digitazione
+	Change every	Cambia ogni
+	Sample on Alt	Campiona con Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Con uno strumento di pittura, premere Alt preleva subito il colore sotto il puntatore
+	Hold:	Tenuta:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Per quanto tenere premuto Alt prima che funzioni come il normale Contagocce: la pipetta e clic per campionare
+	Move Layer Mask	Sposta maschera di livello
+	Copy Layer Mask	Copia maschera di livello
+	Move Vector Mask	Sposta maschera vettoriale
+	Copy Vector Mask	Copia maschera vettoriale

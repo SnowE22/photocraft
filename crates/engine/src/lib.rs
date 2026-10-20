@@ -86,6 +86,8 @@ pub mod multichannel_cmds;
 pub mod new_layer;
 pub mod notes_cmds;
 pub mod paint_cmds;
+pub mod fill_tool_cmds;
+pub mod mask_transfer_cmds;
 mod param_check;
 mod path_edit_cmds;
 pub mod pattern_cmds;

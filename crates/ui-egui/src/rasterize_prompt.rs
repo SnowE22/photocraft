@@ -70,7 +70,7 @@ impl Kind {
 /// Does `tool` paint the layer's pixels (so a vector or Smart Object layer must be rasterized)?
 pub fn paints_pixels(app: &PhotocraftApp, tool: Tool) -> bool {
     tool.is_brushlike()
-        || matches!(tool, Tool::PaintBucket | Tool::MagicEraser | Tool::RedEye)
+        || matches!(tool, Tool::PaintBucket | Tool::Fill | Tool::MagicEraser | Tool::RedEye)
         || (tool == Tool::Gradient && app.ui.tool_options.gradient_classic)
 }
 

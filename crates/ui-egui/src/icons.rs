@@ -119,6 +119,7 @@ pub fn tool_icon(t: Tool) -> &'static str {
         Tool::Frame => "frame-placeholder",
         Tool::Gradient => "gradient",
         Tool::PaintBucket => "paint-bucket",
+        Tool::Fill => "fill-tool",
         Tool::Type | Tool::VerticalType => "type",
         Tool::HorizontalTypeMask => "type-mask",
         Tool::VerticalTypeMask => "type-mask-vertical",

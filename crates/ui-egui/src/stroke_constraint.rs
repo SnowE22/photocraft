@@ -93,10 +93,12 @@ pub fn line_preview_start(app: &crate::PhotocraftApp, tool: Tool, shift: bool) -
     app.last_stroke_end.filter(|(doc, _)| *doc == active).map(|(_, p)| [p[0], p[1]])
 }
 
-/// Photoshop's rubber band: while ⇧ is held after a stroke, a thin line from where that stroke
-/// ended to the pointer shows the line a click will paint, with the brush footprint at the
-/// pointer (drawn here only when the painting cursor doesn't already show the tip). Two line
-/// segments and at most one circle: no measurable cost per frame. Returns the drawn segment.
+/// Photoshop's rubber band: while ⇧ is held after a stroke, the line a click will paint from
+/// where that stroke ended to the pointer. Drawn as the stroke's two edges, the brush's diameter
+/// apart, with the tip's outline round the start (user request: see exactly what a hard round
+/// brush will cover); a brush too small to show apart is one line. The footprint at the pointer
+/// is drawn here only when the painting cursor doesn't already show the tip. A few segments: no
+/// measurable cost per frame. Returns the centre line.
 pub fn draw_line_preview(
     app: &crate::PhotocraftApp,
     painter: &egui::Painter,
@@ -111,8 +113,14 @@ pub fn draw_line_preview(
     if !(a.x.is_finite() && a.y.is_finite()) {
         return None;
     }
+    let radius = app.session.tools.brush.size / 2.0 * xf.zoom;
     for (w, c) in [(2.5, Color32::from_black_alpha(120)), (1.0, Color32::from_white_alpha(230))] {
-        painter.line_segment([a, pointer], Stroke::new(w, c));
+        for edge in stroke_edges(a, pointer, radius) {
+            match edge.as_slice() {
+                [p, q] => painter.line_segment([*p, *q], Stroke::new(w, c)),
+                _ => painter.add(egui::Shape::line(edge, Stroke::new(w, c))),
+            };
+        }
     }
     use photocraft_engine::prefs::PaintingCursor;
     if matches!(app.session.prefs().cursors.painting, PaintingCursor::Standard | PaintingCursor::Precise) {
@@ -123,10 +131,51 @@ pub fn draw_line_preview(
     Some([a, pointer])
 }
 
+/// The outline of a straight stroke of a round tip `radius` (screen points) from `a` to `b`: its
+/// two edges, each `radius` off the centre line, and the half of the tip's outline round `a` (the
+/// pointer's end is the cursor's). A tip under 1.5 pt, or no length yet: the centre line alone.
+pub fn stroke_edges(a: egui::Pos2, b: egui::Pos2, radius: f32) -> Vec<Vec<egui::Pos2>> {
+    let d = b - a;
+    let len = d.length();
+    if !(radius.is_finite() && radius >= 1.5) || !(len.is_finite() && len >= 0.5) {
+        return vec![vec![a, b]];
+    }
+    let n = egui::vec2(-d.y, d.x) / len * radius;
+    // Round the back of the start: from one edge, through the point opposite the pointer, to the
+    // other. More steps for a bigger tip, so it stays round.
+    let base = d.y.atan2(d.x);
+    let steps = ((radius * 0.5).ceil() as usize).clamp(8, 64);
+    let cap = (0..=steps)
+        .map(|k| {
+            let t = base + std::f32::consts::FRAC_PI_2 + std::f32::consts::PI * k as f32 / steps as f32;
+            a + egui::vec2(t.cos(), t.sin()) * radius
+        })
+        .collect();
+    vec![vec![a + n, b + n], vec![a - n, b - n], cap]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::PhotocraftApp;
+
+    #[test]
+    fn the_line_preview_shows_the_brushs_two_edges() {
+        let (a, b) = (egui::pos2(10.0, 10.0), egui::pos2(110.0, 10.0));
+        let edges = stroke_edges(a, b, 20.0);
+        assert_eq!(edges.len(), 3, "two edges and the start's cap");
+        let ys: Vec<f32> = edges[..2].iter().map(|e| e[0].y).collect();
+        assert!(ys.contains(&30.0) && ys.contains(&-10.0), "{ys:?}");
+        assert!(edges[0].iter().chain(&edges[1]).all(|p| (p.x - 10.0).abs() < 1e-3 || (p.x - 110.0).abs() < 1e-3));
+        // The cap goes round the back of the start, never towards the pointer.
+        let cap = &edges[2];
+        assert!(cap.iter().all(|p| p.x <= 10.0 + 1e-3 && (p.distance(a) - 20.0).abs() < 1e-3));
+        assert!(cap.iter().any(|p| (p.x + 10.0).abs() < 0.1), "it reaches the point opposite the pointer");
+        // A tiny tip, or no length: one line.
+        assert_eq!(stroke_edges(a, b, 1.0), vec![vec![a, b]]);
+        assert_eq!(stroke_edges(a, a, 20.0), vec![vec![a, a]]);
+        assert_eq!(stroke_edges(a, b, f32::NAN).len(), 1);
+    }
     use crate::canvas::{ToolEvent, tool_event};
     use serde_json::json;
 
@@ -366,7 +415,13 @@ mod tests {
         let c = h.state().last_canvas_rect.center();
         let target = c + vec2(120.0, 90.0);
         let near = |p: egui::Pos2, q: egui::Pos2| p.distance(q) < 1.5;
-        let band = |h: &egui_kittest::Harness<'static, PhotocraftApp>, from: egui::Pos2| segments(h).iter().any(|s| near(s[0], from) && near(s[1], target));
+        // The band is the stroke's two edges, a brush radius either side of the centre line.
+        let band = |h: &egui_kittest::Harness<'static, PhotocraftApp>, from: egui::Pos2| {
+            let st = h.state();
+            let r = st.session.tools.brush.size / 2.0 * st.ui.views[st.session.active_index().unwrap()].zoom;
+            let off = |p: egui::Pos2, q: egui::Pos2| (p.distance(q) - r).abs() < 1.5;
+            segments(h).iter().filter(|s| off(s[0], from) && off(s[1], target)).count() >= 2
+        };
         // ⇧ with no previous stroke: nothing.
         h.event(Event::ModifiersChanged(Modifiers::SHIFT));
         h.event(Event::PointerMoved(target));

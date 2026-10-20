@@ -4014,6 +4014,10 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         crate::slice_ui::draw_overlay(app, &painter, &xf);
         crate::frame_tool::draw_overlay(app, &painter, &xf);
         crate::artboard_tool::draw_overlay(app, &painter, &xf);
+        // Alt pressed with a painting tool: the colour under the pointer at once, when the
+        // Eyedropper's Sample on Alt asks for it.
+        let active_view = app.session.active_index() == Some(idx);
+        crate::alt_pick::frame(app, ui.ctx(), tool, response.hover_pos().map(|p| xf.to_doc(p)), active_view);
         // Tool cursors (Photoshop-style).
         let guide_hover = response.hover_pos().and_then(|p| {
             let d = xf.to_doc(p);
@@ -4104,7 +4108,11 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 t if resizing && crate::brush_resize::applies(t) => egui::CursorIcon::None,
                 // ⌥ turns a painting tool into the Eyedropper (`alt_eyedropper`): its cursor too,
                 // unless Preferences › Cursors › Other Cursors asks for the precise crosshair.
-                t if app.alt_sampling || (app.drag.is_none() && alt_samples(t, crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)))) => {
+                t if app.alt_sampling
+                    || (app.drag.is_none()
+                        && alt_samples(t, crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)))
+                        && crate::alt_pick::eyedropper_shows(app, ui.input(|i| i.time))) =>
+                {
                     // While it samples (button held), the comparison ring replaces the cursor (#213).
                     if samples_screen(app, &xf, p, app.alt_sampling) {
                         egui::CursorIcon::Crosshair
@@ -4197,6 +4205,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                         paint_bucket_cursor(ui.ctx(), p)
                     }
                 }
+                Tool::Fill => crate::fill_tool_ui::cursor(app, ui.ctx(), &painter, p, xf.zoom, precise_other_cursor(app)),
                 // Over the first anchor, the close-path pointer (#4596), before the pens' own cursors.
                 Tool::Pen | Tool::CurvaturePen
                     if {
@@ -5180,14 +5189,22 @@ fn draw_transform_controls(app: &mut PhotocraftApp, painter: &egui::Painter, xf:
 /// The line from the brush to the pointer while stroke smoothing lags (Pulled String Mode and
 /// Stroke Catch-up, #3479): a dark underlay and a light line stay visible on any pixels, and a dot
 /// marks the brush end.
-fn draw_smoothing_string(painter: &egui::Painter, xf: &ViewXform, (brush, pointer): ([f64; 2], [f64; 2])) {
+/// The smoothing leash, from the lagging brush to the pointer: only once the brush trails out of
+/// its own outline (`radius`, screen points), so the usual few pixels of lag don't put a dot in
+/// the middle of the cursor (user report: "a dot in the middle of the eraser when it's moving").
+fn draw_smoothing_string(painter: &egui::Painter, xf: &ViewXform, (brush, pointer): ([f64; 2], [f64; 2]), radius: f32) {
     let (a, b) = (xf.to_screen(brush[0] as f32, brush[1] as f32), xf.to_screen(pointer[0] as f32, pointer[1] as f32));
-    if a.distance(b) < 2.0 {
+    if !leash_shows(a.distance(b), radius) {
         return;
     }
     painter.line_segment([a, b], Stroke::new(3.0, Color32::from_black_alpha(110)));
     painter.line_segment([a, b], Stroke::new(1.0, Color32::WHITE));
     painter.circle_filled(a, 2.5, Color32::WHITE);
+}
+
+/// Whether the smoothing leash shows for a brush `lag` screen points behind the pointer.
+fn leash_shows(lag: f32, radius: f32) -> bool {
+    lag >= radius.max(8.0)
 }
 
 fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) {
@@ -5200,6 +5217,11 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
     };
     // Dragging the selection: its own ants follow the pointer (`selection_shown_offset`).
     if d.sel_move.is_some() {
+        return;
+    }
+    if d.tool == Tool::Fill {
+        let points = d.points.clone();
+        crate::fill_tool_ui::draw_drag(app, painter, xf, &points);
         return;
     }
     let last = d.points.last().map(|p| [p[0], p[1]]).unwrap_or(d.start);
@@ -5215,7 +5237,7 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
             if let Some(EngineStroke::Brush(l)) = app.live_stroke.as_ref().map(|l| &l.stroke)
                 && let Some(s) = l.smoothing_string()
             {
-                draw_smoothing_string(painter, xf, s);
+                draw_smoothing_string(painter, xf, s, app.session.tools.brush.size / 2.0 * xf.zoom);
             }
         }
         t if t.is_brushlike() || t == Tool::QuickSelection => {
@@ -5319,7 +5341,7 @@ fn draw_drag_preview(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &View
 /// foreground colour, as with the Eyedropper itself (#417).
 pub(crate) fn alt_samples(tool: Tool, mods: egui::Modifiers) -> bool {
     // Control+Alt is the brush-resize drag (`brush_resize`), not sampling.
-    mods.alt && !mods.ctrl && matches!(tool, Tool::Brush | Tool::Pencil | Tool::Gradient | Tool::PaintBucket)
+    mods.alt && !mods.ctrl && matches!(tool, Tool::Brush | Tool::Pencil | Tool::Gradient | Tool::PaintBucket | Tool::Fill)
 }
 
 /// Preferences › Cursors › Other Cursors asks for the precise crosshair, or Caps Lock swaps the
@@ -5391,7 +5413,7 @@ fn samples_screen(app: &PhotocraftApp, xf: &ViewXform, p: Pos2, held: bool) -> b
 /// Sample at document point (x, y); `dragging` (a press that started on the canvas, moving): off
 /// the image, onto the pasteboard, a panel or another application, the screen's colour under the
 /// pointer is picked, as in Photoshop.
-fn sample_eyedropper(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifiers, dragging: bool) {
+pub(crate) fn sample_eyedropper(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifiers, dragging: bool) {
     let on_image = app.session.active().is_some_and(|st| x >= 0.0 && y >= 0.0 && x < f64::from(st.doc.size.width) && y < f64::from(st.doc.size.height));
     let colour = if on_image || !dragging { eyedropper_color(app, x, y) } else { crate::screen_sample::under_cursor(app.ui.tool_options.eyedropper_size) };
     if let Some([r, g, b]) = colour {
@@ -5791,6 +5813,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                     crate::eraser_ui::click(app, tool, x, y);
                     return;
                 }
+                Tool::Fill if crate::fill_tool_ui::press(app, x, y) => return,
                 Tool::PaintBucket => {
                     let o = app.ui.tool_options.clone();
                     let contents = if o.bucket_fill_pattern { "pattern" } else { "foreground" };
@@ -5910,7 +5933,7 @@ fn hidden_target(app: &PhotocraftApp, tool: Tool) -> Option<&'static str> {
         // allows over a hidden layer; only the classic one paints the target itself.
         Tool::Gradient if !app.ui.tool_options.gradient_classic => return None,
         // Every painting command follows the same target (layer, mask or channel) as a stroke.
-        t if t.is_brushlike() || matches!(t, Tool::Gradient | Tool::PaintBucket | Tool::MagicEraser) => "paint.stroke",
+        t if t.is_brushlike() || matches!(t, Tool::Gradient | Tool::PaintBucket | Tool::Fill | Tool::MagicEraser) => "paint.stroke",
         _ => return None,
     };
     photocraft_engine::hidden_target::refusal(&app.session, cmd, &json!({}))
@@ -6180,6 +6203,7 @@ pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
         Tool::PathSelection => crate::vector_ui::path_selection_finish(app, d.start, [end[0], end[1]]),
         Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => crate::type_tool::pointer_up(app, d.start, [end[0], end[1]]),
         Tool::Brush | Tool::Pencil | Tool::Eraser => commit_brush_stroke(app, &d),
+        Tool::Fill => crate::fill_tool_ui::finish(app, &d.points),
         Tool::RectMarquee | Tool::EllipseMarquee => {
             // Exactly what the drag showed (`marquee_preview_px`); a click deselects.
             let Some([x0, y0, x1, y1]) = marquee_preview_px(&app.ui.tool_options, &d, app.point_zoom()) else {
@@ -7631,6 +7655,15 @@ mod tests {
         assert!(!brush_tip_centre(Tool::PatternStamp, true, false), "Pattern Stamp keeps the brush cursor; Option does not switch it to a clone-source mark");
         assert!(!brush_tip_centre(Tool::QuickSelection, false, true));
         assert!(brush_tip_centre(Tool::BackgroundEraser, false, false));
+    }
+
+    /// The few pixels a 10 % smoothed stroke lags never draw the leash inside the cursor; a brush
+    /// trailing out of its outline does.
+    #[test]
+    fn the_smoothing_leash_shows_only_outside_the_brush() {
+        assert!(!leash_shows(3.0, 10.0), "inside a 20 pt eraser");
+        assert!(!leash_shows(6.0, 1.0), "a tiny brush still needs 8 pt");
+        assert!(leash_shows(12.0, 10.0) && leash_shows(9.0, 2.0));
     }
 
     #[test]

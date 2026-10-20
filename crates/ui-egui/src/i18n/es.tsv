@@ -4415,3 +4415,45 @@ navigator	Zoom	Zoom
 	Shortcut:	Método abreviado:
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Sirve cualquier tecla, con Ctrl, Alt y Mayús. Retroceso quita el método abreviado.
 	The action no longer exists.	La acción ya no existe.
+	Fill Tool	Herramienta Relleno
+	Nothing to fill there	No hay nada que rellenar ahí
+	No enclosed area to fill there	No hay ninguna zona cerrada que rellenar ahí
+	Fill: click an area	Relleno: haga clic en una zona
+	Enclose and Fill: draw round the areas to fill	Rodear y rellenar: dibuje alrededor de las zonas que rellenar
+	Paint Unfilled Area: paint over the gaps a fill left	Pintar zona sin rellenar: pinte sobre los huecos que dejó el relleno
+	Refer	Referencia
+	Editing Layer	Capa en edición
+	Selected Layers	Capas seleccionadas
+	Layers in Folder	Capas de la carpeta
+	Reference Layers	Capas de referencia
+	Exclude	Excluir
+	Editing layer	Capa en edición
+	Text layers	Capas de texto
+	Locked layers	Capas bloqueadas
+	Layers the fill doesn't read	Capas que el relleno no lee
+	Close Gap	Cerrar huecos
+	Treat gaps in the lines up to this wide as closed (0: off)	Tratar como cerrados los huecos de las líneas hasta este ancho (0: no)
+	Area Scaling	Escala del área
+	Grow the fill under the lines, or shrink it	Ampliar el relleno bajo las líneas o reducirlo
+	To Darkest Pixel	Hasta el píxel más oscuro
+	Follow Adjacent Pixels	Seguir píxeles adyacentes
+	White and Transparent	Blanco y transparente
+	Image Border	Borde de la imagen
+	The canvas edge closes gaps as a line does	El borde del lienzo cierra huecos como una línea
+	Reference layer: the Fill tool reads it	Capa de referencia: la lee la herramienta Relleno
+	Set as Reference Layer	Establecer como capa de referencia
+	Clear Reference Layer	Quitar capa de referencia
+	Fill Tool Options	Opciones de la herramienta Relleno
+	Size Key Repeat	Repetición de las teclas de tamaño
+	Holding [ or ] to resize the brush	Mantener [ o ] para cambiar el tamaño del pincel
+	Pause before repeating	Pausa antes de repetir
+	Wait half a second before the size keeps changing, as typing does	Esperar medio segundo antes de que el tamaño siga cambiando, como al escribir
+	Change every	Cambiar cada
+	Sample on Alt	Muestrear al pulsar Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Con una herramienta de pintura, pulsar Alt toma al instante el color bajo el puntero
+	Hold:	Mantener:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Cuánto hay que mantener Alt antes de que funcione como el Cuentagotas habitual: la pipeta y clic para muestrear
+	Move Layer Mask	Mover máscara de capa
+	Copy Layer Mask	Copiar máscara de capa
+	Move Vector Mask	Mover máscara vectorial
+	Copy Vector Mask	Copiar máscara vectorial

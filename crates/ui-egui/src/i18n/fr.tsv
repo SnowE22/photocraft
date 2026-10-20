@@ -3465,3 +3465,46 @@ curves	Smooth	Lisser
 	Shortcut:	Raccourci :
 	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Toute touche convient, avec Ctrl, Alt et Maj. Retour arrière supprime le raccourci.
 	The action no longer exists.	L’action n’existe plus.
+	Fill Tool	Outil Remplissage
+	Nothing to fill there	Rien à remplir ici
+	No enclosed area to fill there	Aucune zone fermée à remplir ici
+	Fill: click an area	Remplissage : cliquez sur une zone
+	Enclose and Fill: draw round the areas to fill	Entourer et remplir : dessinez autour des zones à remplir
+	Paint Unfilled Area: paint over the gaps a fill left	Peindre les zones non remplies : peignez sur les trous laissés
+	Refer	Référence
+	Editing Layer	Calque modifié
+	Selected Layers	Calques sélectionnés
+	Layers in Folder	Calques du dossier
+	Reference Layers	Calques de référence
+	Exclude	Exclure
+	Editing layer	Calque modifié
+	Text layers	Calques de texte
+	Locked layers	Calques verrouillés
+	Layers the fill doesn't read	Calques que le remplissage ne lit pas
+	Close Gap	Fermer les trous
+	Treat gaps in the lines up to this wide as closed (0: off)	Traiter comme fermés les trous des traits jusqu’à cette largeur (0 : non)
+	Area Scaling	Mise à l’échelle de la zone
+	Grow the fill under the lines, or shrink it	Étendre le remplissage sous les traits, ou le réduire
+	To Darkest Pixel	Jusqu’au pixel le plus sombre
+	Follow Adjacent Pixels	Suivre les pixels adjacents
+	Target	Cible
+	White and Transparent	Blanc et transparent
+	Image Border	Bord de l’image
+	The canvas edge closes gaps as a line does	Le bord de la zone de travail ferme les trous comme un trait
+	Reference layer: the Fill tool reads it	Calque de référence : l’outil Remplissage le lit
+	Set as Reference Layer	Définir comme calque de référence
+	Clear Reference Layer	Annuler le calque de référence
+	Fill Tool Options	Options de l’outil Remplissage
+	Size Key Repeat	Répétition des touches de taille
+	Holding [ or ] to resize the brush	Maintenir [ ou ] pour redimensionner le pinceau
+	Pause before repeating	Pause avant la répétition
+	Wait half a second before the size keeps changing, as typing does	Attendre une demi-seconde avant que la taille continue de changer, comme à la frappe
+	Change every	Changer toutes les
+	Sample on Alt	Prélever avec Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Avec un outil de peinture, appuyer sur Alt prélève aussitôt la couleur sous le pointeur
+	Hold:	Maintien :
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Durée de maintien d’Alt avant qu’il agisse comme la Pipette habituelle : la pipette, et un clic pour prélever
+	Move Layer Mask	Déplacer le masque de fusion
+	Copy Layer Mask	Copier le masque de fusion
+	Move Vector Mask	Déplacer le masque vectoriel
+	Copy Vector Mask	Copier le masque vectoriel

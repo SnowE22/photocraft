@@ -610,8 +610,8 @@ fn alpha_channels_equal(a: &photocraft_doc::AlphaChannel, b: &photocraft_doc::Al
 /// compared here: the caller walks into them, so an edit inside a group damages only the
 /// edited child's extent, not the whole group's. The destructure is exhaustive, so a new
 /// `Layer` field fails to compile until it is classified: compared, or explicitly ignored
-/// (name, locks, label, `psd_blocks`, `psd_id`, link group — none of them composite; video
-/// bails out earlier in the walk).
+/// (name, locks, label, `psd_blocks`, `psd_id`, link group, the reference-layer mark — none of
+/// them composite; video bails out earlier in the walk).
 fn layer_pixels_equal(a: &Layer, b: &Layer) -> bool {
     let Layer {
         id,
@@ -635,6 +635,7 @@ fn layer_pixels_equal(a: &Layer, b: &Layer) -> bool {
         blend_if,
         advanced,
         video: _,
+        reference: _,
     } = a;
     *id == b.id
         && *visible == b.visible
