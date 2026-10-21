@@ -365,7 +365,83 @@ pub fn combined_mask(layer: &Layer, canvas: Rect) -> Option<Surface> {
     }
     // The source masks are kept with the result: the key names their tiles by address.
     let inputs = || [&layer.mask, &layer.second_mask].into_iter().flatten().map(|m| m.surface.clone()).collect();
+    // Two unfeathered pixel masks and no vector mask: rebuilt tile by tile, the tiles neither
+    // mask changed taken from the last build (painting either mask redid the whole product a
+    // frame: laggy on a big layer).
+    if !layer.vector_mask.as_ref().is_some_and(|v| v.enabled) && !has_feather(layer) {
+        return Some(cached_mask(cache(), key(layer, canvas), || (product_by_tiles(layer, canvas), inputs())));
+    }
     Some(cached_mask(cache(), key(layer, canvas), || (build_mask(layer, canvas), inputs())))
+}
+
+/// The last tile-by-tile product of a layer's pixel masks: its sources (kept alive, so their tile
+/// addresses aren't reused), their settings and canvas, and the result.
+struct Product {
+    sources: Vec<Surface>,
+    settings: Vec<(u32, u32)>,
+    canvas: Rect,
+    out: Surface,
+}
+
+fn products() -> &'static Mutex<HashMap<u64, Product>> {
+    static P: OnceLock<Mutex<HashMap<u64, Product>>> = OnceLock::new();
+    P.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// [`build_mask`] for unfeathered pixel masks only (no vector mask): their effective values
+/// multiplied, per tile, reusing the previous build's tile wherever no source tile changed.
+fn product_by_tiles(layer: &Layer, canvas: Rect) -> Surface {
+    let pixels: Vec<&photocraft_doc::LayerMask> = [&layer.mask, &layer.second_mask].into_iter().flatten().filter(|m| m.enabled).collect();
+    let eff = |m: &photocraft_doc::LayerMask| 1.0 - m.density * (1.0 - m.surface.default_pixel().first().copied().unwrap_or(1.0));
+    let default: f32 = pixels.iter().map(|m| eff(m)).product();
+    let settings: Vec<(u32, u32)> = pixels.iter().map(|m| (m.density.to_bits(), eff(m).to_bits())).collect();
+    let mut coords: Vec<photocraft_geom::TileCoord> = pixels.iter().flat_map(|m| m.surface.tiles().map(|(c, _)| *c)).collect();
+    coords.sort_unstable_by_key(|c| (c.ty, c.tx));
+    coords.dedup();
+    let mut out = Surface::with_default(FORMAT, &[default]);
+    let mut store = products().lock().unwrap_or_else(|e| e.into_inner());
+    let prev = store.get(&layer.id.0).filter(|p| p.canvas == canvas && p.settings == settings && p.sources.len() == pixels.len());
+    let same = |c: photocraft_geom::TileCoord| {
+        prev.is_some_and(|p| {
+            p.sources.iter().zip(&pixels).all(|(old, m)| match (old.tile(c), m.surface.tile(c)) {
+                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+                (None, None) => true,
+                _ => false,
+            })
+        })
+    };
+    let mut reused = Vec::new();
+    let (mut v, mut w) = (Vec::new(), Vec::new());
+    for c in coords {
+        let r = c.rect().intersect(&canvas);
+        if r.is_empty() {
+            continue;
+        }
+        if same(c) {
+            if let Some(t) = prev.and_then(|p| p.out.tile(c)) {
+                reused.push((c, t.clone()));
+            }
+            continue;
+        }
+        v.clear();
+        v.resize(r.width() as usize * r.height() as usize, 1.0);
+        for m in &pixels {
+            m.values_into(r, &mut w);
+            for (a, b) in v.iter_mut().zip(&w) {
+                *a *= b;
+            }
+        }
+        out.write_region(r, &v);
+    }
+    out.put_tiles(reused);
+    out.prune();
+    store.insert(layer.id.0, Product { sources: pixels.iter().map(|m| m.surface.clone()).collect(), settings, canvas, out: out.clone() });
+    // Only the layers being painted matter; a few keep the memory small.
+    if store.len() > 8 {
+        let keep = layer.id.0;
+        store.retain(|k, _| *k == keep);
+    }
+    out
 }
 
 fn build_mask(layer: &Layer, canvas: Rect) -> Surface {
@@ -440,6 +516,34 @@ fn build_mask(layer: &Layer, canvas: Rect) -> Surface {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two pixel masks: the tile-by-tile product (reusing unchanged tiles from the last build)
+    /// equals the full build, also after one mask was painted.
+    #[test]
+    fn the_tile_by_tile_product_of_two_masks_matches_the_full_build() {
+        use photocraft_doc::{Layer, LayerMask};
+        let canvas = Rect::new(0, 0, 700, 600);
+        let gray = |v: f32| LayerMask { surface: Surface::with_default(PixelFormat::GRAY8, &[v]), ..LayerMask::reveal_all() };
+        let mut l = Layer::raster("L", PixelFormat::RGBA8);
+        let mut a = gray(1.0);
+        a.surface.fill_rect(Rect::new(0, 0, 400, 300), &[0.25]);
+        let mut b = LayerMask { density: 0.5, ..gray(0.0) };
+        b.surface.fill_rect(Rect::new(200, 100, 700, 600), &[1.0]);
+        l.mask = Some(a);
+        l.second_mask = Some(b);
+        let check = |l: &Layer| {
+            let got = combined_mask(l, canvas).expect("two masks combine");
+            let want = build_mask(l, canvas);
+            for (x, y) in [(10, 10), (300, 200), (650, 550), (650, 10), (10, 550), (399, 299), (400, 300)] {
+                assert!((got.sample_channel(x, y, 0) - want.sample_channel(x, y, 0)).abs() < 1e-3, "({x}, {y})");
+            }
+        };
+        check(&l);
+        // Paint one tile of the second mask: only that tile is rebuilt, the rest reused.
+        l.second_mask.as_mut().unwrap().surface.fill_rect(Rect::new(520, 520, 600, 580), &[0.0]);
+        check(&l);
+        assert!(combined_mask(&l, canvas).unwrap().sample_channel(560, 550, 0) < 0.6);
+    }
     use photocraft_doc::LayerMask;
     use photocraft_doc::vector::{Knot, Path, Subpath, VectorMask};
 

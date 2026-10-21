@@ -6648,16 +6648,14 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
     match st.channel_view.target {
         ChannelTarget::Alpha(i) if i < st.doc.channels.len() => return json!({ "channel": i }),
         ChannelTarget::Composite if st.doc.quick_mask.is_some() => return json!("quickMask"),
-        ChannelTarget::LayerMask => return json!("mask"),
+        ChannelTarget::LayerMask => return json!(app.mask_target_name()),
         _ => {}
     }
     let has_mask = st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.mask.is_some());
     // Viewing the mask (⌥-click its thumbnail, #196) paints the mask.
     let viewing = photocraft_engine::mask_view_cmds::current(st).is_some();
     let mask = app.ui.mask_target || viewing || crate::adjustment_layer_active(st);
-    // The second mask's thumbnail targets it (not while the first mask is viewed alone).
-    let second = app.ui.second_mask_target && !viewing && st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.second_mask.is_some());
-    json!(if mask && has_mask { if second { "secondMask" } else { "mask" } } else { "pixels" })
+    json!(if mask && has_mask { app.mask_target_name() } else { "pixels" })
 }
 
 #[cfg(test)]

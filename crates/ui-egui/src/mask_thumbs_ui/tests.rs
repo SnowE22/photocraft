@@ -817,6 +817,18 @@ fn the_second_mask_has_a_thumbnail_that_targets_it() {
     click_with(&mut h, r.center(), Modifiers::NONE);
     assert!(h.state().ui.mask_target && h.state().ui.second_mask_target);
     assert_eq!(crate::canvas::paint_target(h.state()), json!("secondMask"));
+    // Also with the Channels panel's layer-mask row targeted (the app does that whenever a mask
+    // is): painting and ⌘I (Invert) edit the second mask, not the first (a user report).
+    h.state_mut().session.active_mut().unwrap().channel_view.target = photocraft_engine::channel_cmds::ChannelTarget::LayerMask;
+    assert_eq!(crate::canvas::paint_target(h.state()), json!("secondMask"));
+    let p = h.state().with_mask_target("image.adjustments.invert", json!({}));
+    assert_eq!(p["target"], "secondMask");
+    let before = layer(&h, masked);
+    h.state_mut().run("image.adjustments.invert", p).unwrap();
+    let after = layer(&h, masked);
+    assert_eq!(after.mask, before.mask, "the first mask is untouched");
+    assert!((after.second_mask.as_ref().unwrap().value(150, 50) - (1.0 - before.second_mask.as_ref().unwrap().value(150, 50))).abs() < 1e-3);
+    h.state_mut().run("edit.undo", json!({})).unwrap();
     // The layer mask's thumbnail targets the first again.
     let first = recorded(&h.ctx, masked).unwrap().0[0].1;
     click_with(&mut h, first.center(), Modifiers::NONE);

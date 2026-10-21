@@ -2340,13 +2340,23 @@ impl PhotocraftApp {
         if !photocraft_engine::channel_cmds::follows_target(id) || params.get("target").is_some() || !self.layer_mask_targeted() {
             return params;
         }
+        let target = self.mask_target_name();
         match params {
             Value::Object(mut m) => {
-                m.insert("target".into(), Value::from("mask"));
+                m.insert("target".into(), Value::from(target));
                 Value::Object(m)
             }
-            _ => serde_json::json!({ "target": "mask" }),
+            _ => serde_json::json!({ "target": target }),
         }
+    }
+
+    /// The `"target"` naming the targeted pixel mask: `"secondMask"` when the Layers panel
+    /// targets the active layer's second mask (and the first isn't viewed alone), else `"mask"`.
+    pub fn mask_target_name(&self) -> &'static str {
+        let Some(st) = self.session.active() else { return "mask" };
+        let viewing = photocraft_engine::mask_view_cmds::current(st).is_some();
+        let has_second = st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.second_mask.is_some());
+        if self.ui.mask_target && self.ui.second_mask_target && !viewing && has_second { "secondMask" } else { "mask" }
     }
 
     /// The active layer's mask is what pixel commands edit: the Layers panel targets it, the layer
