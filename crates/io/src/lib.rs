@@ -46,6 +46,7 @@ pub mod exr_parts;
 mod flat;
 mod gradient_bake;
 pub mod guides_map;
+mod second_mask_psd;
 pub use gradient_bake::{Method as GradientMethod, bake as bake_gradient};
 mod kra;
 pub mod linked;
@@ -436,7 +437,9 @@ fn export_stages(doc: &Document, name_or_ext: &str, opts: &ExportOptions, ctl: &
     if ext == photocraft_format::EXTENSION {
         let doc = named_for_file(doc, name_or_ext);
         // The thumbnail and the preview from one render of the composite.
-        let mut previews = photocraft_compose::thumbnail_buffers(doc.as_ref(), &[256, 1024], &mut |f| ctl.progress(PCRAFT_PREVIEWS_DONE * f)).into_iter().map(|b| b.to_rgba8());
+        let mut previews = photocraft_compose::thumbnail_buffers(doc.as_ref(), &[256, 1024], &mut |f| ctl.progress(PCRAFT_PREVIEWS_DONE * f))
+            .into_iter()
+            .map(|b| b.to_rgba8());
         let (thumbnail, composite) = (previews.next(), previews.next());
         ctl.check().map_err(|_| IoError::Cancelled)?;
         ctl.progress(PCRAFT_PREVIEWS_DONE);

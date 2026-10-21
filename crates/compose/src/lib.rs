@@ -1066,8 +1066,9 @@ pub fn shape_bounds(sh: &photocraft_doc::ShapeLayer) -> Option<Rect> {
 /// The layer's effective mask over `rect` (row-major), read once per tile: the pixel mask
 /// times the rasterized vector mask.
 fn mask_vals(layer: &Layer, rect: Rect, cx: &Ctx) -> Option<Vec<f32>> {
-    // Feathers blur across tiles: read the cached, canvas-wide combined mask.
-    if masks::has_feather(layer)
+    // Feathers blur across tiles: read the cached, canvas-wide combined mask (which also holds
+    // a second pixel mask).
+    if (masks::has_feather(layer) || masks::has_second_mask(layer))
         && let Some(s) = masks::combined_mask(layer, cx.canvas)
     {
         let mut v = Vec::new();
@@ -1248,6 +1249,7 @@ fn shapeless_stroke_bounds(layer: &Layer) -> Option<Rect> {
         || !layer.blend_if.is_default()
         || layer.mask.as_ref().is_some_and(|m| m.enabled)
         || layer.vector_mask.as_ref().is_some_and(|m| m.enabled)
+        || masks::has_second_mask(layer)
         || !transparent_outside(layer)
         || !effects::maps_are_local(layer)
     {
@@ -1393,6 +1395,7 @@ pub fn occludes_below(layer: &Layer, mode: photocraft_color::ColorMode) -> bool 
         && layer.fill_opacity >= 1.0
         && !layer.mask.as_ref().is_some_and(|m| m.enabled)
         && !layer.vector_mask.as_ref().is_some_and(|m| m.enabled)
+        && !masks::has_second_mask(layer)
         && !effects::has_effects(layer)
         && layer.excluded_channels == 0
         && !blend_if_active(layer, mode)
@@ -1561,7 +1564,7 @@ fn composite_layer_plain(layer: &Layer, clipped: &[Layer], backdrop: &mut Buffer
         && !effects::has_effects(layer)
         && !clip_base_adjusts
     {
-        let needs_mix = opacity < 1.0 || layer.mask.is_some() || layer.vector_mask.is_some();
+        let needs_mix = opacity < 1.0 || layer.mask.is_some() || layer.vector_mask.is_some() || layer.second_mask.is_some();
         let has_clipped = clipped.iter().any(|c| c.visible);
         // Children can draw directly unless mixing or clipping needs the original backdrop.
         let before = (needs_mix || has_clipped).then(|| backdrop.clone());
@@ -1765,6 +1768,9 @@ fn layer_identity(layer: &Layer, h: &mut std::collections::hash_map::DefaultHash
     }
     if let Some(m) = &layer.mask {
         (surface_fp(&m.surface, pin), m.enabled, m.density.to_bits(), m.feather.to_bits()).hash(h);
+    }
+    if let Some(m) = &layer.second_mask {
+        (2u8, surface_fp(&m.surface, pin), m.enabled, m.density.to_bits(), m.feather.to_bits()).hash(h);
     }
     if let Some(vm) = &layer.vector_mask {
         format!("{vm:?}").hash(h);

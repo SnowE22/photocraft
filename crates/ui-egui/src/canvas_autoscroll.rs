@@ -1,7 +1,8 @@
 //! Auto-scroll while a tool drag runs past the canvas edge (#4183). As in Photoshop, dragging a
 //! marquee, lasso, brush stroke or crop off the visible part of a zoomed image scrolls the view
-//! toward the pointer, so a selection can be larger than what is on screen. The view stops at the
-//! scroll limits (it never auto-scrolls an image that already fits into empty pasteboard).
+//! toward the pointer, so a selection can be larger than what is on screen. The view stops a strip
+//! of pasteboard past the image's edge, so the edge shows (it never auto-scrolls an image that
+//! already fits into empty pasteboard).
 
 use crate::canvas::ViewXform;
 use crate::state::View;
@@ -49,13 +50,16 @@ pub fn scroll(view: &mut View, step: Vec2, xf: ViewXform) -> bool {
     }
     // Compare screen axes before unrotating: a document axis that fits before rotation may
     // be clipped afterwards, and a vertical screen drag must remain vertical at any angle.
+    // Up to a strip of pasteboard past the edge, so the drag shows it reached the end (the view
+    // clamp allows as much, `scrollbars::EDGE_MARGIN`).
+    let m = crate::scrollbars::EDGE_MARGIN;
     let axis = |step: f32, lo: f32, hi: f32, v0: f32, v1: f32| {
         if hi - lo <= v1 - v0 {
             0.0
         } else if step > 0.0 {
-            step.min((hi - v1).max(0.0))
+            step.min((hi + m - v1).max(0.0))
         } else {
-            step.max((lo - v0).min(0.0))
+            step.max((lo - m - v0).min(0.0))
         }
     };
     let step = vec2(
@@ -138,14 +142,15 @@ mod tests {
 
     #[test]
     fn a_zoomed_view_scrolls_and_stops_at_the_limit() {
-        // 2000 × 1000 at 100 % in a 400 × 300 canvas: the centre can range over 200..1800 in x.
+        // 2000 × 1000 at 100 % in a 400 × 300 canvas: the centre can range over 200..1800 in x,
+        // and a strip of pasteboard (`EDGE_MARGIN`, 32 points) beyond.
         let size = vec2(400.0, 300.0);
         let mut v = view(1.0, [1000.0, 500.0]);
         assert!(scroll(&mut v, vec2(50.0, 0.0), size, 1.0));
         assert_eq!(v.center, [1050.0, 500.0]);
         let mut v = view(1.0, [1790.0, 500.0]);
         assert!(scroll(&mut v, vec2(50.0, 0.0), size, 1.0));
-        assert_eq!(v.center, [1800.0, 500.0], "stops at the right limit");
+        assert_eq!(v.center, [1832.0, 500.0], "stops a strip of pasteboard past the right edge");
         assert!(!scroll(&mut v, vec2(50.0, 0.0), size, 1.0), "and stays there");
     }
 
@@ -188,7 +193,8 @@ mod tests {
                 assert!(super::scroll(&mut v, vec2(0.0, 10_000.0), xf));
                 // At 2:1 pixel aspect the document's 600-pixel width is 1200 screen points
                 // tall after rotation. The 400-point viewport exposes 200 document pixels.
-                let want = if rotation > 0.0 { 500.0 } else { 100.0 };
+                // Plus a strip of pasteboard: 32 points, 16 document pixels here.
+                let want = if rotation > 0.0 { 516.0 } else { 84.0 };
                 assert!((v.center[0] - want).abs() < 0.01, "{rotation}, flip={flip}: {:?}", v.center);
                 assert!((v.center[1] - 600.0).abs() < 0.01);
                 assert!(!crate::scrollbars::clamp_view_with_aspect(&mut v, xf.rect.size(), 2.0, 2.0), "the next frame preserves the auto-scroll limit");
@@ -197,7 +203,7 @@ mod tests {
                 v.center = [300.0, 600.0];
                 let xf = ViewXform { center: v.center, ..xf };
                 assert!(super::scroll(&mut v, vec2(10_000.0, 0.0), xf));
-                let want_y = if (rotation > 0.0) == flip { 800.0 } else { 400.0 };
+                let want_y = if (rotation > 0.0) == flip { 832.0 } else { 368.0 };
                 assert!((v.center[1] - want_y).abs() < 0.01 && (v.center[0] - 300.0).abs() < 0.01, "mirrored horizontal limit: {:?}", v.center);
                 assert!(!crate::scrollbars::clamp_view_with_aspect(&mut v, xf.rect.size(), 2.0, 2.0));
             }

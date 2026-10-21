@@ -185,7 +185,7 @@ pub fn lone_target<'a>(doc: &'a Document, layer: Option<LayerId>, p: &Value) -> 
         Target::Mask => {
             let id = layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
             let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
-            let m = l.mask.as_ref().ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
+            let m = l.pixel_mask(crate::commands::is_second_mask_target(p)).ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
             Ok((!m.linked).then_some(&m.surface))
         }
         Target::Alpha(i) => doc
@@ -317,9 +317,7 @@ fn check_layer_budget(doc_sel: Option<&Surface>, l: &Layer, h: &Homography) -> R
                 }
             }
         }
-        if let Some(m) = &l.mask
-            && m.linked
-        {
+        for m in [&l.mask, &l.second_mask].into_iter().flatten().filter(|m| m.linked) {
             // With a selection only its region of the mask moves (`warp_gray_selected`).
             let src = match sel.filter(|_| !moves_whole(l)) {
                 Some(sel) => sel.content_bounds(),
@@ -435,9 +433,7 @@ fn apply_transform(
             }
         }
     }
-    if let Some(m) = l.mask.as_mut()
-        && m.linked
-    {
+    for m in l.pixel_masks_mut().filter(|m| m.linked) {
         m.surface = match mask_sel {
             Some(sel) => warp_gray_selected(&m.surface, sel, h, interp)?,
             None => warp_gray(&m.surface, h, interp)?,

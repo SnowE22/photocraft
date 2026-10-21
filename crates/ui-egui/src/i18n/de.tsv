@@ -3604,3 +3604,11 @@ curves	Smooth	Glätten
 	In Front	Davor
 	Behind	Dahinter
 	Blend	Mischen
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Zweite Maske hinzufügen  (aus der Auswahl; {key} kehrt um)
+	Convert to Vector Mask	In Vektormaske umwandeln
+	Delete Second Mask	Zweite Maske löschen
+	Disable Second Mask	Zweite Maske deaktivieren
+	Enable Second Mask	Zweite Maske aktivieren
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Auswahl sperren: Klicks auf die Arbeitsfläche gehen hindurch (das Ebenenbedienfeld wählt sie weiterhin aus)

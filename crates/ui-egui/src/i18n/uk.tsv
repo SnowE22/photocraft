@@ -4308,3 +4308,11 @@ curves	Smooth	Згладити
 	Use	Використати
 	In Front	Спереду
 	Behind	Ззаду
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Додати другу маску  (з виділення; {key} інвертує)
+	Convert to Vector Mask	Перетворити на векторну маску
+	Delete Second Mask	Видалити другу маску
+	Disable Second Mask	Вимкнути другу маску
+	Enable Second Mask	Увімкнути другу маску
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Заблокувати вибір: клацання по полотну проходять крізь нього (панель «Шари» все одно вибирає його)

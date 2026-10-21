@@ -4557,3 +4557,11 @@ navigator	Zoom	Zoom
 	Use	Usar
 	In Front	Delante
 	Behind	Detrás
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Añadir una segunda máscara  (desde la selección; {key} invierte)
+	Convert to Vector Mask	Convertir en máscara vectorial
+	Delete Second Mask	Eliminar segunda máscara
+	Disable Second Mask	Desactivar segunda máscara
+	Enable Second Mask	Activar segunda máscara
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Bloquear selección: los clics en el lienzo la atraviesan (el panel Capas aún la selecciona)

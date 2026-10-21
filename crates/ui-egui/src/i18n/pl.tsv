@@ -4199,3 +4199,11 @@ curves	Smooth	Wygładź
 	Use	Użyj
 	In Front	Z przodu
 	Behind	Z tyłu
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Dodaj drugą maskę  (z zaznaczenia; {key} odwraca)
+	Convert to Vector Mask	Konwertuj na maskę wektorową
+	Delete Second Mask	Usuń drugą maskę
+	Disable Second Mask	Wyłącz drugą maskę
+	Enable Second Mask	Włącz drugą maskę
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Zablokuj zaznaczanie: kliknięcia na płótnie przechodzą przez nią (panel Warstwy nadal ją zaznacza)

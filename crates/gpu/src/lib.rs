@@ -1813,6 +1813,11 @@ impl Compositor {
         stats: &mut Stats,
     ) -> Result<(), Unsupported> {
         let layer = f.layer;
+        // Effect shapes are read through the first pixel mask only; the CPU compositor shapes
+        // effects through both.
+        if photocraft_compose::masks::has_second_mask(layer) {
+            return Err(Unsupported("effects on a layer with a second mask (composited on the CPU)".into()));
+        }
         let canvas = doc.bounds();
         let is_group = matches!(layer.content, LayerContent::Group(_));
         let shape_key = if is_group { fx::group_key(layer, &doc.global_light, &mut |_| {}) } else { fx::shape_key(layer, canvas) };

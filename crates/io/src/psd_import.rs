@@ -1175,6 +1175,8 @@ pub(crate) fn psd_to_document_decoded(
     crate::slices_map::import(&mut doc);
     // Character and paragraph styles from the type layers' engine data.
     cx.warnings.extend(crate::text_styles_map::import(&mut doc));
+    // PhotoCraft's second masks (`PCm2` blocks).
+    crate::second_mask_psd::after_import(&mut doc, &mut cx.warnings);
 
     if ctl.cancelled() {
         return None;

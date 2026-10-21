@@ -74,7 +74,7 @@ pub(crate) fn paint_surface<'a>(doc: &'a mut Document, id: LayerId, p: &Value) -
     }
     let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
     if is_mask_target(p) {
-        l.mask.as_mut().map(|m| &mut m.surface).ok_or_else(|| EngineError::Other("layer has no mask".into()))
+        l.pixel_mask_mut(is_second_mask_target(p)).map(|m| &mut m.surface).ok_or_else(|| EngineError::Other("layer has no mask".into()))
     } else {
         l.surface_mut().ok_or_else(|| EngineError::Other("not a pixel layer".into()))
     }
@@ -100,7 +100,13 @@ pub(crate) fn check_pixels_unlocked(doc: &Document, id: LayerId) -> Result<()> {
 }
 
 pub(crate) fn is_mask_target(p: &Value) -> bool {
-    p.get("target").and_then(Value::as_str) == Some("mask")
+    matches!(p.get("target").and_then(Value::as_str), Some("mask" | "secondMask"))
+}
+
+/// The params target the layer's second pixel mask (`"target":"secondMask"`): a mask target
+/// ([`is_mask_target`]) whose surface is `Layer::second_mask`.
+pub(crate) fn is_second_mask_target(p: &Value) -> bool {
+    p.get("target").and_then(Value::as_str) == Some("secondMask")
 }
 
 fn can_undo(s: &Session) -> std::result::Result<(), String> {
@@ -460,7 +466,7 @@ fn destructive_adjust(s: &mut Session, label: &str, adj: Adjustment, p: &Value) 
         return s.edit(label, |doc, _| {
             let sel = doc.selection.clone();
             let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
-            let mask = l.mask.as_mut().ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
+            let mask = l.pixel_mask_mut(is_second_mask_target(p)).ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
             pixels::adjust_mask(&mut mask.surface, &adj, sel.as_ref());
             Ok(Value::Null)
         });
@@ -807,7 +813,7 @@ fn build() -> Vec<CommandSpec> {
             "Layer Properties",
             [],
             None,
-            r##"{"layer":id?,"layers":[id,…]? (the same change to each, one step: the Layers panel's controls with several layers selected),"name":str? (one layer only),"visible":bool?,"opacity":0..1?,"fill":0..1?,"blend":"Multiply|…"?,"clipped":bool?,"locked":bool?,"locks":{"transparency","pixels","position","artboard","all":bool}?,"channels":[bool,…]? (Advanced Blending: which colour channels blend, R G B / C M Y K / L a b)}"##,
+            r##"{"layer":id?,"layers":[id,…]? (the same change to each, one step: the Layers panel's controls with several layers selected),"name":str? (one layer only),"visible":bool?,"opacity":0..1?,"fill":0..1?,"blend":"Multiply|…"?,"clipped":bool?,"locked":bool?,"locks":{"transparency","pixels","position","artboard","all","selection":bool}?,"channels":[bool,…]? (Advanced Blending: which colour channels blend, R G B / C M Y K / L a b)}"##,
             has_layer,
             |s, p| {
                 // Several layers at once (the Layers panel with several selected, as in Photoshop),
@@ -1547,6 +1553,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::fx_visibility_cmds::specs());
     v.extend(crate::mask_view_cmds::specs());
     v.extend(crate::layer_mask_props_cmds::specs());
+    v.extend(crate::second_mask_cmds::specs());
     v.extend(crate::actions_cmds::specs());
     // The dispatch guard's unit test needs a command that panics on purpose (REL-3).
     #[cfg(test)]
@@ -1671,9 +1678,7 @@ pub(crate) fn translate_layer(doc: &Document, l: &mut Layer, dx: i32, dy: i32) {
     if let Some(r) = &mut l.effects.reference {
         *r = (r.0 + f64::from(dx), r.1 + f64::from(dy));
     }
-    if let Some(m) = &mut l.mask
-        && m.linked
-    {
+    for m in l.pixel_masks_mut().filter(|m| m.linked) {
         m.surface = translate_surface(&m.surface, dx, dy);
     }
     match &mut l.content {

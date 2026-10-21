@@ -259,7 +259,7 @@ fn remap_pixels(doc: &mut Document, map: &dyn Fn(i32, i32) -> (i32, i32)) {
     fn rec(layers: &mut [Layer], map: &dyn Fn(i32, i32) -> (i32, i32)) {
         let re = |s: &mut Surface| *s = remap_surface(s, map);
         for l in layers {
-            if let Some(m) = &mut l.mask {
+            for m in l.pixel_masks_mut() {
                 re(&mut m.surface);
             }
             if let Some(fc) = &mut l.fill_cache {

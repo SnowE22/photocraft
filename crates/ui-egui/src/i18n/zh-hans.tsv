@@ -3232,3 +3232,11 @@ curves	Smooth	平滑
 	In Front	前面
 	Behind	后面
 	Blend	混合
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	添加第二个蒙版  (从选区；{key} 反相)
+	Convert to Vector Mask	转换为矢量蒙版
+	Delete Second Mask	删除第二个蒙版
+	Disable Second Mask	停用第二个蒙版
+	Enable Second Mask	启用第二个蒙版
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	锁定选择：画布上的点按会穿过它（图层面板仍可选择）

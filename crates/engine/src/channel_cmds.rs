@@ -324,6 +324,8 @@ pub enum ChanRef {
     LayerMask,
     /// The layer's vector mask, rasterized (⌘-click its thumbnail, #196).
     VectorMask,
+    /// The layer's second pixel mask (`Layer::second_mask`).
+    SecondMask,
 }
 
 pub fn parse_ref(v: &Value, doc: &Document) -> Option<ChanRef> {
@@ -346,6 +348,7 @@ pub fn parse_ref(v: &Value, doc: &Document) -> Option<ChanRef> {
                 "transparency" => return Some(ChanRef::Transparency),
                 "mask" | "layermask" => return Some(ChanRef::LayerMask),
                 "vectormask" | "vector mask" => return Some(ChanRef::VectorMask),
+                "secondmask" | "second mask" => return Some(ChanRef::SecondMask),
                 _ => {}
             }
             if l == composite_name(mode).to_ascii_lowercase() {
@@ -561,6 +564,12 @@ fn ref_planes(doc: &Document, layer: Option<LayerId>, active: Option<LayerId>, r
             let m = l.mask.as_ref().ok_or_else(|| EngineError::Other(format!("layer \"{}\" has no mask", l.name)))?;
             vec![read_plane(&m.surface, area)]
         }
+        ChanRef::SecondMask => {
+            let id = layer.or(active).ok_or_else(|| EngineError::Other("second mask needs a layer".into()))?;
+            let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
+            let m = l.second_mask.as_ref().ok_or_else(|| EngineError::Other(format!("layer \"{}\" has no second mask", l.name)))?;
+            vec![read_plane(&m.surface, area)]
+        }
         ChanRef::VectorMask => {
             let id = layer.or(active).ok_or_else(|| EngineError::Other("vector mask needs a layer".into()))?;
             let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
@@ -723,7 +732,7 @@ pub(crate) enum Target {
 pub(crate) fn target_of(p: &Value) -> Target {
     match p.get("target") {
         Some(Value::String(s)) => match s.as_str() {
-            "mask" => Target::Mask,
+            "mask" | "secondMask" => Target::Mask,
             "quickMask" => Target::QuickMask,
             _ => Target::Pixels,
         },
@@ -766,7 +775,8 @@ pub(crate) fn read_target_surface<'a>(doc: &'a Document, layer: Option<LayerId>,
         }
         Target::Mask => {
             let id = layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
-            doc.layer(id).and_then(|l| l.mask.as_ref()).map(|m| &m.surface).ok_or(EngineError::NoLayer(id))
+            let second = crate::commands::is_second_mask_target(p);
+            doc.layer(id).and_then(|l| l.pixel_mask(second)).map(|m| &m.surface).ok_or(EngineError::NoLayer(id))
         }
     }
 }
@@ -803,7 +813,8 @@ pub(crate) fn mask_target_enabled(s: &Session, id: &str, p: &Value) -> Option<st
     if target_of(p) != Target::Mask || !edits_mask(id) {
         return None;
     }
-    Some(crate::active_layer_of(s).and_then(|l| if l.mask.is_some() { Ok(()) } else { Err("the active layer has no layer mask".into()) }))
+    let second = crate::commands::is_second_mask_target(p);
+    Some(crate::active_layer_of(s).and_then(|l| if l.pixel_mask(second).is_some() { Ok(()) } else { Err("the active layer has no layer mask".into()) }))
 }
 
 /// Whether command `id` edits the targeted channel or mask when its params name no `"target"`

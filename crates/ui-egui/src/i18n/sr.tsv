@@ -4668,3 +4668,11 @@ shape	Appearance	Izgled
 	Use	Koristi
 	In Front	Ispred
 	Behind	Iza
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Додај другу маску  (из избора; {key} обрће)
+	Convert to Vector Mask	Претвори у векторску маску
+	Delete Second Mask	Обриши другу маску
+	Disable Second Mask	Искључи другу маску
+	Enable Second Mask	Укључи другу маску
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Закључај избор: кликови на платно пролазе кроз њега (панел Слојеви га и даље бира)

@@ -108,10 +108,11 @@ fn top_group(doc: &Document, id: LayerId) -> LayerId {
 /// The layer an Auto-Select click at (x, y) picks (with `group`, its outermost group): the topmost
 /// hit, a type layer by its text bounds. Like Photoshop, it clicks through a fully locked layer
 /// (its own Lock All or a locked group's) to the layer under it (#1641); the right-click list
-/// still shows it. The click (`layer.pickAt`) and the Move tool's rollover highlight both ask
+/// still shows it. Lock Selection clicks through too, and leaves the list. The click (`layer.pickAt`) and the Move tool's rollover highlight both ask
 /// here, so the outline always names the layer a click takes.
 pub fn auto_select_target(doc: &Document, x: i32, y: i32, group: bool) -> Option<LayerId> {
-    let hit = layers_hit(doc, x, y, true).into_iter().find(|id| !doc.effective_locks(*id).all)?;
+    // Lock Selection (the layer's or a group's) passes the click through the same way.
+    let hit = layers_hit(doc, x, y, true).into_iter().find(|id| !doc.effective_locks(*id).unpickable())?;
     Some(if group { top_group(doc, hit) } else { hit })
 }
 
@@ -121,7 +122,8 @@ fn pick(s: &mut Session, p: &Value) -> Result<Value> {
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     // The right-click list includes type layers between glyphs, like Auto-Select.
     if p.get("list").and_then(Value::as_bool).unwrap_or(false) {
-        let hits = layers_hit(&doc, x, y, true);
+        // Lock Selection keeps a layer out of the list (Lock All still shows, as in Photoshop).
+        let hits: Vec<LayerId> = layers_hit(&doc, x, y, true).into_iter().filter(|id| !doc.effective_locks(*id).selection).collect();
         let names: Vec<Value> = hits.iter().filter_map(|id| doc.layer(*id)).map(|l| json!({"layer": l.id.0, "name": l.name})).collect();
         return Ok(json!({ "layers": names }));
     }
@@ -151,7 +153,7 @@ pub fn layers_in_rect(doc: &Document, r: Rect, group: bool) -> Vec<LayerId> {
     for (path, _, l) in doc.walk().iter().rev() {
         if matches!(l.content, LayerContent::Group(_) | LayerContent::Adjustment(_))
             || doc.is_background(l.id)
-            || doc.effective_locks(l.id).all
+            || doc.effective_locks(l.id).unpickable()
             || !(1..=path.len()).all(|n| doc.layer_at(&path[..n]).is_some_and(|a| a.visible))
         {
             continue;
@@ -337,6 +339,41 @@ mod tests {
         // A hidden board is skipped with its layers.
         s.execute("layer.setProps", json!({"layer": board, "visible": false})).unwrap();
         assert_eq!(pick(&mut s, 5, 5, "layer"), bg.0);
+    }
+
+    /// Lock Selection: canvas clicks (Auto-Select, the right-click list, the Move marquee) pass
+    /// through the layer, or every layer of a locked group; the Layers panel still selects it.
+    #[test]
+    fn a_selection_locked_layer_or_group_is_clicked_through() {
+        let (mut s, a, _) = two_squares();
+        s.execute("layer.new.layer", json!({"name": "Top"})).unwrap();
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 10, "height": 10})).unwrap();
+        s.execute("edit.fill", json!({"color": "#0000ff"})).unwrap();
+        s.execute("select.deselect", json!({})).unwrap();
+        let top = s.active().unwrap().active_layer.unwrap();
+        let pick = |s: &mut Session| s.execute("layer.pickAt", json!({"x": 5, "y": 5})).unwrap()["layer"].clone();
+        let listed = |s: &mut Session| {
+            let v = s.execute("layer.pickAt", json!({"x": 5, "y": 5, "list": true})).unwrap();
+            v["layers"].as_array().unwrap().iter().map(|l| l["layer"].as_u64().unwrap()).collect::<Vec<_>>()
+        };
+        assert_eq!(pick(&mut s), top.0);
+        s.execute("layer.setProps", json!({"layer": top.0, "locks": {"selection": true}})).unwrap();
+        assert!(s.active().unwrap().doc.layer(top).unwrap().locks.any(), "the row shows the lock");
+        assert_eq!(pick(&mut s), a.0);
+        assert!(!listed(&mut s).contains(&top.0));
+        let doc = s.active().unwrap().doc.clone();
+        assert!(!layers_in_rect(&doc, Rect::from_xywh(0, 0, 10, 10), false).contains(&top));
+        // The Layers panel's click still selects it, and its pixels still edit.
+        s.execute("layer.select", json!({"layer": top.0})).unwrap();
+        assert_eq!(s.active().unwrap().active_layer, Some(top));
+        s.execute("edit.fill", json!({"color": "#00ff00"})).unwrap();
+        // Through a group: the group's lock covers its layers.
+        s.execute("layer.lockLayers", json!({"selection": false})).unwrap();
+        let g = s.execute("layer.new.groupFromLayers", json!({"name": "G"})).unwrap()["layer"].as_u64().unwrap();
+        assert_eq!(pick(&mut s), top.0);
+        s.execute("layer.setProps", json!({"layer": g, "locks": {"selection": true}})).unwrap();
+        assert_eq!(pick(&mut s), a.0);
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 5, "y": 5, "target": "group"})).unwrap()["layer"], a.0);
     }
 
     #[test]

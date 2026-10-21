@@ -21,6 +21,7 @@ pub mod adjust_editors;
 pub mod adjust_preview;
 pub mod adjust_ui;
 mod alt_grab;
+pub mod alt_pick;
 pub mod analysis_ui;
 pub mod anchor_tools;
 mod ants_raster;
@@ -33,6 +34,7 @@ pub(crate) mod blend_preview;
 pub mod blur_pins;
 mod brand;
 pub(crate) mod brush_cursor;
+pub mod brush_key_repeat;
 pub mod brush_panel;
 pub mod brush_picker;
 pub mod brush_preset_dialog;
@@ -93,6 +95,7 @@ pub mod field_tab;
 pub mod file_dialog;
 pub mod file_open;
 pub mod file_ui;
+pub mod fill_tool_ui;
 pub mod fill_ui;
 pub mod filter_dialog;
 mod filter_preview_ui;
@@ -103,7 +106,6 @@ mod font_preview;
 pub mod frame_tool;
 pub mod gallery_ui;
 pub mod gigapixel_ui;
-pub mod timelapse_ui;
 pub mod gpu_canvas;
 pub mod gpu_status;
 pub mod gradient_ui;
@@ -160,9 +162,6 @@ pub mod paint_mouse;
 pub mod palette;
 mod panel_docking;
 pub mod panels;
-pub mod brush_key_repeat;
-pub mod alt_pick;
-pub mod fill_tool_ui;
 pub mod parity;
 pub mod patch_preview;
 pub(crate) mod pattern_fill_ui;
@@ -187,6 +186,7 @@ mod rgb_histogram;
 pub mod rotate_view;
 pub mod rulers;
 pub mod screen_picker;
+pub mod screen_sample;
 pub mod scrollbars;
 mod scrub_wrap;
 pub mod select_mask_view;
@@ -207,7 +207,6 @@ pub mod stack_dialog;
 pub mod state;
 pub mod stroke_constraint;
 pub mod stroke_trace;
-pub mod screen_sample;
 pub mod stroke_trail;
 pub mod stroke_ui;
 pub mod stylus;
@@ -220,6 +219,7 @@ pub mod text_field_menu;
 pub mod theme;
 pub mod tiff_options_ui;
 mod tile_overlay;
+pub mod timelapse_ui;
 mod timeline_ui;
 mod titlebar;
 pub use titlebar::{Caption, CaptionFamily, CaptionIcon, CaptionIcons, CaptionStyle, RenderIconFn};
@@ -638,6 +638,9 @@ pub struct PhotocraftApp {
     /// A Remove stroke applied on release is running as a job on this document: its trail
     /// (`remove_trail`, enclosed area filled) stays until the job ends.
     pub(crate) remove_running_doc: Option<photocraft_doc::DocId>,
+    /// The foreground before the Eyedropper (or ⌥ with a painting tool) started sampling: the
+    /// sampling ring's lower half, since sampling changes the foreground as it goes (`canvas`).
+    pub(crate) ring_before: Option<[f32; 3]>,
     /// The Remove tool's generative model as its options bar last saw it, and when (egui time).
     /// Looked up at most once a second: finding the model touches the disk (`retouch_ui`).
     pub(crate) generative_probe: Option<(f64, photocraft_engine::generative::State)>,
@@ -933,6 +936,7 @@ impl PhotocraftApp {
             remove_pending_target: None,
             remove_trail: None,
             remove_running_doc: None,
+            ring_before: None,
             generative_probe: None,
             menu_cache: None,
             move_preview: None,
@@ -2382,6 +2386,9 @@ impl PhotocraftApp {
             if self.ui.mask_target && st.active_layer.and_then(|id| st.doc.layer(id)).is_none_or(|l| l.mask.is_none()) {
                 self.ui.mask_target = false;
             }
+            if self.ui.second_mask_target && (!self.ui.mask_target || st.active_layer.and_then(|id| st.doc.layer(id)).is_none_or(|l| l.second_mask.is_none())) {
+                self.ui.second_mask_target = false;
+            }
             if !self.ui.mask_target && st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::LayerMask {
                 st.channel_view.target = photocraft_engine::channel_cmds::ChannelTarget::Composite;
             }
@@ -2531,8 +2538,20 @@ impl PhotocraftApp {
     }
 
     pub fn mask_thumb(&mut self, ctx: &egui::Context, doc: &Document, id: photocraft_doc::LayerId, mask: &photocraft_doc::LayerMask) -> egui::TextureId {
+        self.mask_thumb_kind(ctx, doc, id, mask, mask_thumbs_ui::THUMB_MASK)
+    }
+
+    /// [`PhotocraftApp::mask_thumb`] cached under thumbnail `kind` (the second mask has its own).
+    pub fn mask_thumb_kind(
+        &mut self,
+        ctx: &egui::Context,
+        doc: &Document,
+        id: photocraft_doc::LayerId,
+        mask: &photocraft_doc::LayerMask,
+        kind: u8,
+    ) -> egui::TextureId {
         let rev = surface_fingerprint(&mask.surface) ^ (doc.size.width as u64) << 40;
-        let key = (id, mask_thumbs_ui::THUMB_MASK);
+        let key = (id, kind);
         if let Some((r, tex)) = self.thumbs.get(&key)
             && *r == rev
         {

@@ -1247,6 +1247,10 @@ pub struct UiState {
     /// Painting targets the active layer's mask instead of its pixels.
     #[serde(default)]
     pub mask_target: bool,
+    /// With `mask_target`: the targeted pixel mask is the layer's second mask (its thumbnail is
+    /// bracketed; painting sends `"target":"secondMask"`).
+    #[serde(default)]
+    pub second_mask_target: bool,
     /// The active layer's vector mask is targeted (its Layers thumbnail is bracketed): the path
     /// tools edit it (#196). Never set together with `mask_target`.
     #[serde(default)]
@@ -1458,6 +1462,7 @@ impl Default for UiState {
             symmetry_transform: None,
             layer_picker: None,
             mask_target: false,
+            second_mask_target: false,
             vector_mask_target: false,
             properties_layer: None,
             brush_picker: None,

@@ -74,7 +74,8 @@ impl Span {
 }
 
 /// Clamp one axis of the view centre with Overscroll off, as Photoshop 25.4 does: an image larger
-/// than the view can't leave its edges, and one smaller than the view stays inside it, where
+/// than the view can't leave its edges (by more than [`EDGE_MARGIN`]), and one smaller than the
+/// view stays inside it, where
 /// zooming put it (zooming out around the pointer doesn't re-centre it; Fit on Screen does).
 pub fn clamp_axis(center: f32, len: f32, size: f32, zoom: f32) -> f32 {
     if !(zoom.is_finite() && zoom > 0.0 && len.is_finite() && len > 0.0 && size.is_finite() && size > 0.0) {
@@ -84,10 +85,21 @@ pub fn clamp_axis(center: f32, len: f32, size: f32, zoom: f32) -> f32 {
         return len / 2.0;
     }
     let half = size / zoom / 2.0;
-    // Larger: the view stays within the image. Smaller: the image stays within the view.
-    let (a, b) = (half, len - half);
-    center.clamp(a.min(b), a.max(b))
+    // Larger: the view stays within the image and [`EDGE_MARGIN`] of pasteboard past its edges,
+    // so a drag scrolled to an edge shows that it is the edge. Smaller: the image stays within
+    // the view.
+    if len >= 2.0 * half {
+        let m = EDGE_MARGIN / zoom;
+        center.clamp(half - m, len - half + m)
+    } else {
+        center.clamp(len - half, half)
+    }
 }
+
+/// Pasteboard (screen points) the view may show past an edge of an image larger than it, with
+/// Overscroll off: scrolled or auto-scrolled to the end, the image's edge is seen, not cut off at
+/// the window's.
+pub const EDGE_MARGIN: f32 = 32.0;
 
 /// How far past the point where the image leaves the view the view may pan with Overscroll on
 /// (screen points).
@@ -457,8 +469,10 @@ mod tests {
 
     #[test]
     fn overscroll_off_clamps() {
-        assert_eq!(clamp_axis(-400.0, 1000.0, 500.0, 1.0), 250.0);
-        assert_eq!(clamp_axis(4000.0, 1000.0, 500.0, 1.0), 750.0);
+        // Larger than the view: within the image and a strip of pasteboard (`EDGE_MARGIN`).
+        assert_eq!(clamp_axis(-400.0, 1000.0, 500.0, 1.0), 250.0 - EDGE_MARGIN);
+        assert_eq!(clamp_axis(4000.0, 1000.0, 500.0, 1.0), 750.0 + EDGE_MARGIN);
+        assert_eq!(clamp_axis(4000.0, 1000.0, 500.0, 2.0), 875.0 + EDGE_MARGIN / 2.0);
         assert_eq!(clamp_axis(600.0, 1000.0, 500.0, 1.0), 600.0);
         // Smaller than the view (2500 doc px of view for 1000 of image): it stays where it is
         // while it is inside the view, and is pushed back in at the edges.
@@ -468,7 +482,7 @@ mod tests {
         assert_eq!(clamp_axis(500.0, 1000.0, 1000.0, 1.0), 500.0, "exactly the view's size: centred");
         let mut v = View { zoom: 1.0, center: [-500.0, 20.0], fit_pending: false, fill_pending: false, doc_size: [1000, 800], rotation: 0.0 };
         assert!(clamp_view(&mut v, vec2(500.0, 400.0), 1.0));
-        assert_eq!(v.center, [250.0, 200.0]);
+        assert_eq!(v.center, [250.0 - EDGE_MARGIN, 200.0 - EDGE_MARGIN]);
         assert!(!clamp_view(&mut v, vec2(500.0, 400.0), 1.0), "stable: no repaint loop");
     }
 
@@ -646,7 +660,7 @@ mod tests {
                     let reach = w / 2.0 + OVERSCROLL_MARGIN;
                     assert!((x + reach).abs() < 1e-3, "overscroll on: stops at the image's edge plus the margin: {x}");
                 } else {
-                    assert!((x - w / 2.0).abs() < 1e-3, "clamped to the left edge: {x}");
+                    assert!((x - (w / 2.0 - EDGE_MARGIN)).abs() < 1e-3, "clamped a strip of pasteboard past the left edge: {x}");
                 }
                 // Zoomed out below fit with Center When Zoomed Out off: the image is not re-centred,
                 // it stays where it is while it fits in the view, and is pushed back in at the

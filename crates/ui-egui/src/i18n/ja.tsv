@@ -4276,3 +4276,11 @@ curves	Smooth	スムーズ
 	Use	使用
 	In Front	前面
 	Behind	背面
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	2 つ目のマスクを追加  (選択範囲から、{key} で反転)
+	Convert to Vector Mask	ベクトルマスクに変換
+	Delete Second Mask	2 つ目のマスクを削除
+	Disable Second Mask	2 つ目のマスクを無効にする
+	Enable Second Mask	2 つ目のマスクを有効にする
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	選択をロック：カンバス上のクリックは通り抜けます (レイヤーパネルでは選択できます)

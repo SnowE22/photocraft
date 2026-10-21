@@ -2780,7 +2780,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             // In a narrow panel with long translated labels, drop the "Lock:" text (the icons keep
             // their tooltips) rather than let the Fill label run over the lock icons.
             let gap = ui.spacing().item_spacing.x;
-            let icons_w = if t.pro { 5.0 * 20.0 + gap } else { 22.0 + gap };
+            let icons_w = if t.pro { 6.0 * 20.0 + gap } else { 22.0 + gap };
             let fits = body_text_width(ui, lock_label) + icons_w + body_text_width(ui, fill_label) + LAYER_PCT_W + 2.0 * gap <= ui.available_width();
             if fits {
                 label(ui, lock_label);
@@ -2797,6 +2797,12 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         ("position", "move", tl!("Lock position"), lk.position),
                         ("artboard", "scan", tl!("Prevent auto-nesting in and out of Artboards and Frames"), lk.artboard),
                         ("all", "lock", tl!("Lock all"), lk.all),
+                        (
+                            "selection",
+                            "square-dashed-mouse-pointer",
+                            tl!("Lock selection: clicks on the canvas pass through (the Layers panel still selects)"),
+                            lk.selection,
+                        ),
                     ] {
                         // Lock Image Pixels includes Lock Transparent Pixels, which waits for it (#4892).
                         let enabled = key != "transparency" || !lk.pixels;
@@ -2968,6 +2974,8 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         let active_layer = active.and_then(|id| doc.layer(id));
         let (delete, label) = if app.ui.vector_mask_target && active_layer.is_some_and(|l| l.vector_mask.is_some()) {
             ("layer.vectorMask.delete", "Delete Vector Mask")
+        } else if app.ui.mask_target && app.ui.second_mask_target && active_layer.is_some_and(|l| l.second_mask.is_some()) {
+            (photocraft_engine::second_mask_cmds::DELETE, "Delete Second Mask")
         } else if app.ui.mask_target && active_layer.is_some_and(|l| l.mask.is_some()) {
             ("layer.layerMask.delete", "Delete Layer Mask")
         } else {
@@ -3032,24 +3040,33 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         // Opens on the press like Photoshop's: drag onto an item and release to choose it (#2071).
         crate::press_menu::show(&adj, |ui, menu| {
             ui.set_min_width(190.0);
-            for c in photocraft_engine::command_specs().iter().filter(|c| c.id.starts_with("layer.newAdjustmentLayer.")) {
-                if menu.item(ui, tl!(c.label).trim_end_matches('…')) {
-                    actions.push((c.id.into(), json!({})));
+            for (i, group) in ADJUSTMENT_MENU.iter().enumerate() {
+                if i > 0 {
+                    ui.separator();
                 }
-            }
-            ui.separator();
-            if menu.item(ui, tl!("Solid Color…")) {
-                actions.push(("layer.newFillLayer.solidColor".into(), json!({})));
-            }
-            if menu.item(ui, tl!("Gradient…")) {
-                actions.push(("layer.newFillLayer.gradient".into(), json!({})));
+                for (id, label) in group.iter() {
+                    if menu.item(ui, tl!(label)) {
+                        actions.push(((*id).into(), json!({})));
+                    }
+                }
             }
         });
         // Like Photoshop the button never replaces a mask (#2075): with a layer mask it adds a
-        // vector mask, and with both it is greyed.
+        // second pixel mask (PhotoCraft; Photoshop adds the vector mask there), then a vector
+        // mask, and with all of them it is greyed.
         let alt = ui.input(|i| i.modifiers.alt);
-        let mask_cmd = crate::layer_menu_ui::mask_button_command(active_layer, doc.selection.is_some(), alt);
-        let mask_tip = if active_layer.is_some_and(|l| l.mask.is_some()) {
+        let mut mask_cmd = crate::layer_menu_ui::mask_button_command(active_layer, doc.selection.is_some(), alt);
+        // A path selected in the Paths panel asks for the vector mask: it comes before the second
+        // pixel mask then.
+        if mask_cmd == Some(photocraft_engine::second_mask_cmds::ADD)
+            && crate::vector_ui::selected_document_path(app).is_some()
+            && active_layer.is_some_and(|l| l.vector_mask.is_none() && !matches!(l.content, LayerContent::Shape(_)))
+        {
+            mask_cmd = Some(if alt { "layer.vectorMask.hideAll" } else { "layer.vectorMask.revealAll" });
+        }
+        let mask_tip = if mask_cmd == Some(photocraft_engine::second_mask_cmds::ADD) {
+            crate::i18n::fmt(tl!("Add a second mask  (from the selection; {key} inverts)"), &[("key", &crate::shortcuts::pretty("Alt"))])
+        } else if active_layer.is_some_and(|l| l.mask.is_some()) {
             tl!("Add vector mask").to_string()
         } else {
             crate::i18n::fmt(tl!("Add a mask  (from the selection; {key} inverts)"), &[("key", &crate::shortcuts::pretty("Alt"))])
@@ -3063,6 +3080,11 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             // Alt still inverts it.
             match crate::vector_ui::selected_document_path(app).filter(|_| cmd.starts_with("layer.vectorMask.")) {
                 Some(name) => actions.push(("layer.vectorMask.currentPath".into(), json!({"name": name, "hide": alt}))),
+                None if cmd == photocraft_engine::second_mask_cmds::ADD => {
+                    actions.push((cmd.into(), json!({"hide": alt})));
+                    // The new mask is targeted, as a new layer mask is.
+                    actions.push(("ui.secondMaskTarget".into(), json!(true)));
+                }
                 None => actions.push((cmd.into(), json!({}))),
             }
         }
@@ -3093,6 +3115,14 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
         if id == "ui.maskTarget" {
             app.ui.mask_target = p.as_bool().unwrap_or(false);
+            app.ui.second_mask_target = false;
+            app.ui.vector_mask_target = false;
+            app.sync_mask_targets();
+            continue;
+        }
+        if id == "ui.secondMaskTarget" {
+            let on = p.as_bool().unwrap_or(false);
+            (app.ui.mask_target, app.ui.second_mask_target) = (on, on);
             app.ui.vector_mask_target = false;
             app.sync_mask_targets();
             continue;
@@ -3100,6 +3130,7 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         if id == "ui.vectorMaskTarget" {
             app.ui.vector_mask_target = p.as_bool().unwrap_or(false);
             app.ui.mask_target = false;
+            app.ui.second_mask_target = false;
             app.sync_mask_targets();
             continue;
         }
@@ -3481,12 +3512,15 @@ fn layer_row(
     // Link chains and pixel / vector mask thumbnails (#153).
     let masks = crate::mask_thumbs_ui::paint(app, ctx, ui, &painter, doc, l, &mut x, rect.center().y, ts, actions);
     let mask_rect = masks.thumb(crate::mask_thumbs_ui::MaskKind::Pixel);
+    let second_rect = masks.thumb(crate::mask_thumbs_ui::MaskKind::Second);
     let vector_rect = masks.thumb(crate::mask_thumbs_ui::MaskKind::Vector);
     // Photoshop frames the targeted thumbnail (pixels, mask or vector mask) of the active layer
     // with corner brackets.
     if row.primary {
         let target = if app.ui.vector_mask_target && vector_rect.is_some() {
             vector_rect
+        } else if app.ui.mask_target && app.ui.second_mask_target && second_rect.is_some() {
+            second_rect
         } else if app.ui.mask_target {
             mask_rect.or(Some(thumb))
         } else {
@@ -3570,6 +3604,7 @@ fn layer_row(
         // mask thumbnail targets the mask.
         let on_mask = mask_rect.zip(pos).is_some_and(|(r, p)| r.expand(2.0).contains(p));
         let on_vector = pos.and_then(|p| masks.hit(p)) == Some(crate::mask_thumbs_ui::MaskKind::Vector);
+        let on_second = pos.and_then(|p| masks.hit(p)) == Some(crate::mask_thumbs_ui::MaskKind::Second);
         // Clicking the layer thumbnail leaves mask view (#196).
         let viewing = app.session.active().and_then(photocraft_engine::mask_view_cmds::current).is_some_and(|v| v.layer == l.id);
         if on_thumb && viewing {
@@ -3581,6 +3616,10 @@ fn layer_row(
             // Paths panel selects the layer's path.
             app.ui.selected_path = Some("layer".into());
             actions.push(("ui.vectorMaskTarget".into(), json!(true)));
+        } else if on_second {
+            // The second mask's thumbnail targets it: painting and filters edit it.
+            app.ui.properties_layer = None;
+            actions.push(("ui.secondMaskTarget".into(), json!(true)));
         } else if on_mask {
             if on_mask {
                 // The mask thumbnail also switches Properties to the mask (#3369).
@@ -3593,6 +3632,10 @@ fn layer_row(
         // ⌥-click the layer thumbnail: fit the layer on screen, as Photoshop does.
         if on_thumb && m.alt && !m.shift && !m.command {
             actions.push(("view.fitLayersOnScreen".into(), Value::Null));
+        }
+        // A plain click on a disabled mask turns it back on.
+        if let Some(cmd) = pos.and_then(|p| masks.hit(p)).and_then(|kind| crate::mask_thumbs_ui::enable_on_click(l, kind, m)) {
+            actions.push(cmd);
         }
     }
     // Double-click: the name renames in place (over the row's full height, not just the glyphs:
@@ -3614,6 +3657,7 @@ fn layer_row(
         } else if let Some(kind) = pos.and_then(|p| masks.hit(p)) {
             match kind {
                 crate::mask_thumbs_ui::MaskKind::Pixel => actions.push(("ui.maskTarget".into(), json!(true))),
+                crate::mask_thumbs_ui::MaskKind::Second => actions.push(("ui.secondMaskTarget".into(), json!(true))),
                 crate::mask_thumbs_ui::MaskKind::Vector => actions.push(("ui.vectorMaskTarget".into(), json!(true))),
             }
             if let Some((cmd, val)) = crate::mask_thumbs_ui::double_click_command(app, kind) {
@@ -3643,15 +3687,23 @@ fn layer_row(
     // The visibility icon has its own color menu, and the layer-mask thumbnail its mask menu
     // (#4575); elsewhere use the full layer menu.
     let on_mask_id = ui.id().with(("mask-menu", l.id.0));
+    let on_second_id = ui.id().with(("second-mask-menu", l.id.0));
     if resp.secondary_clicked() {
-        let on_mask = resp.interact_pointer_pos().and_then(|p| masks.hit(p)) == Some(crate::mask_thumbs_ui::MaskKind::Pixel);
-        ctx.data_mut(|d| d.insert_temp(on_mask_id, on_mask));
+        let hit = resp.interact_pointer_pos().and_then(|p| masks.hit(p));
+        ctx.data_mut(|d| {
+            d.insert_temp(on_mask_id, hit == Some(crate::mask_thumbs_ui::MaskKind::Pixel));
+            d.insert_temp(on_second_id, hit == Some(crate::mask_thumbs_ui::MaskKind::Second));
+        });
     }
     if !eye_resp.secondary_clicked() && !eye_resp.context_menu_opened() {
         resp.context_menu(|ui| {
             crate::widgets::style_spectrum_popup_menu(ui);
             if ui.ctx().data(|d| d.get_temp::<bool>(on_mask_id)).unwrap_or(false) {
                 crate::layer_menu_ui::show_mask(app, ui, l, actions);
+                return;
+            }
+            if ui.ctx().data(|d| d.get_temp::<bool>(on_second_id)).unwrap_or(false) {
+                crate::layer_menu_ui::show_second_mask(ui, l, actions);
                 return;
             }
             // Right-clicking inside a multi-selection keeps it and acts on every selected layer.
@@ -4229,6 +4281,30 @@ fn properties_body_inner(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
 }
 
+/// The Layers panel's "Create new fill or adjustment layer" menu, in Photoshop's groups and order.
+/// Photoshop 2026 starts with Light, Color and vibrance, Clarity and dehaze and Grain; PhotoCraft's
+/// nearest, Brightness/Contrast and Vibrance, stand in their place.
+pub(crate) const ADJUSTMENT_MENU: [&[(&str, &str)]; 5] = [
+    &[("layer.newAdjustmentLayer.brightnessContrast", "Brightness/Contrast…"), ("layer.newAdjustmentLayer.vibrance", "Vibrance…")],
+    &[("layer.newAdjustmentLayer.levels", "Levels…"), ("layer.newAdjustmentLayer.curves", "Curves…"), ("layer.newAdjustmentLayer.exposure", "Exposure…")],
+    &[
+        ("layer.newAdjustmentLayer.hueSaturation", "Hue/Saturation…"),
+        ("layer.newAdjustmentLayer.colorBalance", "Color Balance…"),
+        ("layer.newAdjustmentLayer.blackWhite", "Black & White…"),
+        ("layer.newAdjustmentLayer.photoFilter", "Photo Filter…"),
+        ("layer.newAdjustmentLayer.channelMixer", "Channel Mixer…"),
+        ("layer.newAdjustmentLayer.colorLookup", "Color Lookup…"),
+        ("layer.newAdjustmentLayer.selectiveColor", "Selective Color…"),
+    ],
+    &[
+        ("layer.newAdjustmentLayer.invert", "Invert"),
+        ("layer.newAdjustmentLayer.posterize", "Posterize…"),
+        ("layer.newAdjustmentLayer.threshold", "Threshold…"),
+        ("layer.newAdjustmentLayer.gradientMap", "Gradient Map…"),
+    ],
+    &[("layer.newFillLayer.solidColor", "Solid Color…"), ("layer.newFillLayer.gradient", "Gradient…"), ("layer.newFillLayer.pattern", "Pattern…")],
+];
+
 /// Photoshop's Adjustments panel: a grid of one-click adjustment layers.
 fn adjustments_grid(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
@@ -4784,6 +4860,7 @@ fn starts_mask_drag(ctx: &egui::Context, l: &Layer, resp: &egui::Response) -> Op
     let kind = thumbs.iter().find(|(_, r)| r.contains(p))?.0;
     let present = match kind {
         MaskKind::Pixel => l.mask.is_some(),
+        MaskKind::Second => l.second_mask.is_some(),
         MaskKind::Vector => l.vector_mask.is_some(),
     };
     present.then_some(kind)
@@ -7467,5 +7544,23 @@ mod sampler_readout_tests {
         assert_eq!(b[0]["rgb"], json!([255, 0, 0]), "an edit shows");
         app.run("view.colorSamplers.add", json!({"x": 8, "y": 8})).unwrap();
         assert_eq!(sampler_readouts(&mut app).len(), 2, "so does a new sampler");
+    }
+}
+
+#[cfg(test)]
+mod adjustment_menu_tests {
+    /// The fill or adjustment layer menu lists every new adjustment layer and fill layer command
+    /// once, each a registered command, in Photoshop's five groups.
+    #[test]
+    fn the_adjustment_menu_lists_every_adjustment_and_fill_once() {
+        let listed: Vec<&str> = super::ADJUSTMENT_MENU.iter().flat_map(|g| g.iter().map(|(id, _)| *id)).collect();
+        let specs = photocraft_engine::command_specs();
+        let wanted: Vec<&str> =
+            specs.iter().map(|c| c.id).filter(|id| id.starts_with("layer.newAdjustmentLayer.") || id.starts_with("layer.newFillLayer.")).collect();
+        for id in &wanted {
+            assert_eq!(listed.iter().filter(|l| *l == id).count(), 1, "{id}");
+        }
+        assert_eq!(listed.len(), wanted.len(), "{listed:?}");
+        assert_eq!(super::ADJUSTMENT_MENU.map(|g| g.len()), [2, 3, 7, 4, 3]);
     }
 }

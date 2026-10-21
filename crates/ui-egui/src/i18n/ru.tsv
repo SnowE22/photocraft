@@ -3574,3 +3574,11 @@ curves	Smooth	Сгладить
 	Use	Использовать
 	In Front	Спереди
 	Behind	Сзади
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Добавить вторую маску  (из выделения; {key} инвертирует)
+	Convert to Vector Mask	Преобразовать в векторную маску
+	Delete Second Mask	Удалить вторую маску
+	Disable Second Mask	Выключить вторую маску
+	Enable Second Mask	Включить вторую маску
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Закрепить выбор: щелчки по холсту проходят насквозь (панель «Слои» по-прежнему выбирает его)

@@ -478,7 +478,7 @@ fn press_drag_release_on_the_adjustment_button_adds_that_layer() {
     h.event(egui::Event::PointerMoved(button));
     h.run_steps(1);
     press(&mut h, button, true);
-    let curves = h.get_by_label("Curves").rect().center();
+    let curves = h.get_by_label("Curves…").rect().center();
     drag(&mut h, button, curves);
     press(&mut h, curves, false);
     h.run_steps(2);
@@ -486,17 +486,17 @@ fn press_drag_release_on_the_adjustment_button_adds_that_layer() {
     let doc = &h.state().session.active().unwrap().doc;
     let top = doc.layers.last().unwrap();
     assert!(matches!(top.content, LayerContent::Adjustment(_)), "an adjustment layer: {:?}", top.name);
-    assert!(h.query_by_label("Curves").is_none(), "and the menu closed");
+    assert!(h.query_by_label("Curves…").is_none(), "and the menu closed");
 
     // A plain click opens the menu and leaves it open; releasing off the items adds nothing.
     drag(&mut h, curves, button);
     press(&mut h, button, true);
     press(&mut h, button, false);
     h.run_steps(2);
-    assert!(h.query_by_label("Curves").is_some(), "a click leaves the menu open");
+    assert!(h.query_by_label("Curves…").is_some(), "a click leaves the menu open");
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert!(h.query_by_label("Curves").is_none(), "Esc closed it");
+    assert!(h.query_by_label("Curves…").is_none(), "Esc closed it");
 
     // Press, drag off the button to an empty spot, release: nothing is added, the menu stays open.
     press(&mut h, button, true);
@@ -505,7 +505,7 @@ fn press_drag_release_on_the_adjustment_button_adds_that_layer() {
     press(&mut h, away, false);
     h.run_steps(2);
     assert_eq!(count(&h), before + 1, "a release on nothing adds no layer");
-    assert!(h.query_by_label("Curves").is_some(), "and keeps the menu open");
+    assert!(h.query_by_label("Curves…").is_some(), "and keeps the menu open");
 }
 
 /// #2071: the fx (Add a layer style) footer button is the same kind of menu, and runs after the

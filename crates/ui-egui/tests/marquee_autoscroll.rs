@@ -171,7 +171,8 @@ fn rotated_marquee_scrolls_on_the_axis_that_is_visibly_clipped() {
             h.render().expect("render").save(dir.join(format!("rotated-marquee-overscroll-{overscroll}.png"))).expect("save fixture");
         }
         assert!(moved > 10.0, "rotated vertical overflow must scroll document x, overscroll={overscroll}, moved={moved}");
-        let limit = width as f32 - start.rect.height() / (2.0 * start.zoom);
+        // The image's edge, plus the strip of pasteboard the view may show past it.
+        let limit = width as f32 - start.rect.height() / (2.0 * start.zoom) + photocraft_ui_egui::scrollbars::EDGE_MARGIN / start.zoom;
         assert!((xf(&h).center[0] - limit).abs() < 0.01, "stops at the rotated image edge, overscroll={overscroll}");
         assert!((xf(&h).center[1] - start.center[1]).abs() < 0.01);
         button_at(&mut h, outside, false);

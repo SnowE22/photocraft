@@ -4385,3 +4385,11 @@ layerLabel	No Color	Sem cor
 	Use	Usar
 	In Front	Na frente
 	Behind	Atrás
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Adicionar uma segunda máscara  (da seleção; {key} inverte)
+	Convert to Vector Mask	Converter em máscara vetorial
+	Delete Second Mask	Excluir segunda máscara
+	Disable Second Mask	Desativar segunda máscara
+	Enable Second Mask	Ativar segunda máscara
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Bloquear seleção: cliques na tela a atravessam (o painel Camadas ainda a seleciona)

@@ -26,12 +26,16 @@ pub fn add_mask_command(has_selection: bool, alt: bool) -> &'static str {
 
 /// What the Layers panel "Add a mask" button does for `layer` (#2075). Like Photoshop it never
 /// replaces a mask: a layer without a layer mask gets one ([`add_mask_command`]); a layer that
-/// already has one gets a vector mask instead (⌥: Hide All); a layer with both (or a shape layer,
-/// whose path is already its vector mask, with a layer mask) gets nothing (`None`).
+/// already has one gets PhotoCraft's second pixel mask (Photoshop adds the vector mask there;
+/// `"hide"` with ⌥), then a vector mask (⌥: Hide All); a layer with all three (or a shape layer,
+/// whose path is already its vector mask, with both pixel masks) gets nothing (`None`).
 pub fn mask_button_command(layer: Option<&Layer>, has_selection: bool, alt: bool) -> Option<&'static str> {
     let l = layer?;
     if l.mask.is_none() {
         Some(add_mask_command(has_selection, alt))
+    } else if l.second_mask.is_none() {
+        // PhotoCraft: a second pixel mask (Photoshop adds the vector mask here); ⌥ inverts it.
+        Some(photocraft_engine::second_mask_cmds::ADD)
     } else if l.vector_mask.is_none() && !matches!(l.content, LayerContent::Shape(_)) {
         Some(if alt { "layer.vectorMask.hideAll" } else { "layer.vectorMask.revealAll" })
     } else {
@@ -193,6 +197,29 @@ pub fn show_mask(app: &crate::PhotocraftApp, ui: &mut egui::Ui, l: &Layer, actio
             actions.push(("ui.maskTarget".into(), json!(true)));
             actions.push(("select.selectAndMask".into(), Value::Null));
             ui.close();
+        }
+    });
+}
+
+/// The menu of `l`'s second-mask thumbnail: turn it off or on, delete it, or make it the vector
+/// mask (traced from what it reveals). It acts on `l`, which it selects first.
+pub fn show_second_mask(ui: &mut egui::Ui, l: &Layer, actions: &mut Vec<(String, Value)>) {
+    use photocraft_engine::second_mask_cmds as second;
+    let Some(mask) = &l.second_mask else { return };
+    crate::widgets::menu_scroll(ui, |ui| {
+        ui.set_min_width(220.0);
+        let toggle = if mask.enabled { tl!("Disable Second Mask") } else { tl!("Enable Second Mask") };
+        let items: [(&str, &str, Value, bool); 3] = [
+            (toggle, second::ENABLED, json!({"layer": l.id.0, "enabled": !mask.enabled}), true),
+            (tl!("Delete Second Mask"), second::DELETE, json!({"layer": l.id.0}), true),
+            (tl!("Convert to Vector Mask"), second::TO_VECTOR, json!({"layer": l.id.0}), l.vector_mask.is_none()),
+        ];
+        for (label, id, params, enabled) in items {
+            if ui.add_enabled(enabled, egui::Button::new(label)).clicked() {
+                actions.push(("layer.select".into(), json!({"layer": l.id.0})));
+                actions.push((id.into(), params));
+                ui.close();
+            }
         }
     });
 }
@@ -818,25 +845,31 @@ mod tests {
             .unwrap();
             let painted = layer(&s).mask.unwrap().surface.pixel(3, 3)[0];
             assert!((painted - 0.5).abs() < 0.01);
-            // Second click: a vector mask (⌥ hides all), the layer mask is untouched.
+            // Second click: a second pixel mask, the layer mask is untouched.
             let second = mask_button_command(Some(&layer(&s)), false, alt).unwrap();
-            assert_eq!(second, if alt { "layer.vectorMask.hideAll" } else { "layer.vectorMask.revealAll" });
-            s.execute(second, json!({})).unwrap();
+            assert_eq!(second, photocraft_engine::second_mask_cmds::ADD);
+            s.execute(second, json!({"hide": alt})).unwrap();
+            assert!(layer(&s).second_mask.is_some(), "alt={alt}");
+            // Third click: a vector mask (⌥ hides all).
+            let third = mask_button_command(Some(&layer(&s)), false, alt).unwrap();
+            assert_eq!(third, if alt { "layer.vectorMask.hideAll" } else { "layer.vectorMask.revealAll" });
+            s.execute(third, json!({})).unwrap();
             let l = layer(&s);
             assert!(l.vector_mask.is_some(), "alt={alt}");
             let mask = l.mask.as_ref().unwrap();
             assert!((mask.surface.pixel(3, 3)[0] - painted).abs() < 1e-6, "alt={alt}: the painted mask was replaced");
-            // Third click: nothing left to add.
+            // Fourth click: nothing left to add.
             assert_eq!(mask_button_command(Some(&l), false, alt), None);
             assert_eq!(mask_button_command(Some(&l), true, alt), None);
         }
         // No layer: nothing to do.
         assert_eq!(mask_button_command(None, false, false), None);
-        // A shape layer's path is already its vector mask: after the layer mask, nothing more.
+        // A shape layer's path is already its vector mask: after the two pixel masks, nothing more.
         let mut s = photocraft_engine::Session::new();
         s.execute("file.new", json!({"width": 10, "height": 10})).unwrap();
         s.execute("shape.create", json!({"kind": "rect", "rect": [0, 0, 5, 5]})).unwrap();
         s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+        s.execute(photocraft_engine::second_mask_cmds::ADD, json!({})).unwrap();
         let st = s.active().unwrap();
         let l = st.doc.layer(st.active_layer.unwrap()).unwrap();
         assert_eq!(mask_button_command(Some(l), false, false), None);

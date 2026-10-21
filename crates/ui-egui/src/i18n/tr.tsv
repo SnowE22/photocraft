@@ -4325,3 +4325,11 @@ cameraData	Lens	Lens
 	Use	Kullan
 	In Front	Önde
 	Behind	Arkada
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	İkinci maske ekle  (seçimden; {key} tersine çevirir)
+	Convert to Vector Mask	Vektör Maskesine Dönüştür
+	Delete Second Mask	İkinci Maskeyi Sil
+	Disable Second Mask	İkinci Maskeyi Devre Dışı Bırak
+	Enable Second Mask	İkinci Maskeyi Etkinleştir
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Seçimi kilitle: tuvaldeki tıklamalar içinden geçer (Katmanlar paneli yine de seçer)

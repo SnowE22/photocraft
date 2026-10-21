@@ -4088,3 +4088,11 @@ curves	Smooth	Làm mượt
 	Use	Dùng
 	In Front	Phía trước
 	Behind	Phía sau
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Thêm mặt nạ thứ hai  (từ vùng chọn; {key} đảo ngược)
+	Convert to Vector Mask	Chuyển thành mặt nạ vectơ
+	Delete Second Mask	Xóa mặt nạ thứ hai
+	Disable Second Mask	Tắt mặt nạ thứ hai
+	Enable Second Mask	Bật mặt nạ thứ hai
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Khóa chọn: nhấp trên canvas sẽ xuyên qua (bảng Layers vẫn chọn được)

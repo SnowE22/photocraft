@@ -3598,3 +3598,11 @@ curves	Smooth	Haluskan
 	Use	Gunakan
 	In Front	Di Depan
 	Behind	Di Belakang
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Tambah masker kedua  (dari seleksi; {key} membalik)
+	Convert to Vector Mask	Ubah ke Masker Vektor
+	Delete Second Mask	Hapus Masker Kedua
+	Disable Second Mask	Nonaktifkan Masker Kedua
+	Enable Second Mask	Aktifkan Masker Kedua
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Kunci seleksi: klik di kanvas menembusnya (panel Layer tetap memilihnya)

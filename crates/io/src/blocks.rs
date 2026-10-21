@@ -104,12 +104,28 @@ pub fn ranges_from_blend_if(b: &BlendIf, channels: usize) -> BlendingRanges {
 /// Older PhotoCraft builds wrote the artboard lock at bit 4 (`0x10`); that value is still
 /// accepted on read so those files keep their lock, and is rewritten at `0x08`.
 pub fn locks_from_lspf(v: u32) -> Locks {
-    Locks { transparency: v & 1 != 0, pixels: v & 2 != 0, position: v & 4 != 0, artboard: v & 0x08 != 0 || v & 0x10 != 0, all: v & 0x8000_0000 != 0 }
+    Locks {
+        transparency: v & 1 != 0,
+        pixels: v & 2 != 0,
+        position: v & 4 != 0,
+        artboard: v & 0x08 != 0 || v & 0x10 != 0,
+        all: v & 0x8000_0000 != 0,
+        selection: v & LSPF_SELECTION != 0,
+    }
 }
+
+/// PhotoCraft's Lock Selection (Photoshop has none) in a bit of `lspf` Photoshop leaves unused,
+/// so a PSD keeps it; Photoshop ignores it.
+pub const LSPF_SELECTION: u32 = 1 << 24;
 
 /// Inverse of [`locks_from_lspf`].
 pub fn lspf_from_locks(l: &Locks) -> u32 {
-    u32::from(l.transparency) | u32::from(l.pixels) << 1 | u32::from(l.position) << 2 | u32::from(l.artboard) << 3 | u32::from(l.all) << 31
+    u32::from(l.transparency)
+        | u32::from(l.pixels) << 1
+        | u32::from(l.position) << 2
+        | u32::from(l.artboard) << 3
+        | if l.selection { LSPF_SELECTION } else { 0 }
+        | u32::from(l.all) << 31
 }
 
 /// `lclr` index → label.
@@ -939,9 +955,11 @@ mod tests {
     fn locks_and_labels() {
         // Reference values round-trip byte for byte; Background layers carry 0x0D
         // (transparency + position + the bit-3 lock reference files write).
-        for bits in [0u32, 1, 2, 4, 8, 0x0D, 0x8000_0000, 0x8000_000F] {
+        for bits in [0u32, 1, 2, 4, 8, 0x0D, 0x8000_0000, 0x8000_000F, LSPF_SELECTION, LSPF_SELECTION | 4] {
             assert_eq!(lspf_from_locks(&locks_from_lspf(bits)), bits);
         }
+        // PhotoCraft's Lock Selection rides in an unused bit, alone or with the others.
+        assert!(locks_from_lspf(LSPF_SELECTION).selection && !locks_from_lspf(0x8000_000F).selection);
         // Older PhotoCraft files wrote the artboard lock at 0x10; it reads back as artboard
         // and is rewritten at the reference value 0x08.
         assert!(locks_from_lspf(0x10).artboard);

@@ -96,10 +96,16 @@ pub struct Locks {
     pub position: bool,
     pub artboard: bool,
     pub all: bool,
+    /// PhotoCraft's Lock Selection: clicks on the canvas (Move tool Auto-Select, ⌘-click, the
+    /// right-click layer list, the Move tool's marquee) pass through the layer, or a group's
+    /// layers, to what is below; the Layers panel still selects it. Photoshop has no such lock.
+    #[serde(default)]
+    pub selection: bool,
 }
 
 impl Locks {
-    /// Set the lock a command names (`transparency`, `pixels`, `position`, `artboard`, `all`);
+    /// Set the lock a command names (`transparency`, `pixels`, `position`, `artboard`, `all`,
+    /// `selection`);
     /// false for an unknown name. Lock Image Pixels includes Lock Transparent Pixels, so, as in
     /// Photoshop, locking the pixels clears the transparency lock, and that one stays off while the
     /// pixels are locked (#4892).
@@ -115,6 +121,7 @@ impl Locks {
             "position" => self.position = on,
             "artboard" => self.artboard = on,
             "all" => self.all = on,
+            "selection" => self.selection = on,
             _ => return false,
         }
         true
@@ -122,7 +129,12 @@ impl Locks {
 
     /// Whether any lock is set: Photoshop then shows the lock icon on the layer's row.
     pub fn any(self) -> bool {
-        self.transparency || self.pixels || self.position || self.artboard || self.all
+        self.transparency || self.pixels || self.position || self.artboard || self.all || self.selection
+    }
+
+    /// Whether canvas clicks pass through the layer: Lock All or Lock Selection.
+    pub fn unpickable(self) -> bool {
+        self.all || self.selection
     }
 
     pub fn union(self, o: Locks) -> Locks {
@@ -132,6 +144,7 @@ impl Locks {
             position: self.position || o.position,
             artboard: self.artboard || o.artboard,
             all: self.all || o.all,
+            selection: self.selection || o.selection,
         }
     }
 }
@@ -628,6 +641,11 @@ pub struct Layer {
     /// Vector mask (Layer › Vector Mask), applied together with `mask`. Shape layers keep their
     /// outline in [`ShapeLayer::path`] instead.
     pub vector_mask: Option<VectorMask>,
+    /// PhotoCraft's second layer mask (Add Mask on a layer that has one): a pixel mask applied
+    /// together with `mask` and `vector_mask`, edited when targeted like the first. Photoshop has
+    /// one pixel mask a layer: a PSD stores the two multiplied as its layer mask, and each in a
+    /// private block PhotoCraft reads back (`io`).
+    pub second_mask: Option<LayerMask>,
     pub effects: Effects,
     pub label: LabelColor,
     pub content: LayerContent,
@@ -672,6 +690,22 @@ impl Layer {
         self.locks.transparency && self.locks.position && !self.clipped && matches!(self.content, LayerContent::Raster(_))
     }
 
+    /// The layer mask, or with `second` the second pixel mask.
+    pub fn pixel_mask(&self, second: bool) -> Option<&LayerMask> {
+        if second { self.second_mask.as_ref() } else { self.mask.as_ref() }
+    }
+
+    /// The layer's pixel masks (the layer mask, then the second one): what moves, resizes and
+    /// turns with it.
+    pub fn pixel_masks_mut(&mut self) -> impl Iterator<Item = &mut LayerMask> {
+        self.mask.iter_mut().chain(self.second_mask.iter_mut())
+    }
+
+    /// [`Layer::pixel_mask`], mutably.
+    pub fn pixel_mask_mut(&mut self, second: bool) -> Option<&mut LayerMask> {
+        if second { self.second_mask.as_mut() } else { self.mask.as_mut() }
+    }
+
     pub fn new(name: impl Into<String>, content: LayerContent) -> Self {
         Layer {
             id: LayerId::fresh(),
@@ -684,6 +718,7 @@ impl Layer {
             clipped: false,
             mask: None,
             vector_mask: None,
+            second_mask: None,
             effects: Effects { enabled: true, ..Default::default() },
             label: LabelColor::None,
             content,

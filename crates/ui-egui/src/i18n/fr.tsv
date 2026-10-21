@@ -3611,3 +3611,11 @@ curves	Smooth	Lisser
 	Use	Utiliser
 	In Front	Devant
 	Behind	Derrière
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Ajouter un second masque  (depuis la sélection ; {key} inverse)
+	Convert to Vector Mask	Convertir en masque vectoriel
+	Delete Second Mask	Supprimer le second masque
+	Disable Second Mask	Désactiver le second masque
+	Enable Second Mask	Activer le second masque
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Verrouiller la sélection : les clics sur la zone de travail la traversent (le panneau Calques la sélectionne toujours)

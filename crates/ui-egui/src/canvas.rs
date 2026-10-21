@@ -652,19 +652,33 @@ fn display_color(c: [f32; 3]) -> Color32 {
 }
 
 /// The Eyedropper ring's two colours at document point (x, y): the colour under the pointer
-/// (what a click would pick) and the current foreground, or `None` where there is no colour
-/// to sample (#213).
+/// (what a click would pick) and the current colour, the foreground from before the sampling began
+/// (`ring_before`; the foreground itself when none was kept), or `None` where there is no colour to
+/// sample (#213).
 pub(crate) fn eyedropper_ring_colors(app: &mut PhotocraftApp, x: f64, y: f64) -> Option<(Color32, Color32)> {
     let new = eyedropper_color(app, x, y)?;
     let fg = app.session.tools.foreground;
-    Some((display_color(new), display_color([fg[0], fg[1], fg[2]])))
+    let current = app.ring_before.unwrap_or([fg[0], fg[1], fg[2]]);
+    Some((display_color(new), display_color(current)))
 }
 
-/// Draw the Eyedropper's comparison ring at `p`: the sampled colour on the upper arc, the
-/// current one below, both over a thin dark outline so they read on any image (#213). Like
-/// Photoshop it shows only while the mouse button is held (`held`): hovering shows the plain
-/// crosshair and samples nothing. `None` when not held, there is nothing to sample, or the
-/// Precise-cursor preference wants the plain crosshair.
+/// Keep the colour a sampling press is about to change (the background with ⌥ on the Eyedropper,
+/// else the foreground): the sampling ring's lower half for the rest of the press.
+fn keep_ring_before(app: &mut PhotocraftApp, background: bool) {
+    let c = if background { app.session.tools.background } else { app.session.tools.foreground };
+    app.ring_before = Some([c[0], c[1], c[2]]);
+}
+
+/// Outer radius and width (points) of the sampling ring's colour band.
+const RING_RADIUS: f32 = 40.0;
+const RING_BAND: f32 = 10.0;
+
+/// Draw Photoshop's sampling ring at `p`: the sampled colour on the upper half, the colour from
+/// before the sampling began on the lower half, edged in grey inside and out so it reads on any
+/// image, with a crosshair on the sampled point (#213). Like Photoshop it shows only while the
+/// mouse button is held (`held`): hovering shows the plain cursor and samples nothing. `None` when
+/// not held, there is nothing to sample, or the Precise-cursor preference wants the plain
+/// crosshair.
 fn eyedropper_ring(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, p: Pos2, held: bool) -> Option<egui::CursorIcon> {
     // The options bar's Show Sampling Ring turns it off (#1649).
     if !held || !app.ui.tool_options.eyedropper_ring || app.session.prefs().cursors.other == photocraft_engine::prefs::OtherCursor::Precise {
@@ -672,25 +686,35 @@ fn eyedropper_ring(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXf
     }
     let [x, y] = xf.to_doc(p);
     let (new, current) = eyedropper_ring_colors(app, x, y)?;
-    // Two arcs with a small gap at 3 and 9 o'clock. Screen y grows down, so PI..TAU is the
-    // upper half (the new colour) and 0..PI the lower (the current one).
+    paint_sampling_ring(painter, p, new, current);
+    Some(egui::CursorIcon::None)
+}
+
+/// The sampling ring's shapes at `p`: `new` on the upper half, `current` on the lower.
+fn paint_sampling_ring(painter: &egui::Painter, p: Pos2, new: Color32, current: Color32) {
     use std::f32::consts::{PI, TAU};
-    let (r, w, gap) = (11.0_f32, 4.0_f32, 0.16_f32);
+    let mid = RING_RADIUS - RING_BAND / 2.0;
+    // Screen y grows down, so PI..TAU is the upper half and 0..PI the lower. Each half overlaps
+    // the other a little so no seam shows at 3 and 9 o'clock.
     let arc = |a0: f32, a1: f32| -> Vec<Pos2> {
-        (0..=24)
+        (0..=48)
             .map(|i| {
-                let a = a0 + (a1 - a0) * i as f32 / 24.0;
-                p + vec2(a.cos(), a.sin()) * r
+                let a = a0 + (a1 - a0) * i as f32 / 48.0;
+                p + vec2(a.cos(), a.sin()) * mid
             })
             .collect()
     };
-    let outline = crate::theme::Tokens::get(painter.ctx()).shadow;
-    for (a0, a1, colour) in [(PI + gap, TAU - gap, new), (gap, PI - gap, current)] {
-        let points = arc(a0, a1);
-        painter.add(egui::Shape::line(points.clone(), Stroke::new(w + 1.5, outline)));
-        painter.add(egui::Shape::line(points, Stroke::new(w, colour)));
+    painter.add(egui::Shape::line(arc(-0.01, PI + 0.01), Stroke::new(RING_BAND, current)));
+    painter.add(egui::Shape::line(arc(PI, TAU), Stroke::new(RING_BAND, new)));
+    let edge = Stroke::new(1.5, Color32::from_gray(150));
+    painter.circle_stroke(p, RING_RADIUS, edge);
+    painter.circle_stroke(p, RING_RADIUS - RING_BAND, edge);
+    // The crosshair on the sampled pixel: dark with a light halo, readable on any colour.
+    let arm = 5.0;
+    for (stroke, w) in [(Color32::from_white_alpha(180), 3.0), (Color32::BLACK, 1.0)] {
+        painter.line_segment([p - vec2(arm, 0.0), p + vec2(arm, 0.0)], Stroke::new(w, stroke));
+        painter.line_segment([p - vec2(0.0, arm), p + vec2(0.0, arm)], Stroke::new(w, stroke));
     }
-    Some(egui::CursorIcon::None)
 }
 
 fn begin_live_stroke(app: &PhotocraftApp) -> Option<LiveStroke> {
@@ -4374,8 +4398,15 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                     egui::CursorIcon::Crosshair
                 }
                 // Photoshop's Move tool keeps the standard arrow pointer (#5646): the movable
-                // layer under it is marked by the hover outline, not by a different cursor.
-                Tool::Move => egui::CursorIcon::Default,
+                // layer under it is marked by the hover outline, not by a different cursor. With
+                // ⌥ a drag duplicates, and the arrow gets Photoshop's duplicate badge, so ⌥ and
+                // ⌘ (the temporary Move tool) don't look alike.
+                Tool::Move => {
+                    if move_duplicates(app, crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers))) {
+                        crate::icons::cursor_copy_badge(ui.ctx(), p);
+                    }
+                    egui::CursorIcon::Default
+                }
                 // Dragging is handled with the pan itself, above.
                 Tool::Hand => crate::tool_cursor::hand(ui.ctx(), false),
                 Tool::RotateView => crate::rotate_view::cursor(response.dragged()),
@@ -5539,7 +5570,10 @@ fn alt_eyedropper(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
     }
     match ev {
         // Without ⌥: the sample sets the foreground colour, whatever the Eyedropper would do.
-        ToolEvent::Down { x, y, .. } => sample_eyedropper(app, x, y, egui::Modifiers::NONE, false),
+        ToolEvent::Down { x, y, .. } => {
+            keep_ring_before(app, false);
+            sample_eyedropper(app, x, y, egui::Modifiers::NONE, false);
+        }
         ToolEvent::Move { x, y, .. } => sample_eyedropper(app, x, y, egui::Modifiers::NONE, true),
         ToolEvent::Up { .. } => app.alt_sampling = false,
     }
@@ -5760,6 +5794,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
     if tool == Tool::Eyedropper {
         match ev {
             ToolEvent::Down { x, y, .. } => {
+                keep_ring_before(app, mods.alt);
                 sample_eyedropper(app, x, y, mods, false);
                 return;
             }
@@ -6140,6 +6175,15 @@ pub(crate) fn event_tool(app: &PhotocraftApp, mods: egui::Modifiers) -> Tool {
             Tool::Move
         }
         t => t,
+    }
+}
+
+/// Does the Move tool's drag duplicate what it moves (⌥ held, or a drag that began with it)?
+/// Its cursor then shows the duplicate badge.
+pub(crate) fn move_duplicates(app: &PhotocraftApp, held: egui::Modifiers) -> bool {
+    match &app.drag {
+        Some(d) if d.tool == Tool::Move => d.modifiers.alt,
+        _ => held.alt && !held.ctrl,
     }
 }
 
@@ -6611,7 +6655,9 @@ pub fn paint_target(app: &PhotocraftApp) -> serde_json::Value {
     // Viewing the mask (⌥-click its thumbnail, #196) paints the mask.
     let viewing = photocraft_engine::mask_view_cmds::current(st).is_some();
     let mask = app.ui.mask_target || viewing || crate::adjustment_layer_active(st);
-    json!(if mask && has_mask { "mask" } else { "pixels" })
+    // The second mask's thumbnail targets it (not while the first mask is viewed alone).
+    let second = app.ui.second_mask_target && !viewing && st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.second_mask.is_some());
+    json!(if mask && has_mask { if second { "secondMask" } else { "mask" } } else { "pixels" })
 }
 
 #[cfg(test)]
@@ -7930,6 +7976,12 @@ mod tests {
         };
         assert!(near(new, 255, 0, 0), "{new:?}");
         assert!(near(current, 0, 51, 255), "{current:?}");
+        // Sampling changes the foreground as it goes: the lower half keeps the colour from before.
+        app.ring_before = Some([0.0, 1.0, 0.0]);
+        app.run("tools.setColors", json!({"foreground": [1.0, 0.0, 0.0, 1.0]})).unwrap();
+        let (_, current) = super::eyedropper_ring_colors(&mut app, 10.0, 10.0).unwrap();
+        assert!(near(current, 0, 255, 0), "{current:?}");
+        app.ring_before = None;
         // Transparency and points outside the canvas have nothing to compare.
         assert!(super::eyedropper_ring_colors(&mut app, 30.0, 10.0).is_none());
         assert!(super::eyedropper_ring_colors(&mut app, -1.0, 10.0).is_none());
@@ -9576,3 +9628,19 @@ mod display_memo_tests;
 #[cfg(test)]
 #[path = "canvas/blend_viewport_tests.rs"]
 mod blend_viewport_regression;
+
+#[cfg(test)]
+mod move_cursor_tests {
+    use egui::Modifiers;
+
+    /// ⌥ with the Move tool (a duplicating drag) gets the duplicate badge; ⌘ alone, and ⌃⌥ (the
+    /// brush-resize gesture), don't, so the two modifiers no longer show the same arrow.
+    #[test]
+    fn alt_with_the_move_tool_shows_the_duplicate_cursor() {
+        let app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
+        assert!(super::move_duplicates(&app, Modifiers::ALT));
+        assert!(!super::move_duplicates(&app, Modifiers::COMMAND));
+        assert!(!super::move_duplicates(&app, Modifiers::NONE));
+        assert!(!super::move_duplicates(&app, Modifiers::ALT | Modifiers::CTRL));
+    }
+}

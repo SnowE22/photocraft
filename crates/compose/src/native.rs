@@ -35,6 +35,7 @@ fn simple(layer: &Layer) -> bool {
         && !layer.clipped
         && !crate::masks::has_feather(layer)
         && layer.vector_mask.as_ref().is_none_or(|v| !v.enabled)
+        && !crate::masks::has_second_mask(layer)
         && !crate::effects::has_effects(layer)
         && layer.excluded_channels == 0
         && layer.blend_if.is_default()
@@ -126,6 +127,7 @@ fn collect<'a>(layers: &'a [Layer], depth: SampleType, adjustments: bool, items:
                 && mask.is_none()
                 && !layer.clipped
                 && layer.vector_mask.as_ref().is_none_or(|v| !v.enabled)
+                && !crate::masks::has_second_mask(layer)
                 && !crate::effects::has_effects(layer)
                 && layer.excluded_channels == 0
                 && layer.blend_if.is_default()

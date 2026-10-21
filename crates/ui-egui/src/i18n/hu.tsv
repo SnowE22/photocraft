@@ -4514,3 +4514,11 @@ cameraRaw	Yellow	Sárga
 	Use	Használat
 	In Front	Elöl
 	Behind	Mögött
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Második maszk hozzáadása  (a kijelölésből; a {key} megfordítja)
+	Convert to Vector Mask	Átalakítás vektormaszkká
+	Delete Second Mask	Második maszk törlése
+	Disable Second Mask	Második maszk kikapcsolása
+	Enable Second Mask	Második maszk bekapcsolása
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Kijelölés zárolása: a vászonra kattintás áthalad rajta (a Rétegek panel továbbra is kijelöli)

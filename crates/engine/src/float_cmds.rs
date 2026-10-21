@@ -34,6 +34,8 @@ pub struct CutParts {
     piece: Surface,
     /// The pieces are the layer's mask (`"target":"mask"`), not its pixels.
     mask: bool,
+    /// With `mask`: the second pixel mask (`"target":"secondMask"`).
+    second: bool,
 }
 
 impl CutParts {
@@ -42,11 +44,11 @@ impl CutParts {
     /// which can't hold transparency, one filled with `background` (Photoshop). Errors without a
     /// selection or pixels. With `mask` the layer's mask is split instead of its pixels; the hole it
     /// leaves takes the background colour (as on the Background layer).
-    pub fn new(doc: &Document, layer: LayerId, copy: bool, background: [f32; 4], mask: bool) -> Result<Self> {
+    pub fn new(doc: &Document, layer: LayerId, copy: bool, background: [f32; 4], mask: bool, second: bool) -> Result<Self> {
         let sel = doc.selection.as_ref().ok_or_else(|| EngineError::Other("no selection".into()))?;
         let l = doc.layer(layer).ok_or(EngineError::NoLayer(layer))?;
         let surf = if mask {
-            &l.mask.as_ref().ok_or_else(|| EngineError::Other("the layer has no mask".into()))?.surface
+            &l.pixel_mask(second).ok_or_else(|| EngineError::Other("the layer has no mask".into()))?.surface
         } else {
             let LayerContent::Raster(surf) = &l.content else {
                 return Err(EngineError::Other("the layer has no pixels to move".into()));
@@ -89,7 +91,7 @@ impl CutParts {
             piece.write_region(b, &pp);
             piece.prune();
         }
-        Ok(Self { layer, rest, piece, mask })
+        Ok(Self { layer, rest, piece, mask, second })
     }
 
     /// `doc` with the piece moved by whole pixels (dx, dy) over the cut-out layer.
@@ -103,7 +105,7 @@ impl CutParts {
     fn place(&self, doc: &mut Document, dx: i32, dy: i32) -> Result<()> {
         let l = doc.layer_mut(self.layer).ok_or(EngineError::NoLayer(self.layer))?;
         let surf = if self.mask {
-            l.mask.as_mut().map(|m| &mut m.surface).ok_or_else(|| EngineError::Other("the layer has no mask".into()))?
+            l.pixel_mask_mut(self.second).map(|m| &mut m.surface).ok_or_else(|| EngineError::Other("the layer has no mask".into()))?
         } else {
             l.surface_mut().ok_or_else(|| EngineError::Other("the layer has no pixels to move".into()))?
         };
@@ -176,7 +178,7 @@ fn float(s: &mut Session, p: &Value) -> Result<Value> {
     let st = s.active_mut().ok_or(EngineError::NoDocument)?;
     if floating(st).is_none() {
         let layer = st.active_layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
-        let parts = CutParts::new(&st.doc, layer, copy, background, crate::commands::is_mask_target(p))?;
+        let parts = CutParts::new(&st.doc, layer, copy, background, crate::commands::is_mask_target(p), crate::commands::is_second_mask_target(p))?;
         st.floating = Some(Floating { layer, offset: (0, 0), revision: st.revision, parts: Arc::new(parts) });
     }
     let f = st.floating.as_mut().ok_or(EngineError::NoDocument)?;

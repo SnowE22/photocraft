@@ -449,7 +449,7 @@ fn shift_shown(doc: &Document, l: &mut Layer, dx: i32, dy: i32) {
     if let Some(r) = &mut l.effects.reference {
         *r = (r.0 + f64::from(dx), r.1 + f64::from(dy));
     }
-    if let Some(m) = l.mask.as_mut().filter(|m| m.linked) {
+    for m in l.pixel_masks_mut().filter(|m| m.linked) {
         m.surface = translate_surface(&m.surface, dx, dy);
     }
     if let Some(vm) = l.vector_mask.as_mut().filter(|v| v.linked) {
@@ -624,6 +624,7 @@ fn layer_pixels_equal(a: &Layer, b: &Layer) -> bool {
         clipped,
         mask,
         vector_mask,
+        second_mask,
         effects,
         label: _,
         content,
@@ -645,6 +646,7 @@ fn layer_pixels_equal(a: &Layer, b: &Layer) -> bool {
         && *clipped == b.clipped
         && masks_equal(mask, &b.mask)
         && *vector_mask == b.vector_mask
+        && masks_equal(second_mask, &b.second_mask)
         && *effects == b.effects
         && *excluded_channels == b.excluded_channels
         && *blend_if == b.blend_if
@@ -1278,7 +1280,7 @@ fn link_layers(s: &mut Session) -> Result<Value> {
 
 fn lock_layers(s: &mut Session, p: &Value) -> Result<Value> {
     let sel = selected(s);
-    let keys = ["transparency", "pixels", "position", "artboard", "all"];
+    let keys = ["transparency", "pixels", "position", "artboard", "all", "selection"];
     let given: Vec<(&str, bool)> = keys.iter().filter_map(|k| Some((*k, p.get(*k)?.as_bool()?))).collect();
     s.edit("Lock Layers", |doc, _| {
         // No explicit locks: toggle "lock all" (on unless every selected layer is already locked).
@@ -1596,7 +1598,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "Lock Layers…",
             &["Layer"],
             None,
-            r##"{"transparency":bool?,"pixels":bool?,"position":bool?,"artboard":bool?,"all":bool?} (none given: toggle lock all)"##,
+            r##"{"transparency":bool?,"pixels":bool?,"position":bool?,"artboard":bool?,"all":bool?,"selection":bool? (canvas clicks pass through)} (none given: toggle lock all)"##,
             has_layer,
             lock_layers
         ),

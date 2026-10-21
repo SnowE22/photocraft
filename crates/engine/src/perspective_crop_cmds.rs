@@ -177,7 +177,7 @@ fn warp_layers(layers: &mut [Layer], h: &Homography, interp: Interp, clip: Rect,
             // Adjustment layers have no pixels; the rest was rasterized before.
             _ => {}
         }
-        if let Some(m) = l.mask.as_mut() {
+        for m in l.pixel_masks_mut() {
             m.surface = warp_gray(&m.surface, h, interp, clip)?;
         }
         l.fill_cache = None;

@@ -220,6 +220,9 @@ pub struct LayerM {
     pub mask: Option<MaskM>,
     #[serde(default)]
     pub vector_mask: Option<VectorMask>,
+    /// The second pixel mask (`Layer::second_mask`).
+    #[serde(default)]
+    pub second_mask: Option<MaskM>,
     pub effects: EffectsM,
     pub label: LabelColor,
     pub content: ContentM,

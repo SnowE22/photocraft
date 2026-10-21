@@ -1093,10 +1093,14 @@ impl Ex {
         let mut jobs: Vec<(u64, &Layer)> = walk
             .iter()
             .map(|(_, _, l)| *l)
-            .filter(|l| l.mask.is_some() || matches!(l.content, LayerContent::Raster(_) | LayerContent::Fill(_) | LayerContent::Text(_) | LayerContent::Shape(_)))
+            .filter(|l| {
+                l.mask.is_some() || matches!(l.content, LayerContent::Raster(_) | LayerContent::Fill(_) | LayerContent::Text(_) | LayerContent::Shape(_))
+            })
             .map(|l| {
                 let px = match &l.content {
-                    LayerContent::Fill(_) => l.fill_cache.as_ref().map_or((u64::from(self.canvas.width()) * u64::from(self.canvas.height())) >> 16, |c| size(Some(&c.surface))),
+                    LayerContent::Fill(_) => {
+                        l.fill_cache.as_ref().map_or((u64::from(self.canvas.width()) * u64::from(self.canvas.height())) >> 16, |c| size(Some(&c.surface)))
+                    }
                     LayerContent::Smart(_) | LayerContent::Group(_) | LayerContent::Adjustment(_) => 0,
                     _ => size(l.surface()),
                 };
@@ -1384,7 +1388,14 @@ fn cmyk_of(fmt: &PixelFormat) -> bool {
 /// `ctl` gets the fraction of rows done after each band; once it is cancelled the rest of the
 /// image is left blank (the caller discards it).
 /// `preview`, when given, is fed the composite's bands too (the file's thumbnail is made from them).
-fn merged_planes(doc: &Document, fmt: &PixelFormat, cmyk: bool, matte: bool, ctl: &Interrupt, mut preview: Option<&mut photocraft_compose::Reducer>) -> (Vec<u8>, bool, bool) {
+fn merged_planes(
+    doc: &Document,
+    fmt: &PixelFormat,
+    cmyk: bool,
+    matte: bool,
+    ctl: &Interrupt,
+    mut preview: Option<&mut photocraft_compose::Reducer>,
+) -> (Vec<u8>, bool, bool) {
     let sample = fmt.sample;
     let cc = fmt.mode.color_channels();
     let bps = sample.bytes();
@@ -1488,7 +1499,12 @@ pub(crate) fn document_to_psd_interruptible(doc: &Document, opts: &PsdExportOpti
 
 /// [`document_to_psd_interruptible`] that also feeds `preview` the merged composite as it renders
 /// it (when it does: with Maximize Compatibility), so the file's thumbnail needs no render of its own.
-pub(crate) fn document_to_psd_with_preview(doc: &Document, opts: &PsdExportOptions, ctl: &Interrupt, preview: Option<&mut photocraft_compose::Reducer>) -> (PsdFile, Vec<String>) {
+pub(crate) fn document_to_psd_with_preview(
+    doc: &Document,
+    opts: &PsdExportOptions,
+    ctl: &Interrupt,
+    preview: Option<&mut photocraft_compose::Reducer>,
+) -> (PsdFile, Vec<String>) {
     document_to_psd_nested(doc, opts, 0, ctl, preview)
 }
 
@@ -1619,7 +1635,16 @@ pub(crate) fn psd_size_exceeds_limit(doc: &Document) -> bool {
 }
 
 /// [`document_to_psd_with`] for a document embedded `depth` smart objects deep.
-fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, ctl: &Interrupt, preview: Option<&mut photocraft_compose::Reducer>) -> (PsdFile, Vec<String>) {
+fn document_to_psd_nested(
+    doc: &Document,
+    opts: &PsdExportOptions,
+    depth: u32,
+    ctl: &Interrupt,
+    preview: Option<&mut photocraft_compose::Reducer>,
+) -> (PsdFile, Vec<String>) {
+    // Second masks: multiplied into the layer mask, kept whole in a private block.
+    let prepared = crate::second_mask_psd::for_export(doc);
+    let doc = prepared.as_ref().unwrap_or(doc);
     if doc.mode == ColorMode::Multichannel {
         return crate::multichannel_map::document_to_psd(doc, opts.force_psb);
     }

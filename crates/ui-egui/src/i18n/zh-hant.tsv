@@ -3217,3 +3217,11 @@ curves	Smooth	平滑
 	In Front	前面
 	Behind	後面
 	Blend	混合
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	新增第二個遮色片  (從選取範圍；{key} 反轉)
+	Convert to Vector Mask	轉換為向量遮色片
+	Delete Second Mask	刪除第二個遮色片
+	Disable Second Mask	停用第二個遮色片
+	Enable Second Mask	啟用第二個遮色片
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	鎖定選取：在畫布上按一下會穿過它（圖層面板仍可選取）

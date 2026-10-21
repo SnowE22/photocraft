@@ -308,11 +308,12 @@ fn copy(s: &mut Session, merged: bool) -> Result<Value> {
 /// grayscale clip, inside the selection or the whole canvas — an untouched mask copies at its
 /// default value, so a plain Reveal All / Hide All mask transfers too. Paste then writes into
 /// another layer's mask (targeted, #1035), in this or another document.
-fn copy_mask(s: &mut Session) -> Result<Value> {
+fn copy_mask(s: &mut Session, second: bool) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
     let id = d.active_layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
-    let mask = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?.mask.as_ref().ok_or_else(|| EngineError::Other("the active layer has no layer mask".into()))?;
+    let mask =
+        d.doc.layer(id).ok_or(EngineError::NoLayer(id))?.pixel_mask(second).ok_or_else(|| EngineError::Other("the active layer has no layer mask".into()))?;
     let sel = d.doc.selection.as_ref();
     let area = sel.map_or(canvas, |m| m.content_bounds().intersect(&canvas));
     if area.is_empty() {
@@ -982,7 +983,7 @@ pub fn specs() -> Vec<CommandSpec> {
             can_copy,
             |s, p| {
                 if crate::commands::is_mask_target(p) {
-                    return copy_mask(s);
+                    return copy_mask(s, crate::commands::is_second_mask_target(p));
                 }
                 match crate::channel_clip::copy(s)? {
                     Some(r) => Ok(r),

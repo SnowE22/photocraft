@@ -258,10 +258,10 @@ fn run_on_layer(s: &mut Session, cmd: &str, label: &str, p: &Value, moves: bool,
         };
         *surf = f(surf, selection.as_ref(), canvas)?;
         // A linked layer mask follows a geometric warp, only where the pixels moved (#3083).
-        if let (Some(mf), Some(m)) = (mask, l.mask.as_mut())
-            && m.linked
-        {
-            m.surface = mf(&m.surface, selection.as_ref())?;
+        if let Some(mf) = mask {
+            for m in l.pixel_masks_mut().filter(|m| m.linked) {
+                m.surface = mf(&m.surface, selection.as_ref())?;
+            }
         }
         Ok(())
     })?;

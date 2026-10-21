@@ -4205,3 +4205,11 @@ navigator	Zoom	Zvětšení
 	Use	Použít
 	In Front	Vpředu
 	Behind	Vzadu
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Přidat druhou masku  (z výběru; {key} invertuje)
+	Convert to Vector Mask	Převést na vektorovou masku
+	Delete Second Mask	Odstranit druhou masku
+	Disable Second Mask	Vypnout druhou masku
+	Enable Second Mask	Zapnout druhou masku
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Zamknout výběr: kliknutí na plátno projde skrz (panel Vrstvy ji stále vybere)

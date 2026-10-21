@@ -4355,3 +4355,11 @@ curves	Smooth	Vloeiend maken
 	Use	Gebruiken
 	In Front	Voor
 	Behind	Achter
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Tweede masker toevoegen  (uit de selectie; {key} keert om)
+	Convert to Vector Mask	Omzetten in vectormasker
+	Delete Second Mask	Tweede masker verwijderen
+	Disable Second Mask	Tweede masker uitschakelen
+	Enable Second Mask	Tweede masker inschakelen
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Selectie vergrendelen: klikken op het canvas gaan erdoorheen (het deelvenster Lagen selecteert hem nog wel)

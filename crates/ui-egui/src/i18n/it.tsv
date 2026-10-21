@@ -4712,3 +4712,11 @@ shape	Appearance	Aspetto
 	Use	Usa
 	In Front	Davanti
 	Behind	Dietro
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Aggiungi una seconda maschera  (dalla selezione; {key} inverte)
+	Convert to Vector Mask	Converti in maschera vettoriale
+	Delete Second Mask	Elimina seconda maschera
+	Disable Second Mask	Disattiva seconda maschera
+	Enable Second Mask	Attiva seconda maschera
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Blocca selezione: i clic sulla tela la attraversano (il pannello Livelli la seleziona ancora)

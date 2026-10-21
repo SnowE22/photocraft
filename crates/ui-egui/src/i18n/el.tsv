@@ -4296,3 +4296,11 @@ curves	Smooth	Εξομάλυνση
 	Use	Χρήση
 	In Front	Μπροστά
 	Behind	Πίσω
+
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Προσθήκη δεύτερης μάσκας  (από την επιλογή· το {key} αντιστρέφει)
+	Convert to Vector Mask	Μετατροπή σε διανυσματική μάσκα
+	Delete Second Mask	Διαγραφή δεύτερης μάσκας
+	Disable Second Mask	Απενεργοποίηση δεύτερης μάσκας
+	Enable Second Mask	Ενεργοποίηση δεύτερης μάσκας
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Κλείδωμα επιλογής: τα κλικ στον καμβά περνούν από μέσα (το πάνελ Επίπεδα την επιλέγει ακόμη)
