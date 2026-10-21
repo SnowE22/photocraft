@@ -708,23 +708,13 @@ pub const PLAY_SHORTCUT_PREFIX: &str = "actions.play:";
 /// the Mac), in shortcut notation (`F2`, `Shift+F2`, `Cmd+F2`, `Cmd+Shift+F2`). None for a key
 /// number outside 1–15 (0 is "no key").
 pub fn action_key(function_key: u16, shift: bool, command: bool) -> Option<String> {
-    (1..=15).contains(&function_key).then(|| format!("{}{}F{function_key}", if command { "Cmd+" } else { "" }, if shift { "Shift+" } else { "" }))
+    (1..=15).contains(&function_key).then(|| crate::atn_cmds::function_key_name(function_key, shift, command))
 }
 
 /// [`action_key`] read back: the function key and its Shift and Control (⌘) flags. None for
 /// anything else (another key, Alt, a malformed string).
 pub fn parse_action_key(key: &str) -> Option<(u16, bool, bool)> {
-    let mut parts: Vec<&str> = key.split('+').collect();
-    let n = parts.pop()?.strip_prefix('F')?.parse::<u16>().ok().filter(|n| (1..=15).contains(n))?;
-    let (mut shift, mut command) = (false, false);
-    for p in parts {
-        match p {
-            "Shift" if !shift => shift = true,
-            "Cmd" if !command => command = true,
-            _ => return None,
-        }
-    }
-    Some((n, shift, command))
+    crate::atn_cmds::parse_function_key(key)
 }
 
 /// Rename an action in place. Nested `actions.play` steps that call it by name, and its

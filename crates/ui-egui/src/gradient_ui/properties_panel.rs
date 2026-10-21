@@ -49,10 +49,12 @@ fn options(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: &Layer) {
         if let Some(value) = numeric_row(ui, "angle", "Angle", angle, -180.0..=180.0, "°") {
             let _ = app.run(cmds::SET, json!({"layer": layer.id.0, "angle": value}));
         }
-        // Photoshop's field takes 10–150 %; a gradient drawn shorter or longer with its handles
+        // Photoshop's field takes 1–1000 %; a gradient drawn shorter or longer with its handles
         // shows its own scale without the field clamping (and so rewriting) it.
+        let (min, max) = cmds::SCALE_RANGE;
+        let (min, max) = (min * 100.0, max * 100.0);
         let pct = scale * 100.0;
-        let range = if pct.is_finite() { 10.0_f32.min(pct)..=150.0_f32.max(pct) } else { 10.0..=150.0 };
+        let range = if pct.is_finite() { min.min(pct)..=max.max(pct) } else { min..=max };
         if let Some(value) = numeric_row(ui, "scale", "Scale", pct, range, "%") {
             let _ = app.run(cmds::SET, json!({"layer": layer.id.0, "scale": value}));
         }

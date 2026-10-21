@@ -216,13 +216,13 @@ pub fn wand_press(app: &mut PhotocraftApp, x: f64, y: f64, mode: &str) {
 
 fn wand_params(app: &PhotocraftApp) -> Value {
     let o = &app.ui.tool_options;
-    let mut p = json!({"tolerance": o.tolerance, "contiguous": o.contiguous, "antiAlias": o.anti_alias, "sampleAllLayers": o.sample_all_layers});
+    let mut p = json!({"tolerance": o.tolerance, "contiguous": o.contiguous, "antiAlias": o.anti_alias, "sampleAllLayers": o.sample_all.magic_wand});
     let f = &o.wand_fill;
     if f.on() {
         p["closeGap"] = json!(f.close_gap);
         p["areaScaling"] = json!(f.area_scaling);
         p["scalingMode"] = json!(f.scaling_mode);
-        p["reference"] = json!(f.reference(o.sample_all_layers));
+        p["reference"] = json!(f.reference(o.sample_all.magic_wand));
         p["imageBorder"] = json!(o.fill_tool.image_border);
     }
     p
@@ -412,7 +412,7 @@ pub fn close_gap_buttons(ui: &mut Ui, gap: &mut f32, id: &str) {
 /// The Magic Wand's Fill-tool options: Refer, Close Gap and Area Scaling (off by default).
 pub fn wand_options(app: &mut PhotocraftApp, ui: &mut Ui) {
     use crate::panels::opt_label;
-    let sample_all = app.ui.tool_options.sample_all_layers;
+    let sample_all = app.ui.tool_options.sample_all.magic_wand;
     let f = &mut app.ui.tool_options.wand_fill;
     opt_label(ui, tl!("Refer"));
     let mut reference = f.reference(sample_all).to_string();
@@ -428,7 +428,7 @@ pub fn wand_options(app: &mut PhotocraftApp, ui: &mut Ui) {
         match reference.as_str() {
             "layer" | "all" => {
                 f.reference.clear();
-                app.ui.tool_options.sample_all_layers = reference == "all";
+                app.ui.tool_options.sample_all.magic_wand = reference == "all";
             }
             _ => f.reference = reference,
         }

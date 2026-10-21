@@ -28,12 +28,13 @@ pub const GET: &str = "gradient.fill.get";
 
 /// Largest coordinate accepted for a start/end point (pixels).
 const MAX_COORD: f32 = 1.0e7;
-/// Scale range of a typed gradient fill scale (a fraction): Photoshop's Scale field allows
-/// 10–150 % (the PSD stores a percentage).
-const SCALE_RANGE: (f32, f32) = (0.1, 1.5);
+
+/// Scale range of a typed Gradient Fill layer scale (a fraction): Photoshop allows 1–1000 %.
+/// Gradient Overlay effects have a separate range; the live tool creates fill layers.
+pub const SCALE_RANGE: (f32, f32) = (0.01, 10.0);
 /// Scale range of a gradient drawn or edited with its on-canvas handles. Photoshop's live
-/// gradient goes well past the Scale field's range, so a thin gradient can be drawn: a short drag
-/// is a short gradient, not one stretched to 10 % of the canvas around its middle. Past this the
+/// gradient goes past the Scale field's range, so a thin gradient can be drawn: a short drag
+/// is a short gradient, not one stretched to 1 % of the canvas around its middle. Past this the
 /// dragged handle stops and the other stays where it is.
 const HANDLE_SCALE_RANGE: (f32, f32) = (0.0005, 100.0);
 
@@ -154,7 +155,7 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
     s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
 
-fn clamp_scale(v: f32) -> f32 {
+pub(crate) fn clamp_scale(v: f32) -> f32 {
     v.clamp(SCALE_RANGE.0, SCALE_RANGE.1)
 }
 

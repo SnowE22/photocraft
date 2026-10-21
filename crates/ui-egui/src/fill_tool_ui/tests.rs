@@ -190,7 +190,7 @@ fn the_wand_closes_gaps_and_drags_on_like_the_fill() {
     let (mut app, _colour) = inked();
     app.ui.tool = Tool::MagicWand;
     app.ui.tool_options.anti_alias = false;
-    app.ui.tool_options.sample_all_layers = true;
+    app.ui.tool_options.sample_all.magic_wand = true;
     let none = egui::Modifiers::NONE;
     let sel = |app: &PhotocraftApp, x, y| app.session.active().unwrap().doc.selection.as_ref().map_or(0.0, |m| m.sample_channel(x, y, 0));
     tool_event(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 }, none);

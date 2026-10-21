@@ -523,9 +523,9 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let contents = name(p, "contents", "foreground")?;
     let (fg, bg) = (s.tools.foreground, s.tools.background);
     let (paint, c) = match contents {
-        "foreground" => (FillPaint::Blend(blend), color_param(p, "color", fg)),
-        "background" => (FillPaint::Blend(blend), color_param(p, "color", bg)),
-        "color" => (FillPaint::Blend(blend), p.get("color").map(|_| color_param(p, "color", fg)).ok_or_else(|| bad("`contents` color needs a `color`"))?),
+        "foreground" => (FillPaint::Blend(blend), color_param(FILL_ID, p, "color", fg)?),
+        "background" => (FillPaint::Blend(blend), color_param(FILL_ID, p, "color", bg)?),
+        "color" => (FillPaint::Blend(blend), p.get("color").map(|_| color_param(FILL_ID, p, "color", fg)).ok_or_else(|| bad("`contents` color needs a `color`"))??),
         "transparent" => (FillPaint::Erase, [0.0; 4]),
         _ => return Err(bad("`contents` must be foreground, background, color or transparent")),
     };

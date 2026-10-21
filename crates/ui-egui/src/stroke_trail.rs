@@ -86,8 +86,9 @@ impl Trail {
         self.fed = points.len();
     }
 
-    /// Stamp a stroke of its own (not the continuation of the last one): all of `points`.
-    pub fn feed_new_stroke(&mut self, points: &[[f64; 3]], diameter: f32) {
+    /// Stamp a whole new drag into the same mask (the Remove tool's waiting strokes, #6555): its
+    /// points are counted from its own start, not from where the previous drag ended.
+    pub fn feed_stroke(&mut self, points: &[[f64; 3]], diameter: f32) {
         self.fed = 0;
         self.feed(points, diameter);
     }
@@ -305,6 +306,24 @@ mod tests {
     }
 
     #[test]
+    fn each_stroke_fed_whole_is_stamped_in_full() {
+        let mut t = Trail::new([300, 300]);
+        let strokes: [&[[f64; 3]]; 3] = [
+            &[[50.0, 50.0, 1.0], [120.0, 50.0, 1.0], [200.0, 50.0, 1.0]],
+            &[[50.0, 120.0, 1.0], [120.0, 120.0, 1.0]],
+            &[[50.0, 200.0, 1.0], [80.0, 200.0, 1.0], [120.0, 200.0, 1.0], [160.0, 200.0, 1.0], [200.0, 200.0, 1.0], [260.0, 200.0, 1.0]],
+        ];
+        for s in strokes {
+            t.feed_stroke(s, 10.0);
+        }
+        for (x, y) in [(50, 50), (85, 50), (199, 50), (50, 120), (85, 120), (119, 120), (50, 200), (65, 200), (100, 200), (259, 200)] {
+            assert_eq!(t.coverage(x, y), 255, "({x}, {y}) lies on a stroke");
+        }
+        assert_eq!(t.coverage(50, 85), 0, "no capsule joins one stroke's end to the next one's start");
+        assert_eq!(t.coverage(150, 160), 0);
+    }
+
+    #[test]
     fn hostile_points_and_huge_documents_are_safe() {
         let mut t = Trail::new([300_000, 2]);
         assert!(t.scale() > 1.0 && t.w <= MAX_SIDE as usize);
@@ -355,7 +374,7 @@ mod tests {
         open.fill_enclosed();
         assert_eq!(open.coverage(50, 50), 0, "an open arc encloses nothing");
         // A second, shorter stroke is stamped whole.
-        open.feed_new_stroke(&[[10.0, 90.0, 1.0], [12.0, 90.0, 1.0]], 4.0);
+        open.feed_stroke(&[[10.0, 90.0, 1.0], [12.0, 90.0, 1.0]], 4.0);
         assert!(open.coverage(10, 90) > 0);
     }
 }

@@ -54,6 +54,7 @@ fn a_live_adjustment_on_a_large_document_composites_on_the_gpu_not_the_cpu_proxy
         h.step();
         let app = h.state();
         assert!(app.proxy.is_none() && app.proxy_uploaded.is_none(), "no CPU proxy was built (hue {hue})");
-        assert_eq!(app.perf.last_refresh, "gpu-full", "the canvas composited the full-size preview on the GPU (hue {hue})");
+        // The whole document, or (#6839) just the adjustment layer's area the view shows.
+        assert!(matches!(app.perf.last_refresh, "gpu-full" | "gpu-rect"), "the canvas composited the full-size preview on the GPU (hue {hue}): {}", app.perf.last_refresh);
     }
 }

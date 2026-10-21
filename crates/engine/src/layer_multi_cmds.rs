@@ -886,9 +886,9 @@ pub(crate) fn note_inert_insert(s: &mut Session, id: LayerId) {
     }
 }
 
-/// Report the pixels an edit from `before` that added layers changed ([`step_damage`]), for
-/// commands made of more than one edit, so the canvas recomposites only where the new layers
-/// draw instead of the whole document.
+/// Report the pixels a command made of more than one edit changed since `before` ([`step_damage`]),
+/// so the canvas recomposites only where its new layers draw instead of the whole document.
+/// A single [`Session::edit`] already reports its own damage: don't call this after one (#5695).
 pub(crate) fn note_insert(s: &mut Session, before: &Document) {
     let Some(st) = s.active_mut() else { return };
     st.last_damage = step_damage(before, &st.doc);
@@ -1477,7 +1477,6 @@ fn panel_order(doc: &Document, ids: &[LayerId]) -> Vec<LayerId> {
 /// `label` names the history step (Layer via Copy reuses this path, #2777).
 pub fn duplicate_selected(s: &mut Session, in_place: bool, label: &str) -> Result<Value> {
     let sel = selected(s);
-    let before = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     let old_active = s.active().and_then(|d| d.active_layer);
     let (copies, active) = s.edit(label, |doc, active| {
         let mut copies = Vec::new();
@@ -1504,7 +1503,6 @@ pub fn duplicate_selected(s: &mut Session, in_place: bool, label: &str) -> Resul
         *active = a;
         Ok((copies, a))
     })?;
-    note_insert(s, &before);
     let out = copies.iter().map(|l| l.0).collect::<Vec<_>>();
     reselect(s, copies, active);
     Ok(json!({"layers": out, "layer": active.map(|l| l.0)}))
@@ -1950,8 +1948,8 @@ mod tests {
         x.px.iter().zip(&y.px).enumerate().all(|(i, (p, q))| p == q || damage.contains(i as i32 % w, i as i32 / w))
     }
 
-    /// Duplicate, paste and delete, and their undo and redo, recomposite only where the layer
-    /// draws; undoing a duplicate used to recomposite the whole document.
+    /// Duplicate (one layer or several), paste and delete, and their undo and redo, recomposite
+    /// only where the layers draw; undoing a duplicate used to recomposite the whole document.
     #[test]
     fn duplicate_paste_and_delete_report_where_the_layer_draws() {
         let mut s = session(8);
@@ -1974,6 +1972,12 @@ mod tests {
         s.execute("edit.copy", json!({})).unwrap();
         s.execute("select.deselect", json!({})).unwrap();
         step(&mut s, "edit.paste", json!({}));
+        // Duplicating several selected layers reports where the copies draw, too.
+        let b = rect_layer(&mut s, Rect::new(30, 30, 40, 40));
+        s.execute("layer.select", json!({"layer": a.0})).unwrap();
+        s.execute("layer.select", json!({"layer": b.0, "mode": "add"})).unwrap();
+        step(&mut s, "layer.duplicate", json!({}));
+        assert_eq!(damage(&s), Some(Rect::new(10, 10, 40, 40)), "both copies, nothing else");
         step(&mut s, "layer.delete", json!({"layer": a.0}));
     }
 

@@ -679,16 +679,10 @@ fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: &str) {
     let pro = crate::theme::Tokens::get(ui.ctx()).pro;
     let Some(tab) = group.tabs(pro).iter().position(|name| name == label) else { return };
     *group.tab_mut(&mut app.ui.dock_tabs) = tab;
-    // The Color field fills its panel here too, docked or floating, so resizing the panel
-    // resizes the field (the legacy dock sets this the same way). Without it, moving any panel
-    // left the field at a fixed 120 pt.
-    if pro && id == "color" {
-        let inner = ui.available_height().max(0.0);
-        ui.data_mut(|d| d.insert_temp(crate::panels::color_field_fill_id(), inner));
-    }
     if group.scrolls_itself(tab) {
         crate::panels::dock_body(app, ui, *group, tab);
     } else {
+        crate::panels::offer_color_field_fill(ui, pro, *group, tab);
         egui::ScrollArea::vertical()
             .id_salt(("shared-panel-body", id))
             .auto_shrink([false, false])

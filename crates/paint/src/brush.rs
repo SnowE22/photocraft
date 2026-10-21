@@ -600,9 +600,14 @@ impl Default for BrushSettings {
 }
 
 impl BrushSettings {
-    /// Resize the primary tip and keep the Dual Brush tip at the same relative size
-    /// ([`Self::scale_dual_with_size`]). An explicit Dual Brush size edit should bypass this and
-    /// retain the requested diameter.
+    /// Resize the primary tip and keep an enabled Dual Brush tip at the same relative size.
+    /// An explicit Dual Brush size edit should bypass this and retain the requested diameter.
+    ///
+    /// As in Photoshop, the dual diameter is multiplied by the size ratio unrounded and only capped
+    /// at the top ([`MAX_BRUSH_SIZE`]): a 100 px brush with a 20 px dual tip shrunk to 1 px has a
+    /// 0.2 px dual tip and grows back to exactly 20 px. A sub-pixel floor here would lose the
+    /// proportion on the way back up (#4809); rendering bounds the diameter itself
+    /// ([`Self::bounded_for_render`]).
     pub fn resize_with_dual_brush(&mut self, new_size: f32) {
         let old = self.size;
         self.size = new_size;
@@ -629,7 +634,7 @@ impl BrushSettings {
         brush
     }
 
-    /// After the diameter changed from `old` to `self.size`: scale the Dual Brush tip by as much.
+    /// After the diameter changed from `old` to `self.size`: scale an enabled Dual Brush tip by as much.
     /// Photoshop keeps the dual tip in proportion to the brush (its Size field follows `[` / `]`),
     /// so a resized preset keeps its pattern; Texture is in document pixels and stays.
     pub fn scale_dual_with_size(&mut self, old: f32) {
@@ -637,10 +642,14 @@ impl BrushSettings {
         if !(old > 0.0 && k.is_finite() && k > 0.0) || k == 1.0 {
             return;
         }
+        if !self.dual_brush.enabled {
+            return;
+        }
         let d = self.dual_brush.size * k;
-        // No floor at a pixel: a brush shrunk to 1 px and grown back gets its dual tip back.
-        if d.is_finite() {
-            self.dual_brush.size = d.clamp(0.01, MAX_BRUSH_SIZE);
+        // No floor: a brush shrunk to 1 px and grown back gets its dual tip back. A bad dual
+        // size (NaN fails the comparison, zero or negative) is left alone; infinity is capped.
+        if d > 0.0 {
+            self.dual_brush.size = d.min(MAX_BRUSH_SIZE);
         }
     }
 
