@@ -225,7 +225,53 @@ fn main() {
     let fills: Vec<Vec<f64>> = (0..reps).map(|i| drag(&mut h, [w * (0.3 + 0.05 * i as f64), hh * 0.5], [0.0, 0.0], 1)).collect();
     drag_rows("Fill tool click", &fills);
 
+    pan_rows(&mut h, reps);
+
     println!("perf spans: {:?}", h.state().perf.spans);
+}
+
+/// Fast pans with the Hand tool, 60 screen points a frame back and forth, at fit, 100 % and
+/// 200 %: each frame's time and what the canvas did in it (`perf.last_refresh`: a composite or
+/// just drawing the texture).
+fn pan_rows(h: &mut H, reps: usize) {
+    h.state_mut().ui.tool = Tool::Hand;
+    settle(h, 3);
+    for (label, zoom) in [("fit", None), ("100 %", Some(1.0f32)), ("200 %", Some(2.0))] {
+        let idx = h.state().session.active_index().unwrap_or(0);
+        match zoom {
+            Some(z) => {
+                let v = &mut h.state_mut().ui.views[idx];
+                v.zoom = z;
+                v.center = [v.doc_size[0] as f32 / 2.0, v.doc_size[1] as f32 / 2.0];
+            }
+            None => h.state_mut().ui.views[idx].fit_pending = true,
+        }
+        settle(h, 8);
+        let c = h.state().last_canvas_rect.center();
+        let mut times = Vec::new();
+        let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+        for rep in 0..reps.max(3) {
+            let dir = if rep.is_multiple_of(2) { 1.0 } else { -1.0 };
+            let mut p = c;
+            h.event(Event::PointerMoved(p));
+            frame(h);
+            h.event(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE });
+            frame(h);
+            for _ in 0..12 {
+                p.x += 60.0 * dir;
+                p.y += 25.0 * dir;
+                h.event(Event::PointerMoved(p));
+                h.state_mut().perf.last_refresh = "";
+                times.push(frame(h));
+                *kinds.entry(h.state().perf.last_refresh.to_string()).or_default() += 1;
+            }
+            h.event(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
+            frame(h);
+            settle(h, 2);
+        }
+        row(&format!("pan with the Hand tool, {label}: frames"), times);
+        println!("    canvas work in those frames: {kinds:?}");
+    }
 }
 
 fn spin(h: &mut H, what: &str, biggest: LayerId, picks: &[LayerId], [w, hh]: [f64; 2]) {
