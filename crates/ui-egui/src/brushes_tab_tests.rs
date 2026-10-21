@@ -426,3 +426,46 @@ fn card_tips_never_cover_their_size_number() {
         assert!(r.min.is_finite() && r.max.is_finite(), "{n} {size} {scale}: {r:?}");
     }
 }
+
+/// A big library in a short Brushes panel builds only the rows in view (each tile is a widget:
+/// building hundreds a frame slowed every frame, panning included), yet the list keeps them all:
+/// scrolled to the end, Shift-click selects from the first preset to the last.
+#[test]
+fn rows_out_of_view_are_not_built_but_stay_listed() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    let base = app.session.tools.presets[0].clone();
+    app.session.tools.presets = (0..300).map(|i| BrushPreset { name: format!("Brush {i:03}"), ..base.clone() }).collect();
+    app.ui.brushes_panel.collapsed.clear();
+    let mut h = Harness::builder().with_size(vec2(600.0, 500.0)).build_ui_state(
+        |ui, app: &mut PhotocraftApp| {
+            let ctx = ui.ctx().clone();
+            if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                return;
+            }
+            egui::Window::new("Brushes").fixed_size(vec2(320.0, 300.0)).show(&ctx, |ui| show(app, ui));
+        },
+        app,
+    );
+    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+    h.run_steps(6);
+    let built = |h: &Harness<'_, PhotocraftApp>| h.query_all_by_role(Role::Button).filter(|n| n.accesskit_node().label().is_some_and(|l| l.starts_with("Brush "))).count();
+    let shown = built(&h);
+    assert!(shown > 0 && shown < 100, "{shown} of 300 tiles built");
+    // Click the first, scroll to the end, Shift-click the last: all 300 are selected.
+    h.get_by_role_and_label(Role::Button, "Brush 000").click();
+    h.run_steps(2);
+    for _ in 0..40 {
+        h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -400.0), phase: egui::TouchPhase::Move, modifiers: egui::Modifiers::NONE });
+        h.run_steps(1);
+    }
+    h.run_steps(2);
+    let last = h.get_by_role_and_label(Role::Button, "Brush 299").rect().center();
+    h.event(egui::Event::PointerMoved(last));
+    let shift = egui::Modifiers::SHIFT;
+    h.event(egui::Event::ModifiersChanged(shift));
+    h.run_steps(1);
+    h.event(egui::Event::PointerButton { pos: last, button: egui::PointerButton::Primary, pressed: true, modifiers: shift });
+    h.event(egui::Event::PointerButton { pos: last, button: egui::PointerButton::Primary, pressed: false, modifiers: shift });
+    h.run_steps(3);
+    assert_eq!(h.state().ui.brushes_panel.selected.len(), 300);
+}

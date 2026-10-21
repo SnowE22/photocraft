@@ -646,6 +646,16 @@ fn tiles(ui: &mut egui::Ui, d: &Draw, run: &[&BrushPreset], parent: &[String], i
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing = vec2(TILE_GAP, TILE_GAP);
         for row in run.chunks(cols) {
+            // A row out of view takes its space and nothing else: building every tile of a big
+            // library each frame cost ~2 ms (of a 4 ms frame budget at 240 Hz) while panning the
+            // canvas. Its presets still count as listed, for Shift-click ranges.
+            let top = ui.cursor().top();
+            let clip = ui.clip_rect();
+            if top > clip.bottom() + h || top + h < clip.top() - h {
+                d.visible.borrow_mut().extend(row.iter().map(|p| BrushItem::Preset(p.name.clone())));
+                ui.allocate_exact_size(vec2(ui.available_width(), h), Sense::hover());
+                continue;
+            }
             ui.horizontal(|ui| {
                 ui.add_space(indent);
                 for p in row {

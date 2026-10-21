@@ -2186,16 +2186,24 @@ impl PhotocraftApp {
         panels::sync_window_title(self, &ctx);
         let chrome = !self.ui.view.hides_chrome();
         if chrome && self.ui.panels.menu_bar {
+            let t = gpu_canvas::now_ms();
             panels::title_bar(self, ui);
+            self.perf.span("ui: title bar", gpu_canvas::now_ms() - t);
         }
         if chrome && self.ui.panels.options_bar {
+            let t = gpu_canvas::now_ms();
             panels::options_bar(self, ui);
+            self.perf.span("ui: options bar", gpu_canvas::now_ms() - t);
         }
         if chrome && self.ui.panels.toolbar {
+            let t = gpu_canvas::now_ms();
             panels::toolbar(self, ui);
+            self.perf.span("ui: toolbar", gpu_canvas::now_ms() - t);
         }
         if chrome && self.ui.panels.dock {
+            let t = gpu_canvas::now_ms();
             panels::right_dock(self, ui);
+            self.perf.span("ui: dock", gpu_canvas::now_ms() - t);
         } else if chrome && self.ui.panels.toolbar {
             // With the dock hidden, a Tools panel docked at that side still shows.
             panels::toolbar_end(self, ui);
@@ -2206,13 +2214,19 @@ impl PhotocraftApp {
             // Photoshop's status bar belongs to the document window: it spans the canvas, and the
             // Tools panel and the docks reach the bottom of the window beside it.
             if chrome && self.ui.panels.status_bar {
+                let t = gpu_canvas::now_ms();
                 panels::status_bar(self, ui);
+                self.perf.span("ui: status bar", gpu_canvas::now_ms() - t);
             }
+            let t = gpu_canvas::now_ms();
             canvas::document_area(self, ui);
+            self.perf.span("ui: document", gpu_canvas::now_ms() - t);
         });
         panels::properties_window(self, &ctx);
         brush_panel::window(self, &ctx);
+        let t = gpu_canvas::now_ms();
         preset_panels::windows(self, &ctx);
+        self.perf.span("ui: floating panels", gpu_canvas::now_ms() - t);
         gradient_ui::editor_window(self, &ctx);
         type_panels_ui::windows(self, &ctx);
         analysis_ui::windows(self, &ctx);
@@ -2253,7 +2267,9 @@ impl PhotocraftApp {
         // Topaz Gigapixel AI's export, once it is there (and the strip while waiting).
         gigapixel_ui::frame(self, &ctx);
         // File › Timelapse: follow edits, capture frames, and the Timelapse panel.
+        let t = gpu_canvas::now_ms();
         timelapse_ui::frame(self, &ctx);
+        self.perf.span("ui: timelapse", gpu_canvas::now_ms() - t);
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
         // So are View › Extras, Show and Snap To (#3762).
@@ -2282,8 +2298,15 @@ impl PhotocraftApp {
         self.perf.frame(ui_ms);
         if self.stroke_trace.enabled() {
             self.stroke_trace.canvas(self.perf.frame_refresh_ms);
+            // This frame's spans only: each is set again by the frame that measures it.
+            let spans: Vec<String> = self.perf.spans.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            self.stroke_trace.spans(spans.join(";"));
+            self.perf.spans.clear();
             let info = &self.perf.gpu_info;
-            self.stroke_trace.end_frame(ui_ms, self.live_stroke.is_some(), || {
+            // A Hand-tool (or Space) pan is traced like a stroke: its frames' pacing is what a
+            // fast pan looks like.
+            let panning = self.active_tool() == state::Tool::Hand && ctx.input(|i| i.pointer.primary_down());
+            self.stroke_trace.end_frame(ui_ms, self.live_stroke.is_some() || panning, || {
                 let gpu = format!("{} {}", info.backend, info.adapter).trim().to_string();
                 if info.present.is_empty() { gpu } else { format!("{gpu}, {}", info.present) }
             });

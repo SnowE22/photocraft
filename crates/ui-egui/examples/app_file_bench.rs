@@ -122,12 +122,18 @@ fn main() {
 
     // As the desktop app starts: the GPU canvas, its compositor warming up; the file opened a
     // moment later (`--cold`: at once, without the warm-up).
+    let prefs = arg(&args, "--prefs").map(|p| std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("{p}: {e}")));
     let cold = args.iter().any(|a| a == "--cold" || a == "--sleep-only");
     let pause = !args.iter().any(|a| a == "--cold" || a == "--warm-only");
     let builder = egui_kittest::Harness::builder().with_size(egui::vec2(sw, sh)).with_pixels_per_point(1.0);
     let mut h: H = builder.wgpu_setup(photocraft_ui_egui::gpu_canvas::wgpu_setup()).build_eframe(move |cc| {
         PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
-        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Services::default());
+        let mut session = photocraft_engine::Session::new();
+        // `--prefs file.json`: a user's preferences (their workspace and panel layout).
+        if let Some(text) = prefs.as_deref() {
+            let _ = session.load_prefs_json(text);
+        }
+        let mut app = PhotocraftApp::new(session, Services::default());
         if let Some(rs) = cc.wgpu_render_state.as_ref() {
             app.set_wgpu(rs.clone());
             if !cold {
@@ -147,6 +153,10 @@ fn main() {
     println!("open + first frames: {:.0} ms (gpu {}, first composite {:.0} ms)", ms(t), h.state().perf.gpu, h.state().perf.composite_ms);
     settle(&mut h, 6);
 
+    if args.iter().any(|a| a == "--pan-only") {
+        pan_rows(&mut h, reps);
+        return;
+    }
     if let Some(what) = arg(&args, "--spin") {
         spin(&mut h, &what, biggest, &picks, [w, hh]);
         return;
@@ -213,7 +223,8 @@ fn main() {
     for (label, id) in [("Move the biggest layer", biggest), ("Move a smaller layer", small)] {
         select(&mut h, id);
         settle(&mut h, 3);
-        let drags: Vec<Vec<f64>> = (0..reps).map(|i| drag(&mut h, [w * 0.5, hh * 0.5], if i.is_multiple_of(2) { [37.0, 23.0] } else { [-37.0, -23.0] }, 10)).collect();
+        let drags: Vec<Vec<f64>> =
+            (0..reps).map(|i| drag(&mut h, [w * 0.5, hh * 0.5], if i.is_multiple_of(2) { [37.0, 23.0] } else { [-37.0, -23.0] }, 10)).collect();
         drag_rows(label, &drags);
     }
 
@@ -250,6 +261,7 @@ fn pan_rows(h: &mut H, reps: usize) {
         let c = h.state().last_canvas_rect.center();
         let mut times = Vec::new();
         let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
+        let mut spans: std::collections::BTreeMap<&'static str, Vec<f64>> = Default::default();
         for rep in 0..reps.max(3) {
             let dir = if rep.is_multiple_of(2) { 1.0 } else { -1.0 };
             let mut p = c;
@@ -262,8 +274,12 @@ fn pan_rows(h: &mut H, reps: usize) {
                 p.y += 25.0 * dir;
                 h.event(Event::PointerMoved(p));
                 h.state_mut().perf.last_refresh = "";
+                h.state_mut().perf.spans.clear();
                 times.push(frame(h));
                 *kinds.entry(h.state().perf.last_refresh.to_string()).or_default() += 1;
+                for (k, v) in &h.state().perf.spans {
+                    spans.entry(k).or_default().push(*v);
+                }
             }
             h.event(Event::PointerButton { pos: p, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE });
             frame(h);
@@ -271,6 +287,9 @@ fn pan_rows(h: &mut H, reps: usize) {
         }
         row(&format!("pan with the Hand tool, {label}: frames"), times);
         println!("    canvas work in those frames: {kinds:?}");
+        let mut by: Vec<(f64, &str)> = spans.iter().map(|(k, v)| (v.iter().sum::<f64>() / v.len().max(1) as f64, *k)).collect();
+        by.sort_by(|a, b| b.0.total_cmp(&a.0));
+        println!("    mean ms a frame: {}", by.iter().map(|(ms, k)| format!("{k} {ms:.2}")).collect::<Vec<_>>().join(", "));
     }
 }
 

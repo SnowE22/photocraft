@@ -2075,8 +2075,15 @@ fn dock_panels(app: &mut PhotocraftApp, ui: &mut egui::Ui, p: &crate::state::Pan
     });
 }
 
-/// One dock group's tab content; `dock` bounds it and scrolls it when it's taller.
+/// One dock group's tab content; `dock` bounds it and scrolls it when it's taller. Its build time
+/// is a perf span named after the group (`perf.spans`), for finding what a frame spends.
 pub(crate) fn dock_body(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate::dock::Group, tab: usize) {
+    let t = crate::gpu_canvas::now_ms();
+    dock_body_inner(app, ui, group, tab);
+    app.perf.span(group.key(), crate::gpu_canvas::now_ms() - t);
+}
+
+fn dock_body_inner(app: &mut PhotocraftApp, ui: &mut egui::Ui, group: crate::dock::Group, tab: usize) {
     use crate::dock::Group;
     let pro = Tokens::get(ui.ctx()).pro;
     match (group, tab) {
