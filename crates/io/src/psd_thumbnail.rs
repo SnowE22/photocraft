@@ -21,9 +21,11 @@ pub const MAX_SIDE: u32 = 160;
 pub const HEADER_LEN: usize = 28;
 
 /// The 1036 resource for `doc`: its composite reduced to at most [`MAX_SIDE`], converted to
-/// sRGB through the document's profile, matted over white and JPEG-compressed.
-pub(crate) fn resource(doc: &Document) -> Result<ImageResource, IoError> {
-    let (w, h, rgb) = srgb_preview(doc, MAX_SIDE)?;
+/// sRGB through the document's profile, matted over white and JPEG-compressed. `reduced` is the
+/// composite already reduced to that size, when the save made it on the way
+/// ([`photocraft_compose::thumbnail_reducer`] fed the merged image's bands).
+pub(crate) fn resource(doc: &Document, reduced: Option<photocraft_compose::Buffer>) -> Result<ImageResource, IoError> {
+    let (w, h, rgb) = srgb_of(doc, reduced.unwrap_or_else(|| photocraft_compose::thumbnail_buffer(doc, MAX_SIDE)), MAX_SIDE)?;
     let img = Image::from_raw(w, h, ChannelLayout::Rgb, CSample::U8, rgb)?;
     let opts = EncodeOptions { jpeg_quality: 80, embed_icc: false, embed_metadata: false, ..EncodeOptions::default() };
     let jfif = photocraft_codecs::encode(&img, Format::Jpeg, &opts)?;
@@ -34,7 +36,11 @@ pub(crate) fn resource(doc: &Document) -> Result<ImageResource, IoError> {
 /// through the document's profile and matted over white: `(width, height, RGB8 bytes)`. Used for
 /// the PSD thumbnail and for timelapse frames.
 pub fn srgb_preview(doc: &Document, max_side: u32) -> Result<(u32, u32, Vec<u8>), IoError> {
-    let mut buf = photocraft_compose::thumbnail_buffer(doc, max_side.max(1));
+    srgb_of(doc, photocraft_compose::thumbnail_buffer(doc, max_side.max(1)), max_side)
+}
+
+/// [`srgb_preview`] of `buf`, the document's composite reduced to at most `max_side`.
+fn srgb_of(doc: &Document, mut buf: photocraft_compose::Buffer, max_side: u32) -> Result<(u32, u32, Vec<u8>), IoError> {
     let (w, h) = (buf.rect.width(), buf.rect.height());
     if w == 0 || h == 0 || w > max_side.max(1) || h > max_side.max(1) || buf.px.len() != (w as usize) * (h as usize) {
         return Err(IoError::Unsupported("the image preview could not be rendered".into()));

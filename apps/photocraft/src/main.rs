@@ -647,6 +647,8 @@ fn main() -> eframe::Result {
                     && app.session.prefs().performance.effective_rendering_mode() != photocraft_engine::prefs::RenderingMode::Cpu
                 {
                     app.set_wgpu(rs);
+                    // The layer compositor's shaders build while the app starts (seconds on D3D12).
+                    app.warm_up_gpu();
                 } else {
                     // The window still draws with wgpu: record its errors instead of panicking,
                     // and restart when the device is lost (see `gpu_status`).

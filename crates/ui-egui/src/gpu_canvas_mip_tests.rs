@@ -102,3 +102,37 @@ fn check_mips(gpu: &GpuCanvas) {
         }
     }
 }
+
+/// The compositor built on a thread at start ([`GpuCanvas::warm_up`]) is the one the first
+/// composite takes, and a canvas dropped while one builds waits for it.
+#[test]
+fn the_warmed_up_compositor_composites_the_first_document() {
+    let _gpu = photocraft_testkit::gpu_lock();
+    let rs = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| egui_kittest::wgpu::create_render_state(wgpu_setup(), Default::default())));
+    let Ok(rs) = rs else {
+        eprintln!("skipping warm-up: no GPU adapter");
+        return;
+    };
+    let gpu = GpuCanvas::new(&rs);
+    gpu.warm_up();
+    gpu.warm_up();
+    let building = |gpu: &GpuCanvas| gpu.rs.renderer.read().callback_resources.get::<Resources>().is_some_and(|r| r.compositor_warmup.is_some());
+    assert!(building(&gpu), "building on a thread");
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", serde_json::json!({"width": 64, "height": 64, "background": "white"})).unwrap();
+    let doc = s.active().unwrap().doc.clone();
+    let r = gpu.refresh(doc.id.0, &doc, None, None);
+    assert_eq!(r.kind, "gpu-full", "{r:?}");
+    assert!(!building(&gpu), "taken by the first composite");
+    // Asked again with a compositor in place: nothing to build.
+    gpu.warm_up();
+    assert!(!building(&gpu));
+    drop(gpu);
+    drop(rs);
+    // Dropped while building: the drop waits for it (no thread left in the driver).
+    let rs = egui_kittest::wgpu::create_render_state(wgpu_setup(), Default::default());
+    let gpu = GpuCanvas::new(&rs);
+    gpu.warm_up();
+    drop(gpu);
+    drop(rs);
+}

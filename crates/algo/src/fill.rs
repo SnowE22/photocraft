@@ -142,7 +142,7 @@ pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptio
         // other pixel for a line changes no distance there: the areas come out as they do over
         // the whole page, and the narrow-spot climb can't step across a thin diagonal line into
         // the next spot.
-        let (labels, seed_label) = areas(&spot, cw, ch, gap, o.image_border, Some(csi));
+        let (labels, seed_label) = areas(&spot, cw, ch, gap, [o.image_border; 4], Some(csi));
         let l = seed_label?;
         let mut fill: Vec<bool> = labels.iter().map(|v| *v == l).collect();
         cover_seams(&mut fill, &labels, &spot, cw, ch);
@@ -161,6 +161,46 @@ pub fn enclosed_region(img: &[[u8; 4]], area: Rect, inside: &[bool], target: Tar
     if inside.len() != w * h {
         return None;
     }
+    // Only areas wholly inside the lasso fill, so the work is done on its box and a margin, not
+    // the page. An area reaching into the margin leaves the lasso there. The margin is wide enough
+    // that an area that goes on past it (blank past the margin's edge, as past a canvas edge with
+    // Image Border off) is no small or shallow one beside a gap: what a gap closes inside the lasso
+    // comes out as over the whole page. An area that ends inside the margin is exactly as it is
+    // over the whole page (areas never cross a line).
+    let (x0, y0, x1, y1) = mark_box(inside, w)?;
+    let gap = finite(o.close_gap, MAX_GAP);
+    let amount = if o.scale.is_finite() { o.scale.clamp(-MAX_SCALE, MAX_SCALE).abs() } else { 0.0 };
+    let r = (gap + 2.0) / 2.0;
+    let pad = if gap < 1.0 { 2 } else { (8.0 * r).ceil() as usize } + amount.ceil() as usize + 4;
+    let (cx0, cy0) = (x0.saturating_sub(pad), y0.saturating_sub(pad));
+    let (cx1, cy1) = ((x1 + pad + 1).min(w), (y1 + pad + 1).min(h));
+    // The canvas edge closes gaps only where it is the box's edge too, and with Image Border on.
+    let border = [cx0 == 0, cy0 == 0, cx1 == w, cy1 == h].map(|edge| edge && o.image_border);
+    if (cx0, cy0, cx1, cy1) == (0, 0, w, h) {
+        return enclosed_in(img, area, inside, w, h, border, target, o);
+    }
+    let (cw, ch) = (cx1 - cx0, cy1 - cy0);
+    let img: Vec<[u8; 4]> = (cy0..cy1).flat_map(|y| img.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect();
+    let inside: Vec<bool> = (cy0..cy1).flat_map(|y| inside.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect();
+    let carea = Rect::new(area.x0 + cx0 as i32, area.y0 + cy0 as i32, area.x0 + cx1 as i32, area.y0 + cy1 as i32);
+    enclosed_in(&img, carea, &inside, cw, ch, border, target, o)
+}
+
+/// The box of the `true` pixels of a `w`-wide mask, inclusive (`None` when there are none).
+fn mark_box(m: &[bool], w: usize) -> Option<(usize, usize, usize, usize)> {
+    let mut b: Option<(usize, usize, usize, usize)> = None;
+    for (y, row) in m.chunks_exact(w.max(1)).enumerate() {
+        if let (Some(a), Some(z)) = (row.iter().position(|v| *v), row.iter().rposition(|v| *v)) {
+            b = Some(b.map_or((a, y, z, y), |(x0, y0, x1, _)| (x0.min(a), y0, x1.max(z), y)));
+        }
+    }
+    b
+}
+
+/// [`enclosed_region`] over `img` (`w` × `h`, covering `area`), the canvas edge a line on the
+/// sides `border` says (left, top, right, bottom).
+#[allow(clippy::too_many_arguments)]
+fn enclosed_in(img: &[[u8; 4]], area: Rect, inside: &[bool], w: usize, h: usize, border: [bool; 4], target: Target, o: &FillOptions) -> Option<Region> {
     let strength = match target {
         Target::Transparent => strengths(img, |p| difference(p, [0; 4])),
         Target::WhiteAndTransparent => strengths(img, darkness),
@@ -168,7 +208,7 @@ pub fn enclosed_region(img: &[[u8; 4]], area: Rect, inside: &[bool], target: Tar
     let margin = margin(o.tolerance);
     let free: Vec<bool> = strength.iter().map(|s| *s <= margin).collect();
     let gap = finite(o.close_gap, MAX_GAP);
-    let labels = if gap < 1.0 { components(&free, w, h) } else { areas(&free, w, h, gap, o.image_border, None).0 };
+    let labels = if gap < 1.0 { components(&free, w, h) } else { areas(&free, w, h, gap, border, None).0 };
     let count = labels.iter().copied().max().unwrap_or(0) as usize + 1;
     let mut leaves = vec![false; count];
     for (l, inside) in labels.iter().zip(inside) {
@@ -188,8 +228,38 @@ pub fn enclosed_region(img: &[[u8; 4]], area: Rect, inside: &[bool], target: Tar
 }
 
 /// The pixels of `area` inside the polygon `points` (even-odd, pixel centres): a lasso.
+/// Rasterized over the polygon's box only (a lasso is mostly far smaller than the page).
 pub fn lasso_mask(points: &[(f32, f32)], area: Rect) -> Vec<bool> {
-    crate::selection::polygon(points, area, false).iter().map(|c| *c >= 0.5).collect()
+    if points.iter().any(|(x, y)| !x.is_finite() || !y.is_finite()) {
+        return crate::selection::polygon(points, area, false).iter().map(|c| *c >= 0.5).collect();
+    }
+    let (w, h) = (area.width() as usize, area.height() as usize);
+    let mut m = vec![false; w * h];
+    let finite = points.iter();
+    let (mut x0, mut y0, mut x1, mut y1) = (f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
+    for &(x, y) in finite {
+        (x0, y0, x1, y1) = (x0.min(x), y0.min(y), x1.max(x), y1.max(y));
+    }
+    if !(x0 <= x1 && y0 <= y1) {
+        return m;
+    }
+    let clamp = |v: f32| v.clamp(-1e9, 1e9);
+    let b = Rect::new(clamp(x0.floor()) as i32 - 1, clamp(y0.floor()) as i32 - 1, clamp(x1.ceil()) as i32 + 1, clamp(y1.ceil()) as i32 + 1).intersect(&area);
+    if b.is_empty() {
+        return m;
+    }
+    let cov = crate::selection::polygon(points, b, false);
+    let bw = b.width() as usize;
+    for (row, c) in cov.chunks_exact(bw).enumerate() {
+        let at = (b.y0 - area.y0) as usize + row;
+        let x = (b.x0 - area.x0) as usize;
+        if let Some(dst) = m.get_mut(at * w + x..at * w + x + bw) {
+            for (d, c) in dst.iter_mut().zip(c) {
+                *d = *c >= 0.5;
+            }
+        }
+    }
+    m
 }
 
 /// The pixels of `area` a round brush of `radius` covers along `points`: a painted stroke.
@@ -371,26 +441,27 @@ fn climb(dist: &[f32], free: &[bool], w: usize, h: usize, mut i: usize) -> usize
 /// pixels closed (see the module docs): labels from 1, 0 on lines and seams. With `seed`, also
 /// the label of the seed's area. A seed in a spot narrower than the gap lowers the gap to fit,
 /// so a click always fills the spot it lands in.
-fn areas(free: &[bool], w: usize, h: usize, gap: f32, border: bool, seed: Option<usize>) -> (Vec<u32>, Option<u32>) {
-    if border {
+fn areas(free: &[bool], w: usize, h: usize, gap: f32, border: [bool; 4], seed: Option<usize>) -> (Vec<u32>, Option<u32>) {
+    if border == [true; 4] {
         return watershed(free, w, h, gap, seed);
     }
-    // The edge is not a line: the canvas carries on blank beyond it, far enough for any gap
-    // between a line and the edge to stay open.
+    // An edge that is not a line (`border`: left, top, right, bottom): the canvas carries on blank
+    // beyond it, far enough for any gap between a line and the edge to stay open.
     let pad = (gap / 2.0).ceil() as usize + 2;
-    let (pw, ph) = (w + 2 * pad, h + 2 * pad);
+    let [l, t, r, b] = border.map(|line| if line { 0 } else { pad });
+    let (pw, ph) = (w + l + r, h + t + b);
     let mut padded = vec![true; pw * ph];
     for (y, row) in free.chunks_exact(w).enumerate() {
-        let at = (y + pad) * pw + pad;
+        let at = (y + t) * pw + l;
         if let Some(dst) = padded.get_mut(at..at + w) {
             dst.copy_from_slice(row);
         }
     }
-    let seed = seed.map(|s| (s / w + pad) * pw + s % w + pad);
+    let seed = seed.map(|s| (s / w + t) * pw + s % w + l);
     let (labels, seed_label) = watershed(&padded, pw, ph, gap, seed);
     let mut out = Vec::with_capacity(w * h);
     for y in 0..h {
-        let at = (y + pad) * pw + pad;
+        let at = (y + t) * pw + l;
         out.extend_from_slice(labels.get(at..at + w).unwrap_or(&[]));
     }
     out.resize(w * h, 0);

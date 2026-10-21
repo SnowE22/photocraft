@@ -66,6 +66,12 @@ pub(crate) struct Ctx<'a> {
     /// Layer records decoded so far, out of `total` (progress).
     pub done: usize,
     pub total: usize,
+    /// Layer pixels and masks decoded ahead of the build, every layer at once ([`Ctx::prefetch`]),
+    /// with what went wrong reading them; by the record's address.
+    pub pre_surfaces: std::collections::HashMap<usize, (Surface, Vec<String>)>,
+    pub pre_masks: std::collections::HashMap<usize, (Option<LayerMask>, Vec<String>)>,
+    /// Progress the build starts from and spans (after a prefetch, the decoding is done).
+    pub progress: (f32, f32),
 }
 
 fn doc_mode(m: PsdMode) -> Option<ColorMode> {
@@ -152,102 +158,194 @@ impl Ctx<'_> {
         Placement { id, transform, perspective, warp }
     }
 
-    fn channel_plane(&mut self, rec: &LayerRecord, id: i16, name: &str) -> Option<Vec<u8>> {
-        rec.channel(id)?;
-        match rec.decode_channel(id, self.file.header.depth, self.file.header.version) {
-            Ok(p) => Some(p),
-            Err(e) => {
-                self.warn(format!("layer \"{name}\": channel {id} could not be decoded ({e}); treated as empty"));
-                None
-            }
-        }
-    }
-
-    /// [`Self::channel_plane`] without the warnings sink, so a layer's channels decode
-    /// concurrently (their RLE rows are the bulk of the open time on full-canvas layers).
+    /// Channel `id` of `rec` decoded (`None` when it is missing or could not be decoded), without
+    /// a warnings sink, so channels and layers decode concurrently.
     fn channel_plane_decoded(&self, rec: &LayerRecord, id: i16) -> Option<Vec<u8>> {
         rec.channel(id)?;
         rec.decode_channel(id, self.file.header.depth, self.file.header.version).ok()
     }
 
     fn record_surface(&mut self, rec: &LayerRecord, name: &str) -> Surface {
+        let (s, warnings) = match self.pre_surfaces.remove(&std::ptr::from_ref(rec).addr()) {
+            Some(v) => v,
+            None => self.decode_surface(rec, name, true),
+        };
+        self.warnings.extend(warnings);
+        s
+    }
+
+    /// The pixels of `rec`, and the warnings reading them gave. `parallel`: its channels and
+    /// tiles are decoded side by side (not when every layer already decodes at once).
+    fn decode_surface(&self, rec: &LayerRecord, name: &str, parallel: bool) -> (Surface, Vec<String>) {
+        let mut warnings = Vec::new();
         let r = rec.rect;
         if r.is_empty() || r.size().is_err() {
-            return Surface::new(self.fmt);
+            return (Surface::new(self.fmt), warnings);
         }
         let (w, h) = r.size().unwrap_or((0, 0));
         let s = self.fmt.sample;
         let ids: Vec<i16> = (0..self.cc as i16).chain([CHANNEL_TRANSPARENCY]).collect();
-        let planes: Vec<Option<Vec<u8>>> = if cfg!(target_arch = "wasm32") {
-            ids.iter().map(|&id| self.channel_plane(rec, id, name)).collect()
+        // The channels decode independently; their RLE rows are the bulk of the open time for
+        // full-canvas layers, so they run side by side and the warnings land in the same order
+        // afterwards.
+        let decoded: Vec<Option<Vec<u8>>> = if parallel && !cfg!(target_arch = "wasm32") {
+            crate::pixels::par_map(ids.to_vec(), |id| self.channel_plane_decoded(rec, id))
         } else {
-            // The channels decode independently; their RLE rows are the bulk of the open
-            // time for full-canvas layers, so they run side by side and the warnings land
-            // in the same order afterwards.
-            // par_map reuses the crate's worker pool (one OS thread per channel per layer
-            // would spawn thousands on a file with many layers).
-            let decoded: Vec<Option<Vec<u8>>> = crate::pixels::par_map(ids.to_vec(), |id| self.channel_plane_decoded(rec, id));
-            let mut planes: Vec<Option<Vec<u8>>> = Vec::with_capacity(decoded.len());
-            for (&id, p) in ids.iter().zip(decoded) {
-                if p.is_none() && rec.channel(id).is_some() {
-                    self.warn(format!("layer \"{name}\": channel {id} could not be decoded; treated as empty"));
-                }
-                planes.push(p);
-            }
-            planes
+            ids.iter().map(|&id| self.channel_plane_decoded(rec, id)).collect()
         };
+        let mut planes: Vec<Option<Vec<u8>>> = Vec::with_capacity(decoded.len());
+        for (&id, p) in ids.iter().zip(decoded) {
+            if p.is_none() && rec.channel(id).is_some() {
+                warnings.push(format!("layer \"{name}\": channel {id} could not be decoded; treated as empty"));
+            }
+            planes.push(p);
+        }
         // A channel that is in the file but could not be decoded leaves the layer empty, as the
         // warning says. Filling in for it would paint an opaque black layer over the document.
         if ids.iter().zip(planes.iter()).any(|(&id, p)| p.is_none() && rec.channel(id).is_some()) {
-            return Surface::new(self.fmt);
+            return (Surface::new(self.fmt), warnings);
         }
         // Only decoded channel data justifies a buffer: the decoders bound their output by the
         // bytes in the file, but a bare rectangle can declare 300000² pixels in a few bytes (#755).
         if planes.iter().all(Option::is_none) {
-            self.warn(format!("layer \"{name}\": no channel data for its {w}x{h} bounds; treated as empty"));
-            return Surface::new(self.fmt);
+            warnings.push(format!("layer \"{name}\": no channel data for its {w}x{h} bounds; treated as empty"));
+            return (Surface::new(self.fmt), warnings);
         }
         let refs: Vec<Option<&[u8]>> = planes.iter().map(|p| p.as_deref()).collect();
         let mut fill: Vec<Vec<u8>> = vec![zero_sample(s); self.cc];
         fill.push(max_sample(s));
         let mut invert = vec![self.cmyk; self.cc];
         invert.push(false);
-        let mut bytes = interleave(&refs, &fill, w * h, s, &invert);
+        let rect = Rect::new(r.left, r.top, r.right, r.bottom);
         if self.fmt.mode == ColorMode::Lab && s == SampleType::U16 {
+            let mut bytes = interleave(&refs, &fill, w * h, s, &invert);
             crate::pixels::lab16_chroma(&mut bytes, self.cc + 1, true);
+            let mut surf = Surface::from_interleaved(self.fmt, rect, &bytes);
+            surf.prune();
+            return (surf, warnings);
         }
-        let mut surf = Surface::from_interleaved(self.fmt, Rect::new(r.left, r.top, r.right, r.bottom), &bytes);
-        surf.prune();
-        surf
+        let mut surf = Surface::new(self.fmt);
+        crate::pixels::write_planes(&mut surf, rect, &refs, &fill, &invert, parallel);
+        (surf, warnings)
     }
 
     fn record_mask(&mut self, rec: &LayerRecord, name: &str) -> Option<LayerMask> {
-        let m = rec.layer_mask()?;
+        let (m, warnings) = match self.pre_masks.remove(&std::ptr::from_ref(rec).addr()) {
+            Some(v) => v,
+            None => self.decode_mask(rec, name, true),
+        };
+        self.warnings.extend(warnings);
+        m
+    }
+
+    /// The layer mask of `rec`, and the warnings reading it gave (see [`Self::decode_surface`]).
+    fn decode_mask(&self, rec: &LayerRecord, name: &str, parallel: bool) -> (Option<LayerMask>, Vec<String>) {
+        let mut warnings = Vec::new();
+        let Some(m) = rec.layer_mask() else { return (None, warnings) };
         let (id, rect, default, flags) = match selected_real_mask(rec) {
             Some(real) => (CHANNEL_REAL_USER_MASK, real.rect, real.background, real.flags),
             _ => {
-                rec.channel(CHANNEL_USER_MASK)?;
+                if rec.channel(CHANNEL_USER_MASK).is_none() {
+                    return (None, warnings);
+                }
                 (CHANNEL_USER_MASK, m.rect, m.default_color, m.flags)
             }
         };
         let mut surface = Surface::with_default(self.mask_fmt, &[f32::from(default) / 255.0]);
         if !rect.is_empty()
             && let Ok((w, h)) = rect.size()
-            && let Some(plane) = self.channel_plane(rec, id, name)
+            && rec.channel(id).is_some()
         {
-            let s = self.mask_fmt.sample;
-            let bytes = interleave(&[Some(&plane)], &[zero_sample(s)], w * h, s, &[false]);
-            surface.write_interleaved(Rect::new(rect.left, rect.top, rect.right, rect.bottom), &bytes);
-            surface.prune();
+            match rec.decode_channel(id, self.file.header.depth, self.file.header.version) {
+                Ok(plane) => {
+                    let s = self.mask_fmt.sample;
+                    if w.checked_mul(h).is_some() {
+                        let r = Rect::new(rect.left, rect.top, rect.right, rect.bottom);
+                        crate::pixels::write_planes(&mut surface, r, &[Some(&plane)], &[zero_sample(s)], &[false], parallel);
+                    }
+                }
+                Err(e) => warnings.push(format!("layer \"{name}\": channel {id} could not be decoded ({e}); treated as empty")),
+            }
         }
         let params = m.parameters;
-        Some(LayerMask {
+        let mask = LayerMask {
             surface,
             enabled: flags & 2 == 0,
             linked: flags & 1 == 0,
             density: params.and_then(|p| p.user_density).map_or(1.0, |d| f32::from(d) / 255.0),
             feather: params.and_then(|p| p.user_feather).map_or(0.0, |f| f as f32),
-        })
+        };
+        (Some(mask), warnings)
+    }
+
+    /// Decodes the pixels and masks of every layer in `tree` before the build, a share of the
+    /// layers per core (largest first, dealt round), so a file of many big layers opens in a
+    /// fraction of the time one layer after another took. The build takes them as it goes.
+    fn prefetch(&mut self, tree: &[LayerNode]) {
+        fn collect(nodes: &[LayerNode], out: &mut Vec<(usize, bool)>) {
+            for n in nodes {
+                match n {
+                    LayerNode::Layer { index } => out.push((*index, true)),
+                    LayerNode::Group { index, children, .. } => {
+                        out.push((*index, false));
+                        collect(children, out);
+                    }
+                }
+            }
+        }
+        if cfg!(target_arch = "wasm32") {
+            return;
+        }
+        let layers = self.file.layers();
+        let mut wanted = Vec::new();
+        collect(tree, &mut wanted);
+        // Pixels for what the build reads them for: everything but adjustment layers.
+        let mut jobs: Vec<(u64, usize, bool)> = wanted
+            .into_iter()
+            .filter_map(|(i, layer)| {
+                let rec = layers.get(i)?;
+                let pixels = layer && !rec.rect.is_empty() && !ADJUSTMENT_KEYS.into_iter().any(|k| rec.block(k).is_some());
+                let size = rec.rect.size().map_or(0, |(w, h)| w as u64 * h as u64);
+                Some((if pixels { size } else { 0 }, i, pixels))
+            })
+            .collect();
+        jobs.sort_by_key(|j| std::cmp::Reverse(j.0));
+        let workers = std::thread::available_parallelism().map_or(1, |v| v.get()).clamp(1, 32);
+        let mut shares: Vec<Vec<(usize, bool)>> = vec![Vec::new(); workers];
+        for (k, (_, i, pixels)) in jobs.into_iter().enumerate() {
+            if let Some(s) = shares.get_mut(k % workers) {
+                s.push((i, pixels));
+            }
+        }
+        let total = shares.iter().map(Vec::len).sum::<usize>().max(1);
+        let done = std::sync::atomic::AtomicUsize::new(0);
+        let ctl = self.ctl;
+        let this = &*self;
+        let decoded = crate::pixels::par_map(shares, |share| {
+            let mut out = Vec::new();
+            for (i, pixels) in share {
+                if ctl.cancelled() {
+                    break;
+                }
+                let Some(rec) = layers.get(i) else { continue };
+                let name = rec.name();
+                let surface = pixels.then(|| this.decode_surface(rec, &name, false));
+                let mask = this.decode_mask(rec, &name, false);
+                out.push((i, surface, mask));
+                let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                ctl.progress(0.1 + 0.7 * n as f32 / total as f32);
+            }
+            out
+        });
+        for (i, surface, mask) in decoded.into_iter().flatten() {
+            let Some(rec) = layers.get(i) else { continue };
+            let key = std::ptr::from_ref(rec).addr();
+            if let Some(s) = surface {
+                self.pre_surfaces.insert(key, s);
+            }
+            self.pre_masks.insert(key, mask);
+        }
+        self.progress = (0.8, 0.15);
     }
 
     /// The filter mask of the smart object whose `placed` id is `placed`, from the `FEid` cache:
@@ -514,8 +612,9 @@ impl Ctx<'_> {
                 LayerNode::Layer { index } => {
                     let l = self.layer_from_record(&layers[*index]);
                     self.done += 1;
-                    // Layers are 10–95 % of an open (the merged image and channels the rest).
-                    self.ctl.progress(0.1 + 0.85 * self.done as f32 / self.total.max(1) as f32);
+                    // Layers are 10–95 % of an open (the merged image and channels the rest),
+                    // their pixels 10–80 % when they were decoded ahead.
+                    self.ctl.progress(self.progress.0 + self.progress.1 * self.done as f32 / self.total.max(1) as f32);
                     l
                 }
                 LayerNode::Group { index, children, .. } => {
@@ -873,6 +972,9 @@ pub(crate) fn psd_to_document_decoded(
         smart_contents: Default::default(),
         plld_sizes: Default::default(),
         ctl: *ctl,
+        pre_surfaces: Default::default(),
+        pre_masks: Default::default(),
+        progress: (0.1, 0.85),
         done: 0,
         total: file.layers().len(),
     };
@@ -935,6 +1037,10 @@ pub(crate) fn psd_to_document_decoded(
         // Colours stored in the document's CMYK space (Gradient Map stops…) convert through
         // its own profile, as the compositor and the PSD writer read them.
         let space = photocraft_compose::cmyk_space(&doc);
+        cx.prefetch(&tree);
+        if ctl.cancelled() {
+            return None;
+        }
         doc.layers = photocraft_color::convert::with_cmyk_space(space.as_ref(), || cx.build(&tree, 0));
         // Photoshop's Background: the bottom record stored without a transparency channel (-1),
         // locked whatever its (localized) name and whether or not the file carries an `lspf`

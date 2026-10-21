@@ -201,6 +201,13 @@ impl Tiles {
 #[derive(PartialEq)]
 enum ContentKey {
     Raster,
+    /// Type and Smart Objects composite as their rendered pixels (the key's tiles); type mixes
+    /// its edges with the text gamma.
+    Text,
+    Smart,
+    /// A shape's effects and its stroke over clipped layers follow its path: the shape without
+    /// its pixels, which are the key's tiles.
+    Shape(Box<photocraft_doc::ShapeLayer>),
     Group(Option<photocraft_doc::Artboard>),
     Adjustment(photocraft_doc::Adjustment),
     Fill(photocraft_doc::Fill),
@@ -254,8 +261,8 @@ pub(crate) struct ReferenceCache {
 }
 
 /// The key of `doc` (with the layers left out of the reference already hidden), or `None` when a
-/// shown layer is text, a shape, a smart object or video, whose look the key can't see cheaply:
-/// those documents are composited every time.
+/// shown layer is video, whose look the key can't see cheaply: those documents are composited
+/// every time.
 fn reference_key(doc: &Document, area: Rect) -> Option<ReferenceKey> {
     let mut layers = Vec::new();
     // The groups above the current layer that have effects: what they draw follows their content.
@@ -269,10 +276,15 @@ fn reference_key(doc: &Document, area: Rect) -> Option<ReferenceKey> {
         }
         let (content, tiles) = match &l.content {
             LayerContent::Raster(s) => (ContentKey::Raster, Some(Tiles::of(s))),
+            LayerContent::Text(t) => (ContentKey::Text, t.cache.as_ref().map(Tiles::of)),
+            LayerContent::Smart(s) => (ContentKey::Smart, s.cache.as_ref().map(Tiles::of)),
+            LayerContent::Shape(sh) => {
+                let path = photocraft_doc::ShapeLayer { path: sh.path.clone(), fill: sh.fill.clone(), stroke: sh.stroke.clone(), live: sh.live.clone(), cache: None, psd_raw: None };
+                (ContentKey::Shape(Box::new(path)), sh.cache.as_ref().map(Tiles::of))
+            }
             LayerContent::Group(g) => (ContentKey::Group(g.artboard.clone()), None),
             LayerContent::Adjustment(a) => (ContentKey::Adjustment(a.clone()), None),
             LayerContent::Fill(f) => (ContentKey::Fill(f.clone()), None),
-            _ => return None,
         };
         if l.video.is_some() {
             return None;

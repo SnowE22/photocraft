@@ -86,7 +86,14 @@ struct Ex {
     patterns: Vec<photocraft_doc::Pattern>,
     /// The layer written as Photoshop's Background (see [`psd_background`]).
     background: Option<photocraft_doc::LayerId>,
+    /// Pixel channels and masks encoded ahead of [`Ex::emit`], every layer at once
+    /// ([`Ex::prefetch`]), by layer: [`Ex::record`] takes them as it goes.
+    pre_pixels: std::collections::HashMap<photocraft_doc::LayerId, Channels>,
+    pre_masks: std::collections::HashMap<photocraft_doc::LayerId, (MaskData, Option<ChannelData>)>,
 }
+
+/// A layer's encoded pixel channels: its rect, the channels, and warnings.
+type Channels = (PsdRect, Vec<ChannelData>, Vec<String>);
 
 /// The layer Photoshop should open as its Background: the bottom top-level layer when it is a
 /// locked (transparency and position), unclipped, unmasked raster that is opaque over the whole
@@ -438,7 +445,10 @@ impl Ex {
     fn record(&mut self, l: &Layer, extra: Vec<TaggedBlock>, pixels: Option<&Surface>) -> LayerRecord {
         let id = self.layer_id(l);
         let (rect, mut channels, warnings) = match pixels {
-            Some(s) => self.pixel_channels(s, &l.name),
+            Some(s) => match self.pre_pixels.remove(&l.id) {
+                Some(c) => c,
+                None => self.pixel_channels(s, &l.name),
+            },
             None => (PsdRect::default(), self.empty_channels(), Vec::new()),
         };
         self.warnings.extend(warnings);
@@ -446,7 +456,7 @@ impl Ex {
         // Vector mask density/feather live in the mask parameters, with or without a user mask.
         let vector = l.vector_mask.as_ref().map(|vm| (vm.density, vm.feather));
         if let Some(m) = &l.mask {
-            let (md, ch) = self.mask(m, vector);
+            let (md, ch) = self.pre_masks.remove(&l.id).unwrap_or_else(|| self.mask(m, vector));
             mask = md;
             channels.extend(ch);
         } else if let Some(parameters) = mask_parameters(None, vector) {
@@ -1009,6 +1019,7 @@ impl Ex {
                 &PsdExportOptions { force_psb: true, document_path: self.document.clone(), ..Default::default() },
                 self.smart.depth + 1,
                 &Interrupt::NONE,
+                None,
             );
             let data = file.to_bytes().map_err(|e| format!("its contents can't be written: {e}"))?;
             let stem = file_name.rsplit_once('.').map_or(file_name, |(a, _)| a);
@@ -1058,6 +1069,72 @@ impl Ex {
 
     /// Write the records of `layers` (and their groups' children). `tick` runs after each one:
     /// it reports progress and returns `false` to stop early (a cancelled save, #3389).
+    /// Encodes the pixel channels and masks of every layer of `doc` before [`Ex::emit`] writes
+    /// the records, a share of the layers per core (largest first, dealt round): one layer after
+    /// another, most of a save of a file with many big layers. Smart Objects are left to the
+    /// records (their pixels depend on what writing them finds).
+    fn prefetch(&mut self, doc: &Document, space: Option<&std::sync::Arc<photocraft_color::convert::CmykSpace>>, ctl: &Interrupt) {
+        if cfg!(target_arch = "wasm32") {
+            return;
+        }
+        let walk = doc.walk();
+        let size = |s: Option<&Surface>| s.map_or(0, |s| s.tile_count() as u64);
+        let mut jobs: Vec<(u64, &Layer)> = walk
+            .iter()
+            .map(|(_, _, l)| *l)
+            .filter(|l| l.mask.is_some() || matches!(l.content, LayerContent::Raster(_) | LayerContent::Fill(_) | LayerContent::Text(_) | LayerContent::Shape(_)))
+            .map(|l| {
+                let px = match &l.content {
+                    LayerContent::Fill(_) => l.fill_cache.as_ref().map_or((u64::from(self.canvas.width()) * u64::from(self.canvas.height())) >> 16, |c| size(Some(&c.surface))),
+                    LayerContent::Smart(_) | LayerContent::Group(_) | LayerContent::Adjustment(_) => 0,
+                    _ => size(l.surface()),
+                };
+                (px + size(l.mask.as_ref().map(|m| &m.surface)) / 4, l)
+            })
+            .collect();
+        jobs.sort_by_key(|j| std::cmp::Reverse(j.0));
+        let workers = std::thread::available_parallelism().map_or(1, |v| v.get()).clamp(1, 32).min(jobs.len().max(1));
+        let mut shares: Vec<Vec<&Layer>> = vec![Vec::new(); workers];
+        for (k, (_, l)) in jobs.into_iter().enumerate() {
+            if let Some(s) = shares.get_mut(k % workers) {
+                s.push(l);
+            }
+        }
+        let total = shares.iter().map(Vec::len).sum::<usize>().max(1);
+        let done = std::sync::atomic::AtomicUsize::new(0);
+        let this = &*self;
+        let encoded = crate::pixels::par_map(shares, |share| {
+            photocraft_color::convert::with_cmyk_space(space, || {
+                let mut out = Vec::new();
+                for l in share {
+                    if ctl.cancelled() {
+                        break;
+                    }
+                    let pixels = match &l.content {
+                        LayerContent::Raster(s) => Some(this.pixel_channels(s, &l.name)),
+                        LayerContent::Fill(f) => Some(this.pixel_channels(&this.fill_pixels(l, f), &l.name)),
+                        LayerContent::Text(t) => t.cache.as_ref().map(|c| this.pixel_channels(c, &l.name)),
+                        LayerContent::Shape(sh) => sh.cache.as_ref().map(|c| this.pixel_channels(c, &l.name)),
+                        _ => None,
+                    };
+                    let mask = l.mask.as_ref().map(|m| this.mask(m, l.vector_mask.as_ref().map(|vm| (vm.density, vm.feather))));
+                    out.push((l.id, pixels, mask));
+                    let n = done.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    ctl.progress(n as f32 / total as f32);
+                }
+                out
+            })
+        });
+        for (id, pixels, mask) in encoded.into_iter().flatten() {
+            if let Some(p) = pixels {
+                self.pre_pixels.insert(id, p);
+            }
+            if let Some(m) = mask {
+                self.pre_masks.insert(id, m);
+            }
+        }
+    }
+
     fn emit(&mut self, layers: &[Layer], tick: &mut dyn FnMut() -> bool) {
         for l in layers {
             let extra = self.content_blocks(l);
@@ -1090,7 +1167,8 @@ impl Ex {
                     self.records.push(r);
                 }
                 LayerContent::Fill(f) => {
-                    let px = self.fill_pixels(l, f);
+                    // Encoded ahead: no need to render the fill again.
+                    let px = if self.pre_pixels.contains_key(&l.id) { Surface::new(self.fmt) } else { self.fill_pixels(l, f) };
                     let r = self.record(l, extra, Some(&px));
                     self.records.push(r);
                 }
@@ -1290,7 +1368,8 @@ fn cmyk_of(fmt: &PixelFormat) -> bool {
 /// when `matte`; with whether any pixel needs the alpha channel and whether any is below 1.
 /// `ctl` gets the fraction of rows done after each band; once it is cancelled the rest of the
 /// image is left blank (the caller discards it).
-fn merged_planes(doc: &Document, fmt: &PixelFormat, cmyk: bool, matte: bool, ctl: &Interrupt) -> (Vec<u8>, bool, bool) {
+/// `preview`, when given, is fed the composite's bands too (the file's thumbnail is made from them).
+fn merged_planes(doc: &Document, fmt: &PixelFormat, cmyk: bool, matte: bool, ctl: &Interrupt, mut preview: Option<&mut photocraft_compose::Reducer>) -> (Vec<u8>, bool, bool) {
     let sample = fmt.sample;
     let cc = fmt.mode.color_channels();
     let bps = sample.bytes();
@@ -1307,6 +1386,9 @@ fn merged_planes(doc: &Document, fmt: &PixelFormat, cmyk: bool, matte: bool, ctl
     let _ = photocraft_compose::render_bands(doc, canvas, 0, |band| -> Result<(), ()> {
         if ctl.cancelled() {
             return Err(());
+        }
+        if let Some(r) = preview.as_deref_mut() {
+            r.add(&band);
         }
         // Retain alpha whenever it differs from opaque at the stored precision.
         has_alpha |= band.px.iter().any(|p| match sample {
@@ -1379,14 +1461,20 @@ pub fn document_to_psd(doc: &Document) -> PsdFile {
 /// anything that could not be represented. The merged composite is rendered
 /// with `photocraft_compose::flatten`.
 pub fn document_to_psd_with(doc: &Document, opts: &PsdExportOptions) -> (PsdFile, Vec<String>) {
-    document_to_psd_nested(doc, opts, 0, &Interrupt::NONE)
+    document_to_psd_nested(doc, opts, 0, &Interrupt::NONE, None)
 }
 
 /// [`document_to_psd_with`] for a background save (#3389): reports progress through `ctl` after
 /// each layer record and each band of the merged composite. Once `ctl` is cancelled it stops
 /// early and returns an **incomplete** model: callers check `ctl` and discard it.
 pub(crate) fn document_to_psd_interruptible(doc: &Document, opts: &PsdExportOptions, ctl: &Interrupt) -> (PsdFile, Vec<String>) {
-    document_to_psd_nested(doc, opts, 0, ctl)
+    document_to_psd_nested(doc, opts, 0, ctl, None)
+}
+
+/// [`document_to_psd_interruptible`] that also feeds `preview` the merged composite as it renders
+/// it (when it does: with Maximize Compatibility), so the file's thumbnail needs no render of its own.
+pub(crate) fn document_to_psd_with_preview(doc: &Document, opts: &PsdExportOptions, ctl: &Interrupt, preview: Option<&mut photocraft_compose::Reducer>) -> (PsdFile, Vec<String>) {
+    document_to_psd_nested(doc, opts, 0, ctl, preview)
 }
 
 /// How much of a PSD conversion the merged composite weighs, in layer records: rendering it
@@ -1516,7 +1604,7 @@ pub(crate) fn psd_size_exceeds_limit(doc: &Document) -> bool {
 }
 
 /// [`document_to_psd_with`] for a document embedded `depth` smart objects deep.
-fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, ctl: &Interrupt) -> (PsdFile, Vec<String>) {
+fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, ctl: &Interrupt, preview: Option<&mut photocraft_compose::Reducer>) -> (PsdFile, Vec<String>) {
     if doc.mode == ColorMode::Multichannel {
         return crate::multichannel_map::document_to_psd(doc, opts.force_psb);
     }
@@ -1547,6 +1635,8 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
         smart: SmartOut::new(doc, depth),
         patterns: doc.patterns.clone(),
         background: psd_background(doc),
+        pre_pixels: Default::default(),
+        pre_masks: Default::default(),
     };
     if big && !opts.force_psb {
         ex.warnings.push("document exceeds 30000 px; written as PSB".into());
@@ -1608,13 +1698,16 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
     let records = doc.walk().len() as f32;
     let units = records + MERGED_WEIGHT;
     let layers_share = records / units;
+    // Encoding the layers ahead is most of their share; the records follow.
+    let pre_share = 0.8 * layers_share;
+    let space = photocraft_compose::cmyk_space(doc);
+    crate::with_span(ctl, 0.0, pre_share, |ctl| ex.prefetch(doc, space.as_ref(), ctl));
     let mut done = 0.0f32;
     let mut tick = || {
         done += 1.0;
-        ctl.progress(done / units);
+        ctl.progress(pre_share + (layers_share - pre_share) * done / records.max(1.0));
         !ctl.cancelled()
     };
-    let space = photocraft_compose::cmyk_space(doc);
     photocraft_color::convert::with_cmyk_space(space.as_ref(), || ex.emit(&doc.layers, &mut tick));
 
     // Without Maximize Compatibility the merged image is a white placeholder and the composite
@@ -1627,9 +1720,9 @@ fn document_to_psd_nested(doc: &Document, opts: &PsdExportOptions, depth: u32, c
         // all round to opaque (so no alpha channel is written), encode once more without the matte.
         let merged_end = layers_share + (1.0 - layers_share) * MERGED_RENDERED;
         let (mut planes, has_alpha, translucent) =
-            crate::with_span(ctl, layers_share, merged_end, |ctl| merged_planes(doc, &fmt, cmyk_of(&fmt), opts.merged_matte, ctl));
+            crate::with_span(ctl, layers_share, merged_end, |ctl| merged_planes(doc, &fmt, cmyk_of(&fmt), opts.merged_matte, ctl, preview));
         if !has_alpha && translucent && opts.merged_matte {
-            planes = merged_planes(doc, &fmt, cmyk_of(&fmt), false, &Interrupt::cancel_only(&|| ctl.cancelled())).0;
+            planes = merged_planes(doc, &fmt, cmyk_of(&fmt), false, &Interrupt::cancel_only(&|| ctl.cancelled()), None).0;
         }
         (planes, has_alpha)
     } else {

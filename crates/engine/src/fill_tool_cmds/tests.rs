@@ -284,6 +284,36 @@ fn all_layers_patch_the_kept_composite_where_the_last_fill_painted() {
     assert_eq!(*now, full(&s));
 }
 
+/// Type and shape layers are kept in the composite like pixel layers: a fill beside them patches
+/// it, and the next click sees edited type and a moved shape.
+#[test]
+fn type_and_shapes_stay_in_the_kept_composite_and_are_followed() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"width": 1024, "height": 600, "background": "white"})).unwrap();
+    let text = s.execute("type.create", json!({"text": "Hi", "size": 40, "x": 600, "y": 100, "color": "#000000"})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("shape.create", json!({"kind": "rect", "rect": [20, 300, 120, 400], "fill": "#0000ff"})).unwrap();
+    let shape = s.active().unwrap().active_layer.unwrap();
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let full = |s: &Session| {
+        let doc = s.active().unwrap().doc.clone();
+        composite_rgba8(&doc, doc.bounds())
+    };
+    let read = |s: &Session| reference_image(s, Reference::All, Exclude::default(), &json!({})).unwrap().1;
+    s.execute(FILL_ID, json!({"x": 5, "y": 5, "reference": "all", "tolerance": 0, "color": RED})).unwrap();
+    let first = Arc::as_ptr(&read(&s));
+    s.execute("select.rect", json!({"x": 900, "y": 500, "width": 30, "height": 30})).unwrap();
+    s.execute("edit.fill", json!({"color": "#ff00ff"})).unwrap();
+    s.execute("select.deselect", json!({})).unwrap();
+    let now = read(&s);
+    assert_eq!(Arc::as_ptr(&now), first, "kept with type and a shape in the document");
+    assert_eq!(*now, full(&s));
+    drop(now);
+    s.execute("type.edit", json!({"layer": text, "text": "Hello there"})).unwrap();
+    assert_eq!(*read(&s), full(&s), "the edited type");
+    s.execute("layer.translate", json!({"layer": shape.0, "dx": 30, "dy": 10})).unwrap();
+    assert_eq!(*read(&s), full(&s), "the moved shape");
+}
+
 /// A drag going on from its click (`gesture`) fills each further area like the first one it
 /// reaches, skips what it filled and areas unlike the first (the lines), and is one undo step.
 #[test]

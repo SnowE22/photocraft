@@ -77,6 +77,117 @@ pub fn interleave(planes: &[Option<&[u8]>], fill: &[Vec<u8>], n: usize, s: Sampl
     out
 }
 
+/// [`interleave`] straight into the tiles of `s` over `r` (the planes hold `r`'s pixels row by
+/// row), a band of tiles per core, leaving out tiles that hold only the default pixel as
+/// [`photocraft_raster::Surface::prune`] would: no interleaved copy of the whole layer on the way
+/// (with the copy into tiles, that was most of the time a PSD with many big layers took to open).
+/// Tiles of one single pixel value share one copy (copy-on-write, as a solid fill's do): the
+/// stored rendering of a Color Fill layer is mostly such tiles, ~28 MB a layer on a 7 MP canvas.
+/// Without `parallel`, one thread does it all (when many layers are decoded at once).
+pub fn write_planes(s: &mut photocraft_raster::Surface, r: photocraft_geom::Rect, planes: &[Option<&[u8]>], fill: &[Vec<u8>], invert: &[bool], parallel: bool) {
+    use photocraft_geom::TILE_SIZE;
+    use std::sync::Arc;
+    let st = s.format().sample;
+    let bps = st.bytes();
+    let bpp = planes.len() * bps;
+    if r.is_empty() || bpp != s.format().bytes_per_pixel() {
+        return;
+    }
+    let w = r.width() as usize;
+    let coords: Vec<photocraft_geom::TileCoord> = r.tiles().collect();
+    let dp = s.default_bytes().to_vec();
+    let base = &*s;
+    let parts = if parallel { bands(coords.len()) } else { std::iter::once(0..coords.len()).collect() };
+    let made: Vec<Vec<(photocraft_geom::TileCoord, Arc<photocraft_raster::Tile>, bool)>> = par_map(parts, |band| {
+        let mut out = Vec::new();
+        for &tc in coords.get(band).unwrap_or_default() {
+            let Ok(mut t) = base.try_default_tile() else { continue };
+            let tr = tc.rect().intersect(&r);
+            let data = t.bytes_mut();
+            let span = tr.width() as usize;
+            for y in tr.y0..tr.y1 {
+                let at = ((y - tc.ty * TILE_SIZE) as usize * TILE_SIZE as usize + (tr.x0 - tc.tx * TILE_SIZE) as usize) * bpp;
+                let Some(dst) = data.get_mut(at..at + span * bpp) else { continue };
+                let p0 = (y - r.y0) as usize * w + (tr.x0 - r.x0) as usize;
+                for (c, plane) in planes.iter().enumerate() {
+                    let inv = invert.get(c).copied().unwrap_or(false);
+                    match plane.and_then(|pl| pl.get(p0 * bps..(p0 + span) * bps)) {
+                        Some(src) if bps == 1 => {
+                            for (d, v) in dst.chunks_exact_mut(bpp).zip(src) {
+                                d[c] = if inv { 255 - v } else { *v };
+                            }
+                        }
+                        Some(src) => {
+                            for (d, v) in dst.chunks_exact_mut(bpp).zip(src.chunks_exact(bps)) {
+                                let o = &mut d[c * bps..(c + 1) * bps];
+                                if cfg!(target_endian = "big") {
+                                    o.copy_from_slice(v);
+                                } else {
+                                    for (k, b) in o.iter_mut().enumerate() {
+                                        *b = v[bps - 1 - k];
+                                    }
+                                }
+                                if inv {
+                                    invert_sample(o, st);
+                                }
+                            }
+                        }
+                        // A missing plane, or one too short for this row: what it has, then fill.
+                        None => {
+                            for (i, d) in dst.chunks_exact_mut(bpp).enumerate() {
+                                let o = &mut d[c * bps..(c + 1) * bps];
+                                match plane.and_then(|pl| pl.get((p0 + i) * bps..(p0 + i + 1) * bps)) {
+                                    Some(v) => {
+                                        if cfg!(target_endian = "big") {
+                                            o.copy_from_slice(v);
+                                        } else {
+                                            for (k, b) in o.iter_mut().enumerate() {
+                                                *b = v[bps - 1 - k];
+                                            }
+                                        }
+                                        if inv {
+                                            invert_sample(o, st);
+                                        }
+                                    }
+                                    None => {
+                                        if let Some(f) = fill.get(c).filter(|f| f.len() == bps) {
+                                            o.copy_from_slice(f);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            let mut px = data.chunks_exact(bpp);
+            let first = px.next().unwrap_or_default();
+            let uniform = px.all(|p| p == first);
+            if !uniform || first != dp.as_slice() {
+                out.push((tc, Arc::new(t), uniform));
+            }
+        }
+        out
+    });
+    // One tile per value for the uniform ones (bands found theirs apart).
+    let mut solid: Vec<Arc<photocraft_raster::Tile>> = Vec::new();
+    let tiles = made.into_iter().flatten().map(|(tc, t, uniform)| {
+        if !uniform {
+            return (tc, t);
+        }
+        let value = t.bytes().get(..bpp);
+        match solid.iter().find(|s| s.bytes().get(..bpp) == value) {
+            Some(s) => (tc, Arc::clone(s)),
+            None => {
+                solid.push(Arc::clone(&t));
+                (tc, t)
+            }
+        }
+    });
+    let tiles: Vec<_> = tiles.collect();
+    s.put_tiles(tiles);
+}
+
 /// Splits interleaved native-endian bytes into big-endian planes.
 pub fn deinterleave(bytes: &[u8], ch: usize, s: SampleType, invert: &[bool]) -> Vec<Vec<u8>> {
     let bps = s.bytes();
@@ -295,6 +406,58 @@ mod tests {
             } else {
                 assert_eq!(back, planes);
             }
+        }
+    }
+
+    /// Planes written straight into tiles read exactly as interleaving them and writing that
+    /// did, at every depth, for rects off the tile grid, missing, short and inverted planes, with
+    /// a default pixel; tiles of one value share a copy, and none of only the default is kept.
+    #[test]
+    fn planes_written_into_tiles_read_as_the_interleaved_copy() {
+        use photocraft_color::{ColorMode, PixelFormat};
+        use photocraft_geom::Rect;
+        use photocraft_raster::Surface;
+        for s in [SampleType::U8, SampleType::U16, SampleType::F32] {
+            let bps = s.bytes();
+            let fmt = PixelFormat::new(ColorMode::Rgb, s, true);
+            for (r, parallel) in [(Rect::new(-37, 5, 600, 530), true), (Rect::new(250, 250, 263, 777), false), (Rect::new(0, 0, 512, 256), true)] {
+                let n = r.width() as usize * r.height() as usize;
+                // Channel 0 a pattern, 1 missing, 2 cut short, alpha opaque on the left half.
+                let p0: Vec<u8> = (0..n * bps).map(|i| ((i * 31) % 251) as u8).collect();
+                let p2: Vec<u8> = (0..(n / 2) * bps).map(|i| ((i * 17) % 253) as u8).collect();
+                let w = r.width() as usize;
+                // Planes are big-endian; the samples are native.
+                let pa: Vec<u8> = (0..n)
+                    .flat_map(|i| {
+                        let mut b = if i % w < w / 2 { max_sample(s) } else { zero_sample(s) };
+                        if cfg!(target_endian = "little") {
+                            b.reverse();
+                        }
+                        b
+                    })
+                    .collect();
+                let planes = [Some(&p0[..]), None, Some(&p2[..]), Some(&pa[..])];
+                let fill = vec![zero_sample(s), max_sample(s), zero_sample(s), max_sample(s)];
+                let invert = [false, true, true, false];
+                let mut want = Surface::new(fmt);
+                want.write_interleaved(r, &interleave(&planes, &fill, n, s, &invert));
+                want.prune();
+                let mut got = Surface::new(fmt);
+                write_planes(&mut got, r, &planes, &fill, &invert, parallel);
+                assert_eq!(got.to_interleaved(r.inflate(3)), want.to_interleaved(r.inflate(3)), "{s:?} {r:?}");
+                assert_eq!(got.tile_count(), want.tile_count(), "{s:?} {r:?}: the same tiles kept");
+            }
+            // A solid plane shares one tile; one of only the default pixel keeps none.
+            let r = Rect::new(0, 0, 1024, 512);
+            let n = 1024 * 512;
+            let one: Vec<u8> = vec![0x40; n * bps];
+            let mut solid = Surface::new(PixelFormat::new(ColorMode::Grayscale, s, false));
+            write_planes(&mut solid, r, &[Some(&one)], &[zero_sample(s)], &[false], true);
+            let first = solid.tiles().next().map(|(_, t)| t.clone()).expect("a tile");
+            assert!(solid.tile_count() == 8 && solid.tiles().all(|(_, t)| std::sync::Arc::ptr_eq(t, &first)), "{s:?}: one shared tile");
+            let mut blank = Surface::new(PixelFormat::new(ColorMode::Grayscale, s, false));
+            write_planes(&mut blank, r, &[Some(&vec![0; n * bps])], &[zero_sample(s)], &[false], true);
+            assert_eq!(blank.tile_count(), 0, "{s:?}");
         }
     }
 

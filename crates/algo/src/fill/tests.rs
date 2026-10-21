@@ -300,7 +300,7 @@ fn click_region_whole_page(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &Fi
     let mut fill = if gap < 1.0 {
         spot
     } else {
-        let (labels, seed_label) = areas(&spot, w, h, gap, o.image_border, Some(si));
+        let (labels, seed_label) = areas(&spot, w, h, gap, [o.image_border; 4], Some(si));
         let l = seed_label?;
         let mut fill: Vec<bool> = labels.iter().map(|v| *v == l).collect();
         cover_seams(&mut fill, &labels, &spot, w, h);
@@ -435,4 +435,47 @@ fn a_real_cell_behind_a_gap_stays_apart() {
     assert!(filled(&outside, 10, 50) && !filled(&outside, 53, 28), "the fill stopped at the gap");
     let inside = click_region(&img.px, img.area(), (53, 28), &o).unwrap();
     assert!(filled(&inside, 60, 35) && !filled(&inside, 10, 10));
+}
+
+/// Enclose and Fill on the lasso's box and a margin gives what working on the whole page gave,
+/// for lassos big and small, at the canvas edge and away from it, every gap, Area Scaling mode and
+/// Image Border setting.
+#[test]
+fn the_lasso_box_gives_what_the_whole_page_gave() {
+    let (w, h) = (260usize, 220usize);
+    let mut checked = 0;
+    let mut cropped = 0;
+    for page in 0..10u64 {
+        let img = random_lines(w, h, page + 100);
+        for k in 0..5i32 {
+            // Rectangles and triangles of 20–110 px, some reaching past the canvas edge.
+            let (cx, cy) = (((page as i32 * 53 + k * 71) % 280) as f32 - 10.0, ((page as i32 * 31 + k * 47) % 240) as f32 - 10.0);
+            let s = 10.0 + ((page as i32 * 13 + k * 29) % 45) as f32;
+            let poly: Vec<(f32, f32)> = if k % 2 == 0 {
+                vec![(cx - s, cy - s), (cx + s, cy - s), (cx + s, cy + s), (cx - s, cy + s)]
+            } else {
+                vec![(cx - s, cy + s), (cx, cy - s), (cx + s * 1.2, cy + s * 0.8)]
+            };
+            let lasso = lasso_mask(&poly, img.area());
+            let whole = crate::selection::polygon(&poly, img.area(), false).iter().map(|c| *c >= 0.5).collect::<Vec<bool>>();
+            assert_eq!(lasso, whole, "page {page}, lasso {k}: the lasso's box rasterizes as the page did");
+            for gap in [0.0, 3.0, 6.0, 11.0] {
+                for (scaling, amount) in [(Scaling::Darkest, 0.0), (Scaling::Darkest, 3.0), (Scaling::Round, 2.0), (Scaling::Round, -2.0)] {
+                    for border in [false, true] {
+                        let o = FillOptions { close_gap: gap, scale: amount, scaling, image_border: border, tolerance: 20.0, ..FillOptions::default() };
+                        let got = enclosed_region(&img.px, img.area(), &lasso, Target::Transparent, &o);
+                        let want = enclosed_in(&img.px, img.area(), &lasso, w, h, [border; 4], Target::Transparent, &o);
+                        assert_eq!(got, want, "page {page}, lasso {k} {poly:?}, gap {gap}, {scaling:?} {amount}, border {border}");
+                        checked += 1;
+                        let r = (gap + 2.0) / 2.0;
+                        let pad = if gap < 1.0 { 2.0 } else { (8.0 * r).ceil() } + amount.abs().ceil() + 4.0;
+                        if cx - s * 1.2 - pad > 0.0 || cy - s - pad > 0.0 {
+                            cropped += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(checked > 1500 && cropped > 500, "{checked} cases, {cropped} cropped");
 }

@@ -2423,6 +2423,33 @@ fn reduced_render_matches_the_full_composite_averaged() {
     assert_eq!(render_reduced(&empty, 4, 4).px, vec![[0.0; 4]]);
 }
 
+/// One render feeding several reductions (a save's thumbnail and preview, a PSD's merged image and
+/// its thumbnail) gives exactly what rendering each did; out-of-order bands spoil a reduction.
+#[test]
+fn one_render_gives_every_reduction_exactly() {
+    let d = tall_doc(53, 1000);
+    for sides in [vec![256u32, 64], vec![500, 160, 7], vec![1000, 20]] {
+        let mut seen = Vec::new();
+        let got = thumbnail_buffers(&d, &sides, &mut |f| seen.push(f));
+        assert!(!seen.is_empty() && seen.windows(2).all(|w| w[0] <= w[1]) && seen.last() == Some(&1.0), "{sides:?}: progress {seen:?}");
+        for (s, g) in sides.iter().zip(&got) {
+            assert_eq!(g.rect, thumbnail_buffer(&d, *s).rect, "side {s}");
+            assert_eq!(g.px, thumbnail_buffer(&d, *s).px, "side {s}");
+        }
+    }
+    let mut r = Reducer::new(d.bounds(), 10, 190).expect("a reduction");
+    let ok: Result<(), ()> = render_bands(&d, r.source(), 0, |band| {
+        r.add(&band);
+        Ok(())
+    });
+    assert!(ok.is_ok());
+    assert_eq!(r.finish().expect("complete").px, render_reduced(&d, 10, 190).px);
+    let mut r = Reducer::new(d.bounds(), 10, 190).expect("a reduction");
+    r.add(&render(&d, Rect::new(0, 500, 53, 1000)));
+    assert!(r.finish().is_none(), "a band that isn't the next one");
+    assert!(Reducer::new(d.bounds(), 53, 1000).is_none(), "its own size: nothing to reduce");
+}
+
 #[test]
 fn reduced_damage_matches_the_whole_reduction() {
     // A reduced canvas texture updates only what a stroke touched: those pixels must equal the
