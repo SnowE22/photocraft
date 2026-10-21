@@ -42,6 +42,7 @@
 
 pub mod abr;
 pub mod aco;
+pub mod asl;
 pub mod ase;
 pub mod atn;
 pub mod blend;

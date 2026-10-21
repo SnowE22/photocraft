@@ -1041,10 +1041,14 @@
 	Delete Brush	Удалить кисть
 	Import Brushes…	Импортировать кисти…
 	Import Brushes… (.abr or image)	Импортировать кисти… (.abr или изображение)
+	Import Styles… (.asl)	Импортировать стили… (.asl)
 	Import Brush from Image…	Импортировать кисть из изображения…
 	Gradient Preset Options	Параметры наборов градиентов
 	Import .GRD	Импортировать .GRD
 	Choose a gradient file (.grd).	Выберите файл градиентов (.grd).
+	Choose a Photoshop styles file (.asl).	Выберите файл стилей Photoshop (.asl).
+	Imported {n} style from {file}	Импортирован стиль ({n}) из {file}
+	Imported {n} styles from {file}	Импортировано стилей: {n} ({file})
 	Brush Name	Имя кисти
 	Brush Stroke	Мазок кисти
 	New Brush Preset…	Новый набор параметров кисти…

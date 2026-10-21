@@ -132,7 +132,7 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 | Keyboard shortcuts `.kys` | R/W | R/W | `engine/src/kys.rs` (`write`: Edit › Keyboard Shortcuts › Export…, rows carry our id; Photoshop reading our files is unverified) |
 | ICC profiles | R | R | Own CMS |
 | Actions `.atn` | R/W | R/W | `psd/src/atn.rs` (version 16 sets, exact round trip), `engine/src/atn_cmds.rs` (112 Photoshop events ↔ commands; other steps kept verbatim). Panel menu, CLI `batch --actions set.atn`, `actions.load`/`actions.save`. Photoshop 5-era version 12 files unsupported (AUTO-219-2) |
-| Styles `.asl` | R/W | no | #1693 |
+| Styles `.asl` | R/W | R (supported layer effects) | `psd/src/asl.rs`, `io/src/asl_map.rs`; Styles panel imports to a new group, with unsupported effects reported; nested style hierarchy is not preserved |
 | Contours `.shc` | R/W | R/W | `psd/src/shc.rs`; Contour Editor Load…/Save… (FILE-215-15). No user contour library; not yet checked against a Photoshop-written file |
 | Custom shapes `.csh`, tool presets `.tpl` | R/W | no | |
 | Curves `.acv`, Levels `.alv`, other adjustment presets | R/W | not audited | |
@@ -142,6 +142,7 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | minor | Photoshop `.asl` layer-style libraries import into a new Styles group; supported effects map through the existing PSD effect reader, and skipped styles/effects or hierarchy metadata are reported |
 | 2026-10-15 | minor | PNG: a stereo PNG's `sTER` pairing (PNG Extensions 1.4.0 §3.6) is read on open and written back on save, so the file still says it is a stereo pair (#6063) |
 | 2026-10-14 | minor | PSD smart filter masks: Photoshop stores a smart object's filtered pixels without its filter mask and mixes the unfiltered ones (`FEid`) back in; import now mixes them and export writes them that way, so sf-filter-mask-hard, -gradient and sf-stack-blend-and-mask pass; Photoshop-oracle floor 185 → 188 of 258 |
 | 2026-10-13 | minor | Lossy DNG (compression 34892) decodes: 8-bit baseline JPEG tiles and strips, CFA and LinearRaw, partial edge tiles; the stored values take the normal levels and LinearizationTable (FILE-215-11, lossy DNG part) |

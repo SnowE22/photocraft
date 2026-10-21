@@ -298,10 +298,10 @@ const KINDS: [(&str, &str); 10] = [
     ("FrFX", "frameFXMulti"),
 ];
 
-/// Parses `lfx2` block data: `(master switch, effects)`.
-pub fn parse_lfx2(data: &[u8]) -> Option<(bool, Vec<Effect>)> {
-    let (vd, _) = VersionedDescriptor::parse_prefix(data.get(4..)?).ok()?;
-    let d = vd.descriptor;
+/// Maps a Photoshop layer-effects descriptor to PhotoCraft effects and the keys it cannot map.
+///
+/// The descriptor is the contents of `Lefx` (or the equivalent root of an `lfx2` block).
+pub fn parse_effects_descriptor(d: &Descriptor) -> (bool, Vec<Effect>, Vec<String>) {
     let master = !matches!(d.get("masterFXSwitch"), Some(Value::Boolean(false)));
     let mut out = Vec::new();
     for (single, multi) in KINDS {
@@ -317,7 +317,7 @@ pub fn parse_lfx2(data: &[u8]) -> Option<(bool, Vec<Effect>)> {
                 }
             }
             _ => {
-                if let Some(x) = get_desc(&d, single)
+                if let Some(x) = get_desc(d, single)
                     && let Some(e) = parse_one(single, x)
                 {
                     out.push(e);
@@ -325,7 +325,24 @@ pub fn parse_lfx2(data: &[u8]) -> Option<(bool, Vec<Effect>)> {
             }
         }
     }
-    Some((master, out))
+    let mut warnings = Vec::new();
+    for (key, _) in &d.items {
+        let bytes = key.as_bytes();
+        let supported = bytes == b"Scl "
+            || bytes == b"masterFXSwitch"
+            || KINDS.iter().any(|(single, multi)| bytes == single.as_bytes() || (!multi.is_empty() && bytes == multi.as_bytes()));
+        if !supported {
+            warnings.push(format!("unsupported layer effect `{}`", String::from_utf8_lossy(bytes)));
+        }
+    }
+    (master, out, warnings)
+}
+
+/// Parses `lfx2` block data: `(master switch, effects)`.
+pub fn parse_lfx2(data: &[u8]) -> Option<(bool, Vec<Effect>)> {
+    let (vd, _) = VersionedDescriptor::parse_prefix(data.get(4..)?).ok()?;
+    let (master, effects, _) = parse_effects_descriptor(&vd.descriptor);
+    Some((master, effects))
 }
 
 fn unit(u: &[u8; 4], v: f32) -> Value {

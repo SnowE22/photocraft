@@ -4,7 +4,8 @@
 //! `gradient.presets.importGrd`, swatches (`.aco`, `.ase`) to the Swatches panel through
 //! `swatches.import`, patterns (`.pat`) to the Patterns panel through `pattern.import`, keyboard
 //! shortcut sets (`.kys`) to Edit › Keyboard Shortcuts through
-//! [`crate::kys_import`], instead of opening as documents. Import Brushes… also takes an image
+//! [`crate::kys_import`], and layer styles (`.asl`) to the Styles panel through
+//! `style.presets.importAsl`, instead of opening as documents. Import Brushes… also takes an image
 //! file, which becomes a brush tip through `brush.presets.importImage` (TOOL-213-12).
 
 use serde_json::{Value, json};
@@ -15,7 +16,7 @@ use crate::PhotocraftApp;
 /// the Swatches panel through [`crate::swatches_ui::import_bytes`]).
 /// `.psp` is Photoshop's live `Keyboard Shortcuts.psp` (the same XML as a `.kys`); other `.psp`
 /// settings files are refused with a clear message.
-pub const PRESET_EXTS: &[&str] = &["abr", "grd", "pat", "aco", "ase", "kys", "psp"];
+pub const PRESET_EXTS: &[&str] = &["abr", "grd", "asl", "pat", "aco", "ase", "kys", "psp"];
 
 fn ext(name: &str) -> String {
     std::path::Path::new(name).extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default()
@@ -36,6 +37,17 @@ pub fn import_brushes(app: &mut PhotocraftApp) -> Result<Value, String> {
     app.pick_file_bytes_filtered(&exts, |app, name, bytes| match open(app, &name, &bytes) {
         Some(r) => r.map(|()| Value::Null),
         None => import_brush_image(app, &name, &bytes),
+    })
+}
+
+/// Styles panel › Import Styles…: add an `.asl` file's supported layer styles as a new group.
+pub fn import_styles(app: &mut PhotocraftApp) -> Result<Value, String> {
+    app.pick_file_bytes_filtered(&["asl"], |app, name, bytes| {
+        if ext(&name) != "asl" {
+            return Err(tl!("Choose a Photoshop styles file (.asl).").into());
+        }
+        open(app, &name, &bytes).ok_or_else(|| tl!("Choose a Photoshop styles file (.asl).").to_string())??;
+        Ok(Value::Null)
     })
 }
 
@@ -88,6 +100,7 @@ pub fn open(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Option<Result<
     let (cmd, what) = match ext(name).as_str() {
         "abr" => ("brush.presets.importAbr", "brushes"),
         "grd" => ("gradient.presets.importGrd", "gradients"),
+        "asl" => ("style.presets.importAsl", "styles"),
         "pat" => ("pattern.import", "patterns"),
         "aco" | "ase" => return Some(crate::swatches_ui::import_bytes(app, name, bytes, false).map(|_| ())),
         "kys" | "psp" => return Some(crate::kys_import::open_bytes(app, name, bytes).map(|_| ())),
@@ -113,6 +126,7 @@ pub fn open(app: &mut PhotocraftApp, name: &str, bytes: &[u8]) -> Option<Result<
         let (one, other) = match what {
             "brushes" => ("Imported {n} brush from {file}", "Imported {n} brushes from {file}"),
             "patterns" => ("Imported {n} pattern from {file}", "Imported {n} patterns from {file}"),
+            "styles" => ("Imported {n} style from {file}", "Imported {n} styles from {file}"),
             _ => ("Imported {n} gradient from {file}", "Imported {n} gradients from {file}"),
         };
         let imported = crate::i18n::fmt(&crate::i18n::trn(crate::i18n::current(), n, one, other), &[("file", &stem)]);
@@ -139,11 +153,46 @@ mod tests {
     fn recognises_preset_files() {
         assert!(is_preset_file("/a/b/Set.ABR"));
         assert!(is_preset_file("sunsets.grd"));
+        assert!(is_preset_file("PhotoCraft.ASL"));
         assert!(is_preset_file("Brand.ACO"));
         assert!(is_preset_file("exchange.ase"));
         assert!(is_preset_file("Debaser-ColourLibrary-Part6.PAT"));
         assert!(!is_preset_file("photo.psd"));
         assert!(!is_preset_file("abr"));
+    }
+
+    fn asl_file() -> Vec<u8> {
+        use photocraft_psd::descriptor::{Descriptor, UnicodeString, Value, VersionedDescriptor};
+
+        let metadata = Descriptor::new("null").with("Nm  ", Value::Text(UnicodeString::new_nul("Imported Outline")));
+        let effects = Descriptor::new("Lefx").with("FrFX", Value::Descriptor(Descriptor::new("FrFX")));
+        let style = Descriptor::new("Styl").with("Lefx", Value::Descriptor(effects));
+        let mut record = VersionedDescriptor::new(metadata).to_bytes();
+        record.extend(VersionedDescriptor::new(style).to_bytes());
+        let mut bytes = vec![0, 2];
+        bytes.extend_from_slice(b"8BSL");
+        bytes.extend_from_slice(&3u16.to_be_bytes());
+        bytes.extend_from_slice(&0u32.to_be_bytes());
+        bytes.extend_from_slice(&1u32.to_be_bytes());
+        bytes.extend_from_slice(&(record.len() as u32).to_be_bytes());
+        bytes.extend(record);
+        bytes
+    }
+
+    #[test]
+    fn styles_panel_imports_asl_into_a_new_group() {
+        let (dialog, asked) = crate::file_dialog::fake(vec![Some(crate::file_dialog::FileDialogAnswer::Contents("My ASL Set.ASL".into(), asl_file()))]);
+        let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services { file_dialog: Some(dialog), ..Default::default() });
+        import_styles(&mut app).unwrap();
+        app.poll_file_dialog(&egui::Context::default(), None);
+        assert!(matches!(
+            asked.borrow().first(),
+            Some(crate::file_dialog::FileDialogRequest::Open { extensions: Some(exts), .. }) if exts == &["asl"]
+        ));
+        let group = app.session.presets.styles.iter().find(|group| group.name == "My ASL Set").unwrap();
+        assert_eq!(group.items.first().map(|style| style.name.as_str()), Some("Imported Outline"));
+        assert!(!app.ui.status_error, "{}", app.ui.status);
+        assert!(app.ui.status.contains("Imported 1 style"));
     }
 
     /// Import Brushes… with a PNG: the image becomes the current brush's tip (TOOL-213-12).

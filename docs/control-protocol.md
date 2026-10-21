@@ -267,8 +267,8 @@ User and imported (`.abr`) brush presets live in the config directory's `Presets
 The store loads in the background at launch and syncs after every brush preset change; built-ins
 are never written. The Actions list is `actions.json` in that same folder and survives a restart.
 Headless CLI/MCP sessions and the web build keep brush presets and the action list for the session
-only, unless a store is attached. Gradient presets (including imported `.grd` groups) persist with
-the preferences.
+only, unless a store is attached. Gradient presets (including imported `.grd` groups) and layer
+style presets (including imported `.asl` groups) persist with the preferences.
 
 Named New Document presets also persist with preferences (`presets.documents`) on desktop and
 web. File › New › Save Preset… saves the current form; the Saved tab selects a configuration or

@@ -232,7 +232,43 @@ pub fn specs() -> Vec<CommandSpec> {
             run: import_grd,
             journal: true,
         },
+        CommandSpec {
+            id: "style.presets.importAsl",
+            label: "Import Styles…",
+            menu: &[],
+            shortcut: None,
+            params: r##"{"path":".asl file"?,"data":base64 bytes?,"group":string?=file name} → {group, imported, count, warnings}"##,
+            enabled: always,
+            run: import_asl,
+            journal: true,
+        },
     ]
+}
+
+fn import_asl(s: &mut Session, p: &Value) -> Result<Value> {
+    use crate::presets::{Group, styles::StylePreset};
+
+    let cmd = "style.presets.importAsl";
+    let (bytes, stem) = file_bytes(p, cmd, ".asl file")?;
+    let base = match p.get("group") {
+        Some(v) => v.as_str().map(str::trim).filter(|g| !g.is_empty()).ok_or_else(|| bad(cmd, "`group` must be a non-empty string"))?.to_string(),
+        None if !stem.is_empty() => stem,
+        None => "Imported Styles".to_string(),
+    };
+    let import = photocraft_io::asl_map::read_asl(&bytes).map_err(|e| bad(cmd, e))?;
+    let group = crate::presets::gradients::unique_group(&s.presets.styles, &base);
+    s.presets.styles.push(Group::new(&group, Vec::new()));
+    let group_index = s.presets.styles.len().saturating_sub(1);
+    let mut imported = Vec::with_capacity(import.styles.len());
+    for style in import.styles {
+        let name = crate::presets::unique_name(&s.presets.styles, &style.name);
+        imported.push(name.clone());
+        let target = s.presets.styles.get_mut(group_index).ok_or_else(|| EngineError::Other("imported style group disappeared".into()))?;
+        target.items.push(StylePreset { name, effects: style.effects, blend: None, fill_opacity: None });
+    }
+    s.presets_changed();
+    let count = imported.len();
+    Ok(json!({"group": group, "imported": imported, "count": count, "warnings": import.warnings}))
 }
 
 // ------------------------------------------------------------------ gradients (.grd)
@@ -340,6 +376,30 @@ mod tests {
     use photocraft_psd::abr::{AbrSample, LegacyBrush, LegacyTip, write_v6, write_v12};
     use photocraft_psd::descriptor::{Descriptor, UnicodeString, Value as DV};
 
+    fn asl_file() -> Vec<u8> {
+        let records = [
+            (
+                "Drop Shadow",
+                Descriptor::new("Lefx").with("FrFX", DV::Descriptor(Descriptor::new("FrFX"))).with("futureFx", DV::Descriptor(Descriptor::new("futureFx"))),
+            ),
+            ("Only Future", Descriptor::new("Lefx").with("futureFx", DV::Descriptor(Descriptor::new("futureFx")))),
+        ];
+        let mut bytes = vec![0, 2];
+        bytes.extend_from_slice(b"8BSL");
+        bytes.extend_from_slice(&3u16.to_be_bytes());
+        bytes.extend_from_slice(&0u32.to_be_bytes());
+        bytes.extend_from_slice(&(records.len() as u32).to_be_bytes());
+        for (name, effects) in records {
+            let metadata = Descriptor::new("null").with("Nm  ", DV::Text(UnicodeString::new_nul(name)));
+            let style = Descriptor::new("Styl").with("Lefx", DV::Descriptor(effects));
+            let mut record = photocraft_psd::descriptor::VersionedDescriptor::new(metadata).to_bytes();
+            record.extend(photocraft_psd::descriptor::VersionedDescriptor::new(style).to_bytes());
+            bytes.extend_from_slice(&(record.len() as u32).to_be_bytes());
+            bytes.extend(record);
+        }
+        bytes
+    }
+
     fn abr_v2() -> Vec<u8> {
         let tip = AbrSample { id: String::new(), width: 6, height: 4, depth: 8, data: vec![255; 24] };
         write_v12(
@@ -445,6 +505,37 @@ mod tests {
         }
         let only_noise = photocraft_paint::tile::b64_encode(&write(&grads[1..]));
         assert!(s.execute("gradient.presets.importGrd", json!({"data": only_noise})).is_err());
+    }
+
+    #[test]
+    fn asl_import_preserves_existing_groups_and_reports_unsupported_effects() {
+        let mut s = Session::new();
+        let before = s.presets.styles.len();
+        let data = photocraft_paint::tile::b64_encode(&asl_file());
+        let imported = s.execute("style.presets.importAsl", json!({"data": data, "group": "My Styles"})).unwrap();
+        assert_eq!(imported["group"], "My Styles");
+        assert_eq!(imported["imported"], json!(["Drop Shadow 2"]));
+        assert_eq!(imported["count"], 1);
+        assert!(imported["warnings"].as_array().is_some_and(|w| w.iter().any(|v| v.as_str().is_some_and(|s| s.contains("futureFx")))));
+        assert_eq!(s.presets.styles.len(), before + 1);
+        assert_eq!(s.presets.styles.last().map(|g| g.items[0].effects.len()), Some(1));
+
+        let data = photocraft_paint::tile::b64_encode(&asl_file());
+        let second = s.execute("style.presets.importAsl", json!({"data": data, "group": "My Styles"})).unwrap();
+        assert_eq!(second["group"], "My Styles 1");
+        assert_eq!(second["imported"], json!(["Drop Shadow 3"]));
+        assert_eq!(s.presets.styles.len(), before + 2);
+
+        let count = s.presets.styles.len();
+        for params in [
+            json!({}),
+            json!({"data": "%bad"}),
+            json!({"data": photocraft_paint::tile::b64_encode(b"not an ASL file")}),
+            json!({"data": photocraft_paint::tile::b64_encode(&asl_file()), "group": "  "}),
+        ] {
+            assert!(s.execute("style.presets.importAsl", params.clone()).is_err(), "{params}");
+        }
+        assert_eq!(s.presets.styles.len(), count);
     }
 
     #[test]
