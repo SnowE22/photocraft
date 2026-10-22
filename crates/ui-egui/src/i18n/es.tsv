@@ -792,6 +792,7 @@
 	Paths	Trazados
 	Patterns	Motivos
 	Properties	Propiedades
+	Screentones	Tramas
 	Shapes	Formas
 	Styles	Estilos
 	Swatches	Muestras
@@ -4324,6 +4325,63 @@ navigator	Zoom	Zoom
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Adaptador de GPU
+
+# Manga screentone generator: the Filter › Pixelate filter and the Screentones panel
+	Screentone…	Semitono…
+	Dot Shape	Forma de punto
+	Dot Size	Tamaño de punto
+	Spacing X	Espaciado X
+	Spacing Y	Espaciado Y
+	Line Width	Ancho de línea
+	Cross Angle	Ángulo de cruce
+	Use Source Luminance	Usar luminancia original
+	Satellite Enabled	Satélites activados
+	Satellite Size	Tamaño de satélite
+	Satellite Distance	Distancia de satélite
+	Satellite Count	Número de satélites
+	Satellite Angle	Ángulo de satélite
+	Satellite Shape	Forma de satélite
+	Satellite Stretch	Estiramiento de satélite
+	Aspect X	Proporción X
+	Aspect Y	Proporción Y
+	Row Offset	Desplazamiento de fila
+	Merge Factor	Factor de fusión
+	Jitter Position	Vibración de posición
+	Jitter Size	Vibración de tamaño
+	Gradient Type	Tipo de degradado
+	Gradient Angle	Ángulo de degradado
+	Gradient Reverse	Invertir degradado
+	Gradient Midpoint	Punto medio del degradado
+	Gradient Size Start	Tamaño inicial del degradado
+	Gradient Size End	Tamaño final del degradado
+	Gradient Stretch Start	Estiramiento inicial del degradado
+	Gradient Stretch End	Estiramiento final del degradado
+	Gradient Color Transition	Transición de color del degradado
+	Rotate Canvas	Rotar lienzo
+	Rotate Pattern	Rotar motivo
+	Gaussian Noise	Ruido gaussiano
+	Stipple	Punteado
+	Hexgrid	Rejilla hexagonal
+	Checker	Damero
+	Concentric	Concéntrico
+	Triangles	Triángulos
+	Screentone:	Semitono:
+	Screentones (GenTonik)	Semitonos (GenTonik)
+	Satellites	Satélites
+	Count:	Cantidad:
+	Distance:	Distancia:
+	Stretch:	Estiramiento:
+	Distortion & Jitter	Distorsión y jitter
+	Aspect X:	Proporción X:
+	Aspect Y:	Proporción Y:
+	Row Offset:	Desplazamiento de filas:
+	Merge:	Fusión:
+	Jitter Pos:	Jitter posición:
+	Jitter Size:	Jitter tamaño:
+	Midpoint:	Punto medio:
+	Start Size:	Tamaño inicial:
+	End Size:	Tamaño final:
+	Save as Pattern	Guardar como motivo
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Confirme o cancele primero el cuadro de diálogo abierto del paso de la acción
 	Pro Medium Gray	Pro (gris medio)

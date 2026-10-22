@@ -755,6 +755,7 @@
 	Paths	Yollar
 	Patterns	Desenler
 	Properties	Özellikler
+	Screentones	Tarama Tonları
 	Shapes	Şekiller
 	Styles	Stiller
 	Swatches	Renk Örnekleri
@@ -4092,6 +4093,26 @@ cameraData	Lens	Lens
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU bağdaştırıcısı
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Tarama…
+	Screentone:	Tarama:
+	Screentones (GenTonik)	Raster (GenTonik)
+	Satellites	Uydular
+	Count:	Sayı:
+	Distance:	Mesafe:
+	Stretch:	Uzatma:
+	Distortion & Jitter	Bozulma ve titreme
+	Aspect X:	Oran X:
+	Aspect Y:	Oran Y:
+	Row Offset:	Satır kaydırma:
+	Merge:	Birleştirme:
+	Jitter Pos:	Titreme konumu:
+	Jitter Size:	Titreme boyutu:
+	Midpoint:	Orta nokta:
+	Start Size:	Başlangıç boyutu:
+	End Size:	Bitiş boyutu:
+	Save as Pattern	Desen Olarak Kaydet
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Önce açık eylem adımı iletişim kutusunu onaylayın veya iptal edin
 	Pro Medium Gray	Pro Orta Gri

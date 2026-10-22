@@ -784,6 +784,7 @@
 	Paths	Pfade
 	Patterns	Muster
 	Properties	Eigenschaften
+	Screentones	Rastertöne
 	Shapes	Formen
 	Styles	Stile
 	Swatches	Farbfelder
@@ -3373,6 +3374,27 @@ curves	Smooth	Glätten
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU-Adapter
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Rasterton…
+	Screentone:	Rasterton:
+	Screentones (GenTonik)	Rastertöne (GenTonik)
+	Satellites	Satelliten
+	Enable	Aktivieren
+	Count:	Anzahl:
+	Distance:	Abstand:
+	Stretch:	Dehnung:
+	Distortion & Jitter	Verzerrung & Jitter
+	Aspect X:	Seitenverhältnis X:
+	Aspect Y:	Seitenverhältnis Y:
+	Row Offset:	Zeilenversatz:
+	Merge:	Verschmelzen:
+	Jitter Pos:	Jitter-Position:
+	Jitter Size:	Jitter-Größe:
+	Midpoint:	Mittelpunkt:
+	Start Size:	Startgröße:
+	End Size:	Endgröße:
+	Save as Pattern	Als Muster speichern
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Bestätige oder brich zuerst den offenen Dialog des Aktionsschritts ab
 	Pro Medium Gray	Pro (Mittelgrau)

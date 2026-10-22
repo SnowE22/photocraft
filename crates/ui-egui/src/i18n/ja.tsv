@@ -789,6 +789,7 @@
 	Paths	パス
 	Patterns	パターン
 	Properties	プロパティ
+	Screentones	スクリーントーン
 	Shapes	シェイプ
 	Styles	スタイル
 	Swatches	スウォッチ
@@ -4040,6 +4041,27 @@ curves	Smooth	スムーズ
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU アダプター
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	スクリーントーン…
+	Screentone:	スクリーントーン:
+	Screentones (GenTonik)	スクリーントーン (GenTonik)
+	Satellites	サテライト
+	Enable	有効
+	Count:	個数:
+	Distance:	距離:
+	Stretch:	伸縮:
+	Distortion & Jitter	歪みとジッター
+	Aspect X:	アスペクト比 X:
+	Aspect Y:	アスペクト比 Y:
+	Row Offset:	行オフセット:
+	Merge:	つぶし:
+	Jitter Pos:	ジッター位置:
+	Jitter Size:	ジッターサイズ:
+	Midpoint:	中間点:
+	Start Size:	開始サイズ:
+	End Size:	終了サイズ:
+	Save as Pattern	パターンとして保存
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	先に開いているアクションのステップのダイアログを確定またはキャンセルしてください
 	Pro Medium Gray	プロ(中間グレー)

@@ -708,6 +708,7 @@
 	Pro Medium Gray Theme	Chủ đề Pro xám vừa
 	Pro Theme	Chủ đề Pro
 	Properties	Thuộc tính
+	Screentones	Tông lưới
 	Report an Issue…	Báo cáo vấn đề…
 	Reset Workspace	Đặt lại không gian làm việc
 	Shapes	Hình
@@ -3854,6 +3855,27 @@ curves	Smooth	Làm mượt
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Bộ điều hợp GPU
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Lưới tông…
+	Screentone:	Lưới tông:
+	Screentones (GenTonik)	Lưới tông (GenTonik)
+	Satellites	Vệ tinh
+	Count:	Số lượng:
+	Distance:	Khoảng cách:
+	Stretch:	Kéo dãn:
+	Distortion & Jitter	Biến dạng và rung
+	Aspect X:	Tỷ lệ X:
+	Aspect Y:	Tỷ lệ Y:
+	Row Offset:	Dịch hàng:
+	Merge:	Hợp nhất:
+	Jitter Pos:	Rung vị trí:
+	Jitter Size:	Rung kích thước:
+	Midpoint:	Điểm giữa:
+	Start Size:	Kích thước đầu:
+	End Size:	Kích thước cuối:
+	Enable	Bật
+	Save as Pattern	Lưu dưới dạng họa tiết
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Hãy xác nhận hoặc hủy hộp thoại bước hành động đang mở trước
 	Pro Medium Gray	Pro xám vừa

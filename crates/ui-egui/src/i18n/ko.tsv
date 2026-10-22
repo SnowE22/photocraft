@@ -766,6 +766,7 @@
 	Paths	패스
 	Patterns	패턴
 	Properties	속성
+	Screentones	스크린톤
 	Shapes	모양
 	Styles	스타일
 	Swatches	색상 견본
@@ -3571,6 +3572,64 @@ curves	Smooth	매끄럽게
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU 어댑터
+
+# Manga screentone generator: the Filter › Pixelate filter and the Screentones panel
+	Screentone…	스크린톤…
+	Dot Shape	점 모양
+	Dot Size	점 크기
+	Spacing X	가로 간격
+	Spacing Y	세로 간격
+	Line Width	선 너비
+	Cross Angle	교차 각도
+	Use Source Luminance	원본 광도 사용
+	Satellite Enabled	위성 사용
+	Satellite Size	위성 크기
+	Satellite Distance	위성 거리
+	Satellite Count	위성 개수
+	Satellite Angle	위성 각도
+	Satellite Shape	위성 모양
+	Satellite Stretch	위성 늘리기
+	Aspect X	가로 비율
+	Aspect Y	세로 비율
+	Row Offset	행 오프셋
+	Merge Factor	병합 정도
+	Jitter Position	위치 흔들림
+	Jitter Size	크기 흔들림
+	Gradient Type	그라디언트 유형
+	Gradient Angle	그라디언트 각도
+	Gradient Reverse	그라디언트 반전
+	Gradient Midpoint	그라디언트 중간점
+	Gradient Size Start	그라디언트 시작 크기
+	Gradient Size End	그라디언트 끝 크기
+	Gradient Stretch Start	그라디언트 시작 늘리기
+	Gradient Stretch End	그라디언트 끝 늘리기
+	Gradient Color Transition	그라디언트 색 전환
+	Rotate Canvas	캔버스 회전
+	Rotate Pattern	패턴 회전
+	Gaussian Noise	가우스 노이즈
+	Stipple	점묘
+	Hexgrid	육각 격자
+	Checker	체커
+	Concentric	동심원
+	Triangles	삼각형
+	Screentone:	스크린톤:
+	Screentones (GenTonik)	스크린톤 (GenTonik)
+	Satellites	위성
+	Enable	활성화
+	Count:	개수:
+	Distance:	거리:
+	Stretch:	늘림:
+	Distortion & Jitter	왜곡 및 지터
+	Aspect X:	종횡비 X:
+	Aspect Y:	종횡비 Y:
+	Row Offset:	행 오프셋:
+	Merge:	겹침:
+	Jitter Pos:	지터 위치:
+	Jitter Size:	지터 크기:
+	Midpoint:	중간점:
+	Start Size:	시작 크기:
+	End Size:	끝 크기:
+	Save as Pattern	패턴으로 저장
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	먼저 열려 있는 액션 단계 대화 상자를 확인하거나 취소하세요
 	Pro Medium Gray	프로 중간 회색

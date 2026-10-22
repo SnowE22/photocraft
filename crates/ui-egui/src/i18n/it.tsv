@@ -786,6 +786,7 @@
 	Paths	Tracciati
 	Patterns	Pattern
 	Properties	Proprietà
+	Screentones	Retini
 	Shapes	Forme
 	Styles	Stili
 	Swatches	Campioni
@@ -4479,6 +4480,63 @@ shape	Appearance	Aspetto
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Adattatore GPU
+
+# Manga screentone generator: the Filter › Pixelate filter and the Screentones panel
+	Screentone…	Retino…
+	Dot Shape	Forma punto
+	Dot Size	Dimensione punto
+	Spacing X	Spaziatura X
+	Spacing Y	Spaziatura Y
+	Line Width	Larghezza linea
+	Cross Angle	Angolo incrocio
+	Use Source Luminance	Usa luminanza originale
+	Satellite Enabled	Satelliti attivi
+	Satellite Size	Dimensione satellite
+	Satellite Distance	Distanza satellite
+	Satellite Count	Numero satelliti
+	Satellite Angle	Angolo satellite
+	Satellite Shape	Forma satellite
+	Satellite Stretch	Allungamento satellite
+	Aspect X	Proporzioni X
+	Aspect Y	Proporzioni Y
+	Row Offset	Scostamento riga
+	Merge Factor	Fattore di fusione
+	Jitter Position	Oscillazione posizione
+	Jitter Size	Oscillazione dimensione
+	Gradient Type	Tipo gradiente
+	Gradient Angle	Angolo gradiente
+	Gradient Reverse	Inverti gradiente
+	Gradient Midpoint	Punto medio gradiente
+	Gradient Size Start	Dimensione iniziale gradiente
+	Gradient Size End	Dimensione finale gradiente
+	Gradient Stretch Start	Allungamento iniziale gradiente
+	Gradient Stretch End	Allungamento finale gradiente
+	Gradient Color Transition	Transizione colore gradiente
+	Rotate Canvas	Ruota tela
+	Rotate Pattern	Ruota motivo
+	Gaussian Noise	Rumore gaussiano
+	Stipple	Punteggiato
+	Hexgrid	Griglia esagonale
+	Checker	Scacchi
+	Concentric	Concentriche
+	Triangles	Triangoli
+	Screentone:	Retino:
+	Screentones (GenTonik)	Retini (GenTonik)
+	Satellites	Satelliti
+	Count:	Numero:
+	Distance:	Distanza:
+	Stretch:	Allungamento:
+	Distortion & Jitter	Distorsione e oscillazione
+	Aspect X:	Proporzioni X:
+	Aspect Y:	Proporzioni Y:
+	Row Offset:	Scostamento riga:
+	Merge:	Fusione:
+	Jitter Pos:	Oscillazione posizione:
+	Jitter Size:	Oscillazione dimensione:
+	Midpoint:	Punto medio:
+	Start Size:	Dimensione iniziale:
+	End Size:	Dimensione finale:
+	Save as Pattern	Salva come pattern
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Conferma o annulla prima la finestra di dialogo aperta del passo dell’azione
 	Pro Medium Gray	Pro grigio medio

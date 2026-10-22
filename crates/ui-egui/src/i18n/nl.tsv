@@ -771,6 +771,7 @@
 	Paths	Paden
 	Patterns	Patronen
 	Properties	Eigenschappen
+	Screentones	Rastertinten
 	Shapes	Vormen
 	Styles	Stijlen
 	Swatches	Stalen
@@ -4122,6 +4123,26 @@ curves	Smooth	Vloeiend maken
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU-adapter
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Raster…
+	Screentone:	Raster:
+	Screentones (GenTonik)	Screentones (GenTonik)
+	Satellites	Satellieten
+	Count:	Aantal:
+	Distance:	Afstand:
+	Stretch:	Uitrekken:
+	Distortion & Jitter	Vervorming & jitter
+	Aspect X:	Verhouding X:
+	Aspect Y:	Verhouding Y:
+	Row Offset:	Verschoven rijen:
+	Merge:	Samensmelten:
+	Jitter Pos:	Jitter-positie:
+	Jitter Size:	Jitter-grootte:
+	Midpoint:	Middelpunt:
+	Start Size:	Startgrootte:
+	End Size:	Eindgrootte:
+	Save as Pattern	Opslaan als patroon
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Bevestig of annuleer eerst het geopende dialoogvenster van de handelingsstap
 	Pro Medium Gray	Pro middelgrijs

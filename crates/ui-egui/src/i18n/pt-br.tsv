@@ -772,6 +772,7 @@
 	Paths	Demarcadores
 	Patterns	Padrões
 	Properties	Propriedades
+	Screentones	Retículas
 	Shapes	Formas
 	Styles	Estilos
 	Swatches	Amostras
@@ -4152,6 +4153,26 @@ layerLabel	No Color	Sem cor
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Adaptador de GPU
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Retícula…
+	Screentone:	Retícula:
+	Screentones (GenTonik)	Retículas (GenTonik)
+	Satellites	Satélites
+	Count:	Quantidade:
+	Distance:	Distância:
+	Stretch:	Estiramento:
+	Distortion & Jitter	Distorção e oscilação
+	Aspect X:	Proporção X:
+	Aspect Y:	Proporção Y:
+	Row Offset:	Deslocamento de linhas:
+	Merge:	Fusão:
+	Jitter Pos:	Oscilação posição:
+	Jitter Size:	Oscilação tamanho:
+	Midpoint:	Ponto médio:
+	Start Size:	Tamanho inicial:
+	End Size:	Tamanho final:
+	Save as Pattern	Salvar como padrão
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Confirme ou cancele primeiro a caixa de diálogo aberta da etapa da ação
 

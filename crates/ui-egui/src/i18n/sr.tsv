@@ -763,6 +763,7 @@
 	Paths	Putanje
 	Patterns	Šare
 	Properties	Svojstva
+	Screentones	Rasterski tonovi
 	Shapes	Oblici
 	Styles	Stilovi
 	Swatches	Uzorci boja
@@ -4434,6 +4435,26 @@ shape	Appearance	Izgled
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU adapter
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Raster ton…
+	Screentone:	Raster ton:
+	Screentones (GenTonik)	Raster ton (GenTonik)
+	Satellites	Sateliti
+	Count:	Broj:
+	Distance:	Rastojanje:
+	Stretch:	Rastezanje:
+	Distortion & Jitter	Iskrivljenje i treperenje
+	Aspect X:	Odnos X:
+	Aspect Y:	Odnos Y:
+	Row Offset:	Pomer redova:
+	Merge:	Spajanje:
+	Jitter Pos:	Jiter pozicije:
+	Jitter Size:	Jiter veličine:
+	Midpoint:	Srednja tačka:
+	Start Size:	Početna veličina:
+	End Size:	Krajnja veličina:
+	Save as Pattern	Sačuvaj kao šaru
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Prvo potvrdite ili otkažite otvoreni dijalog koraka radnje
 	Pro Medium Gray	Pro srednje siva

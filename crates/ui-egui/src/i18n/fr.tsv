@@ -779,6 +779,7 @@
 	Paths	Tracés
 	Patterns	Motifs
 	Properties	Propriétés
+	Screentones	Trames
 	Shapes	Formes
 	Styles	Styles
 	Swatches	Nuancier
@@ -3373,6 +3374,27 @@ curves	Smooth	Lisser
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Adaptateur GPU
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Trame…
+	Screentone:	Trame:
+	Screentones (GenTonik)	Trames (GenTonik)
+	Satellites	Satellites
+	Enable	Activer
+	Count:	Nombre :
+	Distance:	Distance :
+	Stretch:	Étirement :
+	Distortion & Jitter	Distorsion et jitter
+	Aspect X:	Proportions X :
+	Aspect Y:	Proportions Y :
+	Row Offset:	Décalage des lignes :
+	Merge:	Fusion :
+	Jitter Pos:	Jitter position :
+	Jitter Size:	Jitter taille :
+	Midpoint:	Point médian :
+	Start Size:	Taille de départ :
+	End Size:	Taille de fin :
+	Save as Pattern	Enregistrer comme motif
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Validez ou annulez d’abord la boîte de dialogue ouverte de l’étape de l’action
 	Pro Medium Gray	Pro gris moyen
@@ -3642,7 +3664,6 @@ curves	Smooth	Lisser
 	Edit…	Modifier…
 	Elevation	Élévation
 	Eliminate	Éliminer
-	Enable	Activer
 	Enable Mask	Activer le masque
 	End X	Fin X
 	End Y	Fin Y

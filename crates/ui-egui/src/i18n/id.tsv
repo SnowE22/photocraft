@@ -772,6 +772,7 @@
 	Paths	Path
 	Patterns	Pola
 	Properties	Properti
+	Screentones	Nada Skrin
 	Shapes	Bentuk
 	Styles	Gaya
 	Swatches	Swatch
@@ -3376,6 +3377,27 @@ curves	Smooth	Haluskan
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Adaptor GPU
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Nada…
+	Screentone:	Nada:
+	Screentones (GenTonik)	Screentone (GenTonik)
+	Satellites	Satelit
+	Enable	Aktifkan
+	Count:	Jumlah:
+	Distance:	Jarak:
+	Stretch:	Regangan:
+	Distortion & Jitter	Distorsi & jitter
+	Aspect X:	Aspek X:
+	Aspect Y:	Aspek Y:
+	Row Offset:	Offset baris:
+	Merge:	Gabungan:
+	Jitter Pos:	Posisi jitter:
+	Jitter Size:	Ukuran jitter:
+	Midpoint:	Titik tengah:
+	Start Size:	Ukuran awal:
+	End Size:	Ukuran akhir:
+	Save as Pattern	Simpan sebagai Pola
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Konfirmasi atau batalkan dulu dialog langkah tindakan yang terbuka
 	Pro Medium Gray	Pro Abu-abu Sedang

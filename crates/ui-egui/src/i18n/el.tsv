@@ -162,6 +162,7 @@
 	Paths	Διαδρομές
 	History	Ιστορικό
 	Properties	Ιδιότητες
+	Screentones	Ημίτονοι
 	Adjustments	Προσαρμογές
 	Brushes	Πινέλα
 	Color	Χρώμα
@@ -4062,6 +4063,26 @@ curves	Smooth	Εξομάλυνση
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Προσαρμογέας GPU
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Ράστερ…
+	Screentone:	Ράστερ:
+	Screentones (GenTonik)	Ράστερ (GenTonik)
+	Satellites	Δορυφόροι
+	Count:	Πλήθος:
+	Distance:	Απόσταση:
+	Stretch:	Τέντωμα:
+	Distortion & Jitter	Παραμόρφωση και τρέμουλο
+	Aspect X:	Αναλογία Χ:
+	Aspect Y:	Αναλογία Υ:
+	Row Offset:	Μετατόπιση σειράς:
+	Merge:	Συγχώνευση:
+	Jitter Pos:	Τρέμουλο θέσης:
+	Jitter Size:	Τρέμουλο μεγέθους:
+	Midpoint:	Μέσο σημείο:
+	Start Size:	Αρχικό μέγεθος:
+	End Size:	Τελικό μέγεθος:
+	Save as Pattern	Αποθήκευση ως μοτίβο
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Επιβεβαιώστε ή ακυρώστε πρώτα το ανοιχτό παράθυρο βήματος της ενέργειας
 	Pro Medium Gray	Pro μεσαίου γκρι

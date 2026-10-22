@@ -795,6 +795,7 @@
 	Paths	Cesty
 	Patterns	Vzorky
 	Properties	Vlastnosti
+	Screentones	Screentony
 	Shapes	Tvary
 	Styles	Styly
 	Swatches	Vzorník
@@ -4107,6 +4108,26 @@ cameraRaw	Dehaze	Odstranění oparu
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Adaptér GPU
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Síťovina…
+	Screentone:	Síťovina:
+	Screentones (GenTonik)	Sítoviny (GenTonik)
+	Satellites	Satelity
+	Count:	Počet:
+	Distance:	Vzdálenost:
+	Stretch:	Roztažení:
+	Distortion & Jitter	Zkreslení a rozptyl
+	Aspect X:	Poměr stran X:
+	Aspect Y:	Poměr stran Y:
+	Row Offset:	Posun řádků:
+	Merge:	Spojení:
+	Jitter Pos:	Rozptyl polohy:
+	Jitter Size:	Rozptyl velikosti:
+	Midpoint:	Střední bod:
+	Start Size:	Počáteční velikost:
+	End Size:	Konečná velikost:
+	Save as Pattern	Uložit jako vzorek
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Nejprve potvrďte nebo zrušte otevřený dialog kroku akce
 	Pro Medium Gray	Pro (středně šedý)

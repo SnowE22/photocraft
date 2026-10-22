@@ -523,6 +523,8 @@
 	Paths	Контуры
 	Patterns	Паттерны
 	Properties	Свойства
+	Screentones	Скринтоны
+	Screentones (GenTonik)	Скринтоны (GenTonik)
 	Styles	Стили
 	Swatches	Образцы
 	Timeline	Шкала времени
@@ -3843,6 +3845,63 @@ curves	Smooth	Сгладить
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Адаптер GPU
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	Полутон…
+	Screentone:	Полутон:
+	Satellites	Спутники
+	Count:	Количество:
+	Distance:	Расстояние:
+	Stretch:	Растяжение:
+	Distortion & Jitter	Искажение и джиттер
+	Aspect X:	Пропорции X:
+	Aspect Y:	Пропорции Y:
+	Row Offset:	Смещение рядов:
+	Merge:	Слияние:
+	Jitter Pos:	Дрожание позиции:
+	Jitter Size:	Дрожание размера:
+	Midpoint:	Средняя точка:
+	Start Size:	Начальный размер:
+	End Size:	Конечный размер:
+	Save as Pattern	Сохранить как паттерн
+# Screentone dialog: labels generated from the spec keys (camelCase to words)
+	Aspect X	Пропорции X
+	Aspect Y	Пропорции Y
+	Checker	Шахматные клетки
+	Concentric	Концентрические
+	Cross Angle	Угол перекрестия
+	Dot Shape	Форма точки
+	Dot Size	Размер точки
+	Gaussian Noise	Гауссов шум
+	Gradient Angle	Угол градиента
+	Gradient Color Transition	Цветовой переход градиента
+	Gradient Midpoint	Средняя точка градиента
+	Gradient Reverse	Обратный градиент
+	Gradient Size End	Конечный размер градиента
+	Gradient Size Start	Начальный размер градиента
+	Gradient Stretch End	Конечное растяжение градиента
+	Gradient Stretch Start	Начальное растяжение градиента
+	Gradient Type	Тип градиента
+	Hexgrid	Гексагональная сетка
+	Jitter Position	Дрожание позиции
+	Jitter Size	Дрожание размера
+	Line Width	Толщина линий
+	Merge Factor	Коэффициент слияния
+	Rotate Canvas	Поворот холста
+	Rotate Pattern	Поворот паттерна
+	Row Offset	Смещение рядов
+	Satellite Angle	Угол спутников
+	Satellite Count	Количество спутников
+	Satellite Distance	Расстояние спутников
+	Satellite Enabled	Включить спутники
+	Satellite Shape	Форма спутников
+	Satellite Size	Размер спутников
+	Satellite Stretch	Растяжение спутников
+	Spacing X	Шаг по X
+	Spacing Y	Шаг по Y
+	Stipple	Стохастика
+	Triangles	Треугольники
+	Use Source Luminance	Яркость источника
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Сначала подтвердите или отмените открытый диалог шага операции
 	Pro Medium Gray	Средне-серая Pro

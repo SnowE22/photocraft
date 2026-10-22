@@ -796,6 +796,7 @@
 	Paths	路径
 	Patterns	图案
 	Properties	属性
+	Screentones	网点
 	Shapes	形状
 	Styles	样式
 	Swatches	色板
@@ -3021,6 +3022,27 @@ curves	Smooth	平滑
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU 适配器
+
+# Manga screentone generator (Filter › Pixelate)
+	Screentone…	网点…
+	Screentone:	网点:
+	Screentones (GenTonik)	网点 (GenTonik)
+	Satellites	卫星
+	Enable	启用
+	Count:	数量:
+	Distance:	距离:
+	Stretch:	拉伸:
+	Distortion & Jitter	变形与抖动
+	Aspect X:	长宽比 X:
+	Aspect Y:	长宽比 Y:
+	Row Offset:	行偏移:
+	Merge:	融合:
+	Jitter Pos:	抖动位置:
+	Jitter Size:	抖动大小:
+	Midpoint:	中点:
+	Start Size:	起始大小:
+	End Size:	结束大小:
+	Save as Pattern	存储为图案
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	请先确认或取消打开的动作步骤对话框
 	Pro Medium Gray	专业中灰
