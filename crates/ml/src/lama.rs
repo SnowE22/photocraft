@@ -50,10 +50,10 @@ pub fn model_file() -> Result<PathBuf, MlError> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub use native::{availability, inpaint, preload, state};
+pub use native::{availability, inpaint, preload, release, state};
 
 #[cfg(target_arch = "wasm32")]
-pub use web::{availability, inpaint, preload, state};
+pub use web::{availability, inpaint, preload, release, state};
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
@@ -148,6 +148,16 @@ mod native {
             PHASE.store(IDLE, Ordering::Release);
         }
         out
+    }
+
+    /// Drop the session now, freeing its graphics memory for a larger model (SDXL after LaMa's
+    /// first fill, on an 8 GB GPU); the next fill loads it again (seconds).
+    pub fn release() {
+        let mut slot = SLOT.lock().unwrap_or_else(PoisonError::into_inner);
+        if matches!(*slot, Some(Ok(_))) {
+            *slot = None;
+            PHASE.store(IDLE, Ordering::Release);
+        }
     }
 
     /// Drop the session when it has been idle for [`IDLE_AFTER`] (see `crate::idle`).
@@ -347,6 +357,8 @@ mod web {
     }
 
     pub fn preload() {}
+
+    pub fn release() {}
 
     pub fn availability() -> Result<(), MlError> {
         Err(MlError::Unsupported)

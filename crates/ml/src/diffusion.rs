@@ -24,7 +24,9 @@
 //! One crop is filled in [`run`]: the prompt and the negative prompt encoded once (classifier-free
 //! guidance), the masked crop encoded by the VAE, then DDIM steps (Song et al. 2021) from noise,
 //! or with a `hint` (the crop's current fill, [`crate::inpaint`]'s full-resolution pass) from that
-//! hint noised to `strength`, so the pass keeps the shapes and adds detail. Only the latent around
+//! hint noised to `strength`, so the pass keeps the shapes and adds detail. A removal (no prompt,
+//! [`Settings::for_removal`]) starts every crop from LaMa's fill that way: SDXL inpainting from
+//! noise draws soft grey mush. Only the latent around
 //! the hole is decoded ([`decode_window`]): the rest of the crop isn't used.
 
 use std::path::PathBuf;
@@ -58,11 +60,21 @@ pub struct Settings {
     pub seed: u64,
     /// How much a hinted pass may change its hint (0–1).
     pub strength: f32,
+    /// Steps with classifier-free guidance, from the first; the rest run the prompt's pass only,
+    /// half the work. `None`: every step. The layout is set in the first steps, so guiding only
+    /// those changes little.
+    pub guided_steps: Option<u32>,
+    /// Removal: fill the hole with LaMa first and redraw that fill from this strength (0–1),
+    /// instead of starting from noise. SDXL inpainting started from noise draws soft, grey mush
+    /// (its model card says so: "images look less sharp" at strength 1); from LaMa's fill it
+    /// draws crisp lines that carry on those around the hole. `None`: from noise, for a prompt
+    /// that asks for something new.
+    pub lama_start: Option<f32>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { prompt: String::new(), negative: String::new(), steps: 25, guidance: 7.0, seed: 0x5d_1f11, strength: 0.45 }
+        Self { prompt: String::new(), negative: String::new(), steps: 25, guidance: 7.0, seed: 0x5d_1f11, strength: 0.45, guided_steps: None, lama_start: None }
     }
 }
 
@@ -86,6 +98,16 @@ const PROMPT_GENERAL_MONO: &str = "black and white, monochrome";
 const NEGATIVE_GENERAL: &str = "text, letters, words, caption, watermark, signature, logo, frame, border, lowres, blurry, jpeg artifacts, deformed, distorted, disfigured, worst quality, low quality";
 
 impl Settings {
+    /// For a removal (no prompt): from LaMa's fill at strength 0.7, guided for the first 4 of
+    /// its 18 steps. Measured on a 729 × 500 manga page with its title removed (RTX 5070 Laptop,
+    /// DirectML, SDXL): crisp hatching that carries on the lines around the hole (78 % of the
+    /// original's sharpness, LaMa's 53 %), where from noise it was soft grey mush (33 %); about
+    /// 85 s a fill once loaded, most of it SDXL's VAE on the CPU, against 160–310 s before.
+    /// Guiding every step changed nothing visible.
+    pub fn for_removal(self) -> Self {
+        Self { lama_start: Some(0.7), guided_steps: Some(4), ..self }
+    }
+
     /// The prompt and negative prompt for a crop: the user's, or the defaults for the model's
     /// style (with monochrome terms for a black-and-white crop).
     pub fn prompts_for(&self, monochrome: bool, style: Style) -> (String, String) {
@@ -275,10 +297,11 @@ pub(crate) trait Nets {
     fn text(&mut self, ids: &[i64], count: usize) -> Result<(Vec<f32>, Vec<f32>), MlError>;
     /// An image (`3 × side × side`, −1 to 1) to its latent mean (`4 × side/8 × side/8`), unscaled.
     fn encode(&mut self, image: &[f32], side: usize) -> Result<Vec<f32>, MlError>;
-    /// Batch 2 (unconditional, conditional) of 9-channel latents at timestep `t`: the predicted
-    /// noise. `pooled` is [`Nets::text`]'s (SDXL), which also gets the crop's size as its size
-    /// conditioning.
-    fn unet(&mut self, sample: &[f32], t: f32, hidden: &[f32], pooled: &[f32], latent_side: usize) -> Result<Vec<f32>, MlError>;
+    /// Batch 2 (unconditional, conditional) of 9-channel latents at timestep `t`, or (`guided`
+    /// off) only the conditional one: the predicted noise, for each. `hidden` and `pooled` are
+    /// [`Nets::text`]'s for both (`pooled`: SDXL, which also gets the crop's size as its size
+    /// conditioning).
+    fn unet(&mut self, sample: &[f32], t: f32, hidden: &[f32], pooled: &[f32], latent_side: usize, guided: bool) -> Result<Vec<f32>, MlError>;
     /// A latent (`4 × height/8 × width/8`), unscaled, to an image (`3 × height × width`, −1 to 1).
     fn decode(&mut self, latent: &[f32], width: usize, height: usize) -> Result<Vec<f32>, MlError>;
     /// Token ids of a prompt.
@@ -362,18 +385,21 @@ pub(crate) fn run(
         if ctl(i as f32 / steps.len() as f32) {
             return Err(MlError::Cancelled);
         }
-        // Batch 2: [latent, mask, masked latent] twice.
-        let mut sample = Vec::with_capacity(2 * 9 * ln);
-        for _ in 0..2 {
+        // Batch 2: [latent, mask, masked latent] twice; past the guided steps, once.
+        let guided = s.guidance != 1.0 && s.guided_steps.is_none_or(|g| i < g as usize);
+        let batch = if guided { 2 } else { 1 };
+        let mut sample = Vec::with_capacity(batch * 9 * ln);
+        for _ in 0..batch {
             sample.extend_from_slice(&lat);
             sample.extend_from_slice(&small);
             sample.extend_from_slice(&masked_latent);
         }
-        let pred = nets.unet(&sample, t as f32, &hidden, &pooled, ls)?;
-        if pred.len() != 2 * 4 * ln {
+        let pred = nets.unet(&sample, t as f32, &hidden, &pooled, ls, guided)?;
+        if pred.len() != batch * 4 * ln {
             return Err(MlError::Inference("the UNet gave the wrong number of values".into()));
         }
-        let (uncond, cond) = pred.split_at(4 * ln);
+        // Unguided: the conditional prediction as is.
+        let (uncond, cond) = if guided { pred.split_at(4 * ln) } else { (&pred[..], &pred[..]) };
         let a_t = cum.get(t).copied().unwrap_or(1.0);
         let a_prev = t.checked_sub(ratio).and_then(|p| cum.get(p).copied()).unwrap_or(final_alpha);
         for (j, l) in lat.iter_mut().enumerate() {
@@ -502,12 +528,31 @@ pub fn fill(
 ) -> Result<(Vec<f32>, crate::Device), MlError> {
     let mut device = crate::Device::Cpu;
     let mut run = 0u64;
-    let out = crate::inpaint::fill_with(
+    // Removal: LaMa's fill first, redrawn from `lama_start`.
+    let start = match settings.lama_start {
+        None => None,
+        Some(_) => match crate::inpaint::fill_with(req, read, &mut |rgb, mask, _| crate::lama::inpaint(rgb, mask).map(|(o, _)| o), ctl, &crate::inpaint::LAMA) {
+            Ok(v) => Some(v),
+            Err(MlError::Cancelled) => return Err(MlError::Cancelled),
+            Err(e) => {
+                log::warn!("[ml] {NAME}: no LaMa fill to start from ({e}); starting from noise");
+                None
+            }
+        },
+    };
+    // LaMa's graphics memory is SDXL's: with LaMa left loaded from a 1024 fill, an SDXL fill
+    // on an 8 GB GPU took 310 s instead of about 160. LaMa loads again in seconds.
+    if start.is_some() {
+        crate::lama::release();
+    }
+    let strength = settings.lama_start.filter(|_| start.is_some()).unwrap_or(settings.strength);
+    let out = crate::inpaint::fill_from(
         req,
+        start.as_deref(),
         read,
         &mut |rgb, mask, hint| {
             let side = (mask.len() as f64).sqrt().round() as usize;
-            let s = Settings { seed: settings.seed.wrapping_add(run.wrapping_mul(0x9e37_79b9)), ..settings.clone() };
+            let s = Settings { seed: settings.seed.wrapping_add(run.wrapping_mul(0x9e37_79b9)), strength, ..settings.clone() };
             run += 1;
             let (o, d) = inpaint(rgb, mask, hint, side, &s, &|_| ctl.check().is_err())?;
             device = d;
@@ -846,13 +891,15 @@ mod native {
             out
         }
 
-        fn unet(&mut self, sample: &[f32], t: f32, hidden: &[f32], pooled: &[f32], ls: usize) -> Result<Vec<f32>, MlError> {
+        fn unet(&mut self, sample: &[f32], t: f32, hidden: &[f32], pooled: &[f32], ls: usize, guided: bool) -> Result<Vec<f32>, MlError> {
             // One call per guidance branch, not a batch of two: each GPU submission stays short
             // (Windows resets a GPU that is busy for more than about two seconds).
             let (s_len, h_len, p_len) = (9 * ls * ls, LENGTH * self.meta.hidden, self.meta.pooled);
             let mut out = Vec::with_capacity(2 * 4 * ls * ls);
-            for i in 0..2 {
-                let part = sample.get(i * s_len..(i + 1) * s_len).ok_or_else(|| MlError::Inference("bad UNet input".into()))?;
+            // The branches run: unconditional (0) and conditional (1), or the conditional alone.
+            let branches: &[usize] = if guided { &[0, 1] } else { &[1] };
+            for (b, &i) in branches.iter().enumerate() {
+                let part = sample.get(b * s_len..(b + 1) * s_len).ok_or_else(|| MlError::Inference("bad UNet input".into()))?;
                 let hpart = hidden.get(i * h_len..(i + 1) * h_len).ok_or_else(|| MlError::Inference("bad text input".into()))?;
                 let s = Tensor::from_array(([1usize, 9, ls, ls], part.to_vec().into_boxed_slice())).map_err(fail)?;
                 let ts = Tensor::from_array(([1usize], vec![t].into_boxed_slice())).map_err(fail)?;
@@ -991,6 +1038,8 @@ mod tests {
         target: f32,
         unet_calls: usize,
         timesteps: Vec<f32>,
+        /// Whether each UNet call ran both guidance branches.
+        guided: Vec<bool>,
         cum: Vec<f64>,
         pooled: usize,
         /// The sizes decoded.
@@ -1014,10 +1063,11 @@ mod tests {
             }
             Ok(out)
         }
-        fn unet(&mut self, sample: &[f32], t: f32, hidden: &[f32], pooled: &[f32], ls: usize) -> Result<Vec<f32>, MlError> {
+        fn unet(&mut self, sample: &[f32], t: f32, hidden: &[f32], pooled: &[f32], ls: usize, guided: bool) -> Result<Vec<f32>, MlError> {
             self.unet_calls += 1;
             self.timesteps.push(t);
-            assert_eq!(sample.len(), 2 * 9 * ls * ls);
+            self.guided.push(guided);
+            assert_eq!(sample.len(), if guided { 2 } else { 1 } * 9 * ls * ls);
             assert_eq!(hidden.len(), 2 * 77 * 8);
             assert_eq!(pooled.len(), 2 * self.pooled);
             // eps such that x0 = target (in scaled latent units).
@@ -1025,7 +1075,7 @@ mod tests {
             let ln = 4 * ls * ls;
             let x = &sample[..ln];
             let eps: Vec<f32> = x.iter().map(|x| ((f64::from(*x) - a.sqrt() * f64::from(self.target)) / (1.0 - a).sqrt()) as f32).collect();
-            Ok([eps.clone(), eps].concat())
+            Ok(if guided { [eps.clone(), eps].concat() } else { eps })
         }
         fn decode(&mut self, latent: &[f32], width: usize, height: usize) -> Result<Vec<f32>, MlError> {
             let (lw, lh) = (width / 8, height / 8);
@@ -1057,15 +1107,22 @@ mod tests {
         mask[..n / 2].fill(1.0);
         // The decoded value is target / scaling in −1..1: pick target so the image is 0.75.
         let target = 0.5 * m.scaling;
-        let mut f = Fake { target, unet_calls: 0, timesteps: Vec::new(), cum: cum.clone(), pooled: 0, decoded: Vec::new() };
+        let mut f = Fake { target, unet_calls: 0, timesteps: Vec::new(), guided: Vec::new(), cum: cum.clone(), pooled: 0, decoded: Vec::new() };
         let s = Settings { steps: 10, ..Settings::default() };
         let out = run(&mut f, &m, &s, &rgb, &mask, None, side, &|_| false).unwrap();
         assert_eq!(f.unet_calls, 10);
         // DDIM's last step keeps a trace of the noise (alpha never reaches 1): on average 0.75.
         let mean = out.iter().sum::<f32>() / out.len() as f32;
         assert!((mean - 0.75).abs() < 0.01 && out.iter().all(|v| (v - 0.75).abs() < 0.5), "{mean}");
+        assert!(f.guided.iter().all(|g| *g), "every step guided by default");
+        // Guidance on the first 3 steps only: the rest run the conditional branch alone.
+        let mut f = Fake { target, unet_calls: 0, timesteps: Vec::new(), guided: Vec::new(), cum: cum.clone(), pooled: 0, decoded: Vec::new() };
+        let out = run(&mut f, &m, &Settings { guided_steps: Some(3), ..s.clone() }, &rgb, &mask, None, side, &|_| false).unwrap();
+        assert_eq!(f.guided, [[true; 3].as_slice(), &[false; 7]].concat());
+        let mean = out.iter().sum::<f32>() / out.len() as f32;
+        assert!((mean - 0.75).abs() < 0.01, "{mean}");
         // A hint at strength 0.4 runs the last 4 of the 10 steps.
-        let mut f = Fake { target, unet_calls: 0, timesteps: Vec::new(), cum: cum.clone(), pooled: 0, decoded: Vec::new() };
+        let mut f = Fake { target, unet_calls: 0, timesteps: Vec::new(), guided: Vec::new(), cum: cum.clone(), pooled: 0, decoded: Vec::new() };
         let hint = vec![0.25f32; 3 * n];
         let out = run(&mut f, &m, &Settings { strength: 0.4, ..s.clone() }, &rgb, &mask, Some(&hint), side, &|_| false).unwrap();
         assert_eq!(f.unet_calls, 4);
@@ -1086,12 +1143,12 @@ mod tests {
         let (rgb, mut mask) = (vec![0.5f32; 3 * n], vec![0f32; n]);
         mask[..n / 2].fill(1.0);
         let s = Settings { steps: 5, ..Settings::default() };
-        let mut f = Fake { target: 0.5 * m.scaling, unet_calls: 0, timesteps: Vec::new(), cum: cum.clone(), pooled: 6, decoded: Vec::new() };
+        let mut f = Fake { target: 0.5 * m.scaling, unet_calls: 0, timesteps: Vec::new(), guided: Vec::new(), cum: cum.clone(), pooled: 6, decoded: Vec::new() };
         let out = run(&mut f, &m, &s, &rgb, &mask, None, side, &|_| false).unwrap();
         assert_eq!(f.unet_calls, 5);
         assert!(out.iter().all(|v| v.is_finite()));
         // The text encoder gives no pooled embedding (an SD 1.x export called sdxl): an error, not a panic.
-        let mut f = Fake { target: 0.5, unet_calls: 0, timesteps: Vec::new(), cum, pooled: 0, decoded: Vec::new() };
+        let mut f = Fake { target: 0.5, unet_calls: 0, timesteps: Vec::new(), guided: Vec::new(), cum, pooled: 0, decoded: Vec::new() };
         assert!(matches!(run(&mut f, &m, &s, &rgb, &mask, None, side, &|_| false), Err(MlError::Inference(_))));
         assert_eq!(f.unet_calls, 0);
     }
@@ -1161,7 +1218,7 @@ mod tests {
                 mask[y * side + x] = 1.0;
             }
         }
-        let mut f = Fake { target: 0.5 * m.scaling, unet_calls: 0, timesteps: Vec::new(), cum, pooled: 0, decoded: Vec::new() };
+        let mut f = Fake { target: 0.5 * m.scaling, unet_calls: 0, timesteps: Vec::new(), guided: Vec::new(), cum, pooled: 0, decoded: Vec::new() };
         let out = run(&mut f, &m, &Settings { steps: 4, ..Settings::default() }, &rgb, &mask, None, side, &|_| false).unwrap();
         let (cx, cy) = (25 - DECODE_MARGIN, 37 - DECODE_MARGIN);
         assert_eq!(f.decoded, vec![((5 + 2 * DECODE_MARGIN) * 8, (3 + 2 * DECODE_MARGIN) * 8)]);

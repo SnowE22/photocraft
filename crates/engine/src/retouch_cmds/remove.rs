@@ -116,10 +116,12 @@ impl AiModel {
 }
 
 /// The diffusion model's settings from `prompt` and `negativePrompt` (the rest stay at their
-/// defaults).
+/// defaults). Without a prompt the fill is a removal: it starts from LaMa's fill
+/// ([`photocraft_ml::diffusion::Settings::for_removal`]); a prompt asks for something new, from noise.
 pub(crate) fn diffusion_settings(p: &Value) -> photocraft_ml::diffusion::Settings {
     let text = |k: &str| p.get(k).and_then(Value::as_str).map(|s| s.chars().take(500).collect::<String>()).unwrap_or_default();
-    photocraft_ml::diffusion::Settings { prompt: text("prompt"), negative: text("negativePrompt"), ..Default::default() }
+    let s = photocraft_ml::diffusion::Settings { prompt: text("prompt"), negative: text("negativePrompt"), ..Default::default() };
+    if s.prompt.trim().is_empty() { s.for_removal() } else { s }
 }
 
 /// `quality`: `"standard"` (the default) or `"high"`, LaMa's Quality mode

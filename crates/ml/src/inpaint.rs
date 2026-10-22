@@ -203,9 +203,12 @@ pub const LAMA_QUALITY: Options = Options { side: 1024, refine: true, max_runs: 
 pub const DIFFUSION: Options = Options { side: 512, refine: true, max_runs: 24, correct: true, rings: false };
 
 /// The square crop the model sees for `group`: its extent plus context, at least [`SIDE`],
-/// centred on it, moved inside the canvas and cut to it. A group up to `SIDE - 2 ×
-/// FULL_RES_MARGIN` across gets a full-resolution crop; a larger one [`SCALED_CONTEXT`] of
-/// context (at least [`FULL_RES_MARGIN`]), shrunk to the model.
+/// centred on it and moved inside the canvas. A group up to `SIDE - 2 × FULL_RES_MARGIN` across
+/// gets a full-resolution crop; a larger one [`SCALED_CONTEXT`] of context (at least
+/// [`FULL_RES_MARGIN`]), shrunk to the model. Where the canvas is narrower (or lower) than the
+/// square, the square is centred on it and reaches past its edges, where [`sample`] mirrors the
+/// canvas: cut to the canvas, the crop was stretched to the model's square by a different amount
+/// across than down, and the diffusion model redrew a 729 × 500 manga page's hatching smeared.
 pub fn crop(group: Rect, canvas: Rect) -> Rect {
     crop_for(group, canvas, SIDE)
 }
@@ -223,6 +226,12 @@ pub fn crop_for(group: Rect, canvas: Rect, side: usize) -> Rect {
     };
     let place = |lo: i32, hi: i32, c0: i32, c1: i32| -> (i32, i32) {
         let (c0, c1) = (i64::from(c0), i64::from(c1));
+        if c1 - c0 < side {
+            let a = c0 - (side - (c1 - c0)) / 2;
+            if let (Ok(a), Ok(b)) = (i32::try_from(a), i32::try_from(a + side)) {
+                return (a, b);
+            }
+        }
         let mut a = (i64::from(lo) + i64::from(hi)) / 2 - side / 2;
         if a + side > c1 {
             a = c1 - side;
@@ -305,6 +314,20 @@ fn window_index(window: Rect, x: i32, y: i32) -> Option<usize> {
     Some((y - window.y0) as usize * w + (x - window.x0) as usize)
 }
 
+/// `v` folded into `lo..hi` by mirroring at its edges, the edge pixel repeated (…, 1, 0, 0, 1, …).
+fn mirror(v: i32, lo: i32, hi: i32) -> i32 {
+    if v >= lo && v < hi {
+        return v;
+    }
+    let n = i64::from(hi) - i64::from(lo);
+    if n <= 0 {
+        return lo;
+    }
+    let p = (i64::from(v) - i64::from(lo)).rem_euclid(2 * n);
+    let off = if p < n { p } else { 2 * n - 1 - p };
+    i32::try_from(i64::from(lo) + off).unwrap_or(lo)
+}
+
 /// Where a crop pixel's value comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Px {
@@ -341,19 +364,38 @@ fn sample(
     let mut row = vec![[0f32; 7]; cw];
     let mut hrow = vec![[0f32; 7]; side];
     let mut redone = false;
+    // The crop on the canvas; past it (a crop squarer than the canvas, [`crop_for`]) the canvas
+    // is mirrored, the hole with it.
+    let src = crop.intersect(&req.canvas);
+    if src.is_empty() {
+        return Err(MlError::BadInput("the crop isn't on the canvas".into()));
+    }
+    let sw = src.width() as usize;
     let mut y = crop.y0;
     while y < crop.y1 {
         ctl.check()?;
-        let band = Rect::new(crop.x0, y, crop.x1, y.saturating_add(BAND).min(crop.y1));
+        // Rows on the canvas are read in bands; one past its edge is its mirrored row, alone.
+        let band = if y >= src.y0 && y < src.y1 {
+            Rect::new(src.x0, y, src.x1, y.saturating_add(BAND).min(src.y1))
+        } else {
+            let ry = mirror(y, src.y0, src.y1);
+            Rect::new(src.x0, ry, src.x1, ry + 1)
+        };
         let data = read(band);
         if Some(data.len()) != (band.width() as usize).checked_mul(band.height() as usize).and_then(|p| p.checked_mul(ch)) {
             return Err(MlError::BadInput("the source returned the wrong number of samples".into()));
         }
-        for (r, line) in data.chunks_exact(cw * ch).enumerate() {
-            let yy = band.y0 + r as i32;
-            for (i, (px, slot)) in line.chunks_exact(ch).zip(row.iter_mut()).enumerate() {
-                let xx = crop.x0 + i as i32;
-                let wi = window_index(req.window, xx, yy);
+        let first = y;
+        y = y.saturating_add(band.height().max(1) as i32);
+        for (r, line) in data.chunks_exact(sw * ch).enumerate() {
+            let (yy, sy) = (first + r as i32, band.y0 + r as i32);
+            for (i, slot) in row.iter_mut().enumerate() {
+                let xx = mirror(crop.x0 + i as i32, src.x0, src.x1);
+                let Some(px) = line.get((xx - src.x0) as usize * ch..(xx - src.x0 + 1) as usize * ch) else {
+                    *slot = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0];
+                    continue;
+                };
+                let wi = window_index(req.window, xx, sy);
                 let mut st = wi.map_or(Px::Source, state);
                 let clear = req.alpha.is_some_and(|a| {
                     let v = match wi {
@@ -413,7 +455,6 @@ fn sample(
                 }
             }
         }
-        y = band.y1;
     }
     let (rgb, rest) = acc.split_at(3 * n);
     let (holes, hint) = rest.split_at(n);
@@ -694,6 +735,20 @@ pub fn fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, model: &mut M
 /// each ring in model-sized tiles that see the real pixels outside, the rings already redone and
 /// the shrunk fill further in, so detail continues sharply into the hole.
 pub fn fill_with(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, model: &mut Model<'_>, ctl: &Interrupt, opts: &Options) -> Result<Vec<f32>, MlError> {
+    fill_from(req, None, read, model, ctl, opts)
+}
+
+/// [`fill_with`] from a first fill of the hole: `start` is the window's pixels (as
+/// [`Request::pixels`]) with the hole already filled, and every run is hinted with it, so a model
+/// that can start from a hint ([`crate::diffusion`]) redraws it instead of starting from nothing.
+pub fn fill_from(
+    req: &Request,
+    start: Option<&[f32]>,
+    read: &mut dyn FnMut(Rect) -> Vec<f32>,
+    model: &mut Model<'_>,
+    ctl: &Interrupt,
+    opts: &Options,
+) -> Result<Vec<f32>, MlError> {
     let (w, h) = (req.window.width() as usize, req.window.height() as usize);
     let pixels = w.checked_mul(h).ok_or_else(|| MlError::BadInput("the region is too large".into()))?;
     if req.window.is_empty() || !req.canvas.contains_rect(&req.window) {
@@ -705,9 +760,12 @@ pub fn fill_with(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, model: &
     if req.ch < req.colours.channels() || req.alpha.is_some_and(|a| a >= req.ch || a < req.colours.channels()) {
         return Err(MlError::BadInput("the pixels don't have the colour channels the model needs".into()));
     }
+    if start.is_some_and(|s| s.len() != req.pixels.len()) {
+        return Err(MlError::BadInput("the first fill doesn't match the region".into()));
+    }
     let side = opts.side.max(8);
     let n = side * side;
-    let mut out = req.pixels.to_vec();
+    let mut out = start.unwrap_or(req.pixels).to_vec();
     let mut filled = vec![false; pixels];
     let groups = groups(req.window, req.hole);
     let mut runs = 0usize;
@@ -718,7 +776,8 @@ pub fn fill_with(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, model: &
             if filled.get(k).copied().unwrap_or(false) {
                 Px::Out
             } else if req.hole.get(k).copied().unwrap_or(false) {
-                Px::Masked
+                // Filled first: redrawn from that fill.
+                if start.is_some() { Px::Redo } else { Px::Masked }
             } else {
                 Px::Source
             }
@@ -746,7 +805,7 @@ pub fn fill_with(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, model: &
             }
         }
         if scaled && opts.refine {
-            refine(req, area, side, &mut out, &filled, read, model, ctl, opts, &mut runs)?;
+            refine(req, area, side, &mut out, &filled, start.is_some(), read, model, ctl, opts, &mut runs)?;
         }
         ctl.progress((gi + 1) as f32 / groups.len() as f32);
     }
@@ -767,6 +826,8 @@ fn refine(
     side: usize,
     out: &mut [f32],
     filled: &[bool],
+    // The hole was filled first ([`fill_from`]): a part not redone yet is a hint, not unknown.
+    started: bool,
     read: &mut dyn FnMut(Rect) -> Vec<f32>,
     model: &mut Model<'_>,
     ctl: &Interrupt,
@@ -811,7 +872,7 @@ fn refine(
                         x >= 0 && y >= 0 && (x as usize) < aw && (y as usize) < ah && in_ring(x as usize, y as usize) && !redone[y as usize * aw + x as usize];
                     let unfilled = req.hole.get(k).copied().unwrap_or(false) && !filled.get(k).copied().unwrap_or(false);
                     if unfilled {
-                        Px::Masked
+                        if started { Px::Redo } else { Px::Masked }
                     } else if here {
                         Px::Redo
                     } else if filled.get(k).copied().unwrap_or(false) {
@@ -927,11 +988,15 @@ mod tests {
         let c = crop(big, canvas);
         assert_eq!((c.width(), c.height()), (1300, 1300));
         assert!(c.contains_rect(&big));
-        // At the canvas edge the square moves inside; on a small canvas it is the canvas.
+        // At the canvas edge the square moves inside; on a small canvas it stays square, centred
+        // on the canvas and past its edges.
         let corner = crop(Rect::new(0, 0, 30, 30), canvas);
         assert_eq!(corner, Rect::new(0, 0, 512, 512));
         let tiny = Rect::new(0, 0, 300, 200);
-        assert_eq!(crop(Rect::new(10, 10, 20, 20), tiny), tiny);
+        assert_eq!(crop(Rect::new(10, 10, 20, 20), tiny), Rect::new(-106, -156, 406, 356));
+        // Only the short side reaches past.
+        let strip = Rect::new(0, 0, 4000, 300);
+        assert_eq!(crop(Rect::new(1000, 100, 1040, 140), strip), Rect::new(764, -106, 1276, 406));
     }
 
     #[test]
@@ -984,6 +1049,71 @@ mod tests {
             }
         }
         Ok(out)
+    }
+
+    #[test]
+    fn mirror_folds_into_the_range() {
+        let r: Vec<i32> = (-5..9).map(|v| mirror(v, 0, 4)).collect();
+        assert_eq!(r, [3, 3, 2, 1, 0, 0, 1, 2, 3, 3, 2, 1, 0, 0]);
+        assert_eq!(mirror(7, 5, 5), 5);
+    }
+
+    #[test]
+    fn a_canvas_smaller_than_the_model_is_mirrored_not_stretched() {
+        // A 200 × 120 canvas and a 256 square model: the crop is the square centred on the
+        // canvas (-28, -68), the canvas 1:1 in it, mirrored past its edges with its hole.
+        let canvas = Rect::new(0, 0, 200, 120);
+        let value = |x: i32, y: i32| [x as f32 / 200.0, y as f32 / 120.0, 0.5];
+        let pixels: Vec<f32> = (0..120).flat_map(|y| (0..200).flat_map(move |x| value(x, y))).collect();
+        let mut hole = vec![false; 200 * 120];
+        for y in 2..6 {
+            for x in 2..6 {
+                hole[y * 200 + x] = true;
+            }
+        }
+        let req = Request { canvas, window: canvas, hole: &hole, pixels: &pixels, ch: 3, colours: Colours::Rgb, alpha: None, linear: false, transparent_unknown: false };
+        let read = |r: Rect| (r.y0..r.y1).flat_map(|y| (r.x0..r.x1).flat_map(move |x| value(x, y))).collect::<Vec<f32>>();
+        let (side, n) = (256usize, 256 * 256);
+        let at = |x: i32, y: i32| ((y + 68) as usize) * side + (x + 28) as usize;
+        let mut seen = None;
+        let opts = Options { side, refine: false, max_runs: 1, correct: false, rings: false };
+        let out = fill_with(
+            &req,
+            &mut |r| read(r),
+            &mut |rgb, mask, _| {
+                seen = Some((rgb.to_vec(), mask.to_vec()));
+                let mut o = rgb.to_vec();
+                for p in 0..n {
+                    if mask[p] > 0.0 {
+                        o[p] = 0.25;
+                    }
+                }
+                Ok(o)
+            },
+            &Interrupt::NONE,
+            &opts,
+        )
+        .unwrap();
+        let (rgb, mask) = seen.unwrap();
+        // 1:1: each canvas pixel is one model pixel, unchanged.
+        for (x, y) in [(0, 0), (199, 119), (100, 60), (7, 3)] {
+            assert!((rgb[at(x, y)] - value(x, y)[0]).abs() < 1e-6 && (rgb[n + at(x, y)] - value(x, y)[1]).abs() < 1e-6, "({x}, {y})");
+        }
+        // Mirrored past the edges: x = -1 is x = 0, y = 120 is y = 119.
+        assert!((rgb[at(-1, 7)] - value(0, 7)[0]).abs() < 1e-6);
+        assert!((rgb[n + at(8, 120)] - value(8, 119)[1]).abs() < 1e-6);
+        // The hole and its mirror images are masked, nothing else.
+        assert_eq!(mask[at(3, 3)], 1.0);
+        assert_eq!(mask[at(-3, 3)], 1.0, "mirrored across the left edge");
+        assert_eq!(mask[at(3, -3)], 1.0, "and the top");
+        assert_eq!(mask[at(10, 10)], 0.0);
+        // The hole, and its mirrors left, above, and above-left.
+        assert_eq!(mask.iter().filter(|m| **m > 0.0).count(), 4 * 16);
+        // Only the hole changed, to the model's value.
+        for (k, h) in hole.iter().enumerate() {
+            let want = if *h { 0.25 } else { pixels[k * 3] };
+            assert!((out[k * 3] - want).abs() < 1e-5, "{k}");
+        }
     }
 
     #[test]

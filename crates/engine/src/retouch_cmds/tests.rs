@@ -2344,3 +2344,14 @@ fn generative_fill_needs_a_selection_and_a_model_and_never_panics() {
     c.execute("select.all", json!({})).unwrap();
     assert!(c.execute("edit.generativeFill", json!({})).is_err());
 }
+
+#[test]
+fn a_fill_without_a_prompt_starts_from_lama_and_a_prompt_from_noise() {
+    // SDXL inpainting from noise drew soft grey mush where a manga page's title was removed.
+    let removal = remove::diffusion_settings(&json!({}));
+    assert!(removal.lama_start.is_some() && removal.guided_steps.is_some());
+    assert_eq!(remove::diffusion_settings(&json!({"prompt": "  "})).lama_start, removal.lama_start);
+    let asked = remove::diffusion_settings(&json!({"prompt": "a cat"}));
+    assert_eq!((asked.lama_start, asked.guided_steps), (None, None));
+    assert_eq!(asked.prompt, "a cat");
+}

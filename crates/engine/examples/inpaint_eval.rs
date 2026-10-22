@@ -6,7 +6,7 @@
 //!   cargo run --release -p photocraft-engine --example inpaint_eval -- page.jpg out-dir x,y,w,h [x,y,w,h ...]
 //! ```
 //!
-//! Each `x,y,w,h` is an elliptical hole. Variants: `plain` (no refinement, no correction), `lama`
+//! Each `x,y,w,h` is an elliptical hole (`--rect`: a rectangle, as a painted-over caption). Variants: `plain` (no refinement, no correction), `lama`
 //! (the Remove tool's LaMa fill), `lama-high` (its Quality: High, 1024 crops)
 //! and, with `--diffusion`, the diffusion model.
 
@@ -18,6 +18,7 @@ use photocraft_raster::Interrupt;
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let diffusion = args.iter().any(|a| a == "--diffusion");
+    let rect = args.iter().any(|a| a == "--rect");
     let args: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
     let (Some(path), Some(out_dir)) = (args.first(), args.get(1)) else {
         eprintln!("usage: inpaint_eval <image> <out-dir> x,y,w,h ...");
@@ -41,7 +42,7 @@ fn main() {
         for yy in 0..wh {
             for xx in 0..ww {
                 let (px, py) = (f64::from(window.x0) + xx as f64 + 0.5, f64::from(window.y0) + yy as f64 + 0.5);
-                hole[yy * ww + xx] = ((px - cx) / rx).powi(2) + ((py - cy) / ry).powi(2) <= 1.0;
+                hole[yy * ww + xx] = if rect { hole_rect.contains(px as i32, py as i32) } else { ((px - cx) / rx).powi(2) + ((py - cy) / ry).powi(2) <= 1.0 };
             }
         }
         let read = |r: Rect| {
@@ -63,7 +64,13 @@ fn main() {
                 photocraft_ml::diffusion::fill(
                     &req,
                     &mut |r| read(r),
-                    &photocraft_ml::diffusion::Settings { prompt: std::env::var("PHOTOCRAFT_EVAL_PROMPT").unwrap_or_default(), ..Default::default() },
+                    // `PHOTOCRAFT_EVAL_LAMA_START`, `PHOTOCRAFT_EVAL_GUIDED`: those settings.
+                    &photocraft_ml::diffusion::Settings {
+                        prompt: std::env::var("PHOTOCRAFT_EVAL_PROMPT").unwrap_or_default(),
+                        lama_start: std::env::var("PHOTOCRAFT_EVAL_LAMA_START").ok().and_then(|v| v.parse().ok()),
+                        guided_steps: std::env::var("PHOTOCRAFT_EVAL_GUIDED").ok().and_then(|v| v.parse().ok()),
+                        ..Default::default()
+                    },
                     &Interrupt::NONE,
                 )
                 .map(|(o, _)| o)
