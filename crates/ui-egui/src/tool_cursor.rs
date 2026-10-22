@@ -12,21 +12,26 @@ use egui::{CursorIcon, CustomCursorImage, Painter, Pos2, Stroke, Vec2, vec2};
 use crate::canvas::ViewXform;
 
 mod hand;
-mod icon;
+pub(crate) mod icon;
 mod zoom;
 
 /// A tool's icon as the pointer: `name` at `size` points with its point `hot` (a fraction of its
 /// box) on the pointer. An OS cursor bitmap that moves with the hardware pointer where the
 /// platform takes one, else painted at `p`.
 pub(crate) fn icon(ctx: &egui::Context, name: &'static str, p: Pos2, hot: Vec2, size: f32) -> CursorIcon {
-    ctx.data_mut(|d| d.insert_temp(shown_id(), name));
+    icon_part(ctx, icon::Part::at_hotspot(name, hot, size), p)
+}
+
+/// [`icon`] for a prepared part (a mirrored icon).
+pub(crate) fn icon_part(ctx: &egui::Context, part: icon::Part, p: Pos2) -> CursorIcon {
+    ctx.data_mut(|d| d.insert_temp(shown_id(), part.name));
     if native(ctx)
-        && let Some(image) = icon::image(&[icon::Part::at_hotspot(name, hot, size)], native_scale(ctx))
+        && let Some(image) = icon::image(&[part], native_scale(ctx))
     {
         ctx.set_cursor_image(Some(image));
         return CursorIcon::None;
     }
-    crate::icons::cursor(ctx, name, p, hot, size);
+    crate::icons::cursor(ctx, part.name, p, -part.at / part.size, part.size, part.mirrored);
     CursorIcon::None
 }
 
@@ -48,7 +53,7 @@ pub(crate) fn move_arrow(ctx: &egui::Context, p: Pos2, duplicate: bool) -> Curso
     let parts = if duplicate {
         [icon::arrow(17.0, false, vec2(5.0, 5.0)), icon::arrow(20.0, true, Vec2::ZERO)]
     } else {
-        [icon::arrow(20.0, true, Vec2::ZERO), icon::Part { name: "move", at: vec2(10.0, 12.0), size: 11.0, dark: true, filled: false }]
+        [icon::arrow(20.0, true, Vec2::ZERO), icon::Part { name: "move", at: vec2(10.0, 12.0), size: 11.0, dark: true, filled: false, mirrored: false }]
     };
     if native(ctx)
         && let Some(image) = icon::image(&parts, native_scale(ctx))

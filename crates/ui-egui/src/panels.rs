@@ -1609,6 +1609,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                             &[("layer".to_string(), tl!("Layer")), ("group".to_string(), tl!("Group"))],
                             76.0,
                         );
+                        move_pick_from(ui, &mut o.move_pick_opacity);
                         widgets::vline(ui, 22.0);
                         widgets::checkbox(ui, &mut o.move_show_transform, tl!("Show Transform Controls"));
                         widgets::vline(ui, 22.0);
@@ -1665,9 +1666,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         // And Show Transform Controls (#5740): without it the box could not be
                         // turned on outside the Pro themes.
                         widgets::checkbox(ui, &mut app.ui.tool_options.move_show_transform, tl!("Show Transform Controls"));
-                        opt_label(ui, tl!("Pick From"));
-                        widgets::value_field(ui, &mut app.ui.tool_options.move_pick_opacity, 0.0..=100.0, "%", 58.0)
-                            .on_hover_text(tl!("How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)"));
+                        move_pick_from(ui, &mut app.ui.tool_options.move_pick_opacity);
                         hint(ui, tl!("Drag to move the active layer"));
                     }
                     Tool::Eyedropper => crate::eyedropper_ui::options(app, ui),
@@ -1866,6 +1865,13 @@ fn percent_field(ui: &mut egui::Ui, label: &str, value: &mut f32, range: std::op
     if widgets::value_field(ui, &mut percent, range, "%", width).changed() {
         *value = percent / 100.0;
     }
+}
+
+/// The Move tool's Pick From field: in every theme's options bar.
+fn move_pick_from(ui: &mut egui::Ui, value: &mut f32) {
+    opt_label(ui, tl!("Pick From"));
+    widgets::value_field(ui, value, 0.0..=100.0, "%", 58.0)
+        .on_hover_text(tl!("How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)"));
 }
 
 fn hint(ui: &mut egui::Ui, s: &str) {

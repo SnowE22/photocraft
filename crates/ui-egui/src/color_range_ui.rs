@@ -676,7 +676,7 @@ pub fn canvas_eyedropper(app: &mut PhotocraftApp, ctx: &egui::Context, over: egu
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
     } else {
         // The tip of the icon's pipette is at (2, 22) of its 24-unit box (as the Color Picker's).
-        crate::icons::cursor(ctx, "pipette", over, vec2(2.0, 22.0) / 24.0, 20.0);
+        crate::icons::cursor(ctx, "pipette", over, vec2(2.0, 22.0) / 24.0, 20.0, false);
         ctx.set_cursor_icon(egui::CursorIcon::None);
     }
     let badge = match tool {

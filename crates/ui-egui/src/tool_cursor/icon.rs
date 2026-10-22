@@ -24,22 +24,29 @@ pub(crate) struct Part {
     pub dark: bool,
     /// Fill the icon's outline shapes (the arrow), not only stroke them.
     pub filled: bool,
+    /// Flipped left to right (`at` and the hotspot are of the flipped icon).
+    pub mirrored: bool,
 }
 
 impl Part {
     /// `name` at `size` with the point `hot` of its box (a fraction, 0..1) on the hotspot.
     pub(crate) fn at_hotspot(name: &'static str, hot: Vec2, size: f32) -> Self {
-        Part { name, at: -hot * size, size, dark: false, filled: false }
+        Part { name, at: -hot * size, size, dark: false, filled: false, mirrored: false }
+    }
+
+    /// The icon flipped left to right, as the wand points up-left in Photoshop.
+    pub(crate) fn mirrored(self) -> Self {
+        Part { mirrored: true, ..self }
     }
 }
 
 /// The Move tool's black arrow, its tip on the hotspot.
 pub(crate) fn arrow(size: f32, dark: bool, offset: Vec2) -> Part {
     // The tip of the icon's arrowhead is at (4.4, 4.4) of its 24-unit box.
-    Part { name: "mouse-pointer-2", at: offset - vec2(4.4, 4.4) / 24.0 * size, size, dark, filled: true }
+    Part { name: "mouse-pointer-2", at: offset - vec2(4.4, 4.4) / 24.0 * size, size, dark, filled: true, mirrored: false }
 }
 
-type Key = (Vec<(&'static str, [u32; 4], bool, bool)>, u32);
+type Key = (Vec<(&'static str, [u32; 3], [bool; 3])>, u32);
 
 fn cache() -> &'static Mutex<HashMap<Key, Option<CustomCursorImage>>> {
     static CACHE: OnceLock<Mutex<HashMap<Key, Option<CustomCursorImage>>>> = OnceLock::new();
@@ -52,7 +59,7 @@ pub(crate) fn image(parts: &[Part], scale: f32) -> Option<CustomCursorImage> {
     if !scale.is_finite() || scale <= 0.0 || parts.is_empty() {
         return None;
     }
-    let key: Key = (parts.iter().map(|p| (p.name, [p.at.x.to_bits(), p.at.y.to_bits(), p.size.to_bits(), 0], p.dark, p.filled)).collect(), scale.to_bits());
+    let key: Key = (parts.iter().map(|p| (p.name, [p.at.x.to_bits(), p.at.y.to_bits(), p.size.to_bits()], [p.dark, p.filled, p.mirrored])).collect(), scale.to_bits());
     let mut map = cache().lock().unwrap_or_else(PoisonError::into_inner);
     if let Some(found) = map.get(&key) {
         return found.clone();
@@ -76,7 +83,8 @@ fn coverage(part: &Part, side: usize) -> Option<Vec<f32>> {
     let side_u32 = u32::try_from(side).ok()?;
     let mut pixmap = resvg::tiny_skia::Pixmap::new(side_u32, side_u32)?;
     let k = side as f32 / tree.size().width().max(1.0);
-    resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(k, k), &mut pixmap.as_mut());
+    let at = if part.mirrored { resvg::tiny_skia::Transform::from_row(-k, 0.0, 0.0, k, side as f32, 0.0) } else { resvg::tiny_skia::Transform::from_scale(k, k) };
+    resvg::render(&tree, at, &mut pixmap.as_mut());
     Some(pixmap.data().as_chunks::<4>().0.iter().map(|p| f32::from(p[3]) / 255.0).collect())
 }
 
@@ -192,13 +200,35 @@ mod tests {
 
     #[test]
     fn the_duplicate_arrow_is_not_the_move_arrow() {
-        let moving = image(&[arrow(20.0, true, Vec2::ZERO), Part { name: "move", at: vec2(11.0, 13.0), size: 10.0, dark: true, filled: false }], 1.0).unwrap();
+        let moving = image(&[arrow(20.0, true, Vec2::ZERO), Part { name: "move", at: vec2(11.0, 13.0), size: 10.0, dark: true, filled: false, mirrored: false }], 1.0).unwrap();
         let dup = image(&[arrow(18.0, false, vec2(5.0, 5.0)), arrow(20.0, true, Vec2::ZERO)], 1.0).unwrap();
         assert_ne!(moving.rgba, dup.rgba);
         // The arrow is dark: its middle has dark, opaque pixels.
         let [hx, hy] = dup.hotspot.map(usize::from);
         let i = ((hy + 6) * dup.size[0] as usize + hx + 6) * 4;
         assert!(dup.rgba[i + 3] > 200 && dup.rgba[i] < 60, "{:?}", &dup.rgba[i..i + 4]);
+    }
+
+    /// Writes every tool pointer to `PHOTOCRAFT_CURSOR_DUMP` (raw RGBA, its size and hotspot in the
+    /// file name) to look at where each one's point is.
+    #[test]
+    #[ignore = "writes files: set PHOTOCRAFT_CURSOR_DUMP"]
+    fn dump_tool_pointers() {
+        use crate::state::Tool;
+        let Some(dir) = std::env::var_os("PHOTOCRAFT_CURSOR_DUMP") else { return };
+        let mut all: Vec<(String, Vec<Part>)> = [Tool::Lasso, Tool::PolygonLasso, Tool::MagicWand, Tool::Crop, Tool::PerspectiveCrop, Tool::Slice, Tool::Ruler]
+            .into_iter()
+            .map(|t| (format!("{t:?}"), vec![crate::canvas::standard_icon_cursor(t).unwrap()]))
+            .collect();
+        all.push(("pipette".into(), vec![Part::at_hotspot("pipette", vec2(2.0, 22.0) / 24.0, 20.0)]));
+        all.push(("bucket".into(), vec![Part::at_hotspot("paint-bucket", vec2(4.0, 22.0) / 24.0, 22.0).mirrored()]));
+        all.push(("pen".into(), vec![Part::at_hotspot(crate::icons::tool_icon(Tool::Pen), vec2(2.3, 2.3) / 24.0, 22.0)]));
+        all.push(("move".into(), vec![arrow(20.0, true, Vec2::ZERO)]));
+        for (name, parts) in all {
+            let img = image(&parts, 2.0).unwrap();
+            let file = format!("{name}_{}x{}_{}_{}.rgba", img.size[0], img.size[1], img.hotspot[0], img.hotspot[1]);
+            std::fs::write(std::path::Path::new(&dir).join(file), &*img.rgba).unwrap();
+        }
     }
 
     #[test]

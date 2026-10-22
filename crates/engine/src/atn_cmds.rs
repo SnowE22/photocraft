@@ -214,6 +214,8 @@ fn class_ref(cls: &str) -> D {
 fn layer_ref(p: &Value) -> D {
     match p.get("layer") {
         Some(Value::String(n)) => name_ref("Lyr ", n),
+        // A recorded step's layer (`layer_refs`).
+        Some(Value::Object(o)) if o.get("name").and_then(Value::as_str).is_some() => name_ref("Lyr ", o.get("name").and_then(Value::as_str).unwrap_or_default()),
         _ => target_ref("Lyr "),
     }
 }

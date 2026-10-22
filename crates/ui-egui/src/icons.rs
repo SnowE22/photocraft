@@ -53,12 +53,14 @@ pub fn paint(ui: &egui::Ui, rect: Rect, name: &str, size: f32, tint: Color32) {
 /// Painted straight onto a top layer, as the brush cursor is onto the canvas, not through an
 /// `egui::Area`: an Area keeps state, sizes itself on a first, invisible pass and fades in, which
 /// made the Pen's pointer feel less smooth than the brush's (user report).
-pub fn cursor(ctx: &egui::Context, name: &str, p: egui::Pos2, hot: Vec2, size: f32) {
+pub fn cursor(ctx: &egui::Context, name: &str, p: egui::Pos2, hot: Vec2, size: f32, mirrored: bool) {
     let rect = Rect::from_min_size(p - hot * size, Vec2::splat(size));
     let painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("pc-icon-cursor")));
+    // Flipped left to right by its texture coordinates.
+    let uv = if mirrored { Rect::from_min_max(egui::pos2(1.0, 0.0), egui::pos2(0.0, 1.0)) } else { Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)) };
     let paint = |tint: Color32, r: Rect| {
         if let Some(tex) = image(name, size, tint).load_for_size(ctx, r.size()).ok().and_then(|t| t.texture_id()) {
-            painter.image(tex, r, Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)), tint);
+            painter.image(tex, r, uv, tint);
         }
     };
     for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)] {

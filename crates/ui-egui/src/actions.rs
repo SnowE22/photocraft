@@ -551,10 +551,19 @@ fn param_lines(params: &Value) -> Vec<String> {
     o.iter()
         .filter(|(k, _)| !k.starts_with("__") && k.as_str() != "coalesce")
         .map(|(k, v)| {
-            let value = match v {
-                Value::String(s) => s.clone(),
-                Value::Number(n) => n.as_f64().filter(|f| f.fract() != 0.0).map_or_else(|| n.to_string(), |f| format!("{f:.2}").trim_end_matches('0').to_string()),
-                other => other.to_string(),
+            use photocraft_engine::layer_refs::{Described, describe};
+            let layer = |d: Described| match d {
+                Described::Current => tl!("Current Layer").to_string(),
+                Described::Named(name) => name,
+            };
+            // Recorded layers: their names, or the current layer.
+            let layers = v.as_array().and_then(|a| a.iter().map(describe).collect::<Option<Vec<_>>>()).filter(|l| !l.is_empty());
+            let value = match (v, describe(v), layers) {
+                (_, Some(d), _) => layer(d),
+                (_, _, Some(l)) => l.into_iter().map(layer).collect::<Vec<_>>().join(", "),
+                (Value::String(s), ..) => s.clone(),
+                (Value::Number(n), ..) => n.as_f64().filter(|f| f.fract() != 0.0).map_or_else(|| n.to_string(), |f| format!("{f:.2}").trim_end_matches('0').to_string()),
+                (other, ..) => other.to_string(),
             };
             let value: String = if value.chars().count() > 60 { value.chars().take(59).chain(std::iter::once('…')).collect() } else { value };
             format!("{}: {value}", words(k))
@@ -1808,6 +1817,12 @@ pub(crate) mod tests {
 
     pub(crate) fn record_again_step(app: &mut PhotocraftApp, action: usize, step: usize) -> Result<Value, String> {
         record_again(app, action, step)
+    }
+
+    #[test]
+    fn recorded_layers_read_as_names_or_the_current_layer() {
+        let lines = param_lines(&json!({"layer": {"name": "Ink", "occurrence": 1}, "target": {"current": true}, "layers": [{"name": "A"}, {"current": true}], "opacity": 0.5}));
+        assert_eq!(lines, ["Layer: Ink (2)", "Layers: A, Current Layer", "Opacity: 0.5", "Target: Current Layer"]);
     }
 
     /// An action's Set Shortcut… takes any key with any modifiers (beyond Photoshop's F-keys), and

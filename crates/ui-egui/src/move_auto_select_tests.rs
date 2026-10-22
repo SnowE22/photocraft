@@ -181,6 +181,28 @@ fn every_theme_shows_the_transform_controls_toggle() {
 }
 
 #[test]
+fn every_theme_shows_the_pick_from_field() {
+    // The Pick From field was only in the Studio themes' bar, not the Pro ones.
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    for theme in crate::theme::ThemeKind::ALL {
+        let (app, _, _) = app();
+        let mut h = Harness::builder().with_size(egui::vec2(1400.0, 60.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if !ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    return;
+                }
+                crate::panels::options_bar(app, ui);
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, theme);
+        h.run_steps(4);
+        assert!(h.query_by_label_contains("Pick From").is_some(), "{theme:?}: the Move tool's bar has Pick From");
+    }
+}
+
+#[test]
 fn every_theme_shows_the_type_options() {
     // #1387: outside the Pro themes the Type tool's options bar was only the hint "Click to add
     // text", so there was no font, style or size control while typing.

@@ -118,22 +118,6 @@ pub(crate) fn recorded_selection(s: &Session, mut p: Value) -> Value {
     p
 }
 
-/// A change to the active layer's properties (a rename, its opacity) as Photoshop records it:
-/// "Set Current Layer", for whatever layer is current when the action plays. A layer id means
-/// nothing in another document (and the same id is another layer there), so a recorded rename
-/// renamed some other layer, or failed.
-pub(crate) fn recorded_current_layer(s: &Session, mut p: Value) -> Value {
-    let Some(active) = s.active().and_then(|st| st.active_layer) else { return p };
-    let Some(fields) = p.as_object_mut() else { return p };
-    if fields.get("layer").and_then(Value::as_u64) == Some(active.0) {
-        fields.remove("layer");
-    }
-    if fields.get("layers").and_then(Value::as_array).is_some_and(|a| a.len() == 1 && a.first().and_then(Value::as_u64) == Some(active.0)) {
-        fields.remove("layers");
-    }
-    p
-}
-
 fn selection_target(s: &Session, p: &Value) -> Result<LayerId> {
     let Some(name) = p.get("name") else {
         if p.get("occurrence").is_some() {

@@ -1270,6 +1270,49 @@ mod tests {
     }
 
     #[test]
+    fn recording_names_another_layer_and_leaves_out_the_current_one() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("layer.new.layer", json!({"name": "A"})).unwrap();
+        let a = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.new.layer", json!({"name": "B"})).unwrap();
+        let b = s.active().unwrap().active_layer.unwrap();
+        s.execute("actions.record", json!({"name": "Solo"})).unwrap();
+        // ⌥-click the current layer's eye, then another layer's; rename that other layer.
+        s.execute("layer.showOnly", json!({"layer": b.0})).unwrap();
+        s.execute("layer.showOnly", json!({"layer": a.0})).unwrap();
+        s.execute("layer.setProps", json!({"layer": a.0, "name": "Ink"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        assert_eq!(
+            s.actions.list[0].steps,
+            vec![
+                ("layer.showOnly".to_string(), json!({})),
+                ("layer.showOnly".to_string(), json!({"layer": {"name": "A"}})),
+                // The name before the rename.
+                ("layer.setProps".to_string(), json!({"layer": {"name": "A"}, "name": "Ink"})),
+            ]
+        );
+        // Of two layers with one name, which one.
+        s.execute("layer.setProps", json!({"layer": b.0, "name": "Ink"})).unwrap();
+        s.execute("actions.record", json!({"name": "Twin"})).unwrap();
+        s.execute("layer.hideLayers", json!({"layer": a.0})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        assert_eq!(s.actions.list[1].steps, vec![("layer.hideLayers".to_string(), json!({"layer": {"name": "Ink", "occurrence": 0}}))]);
+        // Played on another document, the named layer is shown alone.
+        let mut replay = Session::new();
+        replay.actions.list = s.actions.list.clone();
+        replay.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        replay.execute("layer.new.layer", json!({"name": "A"})).unwrap();
+        let ra = replay.active().unwrap().active_layer.unwrap();
+        replay.execute("layer.new.layer", json!({"name": "B"})).unwrap();
+        let r = replay.execute("actions.play", json!({"action": 0})).unwrap();
+        assert!(r.get("failed").is_none(), "{r}");
+        let doc = &replay.active().unwrap().doc;
+        assert_eq!(doc.layer(ra).unwrap().name, "Ink");
+        assert!(doc.walk().iter().all(|(_, _, l)| l.visible == (l.id == ra)));
+    }
+
+    #[test]
     fn named_selection_preserves_modes_and_duplicate_occurrences() {
         let mut s = Session::new();
         s.execute("file.new", json!({"width":4,"height":4})).unwrap();

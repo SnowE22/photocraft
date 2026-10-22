@@ -4264,7 +4264,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 SelCursor::Outline => egui::CursorIcon::Move,
                 SelCursor::Dragging => {
                     // The tip of the arrowhead is at (4, 4) of its 24-unit box.
-                    crate::icons::cursor(ui.ctx(), "mouse-pointer-2", p, vec2(4.0, 4.0) / 24.0, 18.0);
+                    crate::icons::cursor(ui.ctx(), "mouse-pointer-2", p, vec2(4.0, 4.0) / 24.0, 18.0, false);
                     egui::CursorIcon::None
                 }
                 SelCursor::Piece => egui::CursorIcon::Default,
@@ -4418,8 +4418,8 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 // Photoshop's tool pointers for the lassos, the wand, the crops, the slice knife
                 // and the ruler (Other Cursors: Standard), where every one was the crosshair.
                 t if !precise_other_cursor(app) && standard_icon_cursor(t).is_some() => {
-                    let (name, hot) = standard_icon_cursor(t).unwrap_or(("square", vec2(12.0, 12.0)));
-                    crate::tool_cursor::icon(ui.ctx(), name, p, hot / 24.0, 22.0)
+                    let part = standard_icon_cursor(t).unwrap_or_else(|| crate::tool_cursor::icon::Part::at_hotspot("square", vec2(0.5, 0.5), 22.0));
+                    crate::tool_cursor::icon_part(ui.ctx(), part, p)
                 }
                 // Dragging is handled with the pan itself, above.
                 Tool::Hand => crate::tool_cursor::hand(ui.ctx(), false),
@@ -5558,20 +5558,22 @@ pub(crate) fn pen_cursor(ctx: &egui::Context, tool: Tool, p: Pos2) -> egui::Curs
 
 /// The icon a tool's pointer shows (Preferences › Cursors › Other Cursors: Standard), and where
 /// in its 24-unit box the point that acts is.
-fn standard_icon_cursor(tool: Tool) -> Option<(&'static str, egui::Vec2)> {
+pub(crate) fn standard_icon_cursor(tool: Tool) -> Option<crate::tool_cursor::icon::Part> {
+    // `hot`: the icon's point, in its 24-unit box.
+    let at = |name, hot: egui::Vec2| crate::tool_cursor::icon::Part::at_hotspot(name, hot / 24.0, 22.0);
     Some(match tool {
         // The end of the rope.
-        Tool::Lasso => ("lasso", vec2(7.0, 22.0)),
-        // The lower-left corner.
-        Tool::PolygonLasso => ("pentagon", vec2(5.5, 20.5)),
-        // The wand's tip.
-        Tool::MagicWand => ("wand-sparkles", vec2(3.0, 21.0)),
+        Tool::Lasso => at("lasso", vec2(7.0, 22.0)),
+        // The end of the rope, as the Lasso's (the toolbar's pentagon has no point to aim with).
+        Tool::PolygonLasso => at("lasso-polygon", vec2(7.0, 22.0)),
+        // The wand's tip, flipped to point up-left as Photoshop's (the point is of the flipped icon).
+        Tool::MagicWand => at("wand-sparkles", vec2(2.7, 2.7)).mirrored(),
         // Where the crop marks cross.
-        Tool::Crop => ("crop", vec2(6.0, 6.0)),
-        Tool::PerspectiveCrop => ("perspective-crop", vec2(8.0, 6.0)),
+        Tool::Crop => at("crop", vec2(6.0, 6.0)),
+        Tool::PerspectiveCrop => at("perspective-crop", vec2(8.0, 6.0)),
         // The blade's edge.
-        Tool::Slice => ("slice-knife", vec2(4.0, 20.0)),
-        Tool::Ruler => ("ruler", vec2(3.5, 4.5)),
+        Tool::Slice => at("slice-knife", vec2(4.0, 20.0)),
+        Tool::Ruler => at("ruler", vec2(3.5, 4.5)),
         _ => return None,
     })
 }
@@ -5583,11 +5585,11 @@ pub(crate) fn pipette_cursor(ctx: &egui::Context, p: Pos2) -> egui::CursorIcon {
     crate::tool_cursor::icon(ctx, "pipette", p, vec2(2.0, 22.0) / 24.0, 20.0)
 }
 
-/// The Paint Bucket's cursor: a bucket whose pouring corner is the filled pixel. Draws it at `p`
-/// and returns the OS cursor to set (hidden).
+/// The Paint Bucket's cursor: a bucket pouring to the left, as Photoshop's, whose drip is the
+/// filled pixel. Draws it at `p` and returns the OS cursor to set (hidden).
 pub(crate) fn paint_bucket_cursor(ctx: &egui::Context, p: Pos2) -> egui::CursorIcon {
-    // The left corner of the icon's bucket is at (2, 12) of its 24-unit box.
-    crate::tool_cursor::icon(ctx, "paint-bucket", p, vec2(2.0, 12.0) / 24.0, 22.0)
+    // The bottom of the icon's drip is at (20, 22) of its 24-unit box: (4, 22) flipped.
+    crate::tool_cursor::icon_part(ctx, crate::tool_cursor::icon::Part::at_hotspot("paint-bucket", vec2(4.0, 22.0) / 24.0, 22.0).mirrored(), p)
 }
 
 /// Decided when the press starts, so ⌥ pressed or released mid-stroke never switches between
