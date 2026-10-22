@@ -4563,3 +4563,21 @@ cameraRaw	Yellow	Sárga
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU-adapter
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, fizetős)
+	Remove Selection	Kijelölés eltávolítása
+	Remove what is selected ({key})	A kijelölt rész eltávolítása ({key})
+	API Key…	API-kulcs…
+	Change or remove the Google API key Nano Banana uses	A Nano Banana által használt Google API-kulcs módosítása vagy eltávolítása
+	Set API Key…	API-kulcs megadása…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	A Nano Bananának saját Google API-kulcs kell; addig az Automatikus a LaMát használja
+	No API key	Nincs API-kulcs
+	Nano Banana API Key	Nano Banana API-kulcs
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	A Nano Banana 2.1 a Google szerverein fut, és a Google-fiókját terheli: eltávolításonként kb. {small}, nagyoknál {large}.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Az eltávolított rész környezete a Google-hoz kerül, akit arra kérünk, hogy ne tárolja.
+	Get a key at	Kulcsot itt kaphat:
+	A key is saved in the system's credential store.	Egy kulcs el van mentve a rendszer hitelesítőadat-kezelőjében.
+	Using the {var} environment variable.	A(z) {var} környezeti változó van használatban.
+	Google API key	Google API-kulcs
+	Remove Saved Key	Mentett kulcs eltávolítása
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Ezen a rendszeren nincs a PhotoCraft által használható hitelesítőadat-tár: állítsa be helyette a(z) {var} környezeti változót.

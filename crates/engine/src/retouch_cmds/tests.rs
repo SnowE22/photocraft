@@ -2482,7 +2482,7 @@ fn generative_fill_needs_a_selection_and_a_model_and_never_panics() {
     }
     if std::env::var_os("PHOTOCRAFT_MODEL_DIR").is_none() {
         let e = s.execute("edit.generativeFill", json!({"prompt": "a cat"})).unwrap_err().to_string();
-        assert!(e.contains("needs a local model"), "{e}");
+        assert!(e.contains("can't use that model"), "{e}");
     }
     // A selection off the canvas, and a CMYK document.
     s.execute("select.rect", json!({"x": 500, "y": 500, "width": 10, "height": 10})).ok();
@@ -2501,4 +2501,41 @@ fn a_fill_without_a_prompt_starts_from_lama_and_a_prompt_from_noise() {
     let asked = remove::diffusion_settings(&json!({"prompt": "a cat"}));
     assert_eq!((asked.lama_start, asked.guided_steps), (None, None));
     assert_eq!(asked.prompt, "a cat");
+}
+
+#[test]
+fn remove_selection_removes_what_is_selected_and_nothing_else() {
+    let mut s = square_session(8, "rgb");
+    let bg = rgba(&s, 10, 10);
+    let far = rgba(&s, 80, 50);
+    // No selection: an error saying to make one.
+    let err = s.execute("paint.remove", json!({"selection": true, "generative": "off"})).unwrap_err().to_string();
+    assert!(err.contains("make one first"), "{err}");
+    // A selection drawn loosely around the square removes it, in one undo step.
+    s.execute("select.rect", json!({"x": 36, "y": 20, "width": 20, "height": 20})).unwrap();
+    let past = s.active().unwrap().history.past_len();
+    let r = s.execute("paint.remove", json!({"selection": true, "generative": "off"})).unwrap();
+    assert_eq!(r["fill"], "patch", "{r}");
+    for (x, y) in [(46, 30), (40, 24), (51, 35)] {
+        assert!(near(rgba(&s, x, y), bg, 0.03), "({x}, {y}): {:?}", rgba(&s, x, y));
+    }
+    assert_eq!(rgba(&s, 80, 50), far, "outside the selection nothing changes");
+    assert_eq!(s.active().unwrap().history.past_len(), past + 1);
+}
+
+#[test]
+fn nano_banana_without_a_key_says_so_or_uses_lama() {
+    assert_eq!(remove::AiModel::parse(&json!({"model": "nanoBanana"}), "paint.remove").unwrap(), remove::AiModel::NanoBanana);
+    let err = remove::AiModel::parse(&json!({"model": "gemini"}), "paint.remove").unwrap_err().to_string();
+    assert!(err.contains("nanoBanana"), "{err}");
+    // Only meaningful where no key is set (this machine's credential store or GEMINI_API_KEY).
+    if photocraft_ml::gemini::key_source().is_some() {
+        return;
+    }
+    let mut s = square_session(8, "rgb");
+    let err =
+        s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "model": "nanoBanana", "generative": "on"})).unwrap_err().to_string();
+    assert!(err.contains("Google API key"), "{err}");
+    let r = s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "model": "nanoBanana"})).unwrap();
+    assert!(r["note"].as_str().is_some_and(|n| n.contains("Google API key")), "Auto says why it didn't use Nano Banana: {r}");
 }

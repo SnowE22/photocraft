@@ -42,3 +42,26 @@ pub fn add_search_dir(dir: PathBuf) {
 pub fn search_dirs() -> Vec<PathBuf> {
     photocraft_ml::search_dirs()
 }
+
+/// Google's Nano Banana 2.1 (`paint.remove` and `edit.generativeFill` with `model: "nanoBanana"`):
+/// online, paid per image with the user's own Google API key. The key is kept in the system's
+/// credential store, never in the preferences, and never goes through a command (a command's
+/// params can be journaled or recorded in an action).
+pub mod nano_banana {
+    pub use photocraft_ml::gemini::{ENV_KEY, KeySource, MAX_1K, NAME, PRICE_1K, PRICE_2K};
+
+    /// Where the key in use comes from, `None` when there is none.
+    pub fn key_source() -> Option<KeySource> {
+        photocraft_ml::gemini::key_source()
+    }
+
+    /// Whether the system has a credential store the key can be saved in.
+    pub fn can_save_key() -> bool {
+        photocraft_ml::gemini::can_save_key()
+    }
+
+    /// Save the key (`None` deletes the saved one).
+    pub fn set_key(key: Option<&str>) -> Result<(), String> {
+        photocraft_ml::gemini::set_key(key)
+    }
+}

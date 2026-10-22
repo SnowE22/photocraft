@@ -24,7 +24,12 @@
 //! `diffusion` (Stable Diffusion inpainting, `photocraft_ml::diffusion`: seconds, but it draws what
 //! was most likely behind, such as the rest of a face under a speech bubble). `prompt` tells the
 //! diffusion model what should be there. When the diffusion model isn't installed, Auto uses
+//! LaMa and says so. `nanoBanana` is Google's Nano Banana 2.1 (`photocraft_ml::gemini`): online and
+//! paid with the user's own API key, and the best at what lies behind; without a key Auto uses
 //! LaMa and says so.
+//!
+//! `selection: true` removes the selection itself instead of strokes: what is selected is the
+//! hole (Photoshop's way of asking Generative Fill to remove something, without a prompt).
 
 use super::content_aware_move::{Target, replace};
 use super::patch::coverage;
@@ -85,16 +90,19 @@ pub(crate) enum AiModel {
     Lama,
     /// Stable Diffusion inpainting: slow, draws what was most likely there.
     Diffusion,
+    /// Google's Nano Banana 2.1, online: seconds, paid per image.
+    NanoBanana,
 }
 
 impl AiModel {
-    /// `model`: "lama" (the default) or "diffusion".
+    /// `model`: "lama" (the default), "diffusion" or "nanoBanana".
     pub(crate) fn parse(p: &Value, cmd: &str) -> Result<Self> {
         match p.get("model") {
             None | Some(Value::Null) => Ok(AiModel::Lama),
             Some(Value::String(v)) if v == "lama" => Ok(AiModel::Lama),
             Some(Value::String(v)) if v == "diffusion" => Ok(AiModel::Diffusion),
-            Some(v) => Err(bad(cmd, format!("`model` is \"lama\" or \"diffusion\", not {v}"))),
+            Some(Value::String(v)) if v == "nanoBanana" => Ok(AiModel::NanoBanana),
+            Some(v) => Err(bad(cmd, format!("`model` is \"lama\", \"diffusion\" or \"nanoBanana\", not {v}"))),
         }
     }
 
@@ -103,6 +111,7 @@ impl AiModel {
         match self {
             AiModel::Lama => photocraft_ml::lama::availability(),
             AiModel::Diffusion => photocraft_ml::diffusion::availability(),
+            AiModel::NanoBanana => photocraft_ml::gemini::availability(),
         }
     }
 
@@ -110,6 +119,8 @@ impl AiModel {
         let state = match self {
             AiModel::Lama => photocraft_ml::lama::state(),
             AiModel::Diffusion => photocraft_ml::diffusion::state(),
+            // Nothing to load.
+            AiModel::NanoBanana => return true,
         };
         matches!(state, photocraft_ml::lama::State::Ready(_))
     }
@@ -162,6 +173,7 @@ pub(crate) fn fill_with_model(
             *device = Some(d);
             out
         }),
+        AiModel::NanoBanana => photocraft_ml::gemini::fill(req, read, &settings.prompt, ctl).inspect(|_| *device = Some(Device::Google)),
     }
 }
 
@@ -184,8 +196,10 @@ fn sampling_margin(area: Rect) -> i32 {
 /// What a removal does, checked before any work starts.
 pub(super) struct Plan {
     pub(super) id: Option<LayerId>,
-    /// One stroke (`points`), or several applied together (`strokes`).
+    /// One stroke (`points`), or several applied together (`strokes`); none with `selection`.
     strokes: Vec<Stroke>,
+    /// The selection is the hole (`selection: true`).
+    from_selection: bool,
     /// Where the fill samples from: the strokes plus a margin, on the canvas.
     pub(super) window: Rect,
     close_loops: bool,
@@ -240,21 +254,39 @@ fn parse_strokes(s: &Session, p: &Value) -> Result<(Vec<Stroke>, Option<LayerId>
     Ok((strokes, id))
 }
 
+/// The layer `selection: true` removes from: none for a mask or channel target, else `layer` or
+/// the active one.
+fn selection_target(s: &Session, p: &Value) -> Result<Option<LayerId>> {
+    if crate::channel_cmds::is_channel_target(p) {
+        return Ok(None);
+    }
+    match p.get("layer").and_then(Value::as_u64) {
+        Some(id) => Ok(Some(LayerId(id))),
+        None => s.active().and_then(|d| d.active_layer).map(Some).ok_or(EngineError::Other("no active layer".into())),
+    }
+}
+
 pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     let mode = generative(p)?;
     let model = AiModel::parse(p, CMD)?;
     let high = high_quality(p, CMD)?;
-    let (strokes, id) = parse_strokes(s, p)?;
+    let from_selection = flag(p, "selection", false);
+    let (strokes, id) = if from_selection { (Vec::new(), selection_target(s, p)?) } else { parse_strokes(s, p)? };
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
-    let bounds = strokes.iter().map(stroke_bounds).reduce(|a, b| a.union(&b)).ok_or_else(|| bad(CMD, "`strokes` is empty"))?;
+    let bounds = if from_selection {
+        d.doc.selection.as_ref().ok_or_else(|| bad(CMD, "`selection` needs a selection: make one first"))?.content_bounds()
+    } else {
+        strokes.iter().map(stroke_bounds).reduce(|a, b| a.union(&b)).ok_or_else(|| bad(CMD, "`strokes` is empty"))?
+    };
     let pixels = u64::from(bounds.width()) * u64::from(bounds.height());
+    let what = if from_selection { "selection" } else { "stroke" };
     if pixels > MAX_PIXELS {
-        return Err(bad(CMD, format!("the stroke is too large to remove ({pixels} pixels, at most {MAX_PIXELS})")));
+        return Err(bad(CMD, format!("the {what} is too large to remove ({pixels} pixels, at most {MAX_PIXELS})")));
     }
     let area = bounds.intersect(&canvas);
     if area.is_empty() {
-        return Err(bad(CMD, "the stroke is outside the canvas"));
+        return Err(bad(CMD, format!("the {what} is outside the canvas")));
     }
     let window = area.inflate(sampling_margin(area).min(MAX_MARGIN)).intersect(&canvas);
     let close_loops = flag(p, "closeLoops", true);
@@ -268,7 +300,7 @@ pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     {
         return Err(bad(CMD, format!("Generative AI is on, but {e}")));
     }
-    Ok(Plan { id, strokes, window, close_loops, all_layers, new_layer, generative, model, high, settings: diffusion_settings(p) })
+    Ok(Plan { id, strokes, from_selection, window, close_loops, all_layers, new_layer, generative, model, high, settings: diffusion_settings(p) })
 }
 
 /// The hole over the plan's window: the strokes' footprints, their enclosed areas and a margin,
@@ -276,6 +308,11 @@ pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
 pub(super) fn hole(plan: &Plan, sel: Option<&Surface>) -> Result<Vec<bool>> {
     let win = plan.window;
     let (w, h) = (win.width() as usize, win.height() as usize);
+    if plan.from_selection {
+        // Everything selected, the soft edge too: a selection drawn around something takes it all.
+        let sel = sel.ok_or_else(|| bad(CMD, "`selection` needs a selection: make one first"))?;
+        return Ok(coverage(sel, win).iter().map(|c| *c > 0.0).collect());
+    }
     let mut m = vec![false; w * h];
     for stroke in &plan.strokes {
         let (bounds, cov) = super::coverage(CMD, stroke)?;
@@ -359,7 +396,8 @@ pub(super) fn fill_generative(
 fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::JobCtx, label: &str) -> Result<Option<(Region, Vec<bool>, Filled)>> {
     let hole = hole(plan, doc.selection.as_ref())?;
     if !hole.iter().any(|m| *m) {
-        return Err(bad(CMD, "the stroke doesn't cover anything that can change (check the selection)"));
+        let what = if plan.from_selection { "nothing is selected there" } else { "the stroke doesn't cover anything that can change (check the selection)" };
+        return Err(bad(CMD, what));
     }
     if hole.iter().all(|m| *m) {
         return Err(bad(CMD, "nothing is left around the stroke to fill it from"));
@@ -378,10 +416,11 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
     }
     let mut note = None;
     let mut model = plan.model;
-    // Auto with the diffusion model missing: LaMa, saying so.
+    // Auto with the diffusion model missing, or Nano Banana without a key: LaMa, saying so.
     if plan.generative == Generative::Auto
-        && model == AiModel::Diffusion
-        && let Err(e @ (MlError::ModelMissing { .. } | MlError::RuntimeMissing { .. } | MlError::Unsupported)) = model.availability()
+        && model != AiModel::Lama
+        && let Err(e @ (MlError::ModelMissing { .. } | MlError::RuntimeMissing { .. } | MlError::Unsupported | MlError::NotConfigured(_))) =
+            model.availability()
     {
         note = Some(format!("{e}; used LaMa"));
         model = AiModel::Lama;
@@ -405,10 +444,13 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
             (AiModel::Diffusion, true) => "Remove (Generative AI, diffusion)",
             (AiModel::Lama, false) => "Remove: loading the Generative AI model (the first time takes a few seconds)",
             (AiModel::Diffusion, false) => "Remove: loading the diffusion model (the first time takes up to a minute)",
+            (AiModel::NanoBanana, _) => "Remove (Nano Banana 2.1): waiting for Google",
         };
         let mut device = None;
         let filled = ctx.stage(0.0, 1.0, message, |ctl| {
-            fill_generative(doc, plan, p, &img, &hole, ctl, &mut |req, read, ctl| fill_with_model(model, plan.high, &plan.settings, req, read, ctl, &mut device))
+            fill_generative(doc, plan, p, &img, &hole, ctl, &mut |req, read, ctl| {
+                fill_with_model(model, plan.high, &plan.settings, req, read, ctl, &mut device)
+            })
         });
         match filled {
             Ok(mut data) => {
@@ -417,7 +459,7 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
                 return Ok(Some((Region { rect: win, ch: img.ch, data }, hole, used)));
             }
             Err(MlError::Cancelled) => return Err(EngineError::Cancelled),
-            Err(e) if plan.generative == Generative::On => return Err(bad(CMD, format!("Generative AI couldn't fill the stroke: {e}"))),
+            Err(e) if plan.generative == Generative::On => return Err(bad(CMD, format!("Generative AI couldn't fill it: {e}"))),
             Err(e) => note = Some(format!("{e}; used the patch fill")),
         }
     }

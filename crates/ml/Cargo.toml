@@ -1,6 +1,6 @@
 [package]
 name = "photocraft-ml"
-description = "Local machine-learning models (LaMa inpainting for the Remove tool) on ONNX Runtime, loaded at run time, on DirectML on Windows"
+description = "Machine-learning models for the Remove tool: LaMa and diffusion inpainting on ONNX Runtime (loaded at run time, DirectML on Windows), and Google's Nano Banana 2.1 over its API"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -15,6 +15,13 @@ photocraft-raster = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
+# Nano Banana's request and answer: the crop as PNG, base64 in JSON (MIT OR Apache-2.0).
+photocraft-codecs = { workspace = true }
+base64 = "0.22"
+
+# The HTTPS client for Google's API (MIT OR Apache-2.0; rustls with the webpki roots).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = "3.5"
 
 # ONNX Runtime (MIT OR Apache-2.0), loaded at run time (`load-dynamic`): nothing links at build
 # time, so a build or an install without the runtime works and reports the models as missing.
@@ -22,6 +29,12 @@ log = { workspace = true }
 # provides. A release candidate, so pinned exactly.
 [target.'cfg(windows)'.dependencies]
 ort = { version = "=2.0.0-rc.14", default-features = false, features = ["load-dynamic", "directml"] }
+# The Google API key in the Windows Credential Manager (MIT OR Apache-2.0).
+keyring = { version = "3.6", default-features = false, features = ["windows-native"] }
+
+# The Google API key in the macOS Keychain.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["apple-native"] }
 
 [target.'cfg(all(not(windows), not(target_arch = "wasm32")))'.dependencies]
 ort = { version = "=2.0.0-rc.14", default-features = false, features = ["load-dynamic"] }

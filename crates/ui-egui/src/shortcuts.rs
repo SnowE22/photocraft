@@ -617,6 +617,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
             return;
         }
     }
+    // Remove tool with a selection and no strokes waiting: Enter removes what is selected.
+    if app.ui.tool == crate::state::Tool::Remove && app.session.active().is_some_and(|st| st.doc.selection.is_some()) && pressed(Key::Enter) {
+        crate::retouch_ui::remove_selection(app);
+        return;
+    }
     // Enter / Escape commit or cancel in-progress tool state (polygonal lasso, crop).
     if crate::lasso_ui::active(app) {
         let mods = ctx.input(|i| i.modifiers);

@@ -4717,3 +4717,21 @@ shape	Appearance	Izgled
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU adapter
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, plaćeno)
+	Remove Selection	Ukloni izbor
+	Remove what is selected ({key})	Ukloni ono što je izabrano ({key})
+	API Key…	API ključ…
+	Change or remove the Google API key Nano Banana uses	Promeni ili ukloni Google API ključ koji Nano Banana koristi
+	Set API Key…	Postavi API ključ…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana traži vaš sopstveni Google API ključ; do tada Automatski koristi LaMa
+	No API key	Nema API ključa
+	Nano Banana API Key	API ključ za Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 radi na Google-ovim serverima i naplaćuje se vašem Google nalogu: oko {small} po uklanjanju, {large} za velika.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Oblast oko onoga što uklanjate šalje se Google-u, od koga se traži da je ne čuva.
+	Get a key at	Ključ nabavite na
+	A key is saved in the system's credential store.	Ključ je sačuvan u sistemskom skladištu akreditiva.
+	Using the {var} environment variable.	Koristi se promenljiva okruženja {var}.
+	Google API key	Google API ključ
+	Remove Saved Key	Ukloni sačuvani ključ
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Ovaj sistem nema skladište akreditiva koje PhotoCraft može da koristi: umesto toga postavite promenljivu okruženja {var}.

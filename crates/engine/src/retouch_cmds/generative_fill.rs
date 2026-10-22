@@ -71,7 +71,7 @@ fn plan(s: &Session, p: &Value) -> Result<Plan> {
         return Err(bad(CMD, "nothing is selected enough to fill (the selection is under 50 %)"));
     }
     if let Err(e) = model.availability() {
-        return Err(bad(CMD, format!("Generative Fill needs a local model: {e}")));
+        return Err(bad(CMD, format!("Generative Fill can't use that model: {e}")));
     }
     let prompt = p.get("prompt").and_then(Value::as_str).unwrap_or("").trim().to_string();
     let name = if prompt.is_empty() { d.doc.next_layer_name("Generative Layer") } else { prompt.chars().take(60).collect() };

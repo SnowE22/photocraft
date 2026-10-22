@@ -11,6 +11,9 @@
 //! the CPU. LaMa's Fourier units multiply a 2-D matrix with 5-D tensors, which DirectML refuses;
 //! [`onnx_edit`] rewrites those products in 4-D when the model loads, on the protobuf bytes.
 //!
+//! [`gemini`] is the one online model: Google's Nano Banana 2.1 over its API, paid with the user's
+//! own key, for removals the local models can't guess (what lies behind something).
+//!
 //! [`inpaint`] takes a document region and a hole to the model's fixed 512 × 512 input and back:
 //! a crop around each part of the hole, scaled to the model's size, and the fill scaled back into
 //! the hole only. It is pure and runs everywhere; the WebAssembly build has no runtime and
@@ -20,6 +23,7 @@
 
 pub mod clip_tokenizer;
 pub mod diffusion;
+pub mod gemini;
 #[cfg(not(target_arch = "wasm32"))]
 mod idle;
 pub mod inpaint;
@@ -52,6 +56,9 @@ pub enum MlError {
     BadInput(String),
     #[error("local AI models aren't available in this build")]
     Unsupported,
+    /// An online model without its account set up (no API key): the caller uses another model.
+    #[error("{0}")]
+    NotConfigured(String),
     #[error("cancelled")]
     Cancelled,
 }
@@ -68,6 +75,8 @@ pub enum Device {
     /// DirectML on a DirectX 12 GPU (Windows).
     DirectMl,
     Cpu,
+    /// Google's servers (Nano Banana, [`gemini`]).
+    Google,
 }
 
 impl Device {
@@ -75,6 +84,7 @@ impl Device {
         match self {
             Device::DirectMl => "DirectML",
             Device::Cpu => "CPU",
+            Device::Google => "Google",
         }
     }
 }

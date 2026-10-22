@@ -3276,3 +3276,21 @@ curves	Smooth	平滑
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU 介面卡
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1（Google，付費）
+	Remove Selection	移除選取範圍內容
+	Remove what is selected ({key})	移除所選內容（{key}）
+	API Key…	API 金鑰…
+	Change or remove the Google API key Nano Banana uses	變更或移除 Nano Banana 使用的 Google API 金鑰
+	Set API Key…	設定 API 金鑰…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana 需要您自己的 Google API 金鑰；在此之前「自動」使用 LaMa
+	No API key	沒有 API 金鑰
+	Nano Banana API Key	Nano Banana API 金鑰
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 在 Google 的伺服器上執行，費用記入您的 Google 帳戶：每次移除約 {small}，大面積為 {large}。
+	The area around what you remove is sent to Google, which is asked not to keep it.	所移除內容周圍的區域會傳送給 Google，並要求其不予保存。
+	Get a key at	取得金鑰：
+	A key is saved in the system's credential store.	系統認證儲存區中已儲存一個金鑰。
+	Using the {var} environment variable.	正在使用環境變數 {var}。
+	Google API key	Google API 金鑰
+	Remove Saved Key	移除已儲存的金鑰
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	此系統沒有 PhotoCraft 可用的認證儲存區：請改為設定環境變數 {var}。

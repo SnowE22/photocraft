@@ -3661,3 +3661,21 @@ curves	Smooth	Glätten
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU-Adapter
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, kostenpflichtig)
+	Remove Selection	Auswahl entfernen
+	Remove what is selected ({key})	Das Ausgewählte entfernen ({key})
+	API Key…	API-Schlüssel…
+	Change or remove the Google API key Nano Banana uses	Den Google-API-Schlüssel ändern oder entfernen, den Nano Banana verwendet
+	Set API Key…	API-Schlüssel festlegen…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana braucht Ihren eigenen Google-API-Schlüssel; bis dahin verwendet Auto LaMa
+	No API key	Kein API-Schlüssel
+	Nano Banana API Key	Nano-Banana-API-Schlüssel
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 läuft auf Googles Servern und wird Ihrem Google-Konto berechnet: etwa {small} pro Entfernung, {large} für große.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Die Umgebung dessen, was Sie entfernen, wird an Google gesendet, mit der Bitte, sie nicht zu speichern.
+	Get a key at	Einen Schlüssel erhalten Sie unter
+	A key is saved in the system's credential store.	Ein Schlüssel ist in der Anmeldeinformationsverwaltung des Systems gespeichert.
+	Using the {var} environment variable.	Die Umgebungsvariable {var} wird verwendet.
+	Google API key	Google-API-Schlüssel
+	Remove Saved Key	Gespeicherten Schlüssel entfernen
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Dieses System hat keinen Anmeldedatenspeicher, den PhotoCraft nutzen kann: Legen Sie stattdessen die Umgebungsvariable {var} fest.

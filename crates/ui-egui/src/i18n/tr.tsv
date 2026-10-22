@@ -4374,3 +4374,21 @@ cameraData	Lens	Lens
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU bağdaştırıcısı
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, ücretli)
+	Remove Selection	Seçimi Kaldır
+	Remove what is selected ({key})	Seçili olanı kaldır ({key})
+	API Key…	API Anahtarı…
+	Change or remove the Google API key Nano Banana uses	Nano Banana'nın kullandığı Google API anahtarını değiştir veya kaldır
+	Set API Key…	API Anahtarı Ayarla…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana kendi Google API anahtarınızı gerektirir; o zamana kadar Otomatik LaMa kullanır
+	No API key	API anahtarı yok
+	Nano Banana API Key	Nano Banana API Anahtarı
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 Google'ın sunucularında çalışır ve Google hesabınıza faturalandırılır: kaldırma başına yaklaşık {small}, büyükler için {large}.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Kaldırdığınız şeyin çevresi Google'a gönderilir ve saklamaması istenir.
+	Get a key at	Anahtarı şuradan alın:
+	A key is saved in the system's credential store.	Sistemin kimlik bilgisi deposunda kayıtlı bir anahtar var.
+	Using the {var} environment variable.	{var} ortam değişkeni kullanılıyor.
+	Google API key	Google API anahtarı
+	Remove Saved Key	Kayıtlı Anahtarı Kaldır
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Bu sistemde PhotoCraft'ın kullanabileceği bir kimlik bilgisi deposu yok: bunun yerine {var} ortam değişkenini ayarlayın.

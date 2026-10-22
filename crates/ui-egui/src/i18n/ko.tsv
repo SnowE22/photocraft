@@ -3844,3 +3844,21 @@ curves	Smooth	매끄럽게
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU 어댑터
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, 유료)
+	Remove Selection	선택 영역 제거
+	Remove what is selected ({key})	선택한 부분 제거 ({key})
+	API Key…	API 키…
+	Change or remove the Google API key Nano Banana uses	Nano Banana가 사용하는 Google API 키 변경 또는 제거
+	Set API Key…	API 키 설정…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana에는 사용자 본인의 Google API 키가 필요합니다. 그 전까지 자동은 LaMa를 사용합니다
+	No API key	API 키 없음
+	Nano Banana API Key	Nano Banana API 키
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1은 Google 서버에서 실행되며 Google 계정으로 청구됩니다: 제거 1회에 약 {small}, 큰 것은 {large}.
+	The area around what you remove is sent to Google, which is asked not to keep it.	제거하는 부분의 주변이 Google로 전송되며, 보관하지 않도록 요청합니다.
+	Get a key at	키 받는 곳:
+	A key is saved in the system's credential store.	키가 시스템 자격 증명 저장소에 저장되어 있습니다.
+	Using the {var} environment variable.	{var} 환경 변수를 사용 중입니다.
+	Google API key	Google API 키
+	Remove Saved Key	저장된 키 제거
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	이 시스템에는 PhotoCraft가 사용할 수 있는 자격 증명 저장소가 없습니다. 대신 {var} 환경 변수를 설정하세요.

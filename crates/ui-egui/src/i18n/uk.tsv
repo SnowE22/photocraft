@@ -4361,3 +4361,21 @@ curves	Smooth	Згладити
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Адаптер GPU
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, платно)
+	Remove Selection	Видалити виділене
+	Remove what is selected ({key})	Видалити виділене ({key})
+	API Key…	Ключ API…
+	Change or remove the Google API key Nano Banana uses	Змінити або видалити ключ Google API, який використовує Nano Banana
+	Set API Key…	Задати ключ API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana потрібен ваш власний ключ Google API; доти «Авто» використовує LaMa
+	No API key	Немає ключа API
+	Nano Banana API Key	Ключ API для Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 працює на серверах Google і оплачується з вашого облікового запису Google: близько {small} за видалення, {large} за великі.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Область довкола того, що ви видаляєте, надсилається в Google із проханням не зберігати її.
+	Get a key at	Отримати ключ можна на
+	A key is saved in the system's credential store.	Ключ збережено у сховищі облікових даних системи.
+	Using the {var} environment variable.	Використовується змінна середовища {var}.
+	Google API key	Ключ Google API
+	Remove Saved Key	Видалити збережений ключ
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	У цій системі немає сховища облікових даних, яке може використати PhotoCraft: натомість задайте змінну середовища {var}.

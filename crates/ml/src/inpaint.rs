@@ -289,12 +289,12 @@ fn weights(len: usize, side: usize) -> Vec<Vec<(usize, f32)>> {
 }
 
 /// The sRGB curve, for the linear light of 32-bit documents.
-fn encode(v: f32) -> f32 {
+pub(crate) fn encode(v: f32) -> f32 {
     let v = v.clamp(0.0, 1.0);
     if v <= 0.003_130_8 { v * 12.92 } else { 1.055 * v.powf(1.0 / 2.4) - 0.055 }
 }
 
-fn decode(v: f32) -> f32 {
+pub(crate) fn decode(v: f32) -> f32 {
     let v = v.clamp(0.0, 1.0);
     if v <= 0.040_45 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
 }
@@ -309,7 +309,7 @@ pub(crate) struct Input {
 }
 
 /// One window pixel's index, if `(x, y)` is in the window.
-fn window_index(window: Rect, x: i32, y: i32) -> Option<usize> {
+pub(crate) fn window_index(window: Rect, x: i32, y: i32) -> Option<usize> {
     if !window.contains(x, y) {
         return None;
     }
@@ -318,7 +318,7 @@ fn window_index(window: Rect, x: i32, y: i32) -> Option<usize> {
 }
 
 /// `v` folded into `lo..hi` by mirroring at its edges, the edge pixel repeated (…, 1, 0, 0, 1, …).
-fn mirror(v: i32, lo: i32, hi: i32) -> i32 {
+pub(crate) fn mirror(v: i32, lo: i32, hi: i32) -> i32 {
     if v >= lo && v < hi {
         return v;
     }
@@ -676,7 +676,7 @@ pub(crate) fn push_pull(planes: &[Vec<f32>], weight: &[f32], w: usize, h: usize)
 }
 
 /// Write model colour `rgb` (sRGB-encoded 0–1) into window pixel `k` of `out`.
-fn put(req: &Request, out: &mut [f32], k: usize, rgb: [f32; 3]) {
+pub(crate) fn put(req: &Request, out: &mut [f32], k: usize, rgb: [f32; 3]) {
     let back = |v: f32| if req.linear { decode(v) } else { v.clamp(0.0, 1.0) };
     let Some(px) = out.get_mut(k * req.ch..(k + 1) * req.ch) else { return };
     match req.colours {

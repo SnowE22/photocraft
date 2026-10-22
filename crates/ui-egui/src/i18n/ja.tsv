@@ -4329,3 +4329,21 @@ curves	Smooth	スムーズ
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	GPU アダプター
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1（Google、有料）
+	Remove Selection	選択範囲を削除
+	Remove what is selected ({key})	選択した部分を削除（{key}）
+	API Key…	API キー…
+	Change or remove the Google API key Nano Banana uses	Nano Banana が使う Google API キーを変更または削除
+	Set API Key…	API キーを設定…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana にはご自身の Google API キーが必要です。それまで自動は LaMa を使います
+	No API key	API キーなし
+	Nano Banana API Key	Nano Banana の API キー
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 は Google のサーバーで動作し、ご自身の Google アカウントに課金されます：削除 1 回あたり約 {small}、大きなものは {large}。
+	The area around what you remove is sent to Google, which is asked not to keep it.	削除する部分の周囲は Google に送られ、保存しないよう求められます。
+	Get a key at	キーの取得先：
+	A key is saved in the system's credential store.	キーはシステムの資格情報ストアに保存されています。
+	Using the {var} environment variable.	環境変数 {var} を使用しています。
+	Google API key	Google API キー
+	Remove Saved Key	保存したキーを削除
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	このシステムには PhotoCraft が使える資格情報ストアがありません。代わりに環境変数 {var} を設定してください。

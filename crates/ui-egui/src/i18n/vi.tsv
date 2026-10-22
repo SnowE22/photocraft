@@ -4142,3 +4142,21 @@ curves	Smooth	Làm mượt
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Bộ điều hợp GPU
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, trả phí)
+	Remove Selection	Xóa vùng chọn
+	Remove what is selected ({key})	Xóa phần đã chọn ({key})
+	API Key…	Khóa API…
+	Change or remove the Google API key Nano Banana uses	Đổi hoặc gỡ khóa API Google mà Nano Banana dùng
+	Set API Key…	Đặt khóa API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana cần khóa API Google của riêng bạn; trước đó Tự động dùng LaMa
+	No API key	Không có khóa API
+	Nano Banana API Key	Khóa API Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 chạy trên máy chủ của Google và tính phí vào tài khoản Google của bạn: khoảng {small} mỗi lần xóa, {large} với vùng lớn.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Vùng quanh thứ bạn xóa được gửi tới Google, và Google được yêu cầu không lưu lại.
+	Get a key at	Lấy khóa tại
+	A key is saved in the system's credential store.	Có một khóa được lưu trong kho thông tin xác thực của hệ thống.
+	Using the {var} environment variable.	Đang dùng biến môi trường {var}.
+	Google API key	Khóa API Google
+	Remove Saved Key	Gỡ khóa đã lưu
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Hệ thống này không có kho thông tin xác thực mà PhotoCraft dùng được: hãy đặt biến môi trường {var} thay thế.

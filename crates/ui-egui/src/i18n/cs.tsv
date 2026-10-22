@@ -4259,3 +4259,21 @@ navigator	Zoom	Zvětšení
 
 # Graphics Adapter preference (#1885)
 	GPU adapter	Adaptér GPU
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, placené)
+	Remove Selection	Odstranit výběr
+	Remove what is selected ({key})	Odstranit, co je vybráno ({key})
+	API Key…	Klíč API…
+	Change or remove the Google API key Nano Banana uses	Změnit nebo odebrat klíč Google API, který Nano Banana používá
+	Set API Key…	Nastavit klíč API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana potřebuje váš vlastní klíč Google API; do té doby Auto použije LaMa
+	No API key	Žádný klíč API
+	Nano Banana API Key	Klíč API pro Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 běží na serverech Googlu a účtuje se na váš účet Google: asi {small} za odstranění, {large} za velká.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Okolí toho, co odstraňujete, se odešle Googlu, který je požádán, aby si ho neuchovával.
+	Get a key at	Klíč získáte na
+	A key is saved in the system's credential store.	Klíč je uložen ve správci přihlašovacích údajů systému.
+	Using the {var} environment variable.	Používá se proměnná prostředí {var}.
+	Google API key	Klíč Google API
+	Remove Saved Key	Odebrat uložený klíč
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Tento systém nemá úložiště přihlašovacích údajů, které by PhotoCraft mohl použít: nastavte místo toho proměnnou prostředí {var}.

@@ -806,6 +806,7 @@ mod native {
             let mut builder = match device {
                 Device::DirectMl => directml(builder).map_err(|e| fail(&e))?,
                 Device::Cpu => builder.with_execution_providers([ort::ep::CPU::default().build().error_on_failure()]).map_err(|e| fail(&e))?,
+            Device::Google => return Err(fail(&"not a device local models run on")),
             };
             let session = builder.commit_from_file(file).map_err(|e| fail(&e))?;
             let outputs: Vec<String> = session.outputs().iter().map(|o| o.name().to_string()).collect();

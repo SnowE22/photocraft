@@ -187,7 +187,7 @@ fn remove_params(o: &crate::state::ToolOptions) -> Value {
     {
         m.insert("quality".into(), json!("high"));
     }
-    if remove_model(o) == "diffusion"
+    if matches!(remove_model(o), "diffusion" | "nanoBanana")
         && !o.remove_prompt.trim().is_empty()
         && let Some(m) = p.as_object_mut()
     {
@@ -198,12 +198,139 @@ fn remove_params(o: &crate::state::ToolOptions) -> Value {
 
 /// The Remove tool's model as `paint.remove` takes it (an unknown saved value is LaMa).
 fn remove_model(o: &crate::state::ToolOptions) -> &'static str {
-    if o.remove_model == "diffusion" { "diffusion" } else { "lama" }
+    match o.remove_model.as_str() {
+        "diffusion" => "diffusion",
+        "nanoBanana" => "nanoBanana",
+        _ => "lama",
+    }
 }
 
-/// The Remove tool's model choices (`paint.remove` `model`).
-fn generative_models() -> [(String, &'static str); 2] {
-    [("lama".into(), tl!("LaMa (fast)")), ("diffusion".into(), tl!("Diffusion (detailed)"))]
+/// The Remove tool's model choices (`paint.remove` `model`). Nano Banana is online only.
+fn generative_models() -> Vec<(String, &'static str)> {
+    let mut v = vec![("lama".into(), tl!("LaMa (fast)")), ("diffusion".into(), tl!("Diffusion (detailed)"))];
+    if !cfg!(target_arch = "wasm32") {
+        v.push(("nanoBanana".into(), tl!("Nano Banana 2.1 (Google, paid)")));
+    }
+    v
+}
+
+/// Remove what is selected (`paint.remove` `selection`) with the options bar's settings: the
+/// options bar's Remove Selection, or Enter with the Remove tool and a selection.
+pub fn remove_selection(app: &mut PhotocraftApp) -> bool {
+    if !app.session.active().is_some_and(|st| st.doc.selection.is_some()) {
+        return false;
+    }
+    let mut p = remove_params(&app.ui.tool_options);
+    p["selection"] = json!(true);
+    p["target"] = crate::canvas::paint_target(app);
+    app.ui.status.clear();
+    if let Err(e) = app.run("paint.remove", p) {
+        app.ui.status = e;
+        app.ui.status_error = true;
+    }
+    true
+}
+
+/// The Nano Banana API key window's state (egui memory: it is the shell's alone, and the key
+/// typed in it never reaches the UI state, the preferences or a command).
+#[derive(Clone, Default)]
+struct KeyWindow {
+    open: bool,
+    text: String,
+    error: Option<String>,
+}
+
+fn key_window_id() -> egui::Id {
+    egui::Id::new("nano-banana-key-window")
+}
+
+/// Open the Nano Banana API key window.
+pub(crate) fn open_key_window(ctx: &egui::Context) {
+    ctx.data_mut(|d| d.insert_temp(key_window_id(), KeyWindow { open: true, ..Default::default() }));
+}
+
+/// Beside the model: whether there is an API key, and the button that sets it.
+fn nano_banana_key(ui: &mut egui::Ui) {
+    use photocraft_engine::generative::nano_banana;
+    let t = Tokens::get(ui.ctx());
+    let source = nano_banana::key_source();
+    let (label, tip) = match source {
+        Some(_) => (tl!("API Key…"), tl!("Change or remove the Google API key Nano Banana uses")),
+        None => (tl!("Set API Key…"), tl!("Nano Banana needs your own Google API key; until then Auto uses LaMa")),
+    };
+    if crate::widgets::secondary_button(ui, label, 0.0).on_hover_text(tip).clicked() {
+        open_key_window(ui.ctx());
+    }
+    if source.is_none() {
+        ui.label(egui::RichText::new(tl!("No API key")).color(t.danger).size(11.0));
+    }
+    key_window(ui.ctx());
+}
+
+/// The API key window: a hidden field, Save, Remove Saved Key, and what using the model costs.
+fn key_window(ctx: &egui::Context) {
+    use photocraft_engine::generative::nano_banana;
+    let Some(mut w) = ctx.data(|d| d.get_temp::<KeyWindow>(key_window_id())).filter(|w| w.open) else { return };
+    let mut open = true;
+    let mut close = false;
+    egui::Window::new(tl!("Nano Banana API Key")).id(key_window_id().with("window")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
+        ui.set_max_width(420.0);
+        let price = |v: f64| format!("${v:.2}");
+        ui.label(crate::i18n::fmt(
+            tl!("Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones."),
+            &[("small", &price(nano_banana::PRICE_1K)), ("large", &price(nano_banana::PRICE_2K))],
+        ));
+        ui.label(tl!("The area around what you remove is sent to Google, which is asked not to keep it."));
+        ui.horizontal(|ui| {
+            ui.label(tl!("Get a key at"));
+            ui.hyperlink_to("aistudio.google.com/apikey", "https://aistudio.google.com/apikey");
+        });
+        ui.add_space(6.0);
+        match nano_banana::key_source() {
+            Some(nano_banana::KeySource::Saved) => {
+                ui.label(tl!("A key is saved in the system's credential store."));
+            }
+            Some(nano_banana::KeySource::Environment) => {
+                ui.label(crate::i18n::fmt(tl!("Using the {var} environment variable."), &[("var", nano_banana::ENV_KEY)]));
+            }
+            None => {}
+        }
+        if nano_banana::can_save_key() {
+            ui.add(egui::TextEdit::singleline(&mut w.text).password(true).hint_text(tl!("Google API key")).desired_width(400.0));
+            ui.horizontal(|ui| {
+                if crate::widgets::primary_button(ui, tl!("Save"), 80.0).clicked() {
+                    match nano_banana::set_key(Some(&w.text)) {
+                        Ok(()) => close = true,
+                        Err(e) => w.error = Some(e),
+                    }
+                }
+                if nano_banana::key_source() == Some(nano_banana::KeySource::Saved)
+                    && crate::widgets::secondary_button(ui, tl!("Remove Saved Key"), 0.0).clicked()
+                {
+                    match nano_banana::set_key(None) {
+                        Ok(()) => close = true,
+                        Err(e) => w.error = Some(e),
+                    }
+                }
+                if crate::widgets::secondary_button(ui, tl!("Cancel"), 80.0).clicked() {
+                    close = true;
+                }
+            });
+        } else {
+            ui.label(crate::i18n::fmt(
+                tl!("This system has no credential store PhotoCraft can use: set the {var} environment variable instead."),
+                &[("var", nano_banana::ENV_KEY)],
+            ));
+        }
+        if let Some(e) = &w.error {
+            ui.label(egui::RichText::new(e).color(Tokens::get(ui.ctx()).danger));
+        }
+    });
+    if !open || close {
+        // Forget what was typed.
+        w = KeyWindow::default();
+    }
+    ctx.data_mut(|d| d.insert_temp(key_window_id(), w));
 }
 
 /// LaMa's Quality choices (`paint.remove` `quality`).
@@ -225,6 +352,10 @@ pub(crate) fn generative_state(app: &mut PhotocraftApp, now: f64) -> photocraft_
         && (0.0..1.0).contains(&(now - at))
     {
         return state.clone();
+    }
+    // Nano Banana loads nothing here (its key shows beside the model instead).
+    if remove_model(&app.ui.tool_options) == "nanoBanana" {
+        return photocraft_engine::generative::State::Idle;
     }
     let diffusion = remove_model(&app.ui.tool_options) == "diffusion";
     if app.ui.tool_options.remove_generative != "off" {
@@ -633,9 +764,12 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                 // for diffusion what should be there.
                 opt(ui, tl!("Model:"));
                 crate::widgets::dropdown(ui, "remove-model", &mut o.remove_model, &generative_models(), 140.0);
-                if o.remove_model == "diffusion" {
+                if matches!(o.remove_model.as_str(), "diffusion" | "nanoBanana") {
                     crate::widgets::text_field_ex(ui, egui::Id::new("remove-prompt"), &mut o.remove_prompt, tl!("Prompt (optional)"), 180.0, false, Some(500))
                         .on_hover_text(tl!("What should be there. Empty: the model's own guess."));
+                    if o.remove_model == "nanoBanana" {
+                        nano_banana_key(ui);
+                    }
                 } else {
                     // LaMa at 1024 instead of 512: sharper large removals.
                     opt(ui, tl!("Quality:"));
@@ -648,6 +782,17 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             crate::widgets::checkbox(ui, &mut o.sample_all.remove, tl!("Sample All Layers"));
             crate::widgets::checkbox(ui, &mut o.remove_new_layer, tl!("Create a new layer"));
             crate::widgets::checkbox(ui, &mut o.remove_after_each_stroke, tl!("Remove after each stroke"));
+            let selected = app.session.active().is_some_and(|st| st.doc.selection.is_some());
+            if app.remove_pending.is_empty() && selected {
+                // Inline after the checkboxes: right-aligned, a narrow bar put it over them.
+                crate::widgets::vline(ui, 22.0);
+                if crate::widgets::primary_button(ui, tl!("Remove Selection"), 0.0)
+                    .on_hover_text(crate::i18n::fmt(tl!("Remove what is selected ({key})"), &[("key", &crate::shortcuts::pretty("Enter"))]))
+                    .clicked()
+                {
+                    remove_selection(app);
+                }
+            }
             if !app.remove_pending.is_empty() {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if crate::widgets::primary_button(ui, "✓", 32.0)
@@ -1597,5 +1742,87 @@ mod tests {
         assert!(finish_stroke(&mut app, Tool::PatternStamp, &[[12.0, 30.0, 1.0]], egui::Modifiers::NONE));
         assert!(!app.ui.status_error, "{}", app.ui.status);
         assert!(app.ui.clone_source.is_none());
+    }
+
+    #[test]
+    fn remove_selection_removes_what_is_selected_with_the_options_bar_settings() {
+        let mut app = app();
+        app.run("paint.pencil", json!({"points": [[50, 30]], "size": 10, "color": "#202020"})).unwrap();
+        app.ui.tool = Tool::Remove;
+        app.ui.tool_options.remove_generative = "off".into();
+        assert!(!remove_selection(&mut app), "nothing is selected");
+        app.run("select.rect", json!({"x": 40, "y": 20, "width": 20, "height": 20})).unwrap();
+        assert!(remove_selection(&mut app));
+        assert!(!app.ui.status_error, "{}", app.ui.status);
+        let (id, p) = app.session.journal.last().unwrap();
+        assert_eq!((id.as_str(), &p["selection"], &p["generative"]), ("paint.remove", &json!(true), &json!("off")));
+        assert!(active(&app).surface().unwrap().rgba(50, 30)[0] > 0.9, "the dark dot is gone");
+    }
+
+    #[test]
+    fn nano_banana_is_a_model_with_a_prompt() {
+        assert!(generative_models().iter().any(|(k, _)| k == "nanoBanana"));
+        let mut o = crate::state::ToolOptions { remove_model: "nanoBanana".into(), remove_prompt: " a window ".into(), ..Default::default() };
+        let p = remove_params(&o);
+        assert_eq!((&p["model"], &p["prompt"]), (&json!("nanoBanana"), &json!("a window")));
+        o.remove_model = "unknown".into();
+        assert_eq!(remove_params(&o)["model"], "lama");
+    }
+
+    #[test]
+    fn the_key_window_opens_without_showing_or_keeping_a_key() {
+        use egui_kittest::kittest::Queryable;
+        let mut app = app();
+        app.ui.tool = Tool::Remove;
+        app.ui.tool_options.remove_model = "nanoBanana".into();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1600.0, 700.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if !ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    return;
+                }
+                crate::panels::options_bar(app, ui);
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::Studio);
+        h.run_steps(4);
+        let button = if photocraft_engine::generative::nano_banana::key_source().is_some() { "API Key…" } else { "Set API Key…" };
+        h.get_by_label(button).click();
+        h.run_steps(4);
+        h.get_by_label("Nano Banana API Key");
+        if photocraft_engine::generative::nano_banana::can_save_key() {
+            h.get_by_label("Cancel").click();
+            h.run_steps(4);
+            assert!(h.ctx.data(|d| d.get_temp::<KeyWindow>(key_window_id())).is_some_and(|w| !w.open && w.text.is_empty()), "closed, nothing kept");
+        }
+    }
+
+    /// Renders the Remove tool's options bar with Nano Banana and a selection, then its API key
+    /// window, as PNGs in `PHOTOCRAFT_SNAPSHOT_DIR` (to look at; needs a GPU).
+    #[test]
+    #[ignore]
+    fn dump_nano_banana_options_bar() {
+        use egui_kittest::kittest::Queryable;
+        let dir = std::path::PathBuf::from(std::env::var("PHOTOCRAFT_SNAPSHOT_DIR").expect("PHOTOCRAFT_SNAPSHOT_DIR"));
+        let mut app = app();
+        app.ui.tool = Tool::Remove;
+        app.ui.tool_options.remove_model = "nanoBanana".into();
+        app.run("select.rect", json!({"x": 10, "y": 10, "width": 20, "height": 20})).unwrap();
+        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1900.0, 420.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if !ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    return;
+                }
+                crate::panels::options_bar(app, ui);
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+        h.run_steps(4);
+        h.render().unwrap().save(dir.join("nano-banana-bar.png")).unwrap();
+        let button = if photocraft_engine::generative::nano_banana::key_source().is_some() { "API Key…" } else { "Set API Key…" };
+        h.get_by_label(button).click();
+        h.run_steps(6);
+        h.render().unwrap().save(dir.join("nano-banana-key.png")).unwrap();
     }
 }
