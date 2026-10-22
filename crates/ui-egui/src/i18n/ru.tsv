@@ -3592,3 +3592,5 @@ curves	Smooth	Сгладить
 	Close Gap widened to {px} px: click again to fill	«Закрыть зазоры» расширено до {px} пикс.: щёлкните снова, чтобы залить
 	Pick From	Выбирать от
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Насколько непрозрачным должен быть слой под указателем, чтобы Ctrl-щелчок и Автовыбор выбрали его: более слабые пиксели, например почти чёрная маска, пропускаются (0: любой видимый пиксель)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Задано «Наложение, если» или расширенное наложение: щёлкните, чтобы открыть Параметры наложения

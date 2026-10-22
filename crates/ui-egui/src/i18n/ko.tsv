@@ -3805,3 +3805,5 @@ curves	Smooth	매끄럽게
 	Close Gap widened to {px} px: click again to fill	틈 닫기를 {px} px로 넓혔습니다: 다시 클릭하여 채우세요
 	Pick From	선택 시작 불투명도
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl+클릭과 자동 선택이 레이어를 고르려면 포인터 아래에서 얼마나 불투명해야 하는지: 거의 검은 마스크처럼 옅은 픽셀은 클릭이 통과합니다 (0: 보이는 모든 픽셀)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	혼합 조건 또는 고급 혼합이 설정됨: 클릭하여 혼합 옵션 열기

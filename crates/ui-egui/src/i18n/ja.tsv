@@ -4294,3 +4294,5 @@ curves	Smooth	スムーズ
 	Close Gap widened to {px} px: click again to fill	隙間閉じを {px} px に広げました：もう一度クリックして塗りつぶします
 	Pick From	選択する不透明度
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl+クリックと自動選択でレイヤーを選ぶのに必要な、ポインター下の不透明度です。ほぼ黒のマスクのような薄いピクセルは通り抜けます (0：見えるピクセルすべて)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	ブレンド条件または高度な合成が設定されています: クリックするとレイヤー効果の詳細設定を開きます

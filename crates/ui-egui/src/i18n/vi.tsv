@@ -4106,3 +4106,5 @@ curves	Smooth	Làm mượt
 	Close Gap widened to {px} px: click again to fill	Đã nới Đóng khe hở lên {px} px: nhấp lại để tô
 	Pick From	Chọn từ
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Độ đục cần có của lớp dưới con trỏ để Ctrl-nhấp và Tự chọn chọn nó: các điểm ảnh mờ hơn, như mặt nạ gần như đen, sẽ được nhấp xuyên qua (0: mọi điểm ảnh nhìn thấy)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Đã đặt Blend If hoặc hòa trộn nâng cao: nhấp để mở Tùy chọn hòa trộn

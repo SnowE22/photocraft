@@ -37,7 +37,16 @@ pub enum Indicator {
     Link,
     /// A reference layer for the Fill tool (`layer.setReference`).
     Reference,
+    /// Blend If or other advanced blending is set (Photoshop's overlapping squares); a click
+    /// opens Blending Options.
+    BlendIf,
     Blend,
+}
+
+/// Whether `l` blends in a way its blend mode and opacity don't show: Blend If ranges, or
+/// Advanced Blending (knockout, channels, clipping options).
+pub fn advanced_blending(l: &Layer) -> bool {
+    !l.blend_if.is_default() || !l.advanced.is_default()
 }
 
 /// Where one row's name and indicators went this frame (screen points).
@@ -84,6 +93,9 @@ pub fn reserved_width(l: &Layer) -> f32 {
         w += ICON_W + GAP;
     }
     if l.reference {
+        w += ICON_W + GAP;
+    }
+    if advanced_blending(l) {
         w += ICON_W + GAP;
     }
     w
@@ -153,6 +165,9 @@ pub fn indicators(
     if l.reference {
         items.push((Indicator::Reference, ICON_W));
     }
+    if advanced_blending(l) {
+        items.push((Indicator::BlendIf, ICON_W));
+    }
     if let Some(g) = &blend_galley {
         items.push((Indicator::Blend, g.size().x));
     }
@@ -166,6 +181,17 @@ pub fn indicators(
             Indicator::Reference => {
                 icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "fill-tool", 12.0, t.accent);
                 ui.interact(r, ui.id().with(("reference-mark", l.id.0)), Sense::hover()).on_hover_text(tl!("Reference layer: the Fill tool reads it"));
+            }
+            Indicator::BlendIf => {
+                let resp = ui.interact(r, ui.id().with(("blend-if-mark", l.id.0)), Sense::click());
+                icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "copy", 12.0, if resp.hovered() { t.text } else { t.text_faint });
+                if resp.clicked() {
+                    clicked = true;
+                    actions.push(("layer.select".into(), json!({"layer": l.id.0, "mode": "replace"})));
+                    actions.push(("layer.layerStyle.blendingOptions".into(), Value::Null));
+                }
+                let resp = resp.on_hover_text(tl!("Blend If or advanced blending is set: click for Blending Options"));
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Blending Options {}", l.name)));
             }
             Indicator::Fx => {
                 if let Some(g) = fx_galley.clone() {

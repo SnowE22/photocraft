@@ -4575,3 +4575,5 @@ navigator	Zoom	Zoom
 	Close Gap widened to {px} px: click again to fill	Cerrar huecos ampliado a {px} px: haga clic de nuevo para rellenar
 	Pick From	Seleccionar desde
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Lo opaca que debe ser una capa bajo el puntero para que Ctrl+clic y Selección automática la elijan: los píxeles más tenues, como una máscara casi negra, se atraviesan (0: cualquier píxel visible)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Fusionar si o la fusión avanzada están activos: haz clic para Opciones de fusión

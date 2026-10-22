@@ -4686,3 +4686,5 @@ shape	Appearance	Izgled
 	Close Gap widened to {px} px: click again to fill	Zatvori praznine prošireno na {px} px: kliknite ponovo za ispunu
 	Pick From	Biraj od
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Koliko neprozirno sloj mora biti ispod pokazivača da bi ga Ctrl-klik i Automatski izbor izabrali: slabiji pikseli, poput skoro crne maske, propuštaju klik (0: bilo koji vidljiv piksel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Podešeno je Blend If ili napredno stapanje: kliknite za Opcije stapanja

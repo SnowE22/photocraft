@@ -3616,3 +3616,5 @@ curves	Smooth	Haluskan
 	Close Gap widened to {px} px: click again to fill	Tutup Celah diperlebar ke {px} px: klik lagi untuk mengisi
 	Pick From	Pilih Mulai
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Seberapa buram layer di bawah penunjuk agar Ctrl-klik dan Pilih Otomatis memilihnya: piksel yang lebih samar, seperti masker yang hampir hitam, diklik tembus (0: piksel terlihat apa pun)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Blend If atau pembauran lanjutan diatur: klik untuk Opsi Pembauran

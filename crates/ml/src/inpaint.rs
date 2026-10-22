@@ -222,7 +222,10 @@ pub fn crop_for(group: Rect, canvas: Rect, side: usize) -> Rect {
         i64::from(model)
     } else {
         let margin = ((f64::from(e) * SCALED_CONTEXT).ceil() as u32).max(FULL_RES_MARGIN);
-        i64::from(e.saturating_add(margin.saturating_mul(2)).max(model))
+        // No larger than the canvas needs: past it there is only its mirror image, and every
+        // pixel more shrinks the fill more.
+        let canvas_side = canvas.width().max(canvas.height()).max(model);
+        i64::from(e.saturating_add(margin.saturating_mul(2)).max(model).min(canvas_side))
     };
     let place = |lo: i32, hi: i32, c0: i32, c1: i32| -> (i32, i32) {
         let (c0, c1) = (i64::from(c0), i64::from(c1));
@@ -859,10 +862,19 @@ fn refine(
                     return Ok(());
                 }
                 ctl.check()?;
-                // The tile: the cell plus context, moved inside the canvas.
-                let place = |lo: i32, c0: i32, c1: i32| (lo - TILE_CONTEXT as i32).min(c1 - side as i32).max(c0);
+                // The tile: the cell plus context, moved inside the canvas; on a canvas smaller
+                // than the tile, centred on it and mirrored past its edges ([`sample`]). Cut to
+                // the canvas instead, the tile didn't fit and a 500-pixel-high page kept its
+                // shrunk, blurred fill.
+                let place = |lo: i32, c0: i32, c1: i32| {
+                    if i64::from(c1) - i64::from(c0) < side as i64 {
+                        c0.saturating_sub(((side as i64 - (i64::from(c1) - i64::from(c0))) / 2) as i32)
+                    } else {
+                        (lo - TILE_CONTEXT as i32).min(c1 - side as i32).max(c0)
+                    }
+                };
                 let (x0, y0) = (place(area.x0 + tx as i32, req.canvas.x0, req.canvas.x1), place(area.y0 + ty as i32, req.canvas.y0, req.canvas.y1));
-                let tile = Rect::new(x0, y0, (x0 + side as i32).min(req.canvas.x1), (y0 + side as i32).min(req.canvas.y1));
+                let tile = Rect::new(x0, y0, x0.saturating_add(side as i32), y0.saturating_add(side as i32));
                 if tile.width() as usize != side || tile.height() as usize != side {
                     return Ok(());
                 }
@@ -994,6 +1006,10 @@ mod tests {
         assert_eq!(corner, Rect::new(0, 0, 512, 512));
         let tiny = Rect::new(0, 0, 300, 200);
         assert_eq!(crop(Rect::new(10, 10, 20, 20), tiny), Rect::new(-106, -156, 406, 356));
+        // A large hole on a small canvas: no more context than the canvas has (729 across, not
+        // 996), past its edges only down.
+        let page = Rect::new(0, 0, 729, 500);
+        assert_eq!(crop(Rect::new(68, 242, 690, 414), page), Rect::new(0, -114, 729, 615));
         // Only the short side reaches past.
         let strip = Rect::new(0, 0, 4000, 300);
         assert_eq!(crop(Rect::new(1000, 100, 1040, 140), strip), Rect::new(764, -106, 1276, 406));
@@ -1269,6 +1285,50 @@ mod tests {
         assert_eq!(*last.lock().unwrap(), 1.0);
         assert!((out[(100 * 3000 + 100) * 3] - 0.3).abs() < 1e-5, "{:?}", &out[(100 * 3000 + 99) * 3..(100 * 3000 + 102) * 3]);
         assert!((out[(900 * 3000 + 2900) * 3] - 0.3).abs() < 1e-5);
+    }
+
+    /// The checkerboard model of the next test on a page lower than the model's square: the
+    /// refinement tiles reach past its edges, so the shrunk fill is still redone at full
+    /// resolution (a 729 × 500 manga page's title came out blurred).
+    #[test]
+    fn a_page_lower_than_the_model_is_still_refined() {
+        let canvas = Rect::new(0, 0, 729, 500);
+        let (w, h) = (729usize, 500usize);
+        let pixels = vec![0.5f32; w * h * 3];
+        let mut hole = vec![false; w * h];
+        for y in 242..414 {
+            for x in 68..690 {
+                hole[y * w + x] = true;
+            }
+        }
+        let req = Request { canvas, window: canvas, hole: &hole, pixels: &pixels, ch: 3, colours: Colours::Rgb, alpha: None, linear: false, transparent_unknown: false };
+        let mut runs = 0;
+        let out = fill_with(
+            &req,
+            &mut |r| vec![0.5f32; area(r) * 3],
+            &mut |rgb, m, _| {
+                runs += 1;
+                let mut out = rgb.to_vec();
+                let n = SIDE * SIDE;
+                for p in 0..n {
+                    if m[p] > 0.0 {
+                        let v = if (p % SIDE + p / SIDE).is_multiple_of(2) { 0.2 } else { 0.8 };
+                        for c in 0..3 {
+                            out[c * n + p] = v;
+                        }
+                    }
+                }
+                Ok(out)
+            },
+            &Interrupt::NONE,
+            &Options { correct: false, ..LAMA },
+        )
+        .unwrap();
+        assert!(runs > 1, "{runs} runs: not refined");
+        let at = |x: usize, y: usize| out[(y * w + x) * 3];
+        for (x, y) in [(70, 244), (380, 330), (687, 411)] {
+            assert!((at(x, y) - at(x + 1, y)).abs() > 0.5, "({x}, {y}) not full-resolution");
+        }
     }
 
     /// A model that fills the hole with a pixel checkerboard on its own grid: shrunk, the pattern

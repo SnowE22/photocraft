@@ -607,3 +607,23 @@ fn clicking_the_lock_icon_on_a_row_unlocks_the_layer() {
     assert!(doc.background().is_none(), "the Background became a normal layer");
     assert!(!doc.layer(bg).unwrap().locks.any());
 }
+
+#[test]
+fn a_layer_with_blend_if_shows_its_mark_and_the_mark_opens_blending_options() {
+    // User request: a symbol on layers with Blend If, as Photoshop's overlapping squares.
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    let plain = s.execute("layer.new.layer", json!({"name": "plain"})).unwrap()["layer"].as_u64().unwrap();
+    let blended = s.execute("layer.new.layer", json!({"name": "blended"})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.layerStyle.blendingOptions", json!({"blendIf": {"channel": "gray", "thisLayer": [50, 255]}})).unwrap();
+    s.execute("layer.select", json!({"layer": plain})).unwrap();
+    let mut h = harness(s, 1.0, "promedium", 290.0);
+    let rows = recorded(&h.ctx);
+    let mark = |id: u64| rows.iter().find(|r| r.layer == id).unwrap().indicators.iter().find(|(k, _)| *k == Indicator::BlendIf).map(|(_, r)| r.center());
+    assert!(mark(plain).is_none(), "no mark without Blend If");
+    let at = mark(blended).expect("the Blend If mark");
+    click(&mut h, at);
+    h.run_steps(2);
+    assert_eq!(h.state().session.active().unwrap().active_layer.map(|l| l.0), Some(blended), "its layer selected");
+    assert!(h.state().ui.dialogs.iter().any(|d| d.kind == crate::state::DialogKind::LayerStyle), "Blending Options opened");
+}

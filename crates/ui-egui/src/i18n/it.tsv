@@ -4730,3 +4730,5 @@ shape	Appearance	Aspetto
 	Close Gap widened to {px} px: click again to fill	Chiudi spazi allargato a {px} px: fai clic di nuovo per riempire
 	Pick From	Seleziona da
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Quanto deve essere opaco un livello sotto il puntatore perché Ctrl-clic e Selezione automatica lo scelgano: i pixel più tenui, come una maschera quasi nera, vengono attraversati (0: qualsiasi pixel visibile)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Fondi se o fusione avanzata impostati: fai clic per le Opzioni di fusione

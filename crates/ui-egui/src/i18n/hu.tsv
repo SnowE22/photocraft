@@ -4532,3 +4532,5 @@ cameraRaw	Yellow	Sárga
 	Close Gap widened to {px} px: click again to fill	Rés bezárása {px} px-re bővítve: kattintson újra a kitöltéshez
 	Pick From	Kijelölés ettől
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Milyen átlátszatlan legyen a réteg a mutató alatt, hogy a Ctrl-kattintás és az Automatikus kijelölés kiválassza: a halványabb képpontokon (például egy majdnem fekete maszkon) átkattint (0: bármely látható képpont)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Keverés, ha vagy speciális keverés van beállítva: kattintson a Keverési beállításokhoz

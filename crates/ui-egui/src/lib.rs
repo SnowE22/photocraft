@@ -2378,7 +2378,9 @@ impl PhotocraftApp {
         // thumbnail clicked), as in Photoshop: only a mask shown on its own (⌥-click) or picked
         // in the Channels panel takes the pasted pixels. Pasting into the mask by mistake looked
         // like the paste had done nothing.
-        if matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace") && !self.paste_goes_to_mask() {
+        // Copy, likewise, takes the whole layer, its mask with it (user report: with the mask
+        // clicked, Copy took only the mask); the mask alone when it is shown on its own.
+        if matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "edit.copy") && !self.paste_goes_to_mask() {
             return params;
         }
         let target = self.mask_target_name();
@@ -3395,8 +3397,9 @@ mod clipboard_tests {
         assert!(h.state().session.clipboard.is_none());
     }
 
-    /// #2928: with the layer mask targeted, ⌘C copies the mask's values as grayscale, not the
-    /// layer's pixels — so ⌘V (targeting another layer's mask, #1035) moves the mask itself.
+    /// With the layer mask targeted (its thumbnail clicked), ⌘C copies the whole layer, mask
+    /// and all (user report: it took only the mask). Shown on its own (⌥-click, as for Paste,
+    /// #1035), ⌘C copies the mask's values as grayscale (#2928), to move the mask itself.
     #[test]
     fn copy_with_the_mask_targeted_copies_the_mask_not_the_pixels() {
         let (os, reads) = (OsClip::default(), Arc::default());
@@ -3411,7 +3414,14 @@ mod clipboard_tests {
         app.run("select.deselect", serde_json::json!({})).unwrap();
         app.ui.mask_target = true;
         crate::menus::invoke(&mut app, &egui::Context::default(), "edit.copy", serde_json::json!({})).unwrap();
+        let whole = app.session.clipboard.clone().expect("copied");
+        let layers = whole.layers.expect("targeted only: the whole layer");
+        assert!(layers.layers[0].mask.is_some(), "with its mask");
+        app.ui.mask_target = true;
+        app.run(photocraft_engine::mask_view_cmds::ID, serde_json::json!({})).unwrap();
+        crate::menus::invoke(&mut app, &egui::Context::default(), "edit.copy", serde_json::json!({})).unwrap();
         let clip = app.session.clipboard.clone().expect("the mask was copied");
+        assert!(clip.layers.is_none());
         let st = app.session.active().unwrap();
         let (w, h) = (st.doc.size.width as i32, st.doc.size.height as i32);
         assert_eq!(

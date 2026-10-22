@@ -4403,3 +4403,5 @@ layerLabel	No Color	Sem cor
 	Close Gap widened to {px} px: click again to fill	Fechar lacunas ampliado para {px} px: clique de novo para preencher
 	Pick From	Selecionar a partir de
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Quão opaca uma camada precisa ser sob o ponteiro para que Ctrl+clique e Seleção automática a escolham: pixels mais fracos, como uma máscara quase preta, são atravessados (0: qualquer pixel visível)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Mesclar se ou mesclagem avançada definida: clique para Opções de mesclagem

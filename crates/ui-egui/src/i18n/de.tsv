@@ -3622,3 +3622,5 @@ curves	Smooth	Glätten
 	Close Gap widened to {px} px: click again to fill	Lücke schließen auf {px} px vergrößert: zum Füllen erneut klicken
 	Pick From	Auswählen ab
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Wie deckend eine Ebene unter dem Zeiger sein muss, damit Strg-Klick und Automatisch auswählen sie wählen: schwächere Pixel, etwa eine fast schwarze Maske, werden durchgeklickt (0: jedes sichtbare Pixel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	„Farbbereich“ oder erweiterte Füllmethode ist eingestellt: klicken für Fülloptionen

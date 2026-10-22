@@ -3629,3 +3629,5 @@ curves	Smooth	Lisser
 	Close Gap widened to {px} px: click again to fill	Fermer les trous élargi à {px} px : cliquez à nouveau pour remplir
 	Pick From	Sélectionner dès
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Opacité qu’un calque doit avoir sous le pointeur pour que Ctrl-clic et Sélection automatique le choisissent : les pixels plus faibles, comme un masque presque noir, sont traversés (0 : tout pixel visible)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Mélange si ou fusion avancée défini : cliquez pour les Options de fusion

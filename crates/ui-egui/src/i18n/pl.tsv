@@ -4217,3 +4217,5 @@ curves	Smooth	Wygładź
 	Close Gap widened to {px} px: click again to fill	Zamknij luki poszerzono do {px} px: kliknij ponownie, aby wypełnić
 	Pick From	Wybieraj od
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Jak kryjąca musi być warstwa pod wskaźnikiem, by Ctrl+kliknięcie i Zaznaczaj automatycznie ją wybrały: słabsze piksele, np. prawie czarna maska, są przeklikiwane (0: każdy widoczny piksel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Ustawiono Mieszaj, jeśli lub zaawansowane mieszanie: kliknij, aby otworzyć Opcje mieszania

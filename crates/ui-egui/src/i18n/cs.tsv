@@ -4223,3 +4223,5 @@ navigator	Zoom	Zvětšení
 	Close Gap widened to {px} px: click again to fill	Uzavřít mezeru rozšířeno na {px} px: klikněte znovu pro vyplnění
 	Pick From	Vybírat od
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Jak neprůhledná musí být vrstva pod ukazatelem, aby ji Ctrl+klik a Automatický výběr vybraly: slabší pixely, například téměř černá maska, se proklikne (0: jakýkoli viditelný pixel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Je nastaveno Prolnout když nebo pokročilé prolnutí: klepnutím otevřete Možnosti prolnutí

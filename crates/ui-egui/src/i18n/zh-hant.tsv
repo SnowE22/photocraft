@@ -3235,3 +3235,5 @@ curves	Smooth	平滑
 	Close Gap widened to {px} px: click again to fill	封閉間隙已擴大到 {px} 像素：再按一下以填色
 	Pick From	選取起點
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	圖層在指標下需要多不透明，Ctrl 按一下和自動選取才會選中它：更淡的像素（如幾乎全黑的遮色片）會被點穿（0：任何可見像素）
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	已設定混合顏色帶或進階混合：按一下開啟混合選項

@@ -4343,3 +4343,5 @@ cameraData	Lens	Lens
 	Close Gap widened to {px} px: click again to fill	Boşlukları Kapat {px} px'e genişletildi: doldurmak için yeniden tıklayın
 	Pick From	Seçme Eşiği
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl-tıklama ve Otomatik Seç'in bir katmanı seçmesi için işaretçinin altında ne kadar opak olması gerektiği: neredeyse siyah bir maske gibi daha soluk pikseller tıklamayı geçirir (0: görünen her piksel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Karıştırma koşulu veya gelişmiş karıştırma ayarlı: Karıştırma Seçenekleri için tıklayın

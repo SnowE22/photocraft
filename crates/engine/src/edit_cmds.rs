@@ -37,12 +37,27 @@ pub struct Clip {
 /// whole when it is a smart object (#2428), a type or shape layer, or a group (its whole subtree)
 /// (#2670), so Paste recreates it instead of its pixels. Fill and adjustment layers have no
 /// pixels of their own, so they are taken whole too rather than refused (#2344). Pixel layers
-/// still copy their pixels; several selected layers are [`multi_copy_ids`].
+/// still copy their pixels, unless they carry more than pixels ([`more_than_pixels`]); several
+/// selected layers are [`multi_copy_ids`].
 fn takes_whole(d: &crate::DocState, id: LayerId) -> bool {
     d.doc.selection.is_none()
         && d.selected_layers().len() <= 1
         && crate::layer_copy_cmds::layered(d.doc.mode)
-        && d.doc.layer(id).is_some_and(|l| !matches!(l.content, LayerContent::Raster(_)))
+        && d.doc.layer(id).is_some_and(|l| !matches!(l.content, LayerContent::Raster(_)) || (!d.doc.is_background(id) && more_than_pixels(l)))
+}
+
+/// A pixel layer with a mask, styles or its own blending: copied as pixels, the paste lost them
+/// (user report: the mask didn't come along), so Copy takes it whole.
+fn more_than_pixels(l: &Layer) -> bool {
+    l.mask.is_some()
+        || l.vector_mask.is_some()
+        || l.second_mask.is_some()
+        || l.effects.items.iter().any(photocraft_doc::Effect::enabled)
+        || l.blend != photocraft_doc::BlendMode::Normal
+        || l.opacity < 1.0
+        || l.fill_opacity < 1.0
+        || !l.blend_if.is_default()
+        || !l.advanced.is_default()
 }
 
 /// A scratch document in the source's colour, to hold copied layers.
@@ -278,7 +293,12 @@ fn copy(s: &mut Session, merged: bool) -> Result<Value> {
             copy_linked_sources(&d.doc, copies)?;
         }
         match (d.doc.layer(id).and_then(Layer::surface).filter(|_| several.is_empty()), &layers) {
-            (Some(surf), _) => Clip { layers, ..lift(surf, d.doc.selection.as_ref(), canvas)? },
+            (Some(surf), _) => {
+                let clip = lift(surf, d.doc.selection.as_ref(), canvas)?;
+                // A layer taken whole copies even with no pixels (a mask or styles alone).
+                let bounds = if clip.bounds.is_empty() && layers.is_some() { canvas } else { clip.bounds };
+                Clip { layers, bounds, ..clip }
+            }
             // A group or fill layer has no pixels of its own: the clipboard pixels are what it
             // shows. Adjustment layers show nothing by themselves, so their clip spans the canvas
             // they apply to: Paste places them as a full-canvas layer, and the UI still mirrors
@@ -1098,6 +1118,38 @@ mod tests {
         })
         .unwrap();
         s
+    }
+
+    #[test]
+    fn a_pixel_layer_with_a_mask_copies_whole() {
+        // User report: Copy took the layer's pixels and left its mask behind.
+        let mut s = session();
+        let src = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+        s.execute("layer.setProps", json!({"opacity": 0.5})).unwrap();
+        s.execute("edit.copy", json!({})).unwrap();
+        assert!(s.clipboard.as_ref().unwrap().layers.is_some(), "taken whole");
+        let pasted = LayerId(s.execute("edit.paste", json!({})).unwrap()["layer"].as_u64().unwrap());
+        let doc = &s.active().unwrap().doc;
+        let l = doc.layer(pasted).unwrap();
+        assert_ne!(pasted, src);
+        assert!(l.mask.is_some(), "the mask came along");
+        assert_eq!(l.opacity, 0.5);
+        assert_eq!(l.surface().unwrap().rgba(20, 20), [1.0, 0.0, 0.0, 1.0]);
+        // With a selection, Copy still takes the selected pixels.
+        s.execute("select.rect", json!({"x": 10, "y": 10, "width": 5, "height": 5})).unwrap();
+        s.execute("edit.copy", json!({})).unwrap();
+        assert!(s.clipboard.as_ref().unwrap().layers.is_none());
+        // An empty layer with only a mask copies too.
+        s.execute("select.deselect", json!({})).unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+        s.execute("edit.copy", json!({})).unwrap();
+        assert!(s.clipboard.as_ref().unwrap().layers.as_ref().unwrap().layers[0].mask.is_some());
+        // A plain pixel layer, and the Background, still copy their pixels.
+        let mut plain = session();
+        plain.execute("edit.copy", json!({})).unwrap();
+        assert!(plain.clipboard.as_ref().unwrap().layers.is_none());
     }
 
     #[test]

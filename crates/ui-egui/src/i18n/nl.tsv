@@ -4373,3 +4373,5 @@ curves	Smooth	Vloeiend maken
 	Close Gap widened to {px} px: click again to fill	Openingen sluiten vergroot tot {px} px: klik opnieuw om te vullen
 	Pick From	Selecteren vanaf
 	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Hoe dekkend een laag onder de aanwijzer moet zijn om met Ctrl-klik en Automatisch selecteren te worden gekozen: zwakkere pixels, zoals een bijna zwart masker, worden doorgeklikt (0: elke zichtbare pixel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Overvloeien als of geavanceerd overvloeien is ingesteld: klik voor Overvloeiopties
