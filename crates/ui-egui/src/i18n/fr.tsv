@@ -3683,3 +3683,7 @@ curves	Smooth	Lisser
 	Google API key	Clé d'API Google
 	Remove Saved Key	Supprimer la clé enregistrée
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Ce système n'a pas de magasin d'identifiants utilisable par PhotoCraft : définissez plutôt la variable d'environnement {var}.
+	Mask image	Image de masque
+	Painted red	Peint en rouge
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana reçoit l'image telle quelle et un masque séparé de la zone à supprimer
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana reçoit l'image avec la zone à supprimer peinte en rouge, comme dans la méthode Photoshop

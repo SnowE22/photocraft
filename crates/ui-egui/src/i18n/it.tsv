@@ -4782,3 +4782,7 @@ shape	Appearance	Aspetto
 	Google API key	Chiave API di Google
 	Remove Saved Key	Rimuovi chiave salvata
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Questo sistema non ha un archivio credenziali utilizzabile da PhotoCraft: imposta invece la variabile d'ambiente {var}.
+	Mask image	Immagine maschera
+	Painted red	Dipinto di rosso
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana riceve l'immagine così com'è e una maschera separata dell'area da rimuovere
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana riceve l'immagine con l'area da rimuovere dipinta di rosso, come nel metodo di Photoshop

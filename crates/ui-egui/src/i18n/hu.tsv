@@ -4581,3 +4581,7 @@ cameraRaw	Yellow	Sárga
 	Google API key	Google API-kulcs
 	Remove Saved Key	Mentett kulcs eltávolítása
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Ezen a rendszeren nincs a PhotoCraft által használható hitelesítőadat-tár: állítsa be helyette a(z) {var} környezeti változót.
+	Mask image	Maszkkép
+	Painted red	Pirosra festve
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	A Nano Banana változatlanul kapja a képet, és külön maszkot az eltávolítandó területről
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	A Nano Banana úgy kapja a képet, hogy az eltávolítandó terület pirosra van festve, mint a Photoshopos módszerben

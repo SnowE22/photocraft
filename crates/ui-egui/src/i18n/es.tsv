@@ -4627,3 +4627,7 @@ navigator	Zoom	Zoom
 	Google API key	Clave de la API de Google
 	Remove Saved Key	Quitar clave guardada
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Este sistema no tiene un almacén de credenciales que PhotoCraft pueda usar: defina en su lugar la variable de entorno {var}.
+	Mask image	Imagen de máscara
+	Painted red	Pintado de rojo
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana recibe la imagen tal cual y una máscara aparte del área que se quita
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana recibe la imagen con el área que se quita pintada de rojo, como en el método de Photoshop

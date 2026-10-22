@@ -4425,3 +4425,7 @@ curves	Smooth	Vloeiend maken
 	Google API key	Google API-sleutel
 	Remove Saved Key	Opgeslagen sleutel verwijderen
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Dit systeem heeft geen referentieopslag die PhotoCraft kan gebruiken: stel in plaats daarvan de omgevingsvariabele {var} in.
+	Mask image	Maskerafbeelding
+	Painted red	Rood geschilderd
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana krijgt de afbeelding zoals ze is en een apart masker van het te verwijderen gebied
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana krijgt de afbeelding met het te verwijderen gebied rood geschilderd, zoals bij de werkwijze in Photoshop

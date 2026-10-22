@@ -4160,3 +4160,7 @@ curves	Smooth	Làm mượt
 	Google API key	Khóa API Google
 	Remove Saved Key	Gỡ khóa đã lưu
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Hệ thống này không có kho thông tin xác thực mà PhotoCraft dùng được: hãy đặt biến môi trường {var} thay thế.
+	Mask image	Ảnh mặt nạ
+	Painted red	Tô đỏ
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana nhận ảnh nguyên trạng và một mặt nạ riêng cho vùng cần xóa
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana nhận ảnh với vùng cần xóa được tô đỏ, như cách làm trong Photoshop

@@ -4379,3 +4379,7 @@ curves	Smooth	Згладити
 	Google API key	Ключ Google API
 	Remove Saved Key	Видалити збережений ключ
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	У цій системі немає сховища облікових даних, яке може використати PhotoCraft: натомість задайте змінну середовища {var}.
+	Mask image	Зображення маски
+	Painted red	Зафарбовано червоним
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana отримує зображення як є та окрему маску області, що видаляється
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana отримує зображення з областю, що видаляється, зафарбованою червоним, як у прийомі з Photoshop

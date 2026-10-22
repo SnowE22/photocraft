@@ -4735,3 +4735,7 @@ shape	Appearance	Izgled
 	Google API key	Google API ključ
 	Remove Saved Key	Ukloni sačuvani ključ
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Ovaj sistem nema skladište akreditiva koje PhotoCraft može da koristi: umesto toga postavite promenljivu okruženja {var}.
+	Mask image	Slika maske
+	Painted red	Obojeno crveno
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana dobija sliku kakva jeste i posebnu masku oblasti za uklanjanje
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana dobija sliku sa oblašću za uklanjanje obojenom crveno, kao u postupku iz Photoshop-a

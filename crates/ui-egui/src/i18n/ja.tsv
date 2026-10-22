@@ -4347,3 +4347,7 @@ curves	Smooth	スムーズ
 	Google API key	Google API キー
 	Remove Saved Key	保存したキーを削除
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	このシステムには PhotoCraft が使える資格情報ストアがありません。代わりに環境変数 {var} を設定してください。
+	Mask image	マスク画像
+	Painted red	赤で塗りつぶし
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana には画像をそのまま渡し、削除する範囲は別のマスクで示します
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana には削除する範囲を赤で塗った画像を渡します（Photoshop での手順と同じ）

@@ -3670,3 +3670,7 @@ curves	Smooth	Haluskan
 	Google API key	Kunci API Google
 	Remove Saved Key	Hapus Kunci Tersimpan
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Sistem ini tidak punya penyimpanan kredensial yang bisa dipakai PhotoCraft: atur variabel lingkungan {var} sebagai gantinya.
+	Mask image	Gambar mask
+	Painted red	Dicat merah
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana menerima gambar apa adanya dan mask terpisah untuk area yang dihapus
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana menerima gambar dengan area yang dihapus dicat merah, seperti cara di Photoshop

@@ -135,6 +135,18 @@ pub(crate) fn diffusion_settings(p: &Value) -> photocraft_ml::diffusion::Setting
     if s.prompt.trim().is_empty() { s.for_removal() } else { s }
 }
 
+/// `mark`: how Nano Banana is shown the hole, `"mask"` (the default: the picture and a mask
+/// image) or `"paint"` (the hole painted red, the Photoshop routine).
+pub(crate) fn mark(p: &Value, cmd: &str) -> Result<photocraft_ml::gemini::Mark> {
+    use photocraft_ml::gemini::Mark;
+    match p.get("mark") {
+        None | Some(Value::Null) => Ok(Mark::Mask),
+        Some(Value::String(v)) if v == "mask" => Ok(Mark::Mask),
+        Some(Value::String(v)) if v == "paint" => Ok(Mark::Paint),
+        Some(v) => Err(bad(cmd, format!("`mark` is \"mask\" or \"paint\", not {v}"))),
+    }
+}
+
 /// `quality`: `"standard"` (the default) or `"high"`, LaMa's Quality mode
 /// ([`photocraft_ml::inpaint::LAMA_QUALITY`]: LaMa at 1024 instead of 512).
 pub(crate) fn high_quality(p: &Value, cmd: &str) -> Result<bool> {
@@ -148,9 +160,11 @@ pub(crate) fn high_quality(p: &Value, cmd: &str) -> Result<bool> {
 
 /// Fill the hole of a [`Request`] with `model` (`read` gives the source's pixels), LaMa in its
 /// Quality mode when `high`; the device it ran on goes to `device`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn fill_with_model(
     model: AiModel,
     high: bool,
+    mark: photocraft_ml::gemini::Mark,
     settings: &photocraft_ml::diffusion::Settings,
     req: &Request,
     read: &mut dyn FnMut(Rect) -> Vec<f32>,
@@ -173,7 +187,7 @@ pub(crate) fn fill_with_model(
             *device = Some(d);
             out
         }),
-        AiModel::NanoBanana => photocraft_ml::gemini::fill(req, read, &settings.prompt, ctl).inspect(|_| *device = Some(Device::Google)),
+        AiModel::NanoBanana => photocraft_ml::gemini::fill(req, read, &settings.prompt, mark, ctl).inspect(|_| *device = Some(Device::Google)),
     }
 }
 
@@ -212,6 +226,8 @@ pub(super) struct Plan {
     pub(super) model: AiModel,
     /// LaMa's Quality mode (`quality: "high"`).
     pub(super) high: bool,
+    /// How Nano Banana is shown the hole (`mark`).
+    mark: photocraft_ml::gemini::Mark,
     settings: photocraft_ml::diffusion::Settings,
 }
 
@@ -270,6 +286,7 @@ pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     let mode = generative(p)?;
     let model = AiModel::parse(p, CMD)?;
     let high = high_quality(p, CMD)?;
+    let mark = mark(p, CMD)?;
     let from_selection = flag(p, "selection", false);
     let (strokes, id) = if from_selection { (Vec::new(), selection_target(s, p)?) } else { parse_strokes(s, p)? };
     let d = s.active().ok_or(EngineError::NoDocument)?;
@@ -300,7 +317,7 @@ pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     {
         return Err(bad(CMD, format!("Generative AI is on, but {e}")));
     }
-    Ok(Plan { id, strokes, from_selection, window, close_loops, all_layers, new_layer, generative, model, high, settings: diffusion_settings(p) })
+    Ok(Plan { id, strokes, from_selection, window, close_loops, all_layers, new_layer, generative, model, high, mark, settings: diffusion_settings(p) })
 }
 
 /// The hole over the plan's window: the strokes' footprints, their enclosed areas and a margin,
@@ -449,7 +466,7 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
         let mut device = None;
         let filled = ctx.stage(0.0, 1.0, message, |ctl| {
             fill_generative(doc, plan, p, &img, &hole, ctl, &mut |req, read, ctl| {
-                fill_with_model(model, plan.high, &plan.settings, req, read, ctl, &mut device)
+                fill_with_model(model, plan.high, plan.mark, &plan.settings, req, read, ctl, &mut device)
             })
         });
         match filled {
@@ -459,7 +476,11 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
                 return Ok(Some((Region { rect: win, ch: img.ch, data }, hole, used)));
             }
             Err(MlError::Cancelled) => return Err(EngineError::Cancelled),
-            Err(e) if plan.generative == Generative::On => return Err(bad(CMD, format!("Generative AI couldn't fill it: {e}"))),
+            // Nano Banana was asked for by name and is paid: its failure (Google's refusal, the
+            // network) is reported, not hidden behind another fill.
+            Err(e) if plan.generative == Generative::On || model == AiModel::NanoBanana => {
+                return Err(bad(CMD, format!("Generative AI couldn't fill it: {e}")));
+            }
             Err(e) => note = Some(format!("{e}; used the patch fill")),
         }
     }

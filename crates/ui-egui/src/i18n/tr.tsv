@@ -4392,3 +4392,7 @@ cameraData	Lens	Lens
 	Google API key	Google API anahtarı
 	Remove Saved Key	Kayıtlı Anahtarı Kaldır
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Bu sistemde PhotoCraft'ın kullanabileceği bir kimlik bilgisi deposu yok: bunun yerine {var} ortam değişkenini ayarlayın.
+	Mask image	Maske görüntüsü
+	Painted red	Kırmızıya boyalı
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana resmi olduğu gibi ve kaldırılacak alanın ayrı bir maskesini alır
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana resmi, kaldırılacak alan kırmızıya boyanmış olarak alır; Photoshop yöntemindeki gibi

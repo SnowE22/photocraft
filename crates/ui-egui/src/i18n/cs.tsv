@@ -4277,3 +4277,7 @@ navigator	Zoom	Zvětšení
 	Google API key	Klíč Google API
 	Remove Saved Key	Odebrat uložený klíč
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Tento systém nemá úložiště přihlašovacích údajů, které by PhotoCraft mohl použít: nastavte místo toho proměnnou prostředí {var}.
+	Mask image	Obrázek masky
+	Painted red	Natřeno červeně
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana dostane obraz beze změny a samostatnou masku oblasti k odstranění
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana dostane obraz s oblastí k odstranění natřenou červeně, jako při postupu ve Photoshopu

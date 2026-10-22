@@ -10,7 +10,7 @@
 //! Canvas Size or the Crop tool), select the new, empty area and Generative Fill. Transparent
 //! pixels around the selection are unknown to the model rather than a reason to refuse.
 
-use super::remove::{AiModel, diffusion_settings, fill_with_model};
+use super::remove::{AiModel, diffusion_settings, fill_with_model, mark};
 use super::*;
 use photocraft_color::ColorMode;
 use photocraft_doc::Layer;
@@ -44,6 +44,8 @@ struct Plan {
     model: AiModel,
     /// LaMa's Quality mode (`quality: "high"`).
     high: bool,
+    /// How Nano Banana is shown the selection (`mark`, as `paint.remove`'s).
+    mark: photocraft_ml::gemini::Mark,
     settings: photocraft_ml::diffusion::Settings,
     above: Option<LayerId>,
     name: String,
@@ -75,7 +77,17 @@ fn plan(s: &Session, p: &Value) -> Result<Plan> {
     }
     let prompt = p.get("prompt").and_then(Value::as_str).unwrap_or("").trim().to_string();
     let name = if prompt.is_empty() { d.doc.next_layer_name("Generative Layer") } else { prompt.chars().take(60).collect() };
-    Ok(Plan { window: bounds, hole, alpha, model, high: super::remove::high_quality(p, CMD)?, settings: diffusion_settings(p), above: d.active_layer, name })
+    Ok(Plan {
+        window: bounds,
+        hole,
+        alpha,
+        model,
+        high: super::remove::high_quality(p, CMD)?,
+        mark: mark(p, CMD)?,
+        settings: diffusion_settings(p),
+        above: d.active_layer,
+        name,
+    })
 }
 
 pub(super) fn generative_fill(s: &mut Session, p: &Value) -> Result<Value> {
@@ -111,7 +123,16 @@ pub(super) fn generative_fill(s: &mut Session, p: &Value) -> Result<Value> {
             let message = if plan.model.ready() { label } else { "Generative Fill: loading the model (the first time takes up to a minute)" };
             let mut device = None;
             let out = ctx.stage(0.0, 1.0, message, |ctl| {
-                fill_with_model(plan.model, plan.high, &plan.settings, &req, &mut |r| composite_region(&doc, None, SampleLayers::All, r, fmt).data, ctl, &mut device)
+                fill_with_model(
+                    plan.model,
+                    plan.high,
+                    plan.mark,
+                    &plan.settings,
+                    &req,
+                    &mut |r| composite_region(&doc, None, SampleLayers::All, r, fmt).data,
+                    ctl,
+                    &mut device,
+                )
             });
             let mut data = match out {
                 Ok(d) => d,

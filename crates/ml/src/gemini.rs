@@ -2,8 +2,12 @@
 //! paid, online, and much better than the local models at knowing what lies behind something.
 //!
 //! The hole goes to Google the way people use the model in Photoshop, but without the manual
-//! work: a crop around it with the hole painted solid red, and a prompt asking for the red to be
-//! removed and what is behind it drawn in the surrounding style. The answer is scaled back to the
+//! work: the page (or, on a page larger than [`MAX_SEND`], a wide area around the hole) with the
+//! hole shown either as a separate mask image ([`Mark::Mask`], the default) or painted one solid
+//! colour ([`Mark::Paint`], [`MARKERS`]: red, or on a colour picture whichever of the markers it has
+//! least of), and a prompt asking for it to be removed and what is behind it drawn in the
+//! surrounding style. The model sees as much of the picture as Photoshop users
+//! give it with a large selection: a crop just around the hole left it too little to go on. The answer is scaled back to the
 //! crop and only the hole's pixels are taken from it, shifted to the surrounding colours (the
 //! model's output drifts a little in tone), so nothing outside the hole changes. Each part of the
 //! hole far from the others is one request ([`crate::inpaint::groups`]), each billed by Google:
@@ -52,13 +56,16 @@ const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
 const MAX_ANSWER: u64 = 64 << 20;
 /// Smallest crop side worth sending where the canvas allows: the model needs to see what is
 /// around the hole to continue it.
-const MIN_CONTEXT: u32 = 512;
+const MIN_CONTEXT: u32 = 1024;
 /// More separate parts than this go in one request (the parts' bounding box).
 const MAX_REQUESTS: usize = 4;
 /// Pixels around the hole whose colours the answer is matched to.
-const RING: usize = 12;
+const RING: usize = 24;
 /// The largest shift the colour match applies (0–1 sRGB).
 const MAX_SHIFT: f32 = 0.25;
+/// The range of the contrast match's gain.
+const MIN_GAIN: f64 = 0.8;
+const MAX_GAIN: f64 = 1.6;
 /// Largest answer image accepted, in pixels.
 const MAX_ANSWER_PIXELS: u64 = 64 << 20;
 
@@ -80,18 +87,68 @@ const RATIOS: [(&str, u32, u32); 14] = [
     ("8:1", 8, 1),
 ];
 
-/// The hole's colour in the image sent.
-const RED: [f32; 3] = [1.0, 0.0, 0.0];
+/// The colours the hole can be painted in the image sent, and their names in the prompt: the
+/// first one the picture around the hole has least of (red, unless the picture is red).
+pub(crate) const MARKERS: [([f32; 3], &str); 4] = [
+    ([1.0, 0.0, 0.0], "solid pure red (#FF0000)"),
+    ([0.0, 1.0, 0.0], "solid pure green (#00FF00)"),
+    ([0.0, 0.0, 1.0], "solid pure blue (#0000FF)"),
+    ([1.0, 0.0, 1.0], "solid pure magenta (#FF00FF)"),
+];
 
-const PROMPT: &str = "Remove everything painted in solid pure red (#FF0000) in this image. Redraw what would naturally be \
-behind it, continuing the surrounding lines, shapes, textures, patterns, screentones and colours seamlessly, in exactly \
-the same style, scale and lighting. Leave everything outside the red area unchanged. Do not add new objects, people, text \
-or speech, and leave no red.";
-
-/// The prompt for one request; `extra` is what the user asked to be there instead.
-pub(crate) fn prompt(extra: &str) -> String {
+/// The prompt for one request with the hole painted in `marker` (its name, [`MARKERS`]); `extra`
+/// is what the user asked to be there instead.
+pub(crate) fn prompt(extra: &str, marker: &str) -> String {
+    let base = format!(
+        "Remove the area painted in {marker} from this image and redraw what would naturally be behind it, continuing the \
+surrounding lines, shapes, textures, hatching, patterns, screentones and colours seamlessly, in exactly the same style, \
+scale and lighting. Keep the rest of the image exactly as it is, at the same framing. Do not add new objects, people, \
+text or speech bubbles, and leave none of the marker colour."
+    );
     let extra: String = extra.trim().chars().take(500).collect();
-    if extra.is_empty() { PROMPT.to_string() } else { format!("{PROMPT} What should be there instead: {extra}") }
+    if extra.is_empty() { base } else { format!("{base} What should be there instead: {extra}") }
+}
+
+/// How the hole is shown to the model. On a manga page both removed a title cleanly; the mask
+/// continued the fine hatching and screen a little more naturally (one run each, 2026-10-23).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Mark {
+    /// Painted in a marker colour in the one image sent ([`MARKERS`]): the Photoshop routine.
+    Paint,
+    /// The picture as it is, and a second image, the mask: white where the hole is.
+    #[default]
+    Mask,
+}
+
+/// The prompt for one request with the hole shown as a mask (the second image).
+pub(crate) fn mask_prompt(extra: &str) -> String {
+    let base = "The second image is a mask for the first: remove whatever is in the white area of the mask from the first \
+image and redraw what would naturally be behind it, continuing the surrounding lines, shapes, textures, hatching, \
+patterns, screentones and colours seamlessly, in exactly the same style, scale and lighting. Return only the edited first \
+image, at the same framing, with everything outside the white area unchanged. Do not add new objects, people, text or \
+speech bubbles."
+        .to_string();
+    let extra: String = extra.trim().chars().take(500).collect();
+    if extra.is_empty() { base } else { format!("{base} What should be there instead: {extra}") }
+}
+
+/// The marker the context pixels (interleaved sRGB `rgb`, where `hole` is false) have least of:
+/// pixels within 0.3 of a marker in every channel count as it.
+pub(crate) fn pick_marker(rgb: &[f32], hole: &[bool]) -> usize {
+    let mut counts = [0usize; MARKERS.len()];
+    for (px, h) in rgb.chunks(3).zip(hole) {
+        if *h || px.len() < 3 {
+            continue;
+        }
+        for (count, (m, _)) in counts.iter_mut().zip(MARKERS) {
+            if px.iter().zip(m).all(|(a, b)| (a - b).abs() < 0.3) {
+                *count += 1;
+            }
+        }
+    }
+    // The first of the least used, so a picture without any of them gets red.
+    let least = counts.iter().copied().min().unwrap_or(0);
+    counts.iter().position(|c| *c == least).unwrap_or(0)
 }
 
 // --- The API key -------------------------------------------------------------------------------
@@ -230,12 +287,16 @@ pub fn price(sides: &[u32]) -> f64 {
 
 // --- Geometry ----------------------------------------------------------------------------------
 
-/// The crop sent for a part of the hole with bounding box `part`: the part and context on every
-/// side (half its size, at least 96 px), grown to [`MIN_CONTEXT`] across where the canvas allows,
-/// kept inside the canvas (shifted rather than cut where it can be).
+/// The crop sent for a part of the hole with bounding box `part`: the whole canvas when it fits
+/// in [`MAX_SEND`] (sent as it is); on a larger canvas the part with context on every side (its
+/// own size, at least 384 px), grown to [`MIN_CONTEXT`] across, kept inside the canvas (shifted
+/// rather than cut where it can be) and scaled down to [`MAX_SEND`] when larger.
 pub(crate) fn context(part: Rect, canvas: Rect) -> Rect {
+    if canvas.width().max(canvas.height()) <= MAX_SEND {
+        return canvas;
+    }
     let side = part.width().max(part.height());
-    let margin = i32::try_from((side / 2).max(96)).unwrap_or(i32::MAX);
+    let margin = i32::try_from(side.max(384)).unwrap_or(i32::MAX);
     let r = part.inflate(margin);
     // One axis: at least `min` long, then moved inside `lo..hi` (or cut to it when longer).
     let fit = |a: i32, b: i32, lo: i32, hi: i32| -> (i32, i32) {
@@ -405,6 +466,8 @@ pub(crate) struct Crop {
     /// The crop's sRGB pixels (interleaved RGB), and which are hole.
     pub(crate) rgb: Vec<f32>,
     pub(crate) hole: Vec<bool>,
+    /// The hole's colour in the image sent ([`MARKERS`]).
+    pub(crate) marker: usize,
 }
 
 /// Pixel `px` of the request as the model sees it: sRGB (0–1) over white where not opaque, and
@@ -455,13 +518,34 @@ pub(crate) fn crop(req: &Request, part: Rect, read: &mut dyn FnMut(Rect) -> Vec<
             "{NAME} needs opaque pixels around what it removes: turn on Sample All Layers, or remove on a layer without transparency"
         )));
     }
-    Ok(Crop { rect, frame, ratio, send: send_size(fw, fh), rgb, hole })
+    let marker = pick_marker(&rgb, &hole);
+    Ok(Crop { rect, frame, ratio, send: send_size(fw, fh), rgb, hole, marker })
 }
 
 impl Crop {
     /// The image sent: the frame (the crop centred, mirrored beyond it) with the hole red, at
     /// the size sent, as interleaved sRGB.
     pub(crate) fn image(&self) -> Vec<f32> {
+        self.framed(|k, hole| if hole { MARKERS.get(self.marker).map_or([1.0, 0.0, 0.0], |m| m.0) } else { self.px(k) })
+    }
+
+    /// The image sent with [`Mark::Mask`]: the frame as it is.
+    pub(crate) fn picture(&self) -> Vec<f32> {
+        self.framed(|k, _| self.px(k))
+    }
+
+    /// The mask sent with [`Mark::Mask`]: white where the hole is, black elsewhere.
+    pub(crate) fn mask(&self) -> Vec<f32> {
+        self.framed(|_, hole| if hole { [1.0; 3] } else { [0.0; 3] })
+    }
+
+    fn px(&self, k: usize) -> [f32; 3] {
+        [0, 1, 2].map(|c| self.rgb.get(k * 3 + c).copied().unwrap_or(0.0))
+    }
+
+    /// The frame (the crop centred, mirrored beyond it) at the size sent, each pixel `colour(crop
+    /// pixel, in the hole)`.
+    fn framed(&self, colour: impl Fn(usize, bool) -> [f32; 3]) -> Vec<f32> {
         let (cw, ch) = (self.rect.width() as usize, self.rect.height() as usize);
         let (fw, fh) = (self.frame.width() as usize, self.frame.height() as usize);
         let mut out = Vec::with_capacity(fw * fh * 3);
@@ -470,8 +554,7 @@ impl Crop {
                 let x = mirror(self.frame.x0 + fx, self.rect.x0, self.rect.x1) - self.rect.x0;
                 let y = mirror(self.frame.y0 + fy, self.rect.y0, self.rect.y1) - self.rect.y0;
                 let k = (y as usize).min(ch.saturating_sub(1)) * cw + (x as usize).min(cw.saturating_sub(1));
-                let c = if self.hole.get(k).copied().unwrap_or(false) { RED } else { [0, 1, 2].map(|c| self.rgb.get(k * 3 + c).copied().unwrap_or(0.0)) };
-                out.extend_from_slice(&c);
+                out.extend_from_slice(&colour(k, self.hole.get(k).copied().unwrap_or(false)));
             }
         }
         let (sw, sh) = self.send;
@@ -495,21 +578,32 @@ impl Crop {
         }
         // The ring: just outside the hole, where the answer should equal the original.
         let near = dilate(&self.hole, cw, ch, RING);
-        let (mut sum_o, mut sum_a, mut n) = ([0.0f64; 3], [0.0f64; 3], 0u64);
+        // Per channel over the ring: sums and sums of squares of the original and the answer.
+        let (mut o1, mut o2, mut a1, mut a2, mut n) = ([0.0f64; 3], [0.0f64; 3], [0.0f64; 3], [0.0f64; 3], 0u64);
         for (k, (&h, &r)) in self.hole.iter().zip(&near).enumerate() {
             if r && !h {
                 for c in 0..3 {
-                    sum_o[c] += f64::from(self.rgb.get(k * 3 + c).copied().unwrap_or(0.0));
-                    sum_a[c] += f64::from(out.get(k * 3 + c).copied().unwrap_or(0.0));
+                    let o = f64::from(self.rgb.get(k * 3 + c).copied().unwrap_or(0.0));
+                    let a = f64::from(out.get(k * 3 + c).copied().unwrap_or(0.0));
+                    (o1[c], o2[c], a1[c], a2[c]) = (o1[c] + o, o2[c] + o * o, a1[c] + a, a2[c] + a * a);
                 }
                 n += 1;
             }
         }
         if n > 0 {
-            let shift = [0, 1, 2].map(|c| (((sum_o[c] - sum_a[c]) / n as f64) as f32).clamp(-MAX_SHIFT, MAX_SHIFT));
+            // The answer's level and contrast matched to the original's around the hole: it comes
+            // back a little shifted in tone and softer (its fine lines greyer), the same inside.
+            let n = n as f64;
+            let fit = [0, 1, 2].map(|c| {
+                let (mo, ma) = (o1[c] / n, a1[c] / n);
+                let (so, sa) = ((o2[c] / n - mo * mo).max(0.0).sqrt(), (a2[c] / n - ma * ma).max(0.0).sqrt());
+                let gain = if sa > 1e-3 && so > 1e-3 { (so / sa).clamp(MIN_GAIN, MAX_GAIN) } else { 1.0 };
+                let shift = (mo - ma).clamp(-f64::from(MAX_SHIFT), f64::from(MAX_SHIFT));
+                (ma as f32, gain as f32, (ma + shift) as f32)
+            });
             for px in out.as_chunks_mut::<3>().0 {
-                for (v, s) in px.iter_mut().zip(shift) {
-                    *v = (*v + s).clamp(0.0, 1.0);
+                for (v, (ma, gain, to)) in px.iter_mut().zip(fit) {
+                    *v = (to + (*v - ma) * gain).clamp(0.0, 1.0);
                 }
             }
         }
@@ -517,17 +611,17 @@ impl Crop {
     }
 }
 
-/// The request's JSON body for an image (PNG, base64) of ratio `ratio` sent `send` large.
-pub(crate) fn body(png_base64: &str, prompt: &str, ratio: &str, send: (u32, u32)) -> String {
+/// The request's JSON body for images (PNG, base64) of ratio `ratio` sent `send` large.
+pub(crate) fn body(pngs_base64: &[String], prompt: &str, ratio: &str, send: (u32, u32)) -> String {
+    let mut input = vec![json!({"type": "text", "text": prompt})];
+    input.extend(pngs_base64.iter().map(|data| json!({"type": "image", "mime_type": "image/png", "data": data})));
     json!({
         "model": MODEL,
         // Google keeps stored interactions for 55 days; a removal has nothing to come back to.
         "store": false,
-        "input": [
-            {"type": "text", "text": prompt},
-            {"type": "image", "mime_type": "image/png", "data": png_base64},
-        ],
-        "response_format": {"type": "image", "mime_type": "image/png", "aspect_ratio": ratio, "image_size": image_size(send.0, send.1)},
+        "input": input,
+        // No `mime_type`: whatever Google sends (PNG or JPEG) decodes.
+        "response_format": {"type": "image", "aspect_ratio": ratio, "image_size": image_size(send.0, send.1)},
     })
     .to_string()
 }
@@ -602,11 +696,52 @@ pub(crate) type Transport<'a> = dyn FnMut(&str, &Interrupt) -> Result<String, Ml
 
 /// Fill the hole of `req` with the model (`read` gives the source's pixels), `extra` what the
 /// user asked to be there. The window comes back with only the hole changed.
-pub fn fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, ctl: &Interrupt) -> Result<Vec<f32>, MlError> {
+pub fn fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, mark: Mark, ctl: &Interrupt) -> Result<Vec<f32>, MlError> {
     let Some(key) = key() else {
         return Err(availability().err().unwrap_or(MlError::Unsupported));
     };
-    fill_via(req, read, extra, ctl, &mut |body, ctl| post(&key, body, ctl))
+    fill_via(req, read, extra, mark, ctl, &mut |body, ctl| post(&key, body, ctl))
+}
+
+/// [`fill`], also writing the image sent to the file `sent` and Google's image to
+/// `<sent>.answer`: for the evaluation example (`examples/nano_banana_eval.rs`).
+#[cfg(not(target_arch = "wasm32"))]
+#[doc(hidden)]
+pub fn eval_fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, ctl: &Interrupt, sent: &str) -> Result<Vec<f32>, MlError> {
+    use base64::Engine as _;
+    let Some(key) = key() else {
+        return Err(availability().err().unwrap_or(MlError::Unsupported));
+    };
+    // `PHOTOCRAFT_EVAL_MARK=mask` sends the picture and a mask instead of painting the hole.
+    let mark = if std::env::var("PHOTOCRAFT_EVAL_MARK").is_ok_and(|m| m == "mask") { Mark::Mask } else { Mark::Paint };
+    fill_via(req, read, extra, mark, ctl, &mut |body, ctl| {
+        let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+        if let Some(Ok(png)) = v.pointer("/input/1/data").and_then(Value::as_str).map(|d| base64::engine::general_purpose::STANDARD.decode(d)) {
+            let _ = std::fs::write(sent, png);
+        }
+        // `PHOTOCRAFT_EVAL_SIZE` (1K, 2K, 4K) overrides the output size asked for.
+        let body = match std::env::var("PHOTOCRAFT_EVAL_SIZE") {
+            Ok(size) => {
+                let mut v = v.clone();
+                v["response_format"]["image_size"] = Value::String(size);
+                v.to_string()
+            }
+            Err(_) => body.to_string(),
+        };
+        // `PHOTOCRAFT_EVAL_ANSWER`: an earlier answer's image file instead of asking Google (free).
+        let answer = match std::env::var("PHOTOCRAFT_EVAL_ANSWER") {
+            Ok(path) => {
+                let bytes = std::fs::read(&path).map_err(|e| MlError::BadInput(format!("{path}: {e}")))?;
+                let data = base64::engine::general_purpose::STANDARD.encode(bytes);
+                json!({"steps": [{"type": "model_output", "content": [{"type": "image", "data": data}]}]}).to_string()
+            }
+            Err(_) => post(&key, &body, ctl)?,
+        };
+        if let Ok(bytes) = answer_image(&answer) {
+            let _ = std::fs::write(format!("{sent}.answer"), bytes);
+        }
+        Ok(answer)
+    })
 }
 
 /// [`fill`] through `send`.
@@ -614,6 +749,7 @@ pub(crate) fn fill_via(
     req: &Request,
     read: &mut dyn FnMut(Rect) -> Vec<f32>,
     extra: &str,
+    mark: Mark,
     ctl: &Interrupt,
     send: &mut Transport<'_>,
 ) -> Result<Vec<f32>, MlError> {
@@ -622,7 +758,10 @@ pub(crate) fn fill_via(
         return Err(MlError::BadInput("the hole or pixels don't match the window".into()));
     }
     let mut parts = groups(req.window, req.hole);
-    if parts.len() > MAX_REQUESTS
+    // One request for every part on a page sent whole (each would send the same page), or when
+    // there are many.
+    let whole = req.canvas.width().max(req.canvas.height()) <= MAX_SEND;
+    if (whole || parts.len() > MAX_REQUESTS)
         && let Some(all) = parts.iter().copied().reduce(|a, b| a.union(&b))
     {
         parts = vec![all];
@@ -631,28 +770,42 @@ pub(crate) fn fill_via(
         return Ok(req.pixels.to_vec());
     }
     let mut out = req.pixels.to_vec();
-    let prompt = prompt(extra);
     let count = parts.len() as f32;
     for (g, part) in parts.iter().enumerate() {
         ctl.check()?;
         let c = crop(req, *part, read)?;
-        let image = c.image();
         let (sw, sh) = c.send;
-        let img = photocraft_codecs::Image::from_normalized(sw, sh, photocraft_codecs::ChannelLayout::Rgb, photocraft_codecs::SampleType::U8, &image)
-            .map_err(|e| MlError::BadInput(format!("couldn't make the image to send ({e})")))?;
-        let png = photocraft_codecs::encode(&img, photocraft_codecs::Format::Png, &photocraft_codecs::EncodeOptions::default())
-            .map_err(|e| MlError::BadInput(format!("couldn't make the image to send ({e})")))?;
-        let b64 = {
+        let png = |rgb: &[f32]| -> Result<String, MlError> {
             use base64::Engine as _;
-            base64::engine::general_purpose::STANDARD.encode(&png)
+            let img = photocraft_codecs::Image::from_normalized(sw, sh, photocraft_codecs::ChannelLayout::Rgb, photocraft_codecs::SampleType::U8, rgb)
+                .map_err(|e| MlError::BadInput(format!("couldn't make the image to send ({e})")))?;
+            let png = photocraft_codecs::encode(&img, photocraft_codecs::Format::Png, &photocraft_codecs::EncodeOptions::default())
+                .map_err(|e| MlError::BadInput(format!("couldn't make the image to send ({e})")))?;
+            Ok(base64::engine::general_purpose::STANDARD.encode(&png))
+        };
+        let marker = MARKERS.get(c.marker).map_or("solid pure red (#FF0000)", |m| m.1);
+        let (images, text, shown) = match mark {
+            Mark::Paint => (vec![png(&c.image())?], prompt(extra, marker), marker),
+            Mark::Mask => (vec![png(&c.picture())?, png(&c.mask())?], mask_prompt(extra), "a mask"),
         };
         let progress = move |f: f32| ((g as f32 + f) / count).clamp(0.0, 1.0);
         let report = |f: f32| ctl.progress(progress(f));
         let cancelled = || ctl.cancelled();
         let span = Interrupt::new(&cancelled, &report);
-        let answer = send(&body(&b64, &prompt, c.ratio, c.send), &span)?;
+        let started = std::time::Instant::now();
+        let answered = send(&body(&images, &text, c.ratio, c.send), &span).and_then(|answer| decode_answer(&answer_image(&answer)?)).inspect_err(|e| {
+            if *e != MlError::Cancelled {
+                log::warn!("[ml] {NAME}: {e}")
+            }
+        });
+        let (rgb, aw, ah) = answered?;
+        log::info!(
+            "[ml] {NAME}: sent {sw} x {sh} ({}, {}, {shown}), answered {aw} x {ah} in {:.1} s",
+            c.ratio,
+            image_size(sw, sh),
+            started.elapsed().as_secs_f32()
+        );
         ctl.check()?;
-        let (rgb, aw, ah) = decode_answer(&answer_image(&answer)?)?;
         let fitted = c.fitted(&rgb, aw, ah);
         let cw = c.rect.width() as usize;
         for (k, h) in c.hole.iter().enumerate() {
@@ -700,6 +853,19 @@ fn post(key: &str, body: &str, ctl: &Interrupt) -> Result<String, MlError> {
 #[cfg(target_arch = "wasm32")]
 fn post(_: &str, _: &str, _: &Interrupt) -> Result<String, MlError> {
     Err(MlError::Unsupported)
+}
+
+/// Ask Google about the model with the key in use (free: nothing is generated): its answer's
+/// status and the start of its body, or why it couldn't be asked. For checking a setup.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn check() -> Result<String, MlError> {
+    let key = key().ok_or_else(|| availability().err().unwrap_or(MlError::Unsupported))?;
+    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(TIMEOUT)).http_status_as_error(false).build().into();
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{MODEL}");
+    let mut answer = agent.get(&url).header("x-goog-api-key", &key).call().map_err(|e| MlError::Inference(format!("couldn't reach Google ({e})")))?;
+    let status = answer.status().as_u16();
+    let text = answer.body_mut().with_config().limit(1 << 20).read_to_string().unwrap_or_default();
+    Ok(format!("{status}: {}", clip(text.trim(), 600)))
 }
 
 /// One HTTPS request to the Interactions API; the answer's body, or the error it describes.

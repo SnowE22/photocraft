@@ -2528,6 +2528,10 @@ fn nano_banana_without_a_key_says_so_or_uses_lama() {
     assert_eq!(remove::AiModel::parse(&json!({"model": "nanoBanana"}), "paint.remove").unwrap(), remove::AiModel::NanoBanana);
     let err = remove::AiModel::parse(&json!({"model": "gemini"}), "paint.remove").unwrap_err().to_string();
     assert!(err.contains("nanoBanana"), "{err}");
+    use photocraft_ml::gemini::Mark;
+    assert_eq!(remove::mark(&json!({}), "paint.remove").unwrap(), Mark::Mask, "a mask image by default");
+    assert_eq!(remove::mark(&json!({"mark": "paint"}), "paint.remove").unwrap(), Mark::Paint);
+    assert!(remove::mark(&json!({"mark": "red"}), "paint.remove").is_err());
     // Only meaningful where no key is set (this machine's credential store or GEMINI_API_KEY).
     if photocraft_ml::gemini::key_source().is_some() {
         return;

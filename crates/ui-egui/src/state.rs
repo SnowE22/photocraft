@@ -561,6 +561,8 @@ pub struct ToolOptions {
     /// Remove tool: the generative model (`paint.remove` `model`): lama (fast) | diffusion
     /// (Stable Diffusion inpainting: slower, draws what was most likely behind).
     pub remove_model: String,
+    /// How Nano Banana is shown the area to remove (`paint.remove` `mark`): "mask" or "paint".
+    pub remove_mark: String,
     /// Remove tool with LaMa: standard | high (`paint.remove` `quality`: high runs the model at
     /// 1024 instead of 512, sharper on large removals).
     pub remove_quality: String,
@@ -894,6 +896,7 @@ impl Default for ToolOptions {
             object_finder: true,
             remove_generative: "auto".into(),
             remove_model: "lama".into(),
+            remove_mark: "mask".into(),
             remove_quality: "standard".into(),
             remove_prompt: String::new(),
             remove_new_layer: false,

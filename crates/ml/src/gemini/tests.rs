@@ -35,22 +35,34 @@ fn frames_take_the_nearest_ratio_and_hold_the_crop() {
 }
 
 #[test]
-fn the_context_surrounds_the_hole_inside_the_canvas() {
-    let canvas = Rect::new(0, 0, 3000, 2000);
+fn the_model_sees_the_whole_page_or_a_wide_area_around_the_hole() {
+    // A page that fits what is sent goes whole, as a large Photoshop selection gives it.
+    for page in [Rect::new(0, 0, 729, 500), Rect::new(0, 0, 2048, 1400), Rect::new(0, 0, 300, 200)] {
+        assert_eq!(context(Rect::new(100, 50, 150, 90), page), page);
+    }
+    let canvas = Rect::new(0, 0, 6000, 4000);
     // A small hole far from the edges: at least MIN_CONTEXT across, the hole in the middle.
-    let c = context(Rect::new(1000, 1000, 1040, 1020), canvas);
-    assert!(c.width() >= MIN_CONTEXT && c.height() >= MIN_CONTEXT, "{c:?}");
-    assert!(c.contains_rect(&Rect::new(1000, 1000, 1040, 1020)));
-    assert!(canvas.contains_rect(&c));
+    let c = context(Rect::new(3000, 2000, 3040, 2020), canvas);
+    assert_eq!((c.width(), c.height()), (MIN_CONTEXT, MIN_CONTEXT));
+    assert!(c.contains_rect(&Rect::new(3000, 2000, 3040, 2020)));
     // Near a corner: shifted inside, not cut.
     let c = context(Rect::new(5, 5, 45, 25), canvas);
     assert_eq!((c.x0, c.y0, c.width(), c.height()), (0, 0, MIN_CONTEXT, MIN_CONTEXT));
-    // A large hole: half its size around it.
-    let c = context(Rect::new(1000, 600, 1800, 1000), canvas);
-    assert_eq!(c, Rect::new(600, 200, 2200, 1400));
-    // A canvas smaller than the context: all of it.
-    let small = Rect::new(0, 0, 300, 200);
-    assert_eq!(context(Rect::new(100, 50, 150, 90), small), small);
+    // A large hole: its own size around it.
+    let c = context(Rect::new(2000, 1500, 2800, 1900), canvas);
+    assert_eq!(c, Rect::new(1200, 700, 3600, 2700));
+}
+
+#[test]
+fn the_marker_is_red_unless_the_picture_is() {
+    let grey = vec![0.5f32; 30];
+    let hole = vec![false; 10];
+    assert_eq!(pick_marker(&grey, &hole), 0);
+    let reds: Vec<f32> = (0..10).flat_map(|_| [0.95, 0.05, 0.1]).collect();
+    assert_eq!(pick_marker(&reds, &hole), 1, "a red picture gets green");
+    // The hole's own pixels don't count.
+    assert_eq!(pick_marker(&reds, &[true; 10]), 0);
+    assert!(prompt("", MARKERS[1].1).contains("solid pure green"));
 }
 
 #[test]
@@ -91,14 +103,15 @@ fn dilation_grows_by_the_radius() {
 
 #[test]
 fn the_body_asks_for_an_unstored_png_of_the_frame() {
-    let b: Value = serde_json::from_str(&body("QUJD", "remove", "4:3", (1200, 900))).unwrap();
+    let b: Value = serde_json::from_str(&body(&["QUJD".to_string()], "remove", "4:3", (1200, 900))).unwrap();
+    // No response mime type: Google's examples for the model ask for JPEG or nothing.
     assert_eq!(b["model"], MODEL);
     assert_eq!(b["store"], false);
     assert_eq!(b["input"][0], json!({"type": "text", "text": "remove"}));
     assert_eq!(b["input"][1], json!({"type": "image", "mime_type": "image/png", "data": "QUJD"}));
-    assert_eq!(b["response_format"], json!({"type": "image", "mime_type": "image/png", "aspect_ratio": "4:3", "image_size": "2K"}));
-    assert!(prompt("").contains("solid pure red"));
-    assert!(prompt("  a window  ").ends_with("What should be there instead: a window"));
+    assert_eq!(b["response_format"], json!({"type": "image", "aspect_ratio": "4:3", "image_size": "2K"}));
+    assert!(prompt("", MARKERS[0].1).contains("solid pure red"));
+    assert!(prompt("  a window  ", MARKERS[0].1).ends_with("What should be there instead: a window"));
 }
 
 #[test]
@@ -181,7 +194,7 @@ fn a_fill_changes_only_the_hole_and_matches_the_surrounding_colours() {
         }
         out
     };
-    let out = fill_via(&req, &mut read, "", &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
+    let out = fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
     assert_eq!(sent.len(), 1, "one part, one request");
     assert_eq!(sent[0]["store"], false);
     // The canvas (200 × 120) is smaller than the context: all of it, in the nearest ratio to
@@ -216,7 +229,7 @@ fn transparent_surroundings_are_refused_unless_unknown() {
     };
     let req = request(win, &px, &hole, 4, Some(3));
     let mut calls = 0;
-    let e = fill_via(&req, &mut read, "", &Interrupt::NONE, &mut |_, _| {
+    let e = fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut |_, _| {
         calls += 1;
         Err(MlError::Inference("not reached".into()))
     })
@@ -225,7 +238,7 @@ fn transparent_surroundings_are_refused_unless_unknown() {
     assert_eq!(calls, 0, "nothing is sent");
     let req = Request { transparent_unknown: true, ..req };
     let mut sent = Vec::new();
-    let out = fill_via(&req, &mut read, "", &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
+    let out = fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
     let k = 60 * 200 + 100;
     assert_eq!(out[k * 4 + 3], 1.0, "the hole comes back opaque");
 }
@@ -237,7 +250,7 @@ fn a_cancelled_fill_sends_nothing() {
     let cancel = || true;
     let ctl = Interrupt::cancel_only(&cancel);
     let mut calls = 0;
-    let e = fill_via(&req, &mut |_| Vec::new(), "", &ctl, &mut |_, _| {
+    let e = fill_via(&req, &mut |_| Vec::new(), "", Mark::Paint, &ctl, &mut |_, _| {
         calls += 1;
         Ok(String::new())
     })
@@ -246,16 +259,18 @@ fn a_cancelled_fill_sends_nothing() {
 }
 
 #[test]
-fn far_apart_parts_are_one_request_each_up_to_the_limit() {
-    let win = Rect::new(0, 0, 2000, 400);
-    let (w, h) = (2000usize, 400usize);
-    let px = vec![0.5f32; w * h * 3];
-    let hole: Vec<bool> = (0..w * h).map(|i| (100..130).contains(&(i / w)) && [100, 900, 1700].iter().any(|x0| (*x0..x0 + 30).contains(&(i % w)))).collect();
-    let req = request(win, &px, &hole, 3, None);
-    let mut sent = Vec::new();
-    let mut read = |r: Rect| vec![0.5f32; r.width() as usize * r.height() as usize * 3];
-    fill_via(&req, &mut read, "", &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
-    assert_eq!(sent.len(), 3);
+fn far_apart_parts_of_a_large_page_are_one_request_each_and_a_small_page_one() {
+    for (w, xs, requests) in [(6000usize, [100, 2900, 5700], 3), (2000, [100, 900, 1700], 1)] {
+        let win = Rect::new(0, 0, w as i32, 400);
+        let h = 400usize;
+        let px = vec![0.5f32; w * h * 3];
+        let hole: Vec<bool> = (0..w * h).map(|i| (100..130).contains(&(i / w)) && xs.iter().any(|x0| (*x0..x0 + 30).contains(&(i % w)))).collect();
+        let req = request(win, &px, &hole, 3, None);
+        let mut sent = Vec::new();
+        let mut read = |r: Rect| vec![0.5f32; r.width() as usize * r.height() as usize * 3];
+        fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
+        assert_eq!(sent.len(), requests, "{w} px wide");
+    }
 }
 
 #[test]
@@ -264,5 +279,5 @@ fn a_mismatched_request_is_an_error_not_a_panic() {
     let px = vec![0.0f32; 10];
     let hole = vec![true; 100];
     let req = request(win, &px, &hole, 3, None);
-    assert!(matches!(fill_via(&req, &mut |_| Vec::new(), "", &Interrupt::NONE, &mut |_, _| Ok(String::new())), Err(MlError::BadInput(_))));
+    assert!(matches!(fill_via(&req, &mut |_| Vec::new(), "", Mark::Paint, &Interrupt::NONE, &mut |_, _| Ok(String::new())), Err(MlError::BadInput(_))));
 }

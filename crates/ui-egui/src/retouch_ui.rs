@@ -193,6 +193,11 @@ fn remove_params(o: &crate::state::ToolOptions) -> Value {
     {
         m.insert("prompt".into(), json!(o.remove_prompt.trim()));
     }
+    if remove_model(o) == "nanoBanana"
+        && let Some(m) = p.as_object_mut()
+    {
+        m.insert("mark".into(), json!(if o.remove_mark == "paint" { "paint" } else { "mask" }));
+    }
     p
 }
 
@@ -768,6 +773,16 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                     crate::widgets::text_field_ex(ui, egui::Id::new("remove-prompt"), &mut o.remove_prompt, tl!("Prompt (optional)"), 180.0, false, Some(500))
                         .on_hover_text(tl!("What should be there. Empty: the model's own guess."));
                     if o.remove_model == "nanoBanana" {
+                        // How the model is shown the area: a mask image, or painted red.
+                        let marks = [
+                            ("mask".to_string(), tl!("Mask image"), tl!("Nano Banana gets the picture as it is and a separate mask of the area to remove")),
+                            (
+                                "paint".to_string(),
+                                tl!("Painted red"),
+                                tl!("Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine"),
+                            ),
+                        ];
+                        crate::widgets::dropdown_with_tooltips(ui, "remove-mark", &mut o.remove_mark, &marks, 110.0);
                         nano_banana_key(ui);
                     }
                 } else {
@@ -1764,7 +1779,9 @@ mod tests {
         assert!(generative_models().iter().any(|(k, _)| k == "nanoBanana"));
         let mut o = crate::state::ToolOptions { remove_model: "nanoBanana".into(), remove_prompt: " a window ".into(), ..Default::default() };
         let p = remove_params(&o);
-        assert_eq!((&p["model"], &p["prompt"]), (&json!("nanoBanana"), &json!("a window")));
+        assert_eq!((&p["model"], &p["prompt"], &p["mark"]), (&json!("nanoBanana"), &json!("a window"), &json!("mask")));
+        o.remove_mark = "paint".into();
+        assert_eq!(remove_params(&o)["mark"], "paint");
         o.remove_model = "unknown".into();
         assert_eq!(remove_params(&o)["model"], "lama");
     }

@@ -3294,3 +3294,7 @@ curves	Smooth	平滑
 	Google API key	Google API 金鑰
 	Remove Saved Key	移除已儲存的金鑰
 	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	此系統沒有 PhotoCraft 可用的認證儲存區：請改為設定環境變數 {var}。
+	Mask image	遮色片影像
+	Painted red	塗成紅色
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana 取得原樣的影像，以及要移除區域的單獨遮色片
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana 取得將要移除區域塗成紅色的影像，與 Photoshop 中的做法相同
