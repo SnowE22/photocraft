@@ -1,10 +1,12 @@
-//! Window › Screentones: the GenTonik screentone generator's panel.
+//! The Screentones dock tab: the GenTonik screentone generator's panel.
 //!
-//! The panel edits one [`ScreentoneSpec`] and turns it into document pixels through
-//! `layer.screentone` (a procedural sheet on a new layer) or `filter.screentone` (the same
-//! generator applied to the active layer, where Use Source Luminance can halftone by that layer's
-//! own darkness). The spec's serde names are the commands' flat parameter notation, so what the
-//! panel sends is exactly what a filter dialog or a saved preset would.
+//! The tab lives in the Color dock column after Patterns (a `Group::Color` tab in `dock`), and
+//! edits one [`ScreentoneSpec`], turning it into document pixels through `layer.screentone` (a
+//! procedural sheet on a new layer), `filter.screentone` (the same generator applied to the
+//! active layer, where Use Source Luminance can halftone by that layer's own darkness) or
+//! `pattern.screentone` (the sheet saved into the pattern library). The spec's serde names are
+//! the commands' flat parameter notation, so what the panel sends is exactly what a filter
+//! dialog or a saved preset would.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -28,8 +30,6 @@ const GRADIENTS: [&str; 3] = ["none", "linear", "radial"];
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ScreentoneUi {
-    /// The panel is open.
-    pub open: bool,
     /// The generator's settings; picking a preset replaces them wholesale.
     pub spec: ScreentoneSpec,
     /// The built-in preset the settings came from ("" = the panel's own settings).
@@ -53,23 +53,37 @@ pub fn handles(id: &str) -> bool {
     id == PANEL
 }
 
-/// Window › Screentones: toggles the panel.
+/// The panel's tab index in the Color dock group (`dock`); both pro and Studio orders.
+pub(crate) const COLOR_TAB: usize = 4;
+
+/// Window › Screentones: whether the Color card shows this tab now.
+pub fn showing(app: &PhotocraftApp) -> bool {
+    app.ui.panels.color && app.ui.dock_tabs.color == COLOR_TAB && !app.ui.dock.is_collapsed(crate::dock::Group::Color)
+}
+
+/// Window › Screentones: toggles the panel (selects and reveals the Color card tab, as Window ›
+/// Patterns does; a collapsed Color group counts as not showing: the item expands it #129).
 pub fn menu(app: &mut PhotocraftApp, id: &str, params: &Value) -> Option<Result<Value, String>> {
     if !handles(id) {
         return None;
     }
     let want = params.get("show").and_then(Value::as_bool);
-    let open = &mut app.ui.screentone_ui.open;
-    *open = want.unwrap_or(!*open);
-    Some(Ok(json!({"visible": *open})))
+    let show = want.unwrap_or(!showing(app));
+    app.ui.panels.color = show || (app.ui.panels.color && app.ui.dock_tabs.color != COLOR_TAB);
+    if show {
+        app.ui.dock_tabs.color = COLOR_TAB;
+        crate::dock::reveal(app, crate::dock::Group::Color);
+    }
+    Some(Ok(json!({"visible": show})))
 }
 
 pub fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
-    handles(id).then_some(app.ui.screentone_ui.open)
+    handles(id).then_some(showing(app))
 }
 
-/// The parameters for `layer.screentone` / `filter.screentone`: the spec's own serde object (the
-/// commands' flat notation) plus the layer name when the panel's field holds one.
+/// The parameters for `layer.screentone`, `filter.screentone` and `pattern.screentone`: the
+/// spec's own serde object (the commands' flat notation) plus the sheet name when the panel's
+/// field holds one.
 pub(crate) fn params(st: &ScreentoneUi) -> Value {
     let mut p = serde_json::to_value(&st.spec).unwrap_or_else(|_| json!({}));
     if let Some(map) = p.as_object_mut() {
@@ -83,17 +97,8 @@ pub(crate) fn params(st: &ScreentoneUi) -> Value {
     p
 }
 
-/// Draws the open panel.
-pub fn windows(app: &mut PhotocraftApp, ctx: &egui::Context) {
-    if !app.ui.screentone_ui.open {
-        return;
-    }
-    if crate::preset_panels::float_window(app, ctx, "screentone", tl!("Screentones (GenTonik)"), 276.0, 1120.0, panel) {
-        app.ui.screentone_ui.open = false;
-    }
-}
-
-fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+/// Draws the tab body: the dock's own scrolling wraps it in both the native and shared docks.
+pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     let label = crate::filter_dialog::label;
     let mut st = std::mem::take(&mut app.ui.screentone_ui);
@@ -349,14 +354,18 @@ mod tests {
     }
 
     #[test]
-    fn window_menu_toggles_the_panel() {
+    fn window_menu_toggles_the_dock_tab() {
         let (mut app, ctx) = app(8);
+        // The tab lives in the Color dock group after Patterns, in both pro and Studio orders.
+        for pro in [false, true] {
+            assert_eq!(crate::dock::Group::Color.tabs(pro).get(COLOR_TAB), Some(&"Screentones (GenTonik)"), "pro {pro}");
+        }
         assert!(crate::menus::is_live(PANEL), "{PANEL}");
         crate::menus::invoke(&mut app, &ctx, PANEL, Value::Null).unwrap();
-        assert!(app.ui.screentone_ui.open);
+        assert!(app.ui.panels.color, "the Color card shows");
+        assert_eq!(app.ui.dock_tabs.color, COLOR_TAB, "the tab is selected");
         assert_eq!(checked(&app, PANEL), Some(true));
         crate::menus::invoke(&mut app, &ctx, PANEL, json!({"show": false})).unwrap();
-        assert!(!app.ui.screentone_ui.open);
         assert_eq!(checked(&app, PANEL), Some(false));
         assert_eq!(checked(&app, "window.panel.layers"), None);
     }

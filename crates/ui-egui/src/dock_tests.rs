@@ -595,8 +595,8 @@ fn closing_tabs_keeps_stable_names_across_themes_and_workspace_round_trips() {
     let mut dock = DockLayout::default();
     // In Pro the first Color group tab is Color; in Studio it is Swatches.
     dock.hide_tab(Group::Color, 0, true);
-    assert_eq!(dock.visible_tabs(Group::Color, true).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns"]);
-    assert_eq!(dock.visible_tabs(Group::Color, false).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns"]);
+    assert_eq!(dock.visible_tabs(Group::Color, true).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns", "Screentones (GenTonik)"]);
+    assert_eq!(dock.visible_tabs(Group::Color, false).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns", "Screentones (GenTonik)"]);
     dock.hide_tab(Group::Color, 999, true);
     assert_eq!(dock.hidden_tabs[&Group::Color], vec!["Color"]);
     let saved = serde_json::to_value(&dock).unwrap();
@@ -605,7 +605,7 @@ fn closing_tabs_keeps_stable_names_across_themes_and_workspace_round_trips() {
     // Window › Color (Studio index 1) brings back precisely that tab.
     restored.show_tab(Group::Color, 1, false);
     assert!(restored.hidden_tabs.is_empty());
-    assert_eq!(restored.visible_tabs(Group::Color, false).len(), 4);
+    assert_eq!(restored.visible_tabs(Group::Color, false).len(), 5);
 }
 
 fn right_click_tab(h: &mut Harness<'static, PhotocraftApp>, group: Group, original_index: usize) {
@@ -1108,11 +1108,11 @@ fn move_tab_reorders_by_name_and_bad_saved_orders_fall_back() {
     }
     // Names, not positions: the order survives the Pro/Studio swap of Color and Swatches.
     l.move_tab(Group::Color, 3, Some(0), true);
-    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Swatches", "Gradients"]);
-    assert_eq!(names(&l, Group::Color, false), ["Patterns", "Color", "Swatches", "Gradients"]);
+    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Swatches", "Gradients", "Screentones (GenTonik)"]);
+    assert_eq!(names(&l, Group::Color, false), ["Patterns", "Color", "Swatches", "Gradients", "Screentones (GenTonik)"]);
     // Hidden tabs keep their place for when they come back.
     l.hide_tab(Group::Color, 1, true);
-    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Gradients"]);
+    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Gradients", "Screentones (GenTonik)"]);
     // Garbage in a saved layout falls back per group, and never loses the rest of the layout.
     for bad in [
         json!(5),
@@ -1127,7 +1127,7 @@ fn move_tab_reorders_by_name_and_bad_saved_orders_fall_back() {
         assert_eq!(back.order().first(), Some(&Group::Layers), "{bad}");
         let layers = names(&back, Group::Layers, true);
         assert!(layers == ["Layers", "Channels", "Paths"] || layers == ["Paths", "Layers", "Channels"], "{bad}: {layers:?}");
-        assert_eq!(back.visible_tabs(Group::Color, true).len(), 4);
+        assert_eq!(back.visible_tabs(Group::Color, true).len(), 5);
     }
     let back: DockLayout = serde_json::from_value(json!({"tabOrder": {"layers": ["Channels"]}})).unwrap();
     assert_eq!(names(&back, Group::Layers, true), ["Channels", "Layers", "Paths"], "missing tabs follow in their default order");

@@ -12,6 +12,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("swatches", "Swatches", Group::Color),
     ("gradients", "Gradients", Group::Color),
     ("patterns", "Patterns", Group::Color),
+    ("screentone", "Screentones (GenTonik)", Group::Color),
     ("properties", "Properties", Group::Properties),
     ("adjustments", "Adjustments", Group::Properties),
     ("character", "Character", Group::Character),
