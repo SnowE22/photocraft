@@ -5,13 +5,15 @@
 //! selection, smart objects, history and `filter.lastFilter` work the same way; with
 //! `useSourceLuminance` it modulates the raster by the layer's own darkness (manga shading).
 //! `layer.screentone` renders a procedural sheet onto a **new** pixel layer (no source needed),
-//! which is what the Screentones panel uses to drop a tone onto the document.
+//! which is what the Screentones panel uses to drop a tone onto the document; when a selection
+//! is active the new layer carries it as its own mask, so the tone keeps the selection's shape
+//! (not just its frame) in the document.
 //!
 //! Both commands take the same flat parameter object (the dialog's notation), so a preset saved
 //! from one is replayable through the other.
 
 use photocraft_algo::{self as algo, DotShape, FilterParams, PatternType, ScreentoneGradientType, ScreentoneSpec};
-use photocraft_doc::{Layer, LayerContent};
+use photocraft_doc::{Layer, LayerContent, LayerMask};
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
@@ -268,8 +270,21 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
                 .and_then(|id| algo::screentone::built_in_presets().into_iter().find(|pr| pr.id == id).map(|pr| pr.name.to_string()))
         })
         .unwrap_or_else(|| "Screentone".to_string());
+    // An active selection keeps shaping the sheet for good: the layer carries it as its mask
+    // (as in Photoshop), so the tone shows only inside the selection now and later.
+    let mask = selection.as_ref().map(|sel| {
+        let r = doc_bounds;
+        let ch = sel.channels().max(1);
+        let v = sel.read_region(r);
+        let coverage: Vec<f32> = v.chunks_exact(ch).map(|px| px[0]).collect();
+        let mut mask = LayerMask::reveal_all();
+        mask.surface.write_region(r, &coverage);
+        mask.surface.prune();
+        mask
+    });
     let id = s.edit("Screentone", |doc, active| {
-        let l = Layer::new(doc.next_layer_name(&name), LayerContent::Raster(rendered));
+        let mut l = Layer::new(doc.next_layer_name(&name), LayerContent::Raster(rendered));
+        l.mask = mask;
         let id = doc.insert_above(*active, l);
         *active = Some(id);
         Ok(id)
@@ -409,5 +424,29 @@ mod tests {
         let id = r["layer"].as_u64().unwrap();
         let outside = read_layer(&s, id).as_chunks::<4>().0.iter().enumerate().filter(|(i, p)| (i % 96) >= 41 && p[3] > 0.0).count();
         assert_eq!(outside, 0, "nothing drawn outside the selection");
+    }
+
+    #[test]
+    fn an_active_selection_becomes_the_new_layers_mask() {
+        let mut s = session(8);
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 40, "height": 72})).unwrap();
+        let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10})).unwrap();
+        let id = r["layer"].as_u64().unwrap();
+        let mask = s.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().mask.clone().expect("the selection becomes the layer's mask");
+        assert!(mask.enabled);
+        // Inside the rect the mask reveals, outside it hides — the tone keeps the selection's shape.
+        for (x, y, want) in [(20, 40, 1.0), (39, 71, 1.0), (50, 40, 0.0), (80, 50, 0.0)] {
+            assert_eq!(mask.value(x, y), want, "mask at ({x}, {y})");
+        }
+        // The selection itself is untouched: re-rendering keeps the shape bound to the layer.
+        assert!(s.active().unwrap().doc.selection.is_some());
+    }
+
+    #[test]
+    fn a_layer_without_selection_carries_no_mask() {
+        let mut s = session(8);
+        let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10})).unwrap();
+        let id = r["layer"].as_u64().unwrap();
+        assert!(s.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().mask.is_none());
     }
 }
