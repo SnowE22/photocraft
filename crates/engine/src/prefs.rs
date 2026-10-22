@@ -451,6 +451,8 @@ impl Default for HistoryLog {
 pub struct FileHandling {
     pub image_previews: Ask,
     pub lowercase_extension: bool,
+    /// Saves run in the background while you keep working (on), or in the foreground under a
+    /// modal progress dialog that blocks the app until the file is written (off).
     pub save_in_background: bool,
     /// Save recovery information (crash recovery autosave).
     pub autosave: bool,
@@ -537,6 +539,11 @@ pub struct Performance {
     pub rendering_mode: Option<RenderingMode>,
     /// Graphics backend (applies at next launch; see [`GpuBackend`]).
     pub gpu_backend: GpuBackend,
+    /// Which graphics adapter the window and canvas use on a machine with several (applies at
+    /// next launch): part of the adapter's name, matched case-insensitively ("nvidia", "arc"). Empty
+    /// is automatic. `PHOTOCRAFT_GPU_ADAPTER` overrides it for one launch. If nothing matches or the
+    /// match can't present to the window, startup falls back to automatic and says so.
+    pub gpu_adapter: String,
     /// Live previews of large documents (adjustment and filter dialogs, an adjustment layer's
     /// sliders while they drag) render on a reduced copy: fast, but blocky when zoomed in. Off:
     /// they render at full resolution. Adjustment previews the GPU canvas composites are drawn at
@@ -583,6 +590,7 @@ impl Default for Performance {
             use_gpu: true,
             rendering_mode: None,
             gpu_backend: GpuBackend::Auto,
+            gpu_adapter: String::new(),
             low_resolution_previews: true,
             low_latency_drawing: false,
             linux_display_server: LinuxDisplayServer::Auto,
@@ -1045,11 +1053,9 @@ pub const SECTIONS: [(&str, &str); 18] = [
 /// preference is read anywhere outside `prefs.rs`, and while an unlisted one is read nowhere.
 pub const HIDDEN_UNTIL_IMPLEMENTED: &[&str] = &[
     "general.colorPicker",
-    "general.animatedZoom",
     "general.zoomResizesWindows",
     "workspace.autoShowHiddenPanels",
     "workspace.enableFloatingDocumentWindowDocking",
-    "fileHandling.saveInBackground",
     "performance.cacheLevels",
     "performance.effectCacheMb",
     "performance.legacyCompositing",
@@ -1081,7 +1087,16 @@ pub fn is_hidden(path: &str) -> bool {
 
 /// Preferences that only do something on Linux; the dialog doesn't show them elsewhere. They
 /// still load, save and round-trip on every platform.
-pub const LINUX_ONLY: &[&str] = &["performance.linuxDisplayServer"];
+pub const LINUX_ONLY: &[&str] = &["performance.linuxDisplayServer", "performance.gpuAdapter"];
+
+/// Whether a graphics adapter called `name` is the one `performance.gpuAdapter` (`wanted`) asks
+/// for: every whitespace-separated word of `wanted` appears in the name, ignoring case ("nvidia",
+/// "arc a370m"). An empty `wanted` matches nothing. Startup and Preferences share this.
+pub fn gpu_adapter_matches(name: &str, wanted: &str) -> bool {
+    let name = name.to_lowercase();
+    let mut words = wanted.split_whitespace().peekable();
+    words.peek().is_some() && words.all(|w| name.contains(&w.to_lowercase()))
+}
 
 /// Choices of an enumerated preference (dotted path, e.g. `"cursors.painting"`).
 pub fn choices(path: &str) -> Option<&'static [&'static str]> {

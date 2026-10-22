@@ -254,6 +254,8 @@ struct Sizes {
     big_photo: (u32, u32),
     /// A4 at 300 ppi.
     a4: (u32, u32),
+    /// A new 10 × 5 m document at 200 ppi (3.1 GP, #4017).
+    huge_new: (u32, u32),
 }
 
 const FULL: Sizes = Sizes {
@@ -266,6 +268,7 @@ const FULL: Sizes = Sizes {
     ten_mp: (3872, 2592),
     big_photo: (6000, 4000),
     a4: (2480, 3508),
+    huge_new: (78_740, 39_370),
 };
 
 const QUICK: Sizes = Sizes {
@@ -278,6 +281,7 @@ const QUICK: Sizes = Sizes {
     ten_mp: (1200, 800),
     big_photo: (1600, 1066),
     a4: (1240, 1754),
+    huge_new: (20_000, 10_000),
 };
 
 /// The layered document of #209: a background, six pixel layers with a drop shadow and a stroke,
@@ -932,6 +936,7 @@ fn algorithm_scenarios(b: &mut Bench, sz: &Sizes) {
         }
     }
     liquify_preview_scenario(b);
+    huge_new_scenario(b, sz);
     let cmyk = "brush dab on A4 300 ppi CMYK + refresh";
     if b.wanted(cmyk) {
         let (w, h) = sz.a4;
@@ -1010,7 +1015,7 @@ fn blob_tip_json(w: u32, h: u32) -> Value {
     json!({"sampled": {"width": w, "height": h, "data": data}})
 }
 
-/// P62: one frame of a stroke with a large imported-style brush (a 500 px sampled tip at 3 %
+/// P64: one frame of a stroke with a large imported-style brush (a 500 px sampled tip at 3 %
 /// spacing whose angle follows the stroke, a Dual Brush and a Height texture): the live stroke
 /// renders the frame's two pointer samples of a fast (1500 px/s) stroke and the canvas
 /// re-composites what changed.
@@ -1069,6 +1074,30 @@ fn large_brush_frame_scenario(b: &mut Bench, sz: &Sizes) {
             }
         }
         Ok(ms(t))
+    });
+}
+
+/// #4017: File > New at 10 × 5 m, 200 ppi (3.1 GP), and the first refresh of the canvas that
+/// draws a document too large for GPU textures (the reduced CPU canvas, `canvas::ensure_texture`).
+fn huge_new_scenario(b: &mut Bench, sz: &Sizes) {
+    let name = "new 3 GP document + first reduced canvas refresh";
+    if !b.wanted(name) {
+        return;
+    }
+    let (w, h) = sz.huge_new;
+    let reps = b.reps.min(3);
+    b.time(name, &mut Session::new(), reps, false, |_, s, _| {
+        let t = Instant::now();
+        exec(s, "file.new", json!({"width": w, "height": h, "resolution": 200, "background": "white"}))?;
+        let doc = &s.active().ok_or("no document")?.doc;
+        let factor = w.max(h).div_ceil(photocraft_ui_egui::canvas::MAX_TEXTURE).max(1);
+        let reduced = photocraft_compose::render_reduced(doc, w / factor, h / factor);
+        if reduced.px.first() != Some(&[1.0; 4]) {
+            return Err("the new document is not white".into());
+        }
+        let v = ms(t);
+        exec(s, "file.close", json!({}))?;
+        Ok(v)
     });
 }
 

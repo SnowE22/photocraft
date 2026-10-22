@@ -378,7 +378,9 @@ fn type_and_shapes_stay_in_the_kept_composite_and_are_followed() {
 fn a_drag_fills_each_like_area_it_reaches_in_one_step() {
     let (mut s, _lines, colour) = inked(8);
     let fill = |s: &mut Session, x: i32, y: i32| {
-        s.execute(FILL_ID, json!({"x": x, "y": y, "reference": "all", "closeGap": 4, "antiAlias": false, "color": RED, "gesture": "g1", "coalesce": "g1"})).unwrap()["filled"].clone()
+        s.execute(FILL_ID, json!({"x": x, "y": y, "reference": "all", "closeGap": 4, "antiAlias": false, "color": RED, "gesture": "g1", "coalesce": "g1"}))
+            .unwrap()["filled"]
+            .clone()
     };
     let steps = s.active().unwrap().history.past_len();
     assert_eq!(fill(&mut s, 20, 20), true, "the click fills the box");
@@ -408,7 +410,8 @@ fn the_magic_wand_closes_gaps_like_the_fill() {
     let steps = s.active().unwrap().history.past_len();
     let r = s.execute("select.magicWand", json!({"x": 20, "y": 20, "closeGap": 4, "reference": "all", "gesture": "w", "coalesce": "w"})).unwrap();
     assert_eq!(r["selected"], true);
-    let r = s.execute("select.magicWand", json!({"x": 22, "y": 22, "closeGap": 4, "reference": "all", "gesture": "w", "coalesce": "w", "mode": "add"})).unwrap();
+    let r =
+        s.execute("select.magicWand", json!({"x": 22, "y": 22, "closeGap": 4, "reference": "all", "gesture": "w", "coalesce": "w", "mode": "add"})).unwrap();
     assert_eq!(r["added"], false, "already selected by this drag");
     s.execute("select.magicWand", json!({"x": 2, "y": 2, "closeGap": 4, "reference": "all", "gesture": "w", "coalesce": "w", "mode": "add"})).unwrap();
     assert!(sel(&s, 20, 20) > 0.5 && sel(&s, 2, 2) > 0.5);

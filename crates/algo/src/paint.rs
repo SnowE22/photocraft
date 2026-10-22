@@ -114,6 +114,7 @@ fn composite_area(
                 let px = &mut region[i..i + n];
                 let d = photocraft_raster::to_rgba(&fmt, px);
                 let mut o = match paint {
+                    FillPaint::Blend(mode) if lock_transparency => blend::composite_atop(mode, d, color(x, y), k),
                     FillPaint::Blend(mode) => blend::composite(mode, d, color(x, y), k),
                     FillPaint::Erase => [d[0], d[1], d[2], d[3] * (1.0 - k.clamp(0.0, 1.0))],
                     FillPaint::Behind => behind(d, color(x, y), k),
@@ -347,6 +348,22 @@ mod tests {
         assert!(s.pixel(0, 0)[0] < 0.01 && s.pixel(10, 0)[0] > 0.99);
         assert!((s.pixel(5, 0)[0] - 0.5).abs() < 0.01);
         assert_eq!(s.pixel(5, 1)[3], 0.0, "outside the selection");
+    }
+
+    #[test]
+    fn locked_gradient_blends_source_atop_on_semi_transparent_pixels() {
+        // Locked half-transparent white, flat black gradient at 50%: colour halfway, alpha kept (#5783).
+        for fmt in [PixelFormat::RGBA8, PixelFormat::RGBA16, PixelFormat::RGBA32F] {
+            for mode in [BlendMode::Normal, BlendMode::Multiply] {
+                let mut s = Surface::new(fmt);
+                let a = Rect::new(0, 0, 4, 1);
+                s.fill_rect(a, &[1.0, 1.0, 1.0, 0.5]);
+                let black = [0.0, 0.0, 0.0, 1.0];
+                paint_gradient(&mut s, a, (0.0, 0.0), (4.0, 0.0), GradientShape::Linear, &[(0.0, black), (1.0, black)], false, 0.5, mode, false, None, true);
+                let p = s.rgba(2, 0);
+                assert!((p[0] - 0.5).abs() < 0.01 && (p[3] - 0.5).abs() < 0.01, "{fmt:?} {mode:?} {p:?}");
+            }
+        }
     }
 
     #[test]

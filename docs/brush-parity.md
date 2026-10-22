@@ -68,7 +68,7 @@ tablets against Photoshop side by side.
 | Large brushes keep up with the pointer | done | dabs and the stroke composite run tile by tile on every core, only over each tip's footprint (`CoverageMap::apply_dabs`, `paint_rect`, row spans); a 500 px sampled tip at 3 % with a Dual Brush and texture: 4.0 ms a frame dab to screen (P62, RTX 5070 laptop), was ~19 ms before the canvas; a 1500 px tip at 1 %: ~8 ms of engine time a frame, was ~290 ms |
 | No hitch at mouse-up on a long stroke | not measurable | P32 needs a frame harness |
 | Live stroke for Brush and Eraser | done | |
-| Live stroke for every brush-based retouch tool | missing | TOOL-213-7 |
+| Live stroke for every brush-based retouch tool | partial | TOOL-213-7: all live but the Mixer Brush (PR #3627); Spot Healing shows the area it heals and heals on release, as Photoshop does |
 | No OS arrow cursor over the canvas with a pen | partial | TOOL-213-14 |
 
 ## Gestures and cursors
@@ -98,7 +98,7 @@ tablets against Photoshop side by side.
 | Tool | Status | Notes |
 |---|---|---|
 | Brush, Pencil (aliased, Auto Erase), Eraser (Brush/Pencil/Block) | done | Pencil 1 px quality #2139 |
-| Mixer Brush (Wet, Load, Mix, Flow, Sample All Layers) | partial | "incomplete" (#2247) |
+| Mixer Brush (Wet, Load, Mix, Flow, Sample All Layers, Current Brush Load with Load Brush and Clean Brush, automatic Load and Clean) | partial | No live result while dragging, no Alt-click loading (#2247) |
 | Clone Stamp (opacity, flow, aligned, sample, overlay) | partial | Clone Source W/H link and Alt target cursor (TOOL-213-8) |
 | Pattern Stamp (aligned, impressionist) | done | |
 | History Brush | done | Art History Brush missing |
@@ -137,6 +137,7 @@ tablets against Photoshop side by side.
 | 2026-10-17 | minor | Large brushes: dabs and the stroke composite run tile by tile on every core over each tip's footprint only (bit-identical to the one-thread path), a dedicated loop for plain sampled tips; P62 measures one frame dab to screen (4.0 ms for a 500 px imported-style brush). The Dual Brush tip scales with the brush size, as in Photoshop. ABR import reads Capture Brush Size in Preset (`useBrushSize`), Include Tool Settings and the tool blend mode, so picking a downloaded brush keeps the tool's size and settings |
 | 2026-10-16 | minor | Brushes panel matches Photoshop's: brushes can sit outside groups and drop between groups, Shift/Ctrl multi-select (drag, delete, New Group), a click selects a group and its chevron opens it, stroke-and-name tiles fill each row with a thumbnail-size slider in the footer, Brush Name/Stroke/Tip in the panel menu, Photoshop's darker list well; new `brush.presets.moveItems` and `deleteItems` |
 | 2026-10-13 | minor | Stale "missing tool" row corrected against main: Color Replacement (`paint.colorReplacement`) is a live toolbar tool; no brush-feel estimate changed |
+| 2026-10-11 | minor | Pattern Stamp and Background Eraser draw live (#3754); live retouch row now partial (Mixer Brush left) |
 | 2026-10-10 | major | First version, from a source audit and the open issues |
 | 2026-10-11 | minor | `~` held with the Brush or Pencil erases with that tool's brush, and Clear joins their Mode menus (#3439) |
 | 2026-10-12 | minor | Five Brush Settings switch rows toggle without selecting a properties pane; Smoothing has a default-on switch and retains its settings while disabled (#4283). No brush-feel estimate changed. |

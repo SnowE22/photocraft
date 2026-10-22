@@ -115,7 +115,7 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Behaviour | Status | Evidence |
 |---|---|---|
 | ⇧ square/circle, ⌥ from centre, live W × H readout (marquee) | done | `marquee_tests.rs` |
-| ⇧ add, ⌥ subtract, ⇧⌥ intersect from modifiers at press | partial | works; only a badge test (BUG-208-4) |
+| ⇧ add, ⌥ subtract, ⇧⌥ intersect from modifiers at press | done | tested for the marquee (add, subtract, ⇧⌥ intersect: `marquee_tests.rs`), Lasso (all three: `lasso_ui/tests.rs`) and Polygonal Lasso (`polygon_lasso_tests.rs`) (BUG-208-4) |
 | Space repositions the marquee while dragging | done | `hold_keys.rs` |
 | Polygonal Lasso ⇧ snaps to 45° | missing | #2352 |
 | Autoscroll at the window edge while selecting | missing | #2231 |
@@ -133,6 +133,7 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Curvature Pen edits the active path with no modifier: drag an anchor (the curve reflows), click a segment to add an anchor, double-click smooth ↔ corner; cursor badge + on segments, four arrows on anchors | done: `direct_select.rs` (`curvature_press`, `curvature_hover`), `path.moveAnchors`/`path.convertPoint` with `curvature`, `direct_select_tests.rs` | |
 | Path operations in the options bar (combine, subtract, intersect, exclude) | partial | `layer.combineShapes.*`; Pen options #1397 |
 | On-canvas corner-radius handles on live shapes | done: every selected live rectangle shows a widget at each arc centre with Path Selection, the Rectangle tool and Move with Show Transform Controls; a drag rounds every corner of every selected rectangle to the same radius, ⌥ that corner on each, with the corner radius cursor and an `R:` readout, previewed and committed as one history step (`corner_radius.rs`, `corner_radius_tests.rs`) | TOOL-214-12 |
+| Shape Density and Feather (Properties › Masks: a shape's path is its vector mask) | done: Density and Feather sliders for a selected shape layer, one undo step per drag, through `layer.vectorMask.edit`; the fill shows beyond the path at 100 − density %, a feather is the vector mask's Gaussian (Photoshop's 10 px ramp within 1 level); fill and stroke stay editable, the stroke stays crisp; PSD mask parameters and .pcraft round trip (#5846) | TOOL-214-12 |
 | Shape stroke controls (dash, caps, joins, align) | done | TOOL-1053-1, [`shape-strokes.md`](shape-strokes.md) |
 | Rotated shape selection hints correct | partial | #2512 |
 | Curved shape bounds exact | partial | one pixel too wide (#2537) |
@@ -178,9 +179,9 @@ Triangle and Curvature Pen (minus legacy Rounded Rectangle and Targeted Adjustme
 | Hold any tool letter for a temporary tool | done | `spring_tools.rs`: held ≥ 300 ms or used on the canvas, release gives the previous tool back; ⇧ never springs (#2672) |
 | Scrubby zoom | done | `zoom_tool.rs` |
 | Flick panning | done | `flick_pan.rs` (Preferences › Tools › Enable Flick Panning) |
-| Animated zoom | missing | unread pref; #566 |
+| Animated zoom | partial | `zoom_hold.rs`: with Preferences › General › Animated Zoom on, a Zoom press held still past 0.3 s zooms continuously about the press point (2 doublings a second, ⌥ out) until release (#6210); eased click steps still missing (#566) |
 | Double-click Zoom tool = 100%, double-click Hand = fit | partial | Zoom missing (#2508) |
-| ⌥-wheel zoom in gentle steps | missing | UI-217-18 |
+| ⌥-wheel zoom around the pointer | partial | ×1.1 per notch, measured on Photoshop (#1718; `wheel_nav.rs`, `input_tests.rs`); #217 asked for ~5 % steps (UI-217-18) |
 | Wheel, smooth scrolling and pinch as in Photoshop | partial | #2485, #2463, #1989 |
 | Trackpad rotate drives Rotate View | done | `rotate_view.rs:136` |
 | Zoom levels to 3200% and beyond | partial | #1813 |
@@ -241,6 +242,7 @@ Paragraph; the rest open as in-app floating windows.
 |---|---|---|
 | 2026-10-17 | minor | Status bar in the document window with the horizontal scrollbar in it, docks to the window bottom, scrollbars outside the canvas; Tools panel docks between dock columns; ⌘-click picks layers; ⌘/⌥/⌘⌥ disclosure clicks; Blend If split handles; thin live gradients and Space reposition; no percentage changed |
 | 2026-10-16 | minor | Layers panel rows match Photoshop's metrics and glyphs, Layer Bounds thumbnails, Color panel readout removed and its field always fills, Brushes split from Brush Settings, movable Tools panel, dock width uncapped, closable icon rail, document tab menu gains New/Open; no percentage changed |
+| 2026-10-15 | minor | Shape Density and Feather row added as done (TOOL-214-12, #5846) |
 | 2026-10-13 | minor | Menu bar from the keyboard: Alt / F10 focus, Alt+letter, underlined mnemonics (#4988) |
 | 2026-10-13 | minor | Layers panel filter row: Kind is a real dropdown with Kind, Name and Mode filters, drivable by `ui.set {layerFilter}` (#5048); row added as partial |
 | 2026-10-13 | minor | Stale "missing tool" rows corrected against main: Color Replacement (`paint.colorReplacement`), Red Eye (`paint.redEye`) and Add/Delete Anchor Point (the P flyout cycle) are live toolbar tools, so only Art History Brush is missing; no percentage or estimate changed |
@@ -256,7 +258,9 @@ Paragraph; the rest open as in-app floating windows.
 | 2026-10-11 | minor | Tool keys from Photoshop's shortcut set: ← / → rotate the brush tip, ⇧-click for new type, Space+F canvas colour |
 | 2026-10-11 | minor | Spring-loaded tool letters done (#2672): holding any tool letter (Z included) past 300 ms, or using the canvas while it is down, makes the tool temporary until release |
 | 2026-10-11 | minor | Type formatting keys done: ⇧⌘K, U, B, I and /, ⌥↑/↓, ⇧⌥↑/↓, ⌥←/→ over a selection and ⌥⇧⌘H format the selected type while editing, and no longer reach Color Settings, Desaturate, Auto Color or Inverse |
+| 2026-10-11 | minor | Selection modifiers at press: evidence now names the marquee, Lasso and Polygonal Lasso tests (still partial: no marquee ⇧⌥ intersect test). ⌥-wheel zoom: missing → partial (works at ×1.1 a notch; #217 asked for ~5 %) |
 | 2026-10-12 | minor | Pen Auto Add/Delete on the active path, with its options-bar checkbox, hover feedback and + / − cursor badge (#4144) |
+| 2026-10-15 | minor | Animated zoom partial: with Animated Zoom on, holding the Zoom tool's button zooms continuously about the press point, ⌥ out (#6210) |
 | 2026-10-15 | minor | Pen Auto Add/Delete works on the path being drawn: a click on its segment adds an anchor, on a middle anchor deletes it, and drawing carries on (#6140) |
 | 2026-10-12 | minor | Toolbar tool shortcuts can be reassigned, removed and reset in Keyboard Shortcuts (#4086); capture, restart, group cycling, conflict and text-focus regressions |
 | 2026-10-12 | minor | Smart filter rows can be selected, and dragged (⌥: copied) onto another smart object or onto Delete (#4271) |

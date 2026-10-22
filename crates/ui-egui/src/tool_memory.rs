@@ -4,7 +4,10 @@
 //! so a default changed in a later release still reaches users who never touched that option.
 //! Saved once the pointer is up (not on every slider step), restored at launch. A hand-edited or
 //! old file can't break the options: an unknown key is ignored and a field that doesn't read back
-//! (wrong type, a number too large for its field) keeps its default.
+//! (wrong type, a number too large for its field) keeps its default, and numbers are clamped to
+//! the ranges their options-bar fields allow ([`sanitize`]).
+//!
+//! Each painting tool's own brush is remembered by `last_brush` (`Preferences::tool_brushes`).
 
 use serde_json::{Map, Value};
 
@@ -99,13 +102,63 @@ pub fn restore(app: &mut PhotocraftApp) {
                 cur.insert(k.clone(), old);
             }
         }
-        if let Ok(o) = serde_json::from_value(Value::Object(cur)) {
+        if let Ok(mut o) = serde_json::from_value(Value::Object(cur)) {
+            sanitize(&mut o);
             app.ui.tool_options = o;
         }
     } else if !saved.is_null() {
         log::warn!("Preferences: the remembered tool options are not an object; using the defaults");
     }
     app.prefs_rt.tool_options = Some(app.ui.tool_options.clone());
+}
+
+/// Bring remembered options into the ranges their options-bar fields allow, so a hand-edited or
+/// damaged file can't start a tool with a value its own controls could never set (a 1e30 px
+/// feather, a 0-sided polygon). A NaN (JSON can't hold one, but it costs nothing to rule out)
+/// takes the default.
+pub(crate) fn sanitize(o: &mut ToolOptions) {
+    let d = ToolOptions::default();
+    let fit = |v: &mut f32, lo: f32, hi: f32, def: f32| *v = if v.is_nan() { def } else { v.clamp(lo, hi) };
+    fit(&mut o.tolerance, 0.0, 255.0, d.tolerance);
+    fit(&mut o.feather, 0.0, 1000.0, d.feather);
+    fit(&mut o.fill_opacity, 1.0, 100.0, d.fill_opacity);
+    fit(&mut o.type_size, 0.1, 1296.0, d.type_size);
+    fit(&mut o.pattern_stamp_scale, 1.0, 1000.0, d.pattern_stamp_scale);
+    fit(&mut o.pattern_stamp_angle, -180.0, 180.0, d.pattern_stamp_angle);
+    fit(&mut o.patch_structure, 1.0, 7.0, d.patch_structure);
+    fit(&mut o.patch_color, 0.0, 10.0, d.patch_color);
+    fit(&mut o.cam_structure, 1.0, 7.0, d.cam_structure);
+    fit(&mut o.cam_color, 0.0, 10.0, d.cam_color);
+    fit(&mut o.exposure, 1.0, 100.0, d.exposure);
+    fit(&mut o.strength, 1.0, 100.0, d.strength);
+    fit(&mut o.stroke_width, 0.0, 288.0, d.stroke_width);
+    fit(&mut o.corner_radius, 0.0, 10000.0, d.corner_radius);
+    fit(&mut o.line_weight, 1.0, 1000.0, d.line_weight);
+    fit(&mut o.curve_fit, 0.5, 10.0, d.curve_fit);
+    // The marquee's Width and Height are a ratio or a size in px, as its Style says.
+    let (lo, hi) = if o.marquee_style == "fixedSize" { (1.0, 300_000.0) } else { (0.001, 999.0) };
+    fit(&mut o.marquee_width, lo, hi, d.marquee_width);
+    fit(&mut o.marquee_height, lo, hi, d.marquee_height);
+    fit(&mut o.crop_custom_ratio_width, 0.0, f32::MAX, d.crop_custom_ratio_width);
+    fit(&mut o.crop_custom_ratio_height, 0.0, f32::MAX, d.crop_custom_ratio_height);
+    fit(&mut o.magic_eraser_opacity, 1.0, 100.0, d.magic_eraser_opacity);
+    fit(&mut o.bg_tolerance, 0.0, 100.0, d.bg_tolerance);
+    fit(&mut o.cr_tolerance, 0.0, 100.0, d.cr_tolerance);
+    fit(&mut o.magnetic_width, 1.0, 256.0, d.magnetic_width);
+    fit(&mut o.magnetic_contrast, 1.0, 100.0, d.magnetic_contrast);
+    fit(&mut o.magnetic_frequency, 0.0, 100.0, d.magnetic_frequency);
+    fit(&mut o.red_eye_pupil_size, 1.0, 100.0, d.red_eye_pupil_size);
+    fit(&mut o.red_eye_darken, 0.0, 100.0, d.red_eye_darken);
+    o.polygon_sides = o.polygon_sides.clamp(3, 100);
+    if o.crop_overlay_orientation > 3 {
+        o.crop_overlay_orientation = d.crop_overlay_orientation;
+    }
+    if !photocraft_engine::sample_cmds::SAMPLE_SIZES.contains(&o.eyedropper_size) {
+        o.eyedropper_size = d.eyedropper_size;
+    }
+    if !o.shape_stroke.valid() {
+        o.shape_stroke = d.shape_stroke;
+    }
 }
 
 /// Does `opts` deserialize, with field `k` coming back as a value? A number out of an `f32`'s

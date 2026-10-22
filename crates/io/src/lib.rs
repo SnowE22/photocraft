@@ -52,6 +52,7 @@ mod kra;
 pub mod linked;
 mod multichannel_map;
 mod ora;
+mod palette_map;
 pub use ora::losses as ora_losses;
 pub mod pattern_map;
 pub mod pdf;
@@ -69,8 +70,8 @@ pub mod text_styles_map;
 pub mod tiff_layers;
 pub mod vector_map;
 
-pub use photocraft_codecs::DpxBits;
 use photocraft_codecs::{CodecError, EncodeOptions};
+pub use photocraft_codecs::{DdsCompression, DdsOptions, DpxBits};
 use photocraft_doc::{Adjustment, Document, Layer, LayerContent};
 use photocraft_psd::{PsdError, PsdFile};
 

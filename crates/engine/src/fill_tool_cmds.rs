@@ -279,7 +279,16 @@ fn reference_key(doc: &Document, area: Rect) -> Option<ReferenceKey> {
             LayerContent::Text(t) => (ContentKey::Text, t.cache.as_ref().map(Tiles::of)),
             LayerContent::Smart(s) => (ContentKey::Smart, s.cache.as_ref().map(Tiles::of)),
             LayerContent::Shape(sh) => {
-                let path = photocraft_doc::ShapeLayer { path: sh.path.clone(), fill: sh.fill.clone(), stroke: sh.stroke.clone(), live: sh.live.clone(), cache: None, psd_raw: None };
+                let path = photocraft_doc::ShapeLayer {
+                    path: sh.path.clone(),
+                    fill: sh.fill.clone(),
+                    stroke: sh.stroke.clone(),
+                    live: sh.live.clone(),
+                    density: sh.density,
+                    feather: sh.feather,
+                    cache: None,
+                    psd_raw: None,
+                };
                 (ContentKey::Shape(Box::new(path)), sh.cache.as_ref().map(Tiles::of))
             }
             LayerContent::Group(g) => (ContentKey::Group(g.artboard.clone()), None),
@@ -391,7 +400,8 @@ fn reference_image(s: &Session, r: Reference, ex: Exclude, p: &Value, paper: boo
         path.pop();
         path
     });
-    let reference_groups: Vec<Vec<usize>> = d.doc.walk().into_iter().filter(|(_, _, l)| l.reference && l.children().is_some()).map(|(path, _, _)| path).collect();
+    let reference_groups: Vec<Vec<usize>> =
+        d.doc.walk().into_iter().filter(|(_, _, l)| l.reference && l.children().is_some()).map(|(path, _, _)| path).collect();
     let mut doc = (*d.doc).clone();
     let mut any = false;
     for (path, _, l) in d.doc.walk() {
@@ -552,7 +562,9 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
     let (paint, c) = match contents {
         "foreground" => (FillPaint::Blend(blend), color_param(FILL_ID, p, "color", fg)?),
         "background" => (FillPaint::Blend(blend), color_param(FILL_ID, p, "color", bg)?),
-        "color" => (FillPaint::Blend(blend), p.get("color").map(|_| color_param(FILL_ID, p, "color", fg)).ok_or_else(|| bad("`contents` color needs a `color`"))??),
+        "color" => {
+            (FillPaint::Blend(blend), p.get("color").map(|_| color_param(FILL_ID, p, "color", fg)).ok_or_else(|| bad("`contents` color needs a `color`"))??)
+        }
         "transparent" => (FillPaint::Erase, [0.0; 4]),
         _ => return Err(bad("`contents` must be foreground, background, color or transparent")),
     };
