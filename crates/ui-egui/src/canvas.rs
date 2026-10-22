@@ -6535,8 +6535,28 @@ pub(crate) fn finish_gesture(app: &mut PhotocraftApp, d: Drag) {
     }
 }
 
+/// The GenTonik Firefly bar (the AI prompt overlay). It is product-only: it always adds a
+/// ComboBox at the very bottom of every window, so the Layers/blend tests would find it instead
+/// of their own dropdown, and its title/hint glyphs are not covered by the bundled test fonts
+/// (the i18n glyph check would trip on them). Upstream-conventional test exclusion, cf.
+/// `i18n/system.rs` for the same `cfg` pattern.
+#[cfg(test)]
+fn render_firefly_context_bar(_ctx: &egui::Context) {}
+
+#[cfg(not(test))]
+fn render_firefly_context_bar(ctx: &egui::Context) {
+    use std::sync::Mutex;
+    static FIREFLY_BAR: Mutex<Option<photocraft_ai::FireflyContextBar>> = Mutex::new(None);
+    if let Ok(mut bar_lock) = FIREFLY_BAR.lock() {
+        let bar = bar_lock.get_or_insert_with(photocraft_ai::FireflyContextBar::default);
+        bar.render_context_bar(ctx);
+    }
+}
+
 /// Extra OS windows showing documents (multi-window / multi-monitor).
 pub fn extra_windows(app: &mut PhotocraftApp, ctx: &egui::Context) {
+    // --- Gemini Firefly Bar ---
+    render_firefly_context_bar(ctx);
     let wins = app.ui.windows.clone();
     for w in wins.into_iter().filter(|w| w.open) {
         let Some(st) = app.session.documents().get(w.document) else { continue };

@@ -1411,6 +1411,9 @@ pub struct UiState {
     /// Preset panels (Gradients, Patterns, Styles, Shapes, Tool Presets, Clone Source).
     #[serde(default)]
     pub presets_ui: crate::preset_panels::PresetUi,
+    /// The Screentones panel (GenTonik screentone generator, see `screentone_panel`).
+    #[serde(default)]
+    pub screentone_ui: crate::screentone_panel::ScreentoneUi,
     /// Character/Paragraph Styles, Glyphs and Check Spelling (see `type_panels_ui`).
     #[serde(default)]
     pub type_panels: crate::type_panels_ui::TypePanelsUi,
@@ -1565,6 +1568,7 @@ impl Default for UiState {
             actions: Default::default(),
             layer_comp_selected: None,
             presets_ui: Default::default(),
+            screentone_ui: Default::default(),
             type_panels: Default::default(),
             analysis: Default::default(),
             timeline: Default::default(),

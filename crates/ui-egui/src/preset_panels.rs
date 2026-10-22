@@ -761,7 +761,7 @@ pub fn patterns_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 // ------------------------------------------------------------------ floating panels
 
-fn float_window(
+pub(crate) fn float_window(
     app: &mut PhotocraftApp,
     ctx: &egui::Context,
     key: &str,

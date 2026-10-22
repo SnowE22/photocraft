@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "photocraft-ui-egui"
 version.workspace = true
 edition.workspace = true
@@ -8,6 +8,7 @@ license.workspace = true
 workspace = true
 
 [dependencies]
+photocraft-ai = { path = "../photocraft-ai" }
 craft-print = { workspace = true }
 craft-ui = { workspace = true }
 photocraft-geom = { workspace = true }
