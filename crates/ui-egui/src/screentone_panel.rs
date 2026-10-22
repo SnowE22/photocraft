@@ -324,6 +324,10 @@ fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             action = Some(photocraft_engine::screentone_cmds::FILTER);
         }
     });
+    ui.add_space(2.0);
+    if ui.button(tl!("Save as Pattern")).clicked() {
+        action = Some(photocraft_engine::screentone_cmds::PATTERN);
+    }
     app.ui.screentone_ui = st;
     if let Some(command) = action {
         let params = params(&app.ui.screentone_ui);

@@ -10,10 +10,13 @@
 //! (not just its frame) in the document.
 //!
 //! Both commands take the same flat parameter object (the dialog's notation), so a preset saved
-//! from one is replayable through the other.
+//! from one is replayable through the other. `pattern.screentone` renders that same sheet into
+//! the app-level pattern library (the panel's `Save as Pattern`), so a favourite tone survives
+//! restarts and can fill layers and brush textures like any other library pattern.
 
 use photocraft_algo::{self as algo, DotShape, FilterParams, PatternType, ScreentoneGradientType, ScreentoneSpec};
-use photocraft_doc::{Layer, LayerContent, LayerMask};
+use photocraft_color::PixelFormat;
+use photocraft_doc::{Layer, LayerContent, LayerMask, Pattern, Rect};
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
@@ -24,6 +27,8 @@ use crate::{EngineError, Result, Session};
 pub const FILTER: &str = "filter.screentone";
 /// Renders a procedural screentone sheet onto a new pixel layer (Screentones panel).
 pub const LAYER: &str = "layer.screentone";
+/// Renders the same sheet straight into the pattern library (`Save as Pattern` on the panel).
+pub const PATTERN: &str = "pattern.screentone";
 
 const PATTERNS: &str = "dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles";
 const SHAPES: &str = "circle|square|diamond|hexagon";
@@ -31,6 +36,9 @@ const GRADIENTS: &str = "none|linear|radial";
 
 /// The flat parameter notation shared by both commands (Photoshop-style dialog units).
 const PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"layer":id?,"name":text?} → {layer,bounds}"##;
+
+/// [PATTERN]'s notation: the same dialog fields, but the pattern library is the target.
+const PATTERN_PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"name":text?} → {pattern,bounds}"##;
 
 fn f_any(p: &Value, keys: &[&str], d: f32) -> f32 {
     for &k in keys {
@@ -197,7 +205,7 @@ fn choices(key: &str) -> Option<&'static str> {
 /// Rejects unknown choices and wrong-typed structured params for a new invocation. Every number
 /// is clamped in [`spec`], so an out-of-range value can never panic or corrupt a document.
 pub(crate) fn validate_params(id: &str, p: &Value) -> Result<()> {
-    if !matches!(id, FILTER | LAYER) {
+    if !matches!(id, FILTER | LAYER | PATTERN) {
         return Ok(());
     }
     let bad = |msg: String| EngineError::BadParams { cmd: id.into(), msg };
@@ -238,6 +246,19 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
     s.active().map(|_| ()).ok_or_else(|| "no document open".into())
 }
 
+/// The sheet's name: an explicit `name`, else the seeding preset's name, else "Screentone".
+fn requested_name(p: &Value) -> String {
+    p.get("name")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| {
+            p.get("preset")
+                .and_then(Value::as_str)
+                .and_then(|id| algo::screentone::built_in_presets().into_iter().find(|pr| pr.id == id).map(|pr| pr.name.to_string()))
+        })
+        .unwrap_or_else(|| "Screentone".to_string())
+}
+
 /// Renders a procedural screentone sheet onto a new pixel layer above the active one.
 fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     validate_params(LAYER, p)?;
@@ -260,16 +281,7 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let rendered = algo::apply(&Surface::new(st.doc.pixel_format()), &params, area, bounds, None);
 
-    let name = p
-        .get("name")
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .or_else(|| {
-            p.get("preset")
-                .and_then(Value::as_str)
-                .and_then(|id| algo::screentone::built_in_presets().into_iter().find(|pr| pr.id == id).map(|pr| pr.name.to_string()))
-        })
-        .unwrap_or_else(|| "Screentone".to_string());
+    let name = requested_name(p);
     // An active selection keeps shaping the sheet for good: the layer carries it as its mask
     // (as in Photoshop), so the tone shows only inside the selection now and later.
     let mask = selection.as_ref().map(|sel| {
@@ -295,7 +307,50 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     }))
 }
 
-/// The screentone commands: the Filter-menu filter and the panel's layer generator.
+/// Renders the same sheet straight into the pattern library: what the panel's "Save as Pattern"
+/// calls. Like [`create_layer`], the selection's frame bounds the tile when one is active, but
+/// nothing touches the document — the library is app state, as in `edit.definePattern`.
+fn create_pattern(s: &mut Session, p: &Value) -> Result<Value> {
+    validate_params(PATTERN, p)?;
+    let mut spec = spec(p);
+    // A generated sheet has no source luminance to modulate by: always procedural.
+    spec.use_source_luminance = false;
+    let params = FilterParams::Screentone { spec };
+
+    let st = s.active().ok_or(EngineError::NoDocument)?;
+    let doc_bounds = st.doc.bounds();
+    let selection = st.doc.selection.clone();
+    let sel_bounds = selection.as_ref().map(Surface::content_bounds).filter(|b| !b.is_empty());
+    let bounds = sel_bounds.unwrap_or(doc_bounds);
+    if bounds.is_empty() {
+        return Err(EngineError::Other("the document is empty".into()));
+    }
+    if bounds.width() > 4000 || bounds.height() > 4000 {
+        return Err(EngineError::Other("patterns are limited to 4000 × 4000 px".into()));
+    }
+    let area = algo::output_area(&params, bounds, bounds, sel_bounds);
+    if area.is_empty() {
+        return Err(EngineError::Other("nothing to render: the target area is empty".into()));
+    }
+    let rendered = algo::apply(&Surface::new(st.doc.pixel_format()), &params, area, bounds, None);
+    let fmt = rendered.format();
+    let channels = fmt.channels();
+    let px = rendered.read_region(area);
+
+    // Opaque patterns drop their alpha channel, as `edit.definePattern` does.
+    let opaque = px.chunks_exact(channels).all(|q| q[channels - 1] >= 1.0);
+    let mut tile = Surface::new(if opaque { PixelFormat::new(fmt.mode, fmt.sample, false) } else { fmt });
+    tile.write_region(Rect::new(0, 0, area.width() as i32, area.height() as i32), &px);
+    let pat = Pattern::new(requested_name(p), tile, area.width() as u32, area.height() as u32);
+    let id = pat.id.clone();
+    if !s.patterns.items.iter().any(|q| q.id == id) {
+        s.patterns.items.push(pat);
+    }
+    Ok(json!({"pattern": id, "bounds": [area.x0, area.y0, area.x1, area.y1]}))
+}
+
+/// The screentone commands: the Filter-menu filter, the panel's layer generator and the panel's
+/// "Save as Pattern" library action.
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         CommandSpec {
@@ -316,6 +371,16 @@ pub fn specs() -> Vec<CommandSpec> {
             params: PARAMS,
             enabled: has_doc,
             run: create_layer,
+            journal: true,
+        },
+        CommandSpec {
+            id: PATTERN,
+            label: "Screentone Pattern",
+            menu: &[],
+            shortcut: None,
+            params: PATTERN_PARAMS,
+            enabled: has_doc,
+            run: create_pattern,
             journal: true,
         },
     ]
@@ -448,5 +513,60 @@ mod tests {
         let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10})).unwrap();
         let id = r["layer"].as_u64().unwrap();
         assert!(s.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().mask.is_none());
+    }
+
+    #[test]
+    fn pattern_command_fills_the_library_without_touching_the_document() {
+        for depth in [8, 16, 32] {
+            let mut s = session(depth);
+            let doc = s.active().unwrap().doc.clone();
+            let before = s.patterns.items.len();
+            let r = s.execute(PATTERN, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10, "name": "Mesh"})).unwrap_or_else(|e| panic!("pattern@{depth}: {e}"));
+            assert!(r["pattern"].is_string(), "{r}");
+            assert_eq!(s.patterns.items.len(), before + 1, "depth {depth}");
+            let pat = s.patterns.items.last().unwrap();
+            assert_eq!(pat.name, "Mesh");
+            assert!(pat.width > 0 && pat.height > 0, "pattern {width}×{height}", width = pat.width, height = pat.height);
+            // The tile holds visible tone and matches the document's colour mode.
+            let rect = photocraft_geom::Rect::new(0, 0, pat.width as i32, pat.height as i32);
+            assert!(pat.surface.read_region(rect).chunks_exact(pat.surface.channels()).any(|q| q.iter().any(|v| *v > 0.5)), "pattern@{depth} drew nothing");
+            // The library edit never touched the document itself.
+            assert!(std::sync::Arc::ptr_eq(&doc, &s.active().unwrap().doc), "depth {depth}");
+        }
+        // Defining the same tile again reuses the pattern instead of duplicating it.
+        let mut s = session(8);
+        let a = s.execute(PATTERN, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10, "seed": 7})).unwrap();
+        let b = s.execute(PATTERN, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10, "seed": 7})).unwrap();
+        assert_eq!(a["pattern"], b["pattern"], "identical tiles dedupe");
+    }
+
+    #[test]
+    fn pattern_command_bounds_the_tile_and_names_it() {
+        let mut s = session(8);
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 40, "height": 72})).unwrap();
+        let preset = algo::screentone::built_in_presets().into_iter().next().unwrap();
+        let r = s.execute(PATTERN, json!({"preset": preset.id})).unwrap_or_else(|e| panic!("pattern: {e}"));
+        assert!(r["bounds"].is_array(), "{r}");
+        let pat = s.patterns.items.last().unwrap();
+        assert_eq!(pat.name, preset.name, "the preset's name is the fallback");
+        assert_eq!((pat.width, pat.height), (40, 72), "the selection frame bounds the tile");
+    }
+
+    #[test]
+    fn pattern_command_without_a_document_fails_gracefully() {
+        let mut empty = Session::new();
+        assert!(empty.execute(PATTERN, json!({})).is_err());
+        // Out-of-range and wrong-typed keys fail before anything is defined.
+        assert!(empty.active().is_none());
+    }
+
+    #[test]
+    fn pattern_command_rejects_bad_params_like_the_other_screentone_commands() {
+        let mut s = session(8);
+        let before = s.patterns.items.len();
+        for p in [json!({"patternType": "spiral"}), json!({"dotShape": 3}), json!({"name": 5})] {
+            assert!(s.execute(PATTERN, p.clone()).is_err(), "{p}");
+            assert_eq!(s.patterns.items.len(), before, "{p}");
+        }
     }
 }
