@@ -582,6 +582,13 @@ pub(crate) fn strokes_live(tool: Tool) -> bool {
     ) || live_retouch_command(tool).is_some()
 }
 
+/// Tools that start their stroke on the press, as the brushes do: the live ones, and the Remove
+/// tool and Spot Healing Brush, whose footprint shows as it is painted. They started only once
+/// the pointer had moved past the click distance, and a click painted on the release.
+pub(crate) fn strokes_on_press(tool: Tool) -> bool {
+    strokes_live(tool) || matches!(tool, Tool::Remove | Tool::SpotHealing)
+}
+
 /// The retouching tools drawn live (`LiveRetouch`), by the command their live stroke previews.
 /// The Healing Brush shows its texture while drawing; the blend comes on release.
 fn live_retouch_command(tool: Tool) -> Option<&'static str> {
@@ -3705,10 +3712,16 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                     crate::adjust_dialog::sample_at(app, d[0], d[1]);
                 } else if replace_picking {
                     crate::filter_dialog::color_eyedropper_sample(app, d[0], d[1]);
-                } else {
-                    crate::color_picker_ui::sample_at(app, d[0], d[1]);
+                } else if !crate::color_picker_ui::sample_at(app, d[0], d[1]) && ctx.input(|i| i.pointer.is_decidedly_dragging()) {
+                    // Dragged off the image onto the pasteboard: the screen's colour there.
+                    crate::color_picker_ui::sample_screen(app);
                 }
             }
+        } else if picking && !curves_picking && !replace_picking && crate::dialogs::drag_off_canvas(&ctx, rect).is_some() {
+            // Dragged from the image out over a panel, the dialog or another application: the
+            // Color Picker samples the screen there, as the Eyedropper tool does.
+            ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
+            crate::color_picker_ui::sample_screen(app);
         } else if pinning
             && !middle
             && let Some(p) = crate::dialogs::free_pointer_over(&ctx, rect)
@@ -3904,7 +3917,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         // Live painting tools start on the press, not once the pointer passes egui's click
         // distance: the first dab shows at once. The drag recognised later continues that stroke,
         // and a click (or a long press that never moved) just ends it.
-        if (strokes_live(tool) || crate::fill_tool_ui::acts_on_press(app, tool))
+        if (strokes_on_press(tool) || crate::fill_tool_ui::acts_on_press(app, tool))
             && app.drag.is_none()
             && response.is_pointer_button_down_on()
             && ui.input(|i| i.pointer.primary_pressed())
@@ -4401,11 +4414,12 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 // layer under it is marked by the hover outline, not by a different cursor. With
                 // ⌥ a drag duplicates, and the arrow gets Photoshop's duplicate badge, so ⌥ and
                 // ⌘ (the temporary Move tool) don't look alike.
-                Tool::Move => {
-                    if move_duplicates(app, crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers))) {
-                        crate::icons::cursor_copy_badge(ui.ctx(), p);
-                    }
-                    egui::CursorIcon::Default
+                Tool::Move => crate::tool_cursor::move_arrow(ui.ctx(), p, move_duplicates(app, crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)))),
+                // Photoshop's tool pointers for the lassos, the wand, the crops, the slice knife
+                // and the ruler (Other Cursors: Standard), where every one was the crosshair.
+                t if !precise_other_cursor(app) && standard_icon_cursor(t).is_some() => {
+                    let (name, hot) = standard_icon_cursor(t).unwrap_or(("square", vec2(12.0, 12.0)));
+                    crate::tool_cursor::icon(ui.ctx(), name, p, hot / 24.0, 22.0)
                 }
                 // Dragging is handled with the pan itself, above.
                 Tool::Hand => crate::tool_cursor::hand(ui.ctx(), false),
@@ -5539,24 +5553,41 @@ pub(crate) fn pen_cursor(ctx: &egui::Context, tool: Tool, p: Pos2) -> egui::Curs
         Tool::ConvertPoint => vec2(12.0, 7.0),
         _ => vec2(2.3, 2.3),
     };
-    crate::icons::cursor(ctx, crate::icons::tool_icon(tool), p, hot / 24.0, 22.0);
-    egui::CursorIcon::None
+    crate::tool_cursor::icon(ctx, crate::icons::tool_icon(tool), p, hot / 24.0, 22.0)
+}
+
+/// The icon a tool's pointer shows (Preferences › Cursors › Other Cursors: Standard), and where
+/// in its 24-unit box the point that acts is.
+fn standard_icon_cursor(tool: Tool) -> Option<(&'static str, egui::Vec2)> {
+    Some(match tool {
+        // The end of the rope.
+        Tool::Lasso => ("lasso", vec2(7.0, 22.0)),
+        // The lower-left corner.
+        Tool::PolygonLasso => ("pentagon", vec2(5.5, 20.5)),
+        // The wand's tip.
+        Tool::MagicWand => ("wand-sparkles", vec2(3.0, 21.0)),
+        // Where the crop marks cross.
+        Tool::Crop => ("crop", vec2(6.0, 6.0)),
+        Tool::PerspectiveCrop => ("perspective-crop", vec2(8.0, 6.0)),
+        // The blade's edge.
+        Tool::Slice => ("slice-knife", vec2(4.0, 20.0)),
+        Tool::Ruler => ("ruler", vec2(3.5, 4.5)),
+        _ => return None,
+    })
 }
 
 /// The sampling cursor: a pipette whose tip is the sampled pixel. Draws it at `p` and returns the
 /// OS cursor to set (hidden).
 pub(crate) fn pipette_cursor(ctx: &egui::Context, p: Pos2) -> egui::CursorIcon {
     // The tip of the icon's pipette is at (2, 22) of its 24-unit box.
-    crate::icons::cursor(ctx, "pipette", p, vec2(2.0, 22.0) / 24.0, 20.0);
-    egui::CursorIcon::None
+    crate::tool_cursor::icon(ctx, "pipette", p, vec2(2.0, 22.0) / 24.0, 20.0)
 }
 
 /// The Paint Bucket's cursor: a bucket whose pouring corner is the filled pixel. Draws it at `p`
 /// and returns the OS cursor to set (hidden).
 pub(crate) fn paint_bucket_cursor(ctx: &egui::Context, p: Pos2) -> egui::CursorIcon {
     // The left corner of the icon's bucket is at (2, 12) of its 24-unit box.
-    crate::icons::cursor(ctx, "paint-bucket", p, vec2(2.0, 12.0) / 24.0, 22.0);
-    egui::CursorIcon::None
+    crate::tool_cursor::icon(ctx, "paint-bucket", p, vec2(2.0, 12.0) / 24.0, 22.0)
 }
 
 /// Decided when the press starts, so ⌥ pressed or released mid-stroke never switches between
@@ -5847,7 +5878,7 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                 // A locked layer under the pointer (the Background) can't move. Photoshop draws
                 // the layer marquee instead of reporting the lock (#4058). Probe without
                 // selecting so a locked hit doesn't become the selection first.
-                let probe = app.run("layer.pickAt", json!({"x": x, "y": y, "target": target, "select": false}));
+                let probe = app.run("layer.pickAt", json!({"x": x, "y": y, "minOpacity": app.ui.tool_options.move_pick_opacity, "target": target, "select": false}));
                 let locked_hit = probe.as_ref().ok().and_then(|v| v["layer"].as_u64()).is_some_and(|id| {
                     app.session.active().is_some_and(|st| {
                         let id = photocraft_doc::LayerId(id);
@@ -5859,12 +5890,12 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                     if locked_hit {
                         // A click still selects the locked layer, as in Photoshop; a drag's
                         // marquee then replaces that selection on release.
-                        let _ = app.run("layer.pickAt", json!({"x": x, "y": y, "target": target, "mode": mode}));
+                        let _ = app.run("layer.pickAt", json!({"x": x, "y": y, "minOpacity": app.ui.tool_options.move_pick_opacity, "target": target, "mode": mode}));
                     }
                     crate::move_box::begin(app, [x, y], mods.shift);
                     return;
                 }
-                let picked = app.run("layer.pickAt", json!({"x": x, "y": y, "target": target, "mode": mode}));
+                let picked = app.run("layer.pickAt", json!({"x": x, "y": y, "minOpacity": app.ui.tool_options.move_pick_opacity, "target": target, "mode": mode}));
                 // No pixels there at all (an empty spot, or off the canvas): drag a marquee that
                 // selects the layers it touches instead (move_box.rs).
                 if picked.is_ok_and(|v| v["layer"].is_null()) && crate::move_box::empty_at(app, [x, y]) {

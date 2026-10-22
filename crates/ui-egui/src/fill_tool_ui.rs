@@ -28,11 +28,55 @@ pub enum SubTool {
     Unfilled,
 }
 
-/// The Fill tool's options (`ToolOptions::fill_tool`), as `paint.fill` takes them.
+/// The Fill tool's options (`ToolOptions::fill_tool`): each sub tool keeps its own settings, as
+/// each of Clip Studio's fill sub tools does, so a change to one doesn't carry over to the others.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct FillToolOptions {
     pub sub_tool: SubTool,
+    /// The click's settings (at the top level, where every sub tool's were before).
+    #[serde(flatten)]
+    pub click: FillSettings,
+    pub enclose: FillSettings,
+    pub unfilled: FillSettings,
+    /// Each Undo of a click fill closes bigger gaps for the next click, until another tool is
+    /// picked ([`after_undo`]).
+    pub undo_widens_gap: bool,
+}
+
+impl Default for FillToolOptions {
+    fn default() -> Self {
+        Self { sub_tool: SubTool::Click, click: FillSettings::default(), enclose: FillSettings::default(), unfilled: FillSettings::default(), undo_widens_gap: false }
+    }
+}
+
+impl FillToolOptions {
+    /// The settings of the sub tool in use.
+    pub fn current(&self) -> &FillSettings {
+        match self.sub_tool {
+            SubTool::Click => &self.click,
+            SubTool::Enclose => &self.enclose,
+            SubTool::Unfilled => &self.unfilled,
+        }
+    }
+
+    pub fn current_mut(&mut self) -> &mut FillSettings {
+        self.of_mut(self.sub_tool)
+    }
+
+    pub fn of_mut(&mut self, sub: SubTool) -> &mut FillSettings {
+        match sub {
+            SubTool::Click => &mut self.click,
+            SubTool::Enclose => &mut self.enclose,
+            SubTool::Unfilled => &mut self.unfilled,
+        }
+    }
+}
+
+/// One Fill sub tool's settings, as `paint.fill` takes them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FillSettings {
     /// layer | all | selected | folder | reference
     pub reference: String,
     pub exclude_layer: bool,
@@ -57,6 +101,10 @@ pub struct FillToolOptions {
     pub target_color: String,
     /// Paint Unfilled Area's brush diameter, px.
     pub size: f32,
+    /// %.
+    pub opacity: f32,
+    /// With a multi-layer reference, the editing layer's own paint stops the fill at any tolerance.
+    pub layer_blocks: bool,
 }
 
 /// The Close Gap buttons' gaps, px: Clip Studio's five levels instead of a number.
@@ -109,10 +157,9 @@ fn gesture_id(kind: &str) -> String {
     format!("{kind}-{}", NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
 }
 
-impl Default for FillToolOptions {
+impl Default for FillSettings {
     fn default() -> Self {
         Self {
-            sub_tool: SubTool::Click,
             reference: "all".into(),
             exclude_layer: false,
             exclude_text: false,
@@ -128,13 +175,15 @@ impl Default for FillToolOptions {
             image_border: false,
             target_color: "transparent".into(),
             size: 40.0,
+            opacity: 100.0,
+            layer_blocks: false,
         }
     }
 }
 
 /// The `paint.fill` params for the options, without the click, lasso or stroke.
 pub fn params(app: &PhotocraftApp) -> Value {
-    let o = &app.ui.tool_options.fill_tool;
+    let o = app.ui.tool_options.fill_tool.current();
     let exclude: Vec<&str> = [(o.exclude_layer, "layer"), (o.exclude_text, "text"), (o.exclude_locked, "locked")].into_iter().filter(|(on, _)| *on).map(|(_, k)| k).collect();
     json!({
         "reference": o.reference,
@@ -149,8 +198,9 @@ pub fn params(app: &PhotocraftApp) -> Value {
         "targetColor": o.target_color,
         "contents": o.contents,
         "mode": format!("{:?}", o.mode),
-        "opacity": app.ui.tool_options.fill_opacity,
+        "opacity": o.opacity,
         "size": o.size,
+        "layerBlocks": o.layer_blocks,
         "target": crate::canvas::paint_target(app),
     })
 }
@@ -169,6 +219,60 @@ fn run(app: &mut PhotocraftApp, p: Value, nothing: &str) {
     }
 }
 
+/// Close Gap widened by Undo ([`after_undo`]): what it was before, and what it was widened to.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GapRetry {
+    base: f32,
+    widened: f32,
+    /// An Undo widened it and no click has filled since.
+    retrying: bool,
+}
+
+/// The gaps Undo steps Close Gap through: the buttons' levels, then wider.
+const RETRY_GAPS: [f32; 10] = [2.0, 4.0, 6.0, 10.0, 16.0, 24.0, 32.0, 48.0, 64.0, 100.0];
+
+/// The next wider gap after `gap`.
+fn wider(gap: f32) -> f32 {
+    RETRY_GAPS.iter().copied().find(|g| *g > gap + 1e-3).unwrap_or(photocraft_algo::fill::MAX_GAP)
+}
+
+/// After an Undo (`undone` is the step it took back): with Undo widens Close Gap on, taking back a
+/// click fill (it leaked through a gap Close Gap didn't close) closes bigger gaps for the next
+/// click, and each further Undo bigger still. Close Gap goes back to the user's own value once a
+/// fill is kept and the next area is clicked, or another tool is picked.
+pub fn after_undo(app: &mut PhotocraftApp, undone: Option<&str>) {
+    let o = &app.ui.tool_options.fill_tool;
+    if !o.undo_widens_gap || app.active_tool() != Tool::Fill || o.sub_tool != SubTool::Click || undone != Some("Fill Tool") {
+        return;
+    }
+    let gap = o.click.close_gap;
+    let next = wider(gap);
+    if next <= gap {
+        return;
+    }
+    let base = app.fill_gap_retry.as_ref().map_or(gap, |r| r.base);
+    app.fill_gap_retry = Some(GapRetry { base, widened: next, retrying: true });
+    app.ui.tool_options.fill_tool.click.close_gap = next;
+    app.ui.status = crate::i18n::fmt(tl!("Close Gap widened to {px} px: click again to fill"), &[("px", &format!("{next}"))]);
+    app.ui.status_error = false;
+}
+
+/// Close Gap back to the user's own value (unless they changed it meanwhile).
+fn restore_gap(app: &mut PhotocraftApp) {
+    let Some(r) = app.fill_gap_retry.take() else { return };
+    let gap = &mut app.ui.tool_options.fill_tool.click.close_gap;
+    if (*gap - r.widened).abs() < 1e-3 {
+        *gap = r.base;
+    }
+}
+
+/// Every frame: another tool picked ends a widened Close Gap.
+pub fn tick(app: &mut PhotocraftApp) {
+    if app.fill_gap_retry.is_some() && (app.active_tool() != Tool::Fill || app.ui.tool_options.fill_tool.sub_tool != SubTool::Click) {
+        restore_gap(app);
+    }
+}
+
 /// Whether a press with `tool` acts at once, on the press (a click fill, the wand), instead of on
 /// the release as a click: the canvas then keeps the drag going for [`drag_to`].
 pub fn acts_on_press(app: &PhotocraftApp, tool: Tool) -> bool {
@@ -181,6 +285,14 @@ pub fn acts_on_press(app: &PhotocraftApp, tool: Tool) -> bool {
 pub fn press(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
     if app.ui.tool_options.fill_tool.sub_tool != SubTool::Click {
         return false;
+    }
+    // A click after a fill that was kept (no Undo since): the gap it needed is closed, and Close
+    // Gap goes back to what it was for the next area.
+    if app.fill_gap_retry.as_ref().is_some_and(|r| !r.retrying) {
+        restore_gap(app);
+    }
+    if let Some(r) = app.fill_gap_retry.as_mut() {
+        r.retrying = false;
     }
     let gesture = gesture_id("fill");
     let mut p = params(app);
@@ -223,7 +335,7 @@ fn wand_params(app: &PhotocraftApp) -> Value {
         p["areaScaling"] = json!(f.area_scaling);
         p["scalingMode"] = json!(f.scaling_mode);
         p["reference"] = json!(f.reference(o.sample_all.magic_wand));
-        p["imageBorder"] = json!(o.fill_tool.image_border);
+        p["imageBorder"] = json!(o.fill_tool.click.image_border);
     }
     p
 }
@@ -295,7 +407,7 @@ pub fn draw_drag(app: &mut PhotocraftApp, painter: &egui::Painter, xf: &ViewXfor
             let size = [st.doc.size.width, st.doc.size.height];
             let doc_rect = xf.doc_rect(st.doc.bounds());
             let colour = stroke_colour(painter.ctx());
-            let diameter = app.ui.tool_options.fill_tool.size;
+            let diameter = app.ui.tool_options.fill_tool.current().size;
             let trail = app.trail.get_or_insert_with(|| crate::stroke_trail::Trail::new(size));
             trail.feed(points, diameter);
             trail.draw(painter, doc_rect, xf.flip, colour);
@@ -316,7 +428,7 @@ pub fn cursor(app: &PhotocraftApp, ctx: &egui::Context, painter: &egui::Painter,
         SubTool::Click => crate::canvas::paint_bucket_cursor(ctx, p),
         SubTool::Enclose => egui::CursorIcon::Crosshair,
         SubTool::Unfilled => {
-            let r = (app.ui.tool_options.fill_tool.size * zoom / 2.0).max(1.0);
+            let r = (app.ui.tool_options.fill_tool.current().size * zoom / 2.0).max(1.0);
             painter.circle_stroke(p, r + 1.0, egui::Stroke::new(1.0, Color32::from_black_alpha(160)));
             painter.circle_stroke(p, r, egui::Stroke::new(1.0, Color32::WHITE));
             egui::CursorIcon::Crosshair
@@ -329,16 +441,17 @@ pub fn cursor(app: &PhotocraftApp, ctx: &egui::Context, painter: &egui::Painter,
 pub fn options_bar(app: &mut PhotocraftApp, ui: &mut Ui) {
     use crate::panels::opt_label;
     ui.spacing_mut().item_spacing.x = 2.0;
-    let o = &mut app.ui.tool_options.fill_tool;
+    let tool = &mut app.ui.tool_options.fill_tool;
     for (sub, icon, tip) in [
         (SubTool::Click, "fill-tool", tl!("Fill: click an area")),
         (SubTool::Enclose, "lasso", tl!("Enclose and Fill: draw round the areas to fill")),
         (SubTool::Unfilled, "brush", tl!("Paint Unfilled Area: paint over the gaps a fill left")),
     ] {
-        if icons::button(ui, icon, 24.0, o.sub_tool == sub, tip).clicked() {
-            o.sub_tool = sub;
+        if icons::button(ui, icon, 24.0, tool.sub_tool == sub, tip).clicked() {
+            tool.sub_tool = sub;
         }
     }
+    let sub_tool = tool.sub_tool;
     ui.spacing_mut().item_spacing.x = 8.0;
     widgets::vline(ui, 22.0);
     opt_label(ui, tl!("Refer"));
@@ -349,8 +462,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut Ui) {
         ("folder".to_string(), tl!("Layers in Folder")),
         ("reference".to_string(), tl!("Reference Layers")),
     ];
-    widgets::dropdown(ui, "fill-tool-reference", &mut o.reference, &refs, 124.0);
-    more_menu(o, ui);
+    widgets::dropdown(ui, "fill-tool-reference", &mut tool.current_mut().reference, &refs, 124.0);
+    more_menu(tool, ui);
+    let o = tool.current_mut();
     widgets::vline(ui, 22.0);
     opt_label(ui, tl!("Tolerance"));
     widgets::value_field(ui, &mut o.tolerance, 0.0..=100.0, "%", 58.0);
@@ -360,7 +474,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut Ui) {
     let modes = [("darkest".to_string(), tl!("To Darkest Pixel")), ("round".to_string(), tl!("Round")), ("square".to_string(), tl!("Square"))];
     widgets::dropdown(ui, "fill-tool-scaling", &mut o.scaling_mode, &modes, 118.0);
     widgets::vline(ui, 22.0);
-    match o.sub_tool {
+    match sub_tool {
         SubTool::Click => {
             widgets::checkbox(ui, &mut o.contiguous, tl!("Contiguous")).on_hover_text(tl!("Follow Adjacent Pixels"));
         }
@@ -368,7 +482,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut Ui) {
             opt_label(ui, tl!("Target"));
             let targets = [("transparent".to_string(), tl!("Transparent")), ("whiteAndTransparent".to_string(), tl!("White and Transparent"))];
             widgets::dropdown(ui, "fill-tool-target", &mut o.target_color, &targets, 150.0);
-            if o.sub_tool == SubTool::Unfilled {
+            if sub_tool == SubTool::Unfilled {
                 opt_label(ui, tl!("Size"));
                 widgets::value_field(ui, &mut o.size, 1.0..=2000.0, "px", 62.0);
             }
@@ -381,7 +495,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut Ui) {
         widgets::dropdown_wheel_hovered(ui, "fill-tool-mode", &mut o.mode, &blend, 96.0);
     }
     opt_label(ui, tl!("Opacity"));
-    widgets::value_field(ui, &mut app.ui.tool_options.fill_opacity, 1.0..=100.0, "%", 62.0);
+    widgets::value_field(ui, &mut o.opacity, 1.0..=100.0, "%", 62.0);
 }
 
 /// Clip Studio's Close Gap: five buttons from a small gap to a big one, lit up to the chosen
@@ -443,10 +557,18 @@ pub fn wand_options(app: &mut PhotocraftApp, ui: &mut Ui) {
 
 /// The gear menu: the colour the fill lays down, the layers a multi-layer reference leaves out,
 /// and whether the canvas edge closes gaps.
-fn more_menu(o: &mut FillToolOptions, ui: &mut Ui) {
+fn more_menu(tool: &mut FillToolOptions, ui: &mut Ui) {
     let r = icons::button(ui, "settings", 24.0, false, tl!("Fill Tool Options"));
     egui::Popup::menu(&r).close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside).show(|ui| {
         ui.set_min_width(220.0);
+        let click = tool.sub_tool == SubTool::Click;
+        let sub_tool = tool.sub_tool;
+        let undo_widens = &mut tool.undo_widens_gap;
+        let o = match sub_tool {
+            SubTool::Click => &mut tool.click,
+            SubTool::Enclose => &mut tool.enclose,
+            SubTool::Unfilled => &mut tool.unfilled,
+        };
         ui.label(tl!("Color"));
         for (value, label) in [("foreground", tl!("Foreground")), ("background", tl!("Background")), ("transparent", tl!("Transparent"))] {
             if ui.radio(o.contents == value, label).clicked() {
@@ -459,9 +581,17 @@ fn more_menu(o: &mut FillToolOptions, ui: &mut Ui) {
             widgets::checkbox(ui, &mut o.exclude_layer, tl!("Editing layer"));
             widgets::checkbox(ui, &mut o.exclude_text, tl!("Text layers"));
             widgets::checkbox(ui, &mut o.exclude_locked, tl!("Locked layers"));
+            ui.separator();
+            widgets::checkbox(ui, &mut o.layer_blocks, tl!("Editing layer blocks the fill"))
+                .on_hover_text(tl!("Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it"));
         });
         ui.separator();
         widgets::checkbox(ui, &mut o.image_border, tl!("Image Border")).on_hover_text(tl!("The canvas edge closes gaps as a line does"));
+        if click {
+            ui.separator();
+            widgets::checkbox(ui, undo_widens, tl!("Undo widens Close Gap"))
+                .on_hover_text(tl!("Each Undo of a fill closes bigger gaps for the next click, until you pick another tool"));
+        }
     });
 }
 

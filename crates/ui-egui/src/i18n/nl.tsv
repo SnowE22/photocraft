@@ -4363,3 +4363,13 @@ curves	Smooth	Vloeiend maken
 	Disable Second Mask	Tweede masker uitschakelen
 	Enable Second Mask	Tweede masker inschakelen
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Selectie vergrendelen: klikken op het canvas gaan erdoorheen (het deelvenster Lagen selecteert hem nog wel)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Huidige laag instellen
+	Editing layer blocks the fill	Bewerkte laag houdt de vulling tegen
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Verf op de laag die wordt gevuld houdt de vulling bij elke tolerantie tegen, en de vulling gaat erachter: teken over een opening om die te sluiten
+	Undo widens Close Gap	Ongedaan maken vergroot Openingen sluiten
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Elke keer dat u een vulling ongedaan maakt, sluit de volgende klik grotere openingen, tot u een ander gereedschap kiest
+	Close Gap widened to {px} px: click again to fill	Openingen sluiten vergroot tot {px} px: klik opnieuw om te vullen
+	Pick From	Selecteren vanaf
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Hoe dekkend een laag onder de aanwijzer moet zijn om met Ctrl-klik en Automatisch selecteren te worden gekozen: zwakkere pixels, zoals een bijna zwart masker, worden doorgeklikt (0: elke zichtbare pixel)

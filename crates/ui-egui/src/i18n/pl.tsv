@@ -4207,3 +4207,13 @@ curves	Smooth	Wygładź
 	Disable Second Mask	Wyłącz drugą maskę
 	Enable Second Mask	Włącz drugą maskę
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Zablokuj zaznaczanie: kliknięcia na płótnie przechodzą przez nią (panel Warstwy nadal ją zaznacza)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Ustaw bieżącą warstwę
+	Editing layer blocks the fill	Edytowana warstwa zatrzymuje wypełnienie
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Farba na wypełnianej warstwie zatrzymuje wypełnienie przy dowolnej tolerancji, a wypełnienie wchodzi pod nią: zamaluj lukę, aby ją zamknąć
+	Undo widens Close Gap	Cofnij poszerza Zamknij luki
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Każde cofnięcie wypełnienia zamyka większe luki przy następnym kliknięciu, dopóki nie wybierzesz innego narzędzia
+	Close Gap widened to {px} px: click again to fill	Zamknij luki poszerzono do {px} px: kliknij ponownie, aby wypełnić
+	Pick From	Wybieraj od
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Jak kryjąca musi być warstwa pod wskaźnikiem, by Ctrl+kliknięcie i Zaznaczaj automatycznie ją wybrały: słabsze piksele, np. prawie czarna maska, są przeklikiwane (0: każdy widoczny piksel)

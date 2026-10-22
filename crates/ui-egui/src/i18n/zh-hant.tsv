@@ -3225,3 +3225,13 @@ curves	Smooth	平滑
 	Disable Second Mask	停用第二個遮色片
 	Enable Second Mask	啟用第二個遮色片
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	鎖定選取：在畫布上按一下會穿過它（圖層面板仍可選取）
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	設定目前圖層
+	Editing layer blocks the fill	編輯中的圖層阻擋填色
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	被填色圖層上的繪畫在任何容許度下都會阻擋填色，填色會進入其後方：在間隙上畫一筆即可封閉它
+	Undo widens Close Gap	還原時擴大封閉間隙
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	每次還原填色，下一次按一下都會封閉更大的間隙，直到您選擇其他工具
+	Close Gap widened to {px} px: click again to fill	封閉間隙已擴大到 {px} 像素：再按一下以填色
+	Pick From	選取起點
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	圖層在指標下需要多不透明，Ctrl 按一下和自動選取才會選中它：更淡的像素（如幾乎全黑的遮色片）會被點穿（0：任何可見像素）

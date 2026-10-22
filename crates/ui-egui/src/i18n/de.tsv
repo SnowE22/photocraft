@@ -3612,3 +3612,13 @@ curves	Smooth	Glätten
 	Disable Second Mask	Zweite Maske deaktivieren
 	Enable Second Mask	Zweite Maske aktivieren
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Auswahl sperren: Klicks auf die Arbeitsfläche gehen hindurch (das Ebenenbedienfeld wählt sie weiterhin aus)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Aktuelle Ebene festlegen
+	Editing layer blocks the fill	Bearbeitete Ebene stoppt die Füllung
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Farbe auf der gefüllten Ebene stoppt die Füllung bei jeder Toleranz, und die Füllung geht dahinter: Malen Sie über eine Lücke, um sie zu schließen
+	Undo widens Close Gap	Rückgängig vergrößert Lücke schließen
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Jedes Rückgängig einer Füllung schließt beim nächsten Klick größere Lücken, bis Sie ein anderes Werkzeug wählen
+	Close Gap widened to {px} px: click again to fill	Lücke schließen auf {px} px vergrößert: zum Füllen erneut klicken
+	Pick From	Auswählen ab
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Wie deckend eine Ebene unter dem Zeiger sein muss, damit Strg-Klick und Automatisch auswählen sie wählen: schwächere Pixel, etwa eine fast schwarze Maske, werden durchgeklickt (0: jedes sichtbare Pixel)

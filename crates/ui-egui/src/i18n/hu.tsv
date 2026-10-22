@@ -4522,3 +4522,13 @@ cameraRaw	Yellow	Sárga
 	Disable Second Mask	Második maszk kikapcsolása
 	Enable Second Mask	Második maszk bekapcsolása
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Kijelölés zárolása: a vászonra kattintás áthalad rajta (a Rétegek panel továbbra is kijelöli)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Aktuális réteg beállítása
+	Editing layer blocks the fill	A szerkesztett réteg megállítja a kitöltést
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	A kitöltött rétegen lévő festék bármilyen tűrésnél megállítja a kitöltést, és a kitöltés mögé kerül: fessen át egy résen a bezárásához
+	Undo widens Close Gap	A visszavonás bővíti a Rés bezárását
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	A kitöltés minden visszavonása nagyobb réseket zár be a következő kattintásnál, amíg másik eszközt nem választ
+	Close Gap widened to {px} px: click again to fill	Rés bezárása {px} px-re bővítve: kattintson újra a kitöltéshez
+	Pick From	Kijelölés ettől
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Milyen átlátszatlan legyen a réteg a mutató alatt, hogy a Ctrl-kattintás és az Automatikus kijelölés kiválassza: a halványabb képpontokon (például egy majdnem fekete maszkon) átkattint (0: bármely látható képpont)

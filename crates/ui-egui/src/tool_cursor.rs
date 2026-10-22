@@ -12,7 +12,55 @@ use egui::{CursorIcon, CustomCursorImage, Painter, Pos2, Stroke, Vec2, vec2};
 use crate::canvas::ViewXform;
 
 mod hand;
+mod icon;
 mod zoom;
+
+/// A tool's icon as the pointer: `name` at `size` points with its point `hot` (a fraction of its
+/// box) on the pointer. An OS cursor bitmap that moves with the hardware pointer where the
+/// platform takes one, else painted at `p`.
+pub(crate) fn icon(ctx: &egui::Context, name: &'static str, p: Pos2, hot: Vec2, size: f32) -> CursorIcon {
+    ctx.data_mut(|d| d.insert_temp(shown_id(), name));
+    if native(ctx)
+        && let Some(image) = icon::image(&[icon::Part::at_hotspot(name, hot, size)], native_scale(ctx))
+    {
+        ctx.set_cursor_image(Some(image));
+        return CursorIcon::None;
+    }
+    crate::icons::cursor(ctx, name, p, hot, size);
+    CursorIcon::None
+}
+
+fn shown_id() -> egui::Id {
+    egui::Id::new("photocraft-tool-cursor-icon")
+}
+
+/// The icon this pass's pointer showed ([`icon`]; "move" or "duplicate" for [`move_arrow`]).
+#[cfg(test)]
+pub(crate) fn shown_icon(ctx: &egui::Context) -> Option<&'static str> {
+    ctx.data(|d| d.get_temp::<&'static str>(shown_id()))
+}
+
+/// The Move tool's pointer, Photoshop's black arrow: with a small move cross, or (`duplicate`,
+/// ⌥ held) a white arrow behind it, as a drag then copies. The OS arrow, which many tools also
+/// showed, made ⌥ and ⌘ look the same.
+pub(crate) fn move_arrow(ctx: &egui::Context, p: Pos2, duplicate: bool) -> CursorIcon {
+    ctx.data_mut(|d| d.insert_temp(shown_id(), if duplicate { "duplicate" } else { "move" }));
+    let parts = if duplicate {
+        [icon::arrow(17.0, false, vec2(5.0, 5.0)), icon::arrow(20.0, true, Vec2::ZERO)]
+    } else {
+        [icon::arrow(20.0, true, Vec2::ZERO), icon::Part { name: "move", at: vec2(10.0, 12.0), size: 11.0, dark: true, filled: false }]
+    };
+    if native(ctx)
+        && let Some(image) = icon::image(&parts, native_scale(ctx))
+    {
+        ctx.set_cursor_image(Some(image));
+        return CursorIcon::None;
+    }
+    if duplicate {
+        crate::icons::cursor_copy_badge(ctx, p);
+    }
+    CursorIcon::Default
+}
 
 /// The largest cursor bitmap (physical pixels; points on macOS, see [`native_scale`]); a larger tip
 /// paints its outline instead, with a small OS crosshair at the hotspot, and that outline trails
@@ -53,6 +101,7 @@ impl egui::plugin::Plugin for CursorLifecycle {
 
     fn on_begin_pass(&mut self, ui: &mut egui::Ui) {
         ui.ctx().set_cursor_image(None);
+        ui.ctx().data_mut(|d| d.remove_temp::<&'static str>(shown_id()));
     }
 
     fn on_end_pass(&mut self, ui: &mut egui::Ui) {

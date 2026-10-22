@@ -3606,3 +3606,13 @@ curves	Smooth	Haluskan
 	Disable Second Mask	Nonaktifkan Masker Kedua
 	Enable Second Mask	Aktifkan Masker Kedua
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Kunci seleksi: klik di kanvas menembusnya (panel Layer tetap memilihnya)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Atur Layer Saat Ini
+	Editing layer blocks the fill	Layer yang diedit menahan isian
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Cat di layer yang diisi menahan isian pada toleransi berapa pun, dan isian masuk di belakangnya: gambar di atas celah untuk menutupnya
+	Undo widens Close Gap	Urungkan memperlebar Tutup Celah
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Setiap Urungkan isian menutup celah yang lebih besar pada klik berikutnya, sampai Anda memilih alat lain
+	Close Gap widened to {px} px: click again to fill	Tutup Celah diperlebar ke {px} px: klik lagi untuk mengisi
+	Pick From	Pilih Mulai
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Seberapa buram layer di bawah penunjuk agar Ctrl-klik dan Pilih Otomatis memilihnya: piksel yang lebih samar, seperti masker yang hampir hitam, diklik tembus (0: piksel terlihat apa pun)

@@ -314,10 +314,22 @@ pub fn top(app: &PhotocraftApp) -> Option<u64> {
 }
 
 /// Eyedropper: the top Color Picker's new colour becomes the image's composite colour at document
-/// point (x, y). Off the image or over transparency nothing changes.
-pub fn sample_at(app: &mut PhotocraftApp, x: f64, y: f64) {
+/// point (x, y). Off the image or over transparency nothing changes (false).
+pub fn sample_at(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
+    let Some(id) = top(app) else { return false };
+    let Some(rgb) = crate::canvas::composite_color(app, x, y) else { return false };
+    if let Some(d) = app.ui.dialog_mut(id) {
+        set_rgb(&mut d.fields, rgb, Keep::Nothing);
+    }
+    true
+}
+
+/// Eyedropper dragged from the image out over the pasteboard, a panel or another application:
+/// the top Color Picker's new colour is the screen's under the pointer, as the Eyedropper tool
+/// picks it (a solid colour layer's picker could only sample the image).
+pub fn sample_screen(app: &mut PhotocraftApp) {
     let Some(id) = top(app) else { return };
-    let Some(rgb) = crate::canvas::composite_color(app, x, y) else { return };
+    let Some(rgb) = crate::screen_sample::under_cursor(app.ui.tool_options.eyedropper_size) else { return };
     if let Some(d) = app.ui.dialog_mut(id) {
         set_rgb(&mut d.fields, rgb, Keep::Nothing);
     }

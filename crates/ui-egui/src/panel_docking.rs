@@ -981,6 +981,56 @@ struct PanelContent<'a> {
     targets: &'a mut Vec<craft_ui::docking::DropTarget<String>>,
 }
 
+impl PanelContent<'_> {
+    /// The group's tab strip between its last tab and the header: a drag there moves a floating
+    /// group, or takes a docked group's shown panel out (as dragging its tab does), and a
+    /// double-click collapses or expands the group, as on Photoshop's panel bars. Only the tabs
+    /// took a drag before. Registered before the tabs, so they keep their own clicks and drags.
+    fn strip_drag(&mut self, ui: &mut egui::Ui, panels: &[String], active: &String, floating: bool, collapsed: bool) {
+        let area = egui::Id::new("photocraft-panel-docking");
+        let header = ui.max_rect();
+        // Where the tabs ended last frame.
+        let tabs_end = panels
+            .iter()
+            .filter_map(|p| ui.ctx().read_response(area.with(("tab", p))))
+            .filter(|r| (r.rect.center().y - header.center().y).abs() < header.height())
+            .map(|r| r.rect.right())
+            .fold(f32::NEG_INFINITY, f32::max);
+        if !tabs_end.is_finite() {
+            return;
+        }
+        let strip = egui::Rect::from_min_max(egui::pos2(tabs_end, header.top()), egui::pos2(header.left(), header.bottom()));
+        if strip.width() < 4.0 {
+            return;
+        }
+        let clip = ui.clip_rect();
+        ui.set_clip_rect(strip.intersect(ui.ctx().content_rect()));
+        let r = ui.interact(strip, area.with(("strip", active)), egui::Sense::click_and_drag());
+        ui.set_clip_rect(clip);
+        if r.double_clicked() {
+            self.commands.push(("window.panel.group", json!({"panel": active, "operation": if collapsed { "expand" } else { "collapse" }})));
+            return;
+        }
+        if floating {
+            let rect = self.app.ui.docking.as_ref().and_then(|l| l.floating.iter().find(|f| f.panels.contains(active)).map(|f| f.rect));
+            let delta = ui.input(|i| i.pointer.delta());
+            if r.dragged()
+                && delta != egui::Vec2::ZERO
+                && let Some([x, y, w, h]) = rect
+            {
+                let action = Action::MoveFloating { panel: active.clone(), rect: [x + delta.x, y + delta.y, w, h] };
+                self.commands.push(("window.panel.layout", json!({"action": action})));
+            }
+            if r.dragged() || r.hovered() {
+                ui.ctx().set_cursor_icon(if r.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
+            }
+        } else if r.drag_started() {
+            let source = egui::Rect::from_min_size(egui::pos2(tabs_end - 200.0, header.top()), egui::vec2(240.0, 300.0));
+            craft_ui::docking::begin_drag(ui.ctx(), area, active.clone(), source);
+        }
+    }
+}
+
 fn panel_menu(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str) {
     match panel {
         "layers" => {
@@ -1056,6 +1106,9 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         }
         let collapsed = panels.iter().all(|id| self.collapsed.contains(id));
         let locked = self.app.session.prefs().workspace_locked;
+        if !locked {
+            self.strip_drag(ui, panels, active, floating, collapsed);
+        }
         let resp = crate::icons::button(ui, "ellipsis", ui.available_height().min(28.0), false, tl!("Panel menu"));
         egui::Popup::menu(&resp).show(|ui| {
             ui.set_min_width(180.0);

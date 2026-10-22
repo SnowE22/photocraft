@@ -4565,3 +4565,13 @@ navigator	Zoom	Zoom
 	Disable Second Mask	Desactivar segunda máscara
 	Enable Second Mask	Activar segunda máscara
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Bloquear selección: los clics en el lienzo la atraviesan (el panel Capas aún la selecciona)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Establecer capa actual
+	Editing layer blocks the fill	La capa en edición detiene el relleno
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Lo pintado en la capa que se rellena detiene el relleno con cualquier tolerancia, y el relleno pasa por detrás: pinte sobre un hueco para cerrarlo
+	Undo widens Close Gap	Deshacer amplía Cerrar huecos
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Cada Deshacer de un relleno cierra huecos mayores en el siguiente clic, hasta que elija otra herramienta
+	Close Gap widened to {px} px: click again to fill	Cerrar huecos ampliado a {px} px: haga clic de nuevo para rellenar
+	Pick From	Seleccionar desde
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Lo opaca que debe ser una capa bajo el puntero para que Ctrl+clic y Selección automática la elijan: los píxeles más tenues, como una máscara casi negra, se atraviesan (0: cualquier píxel visible)

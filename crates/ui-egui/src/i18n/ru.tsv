@@ -3582,3 +3582,13 @@ curves	Smooth	Сгладить
 	Disable Second Mask	Выключить вторую маску
 	Enable Second Mask	Включить вторую маску
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Закрепить выбор: щелчки по холсту проходят насквозь (панель «Слои» по-прежнему выбирает его)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Задать текущий слой
+	Editing layer blocks the fill	Редактируемый слой останавливает заливку
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Краска на заливаемом слое останавливает заливку при любом допуске, а заливка уходит под неё: проведите по зазору, чтобы закрыть его
+	Undo widens Close Gap	Отмена расширяет «Закрыть зазоры»
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Каждая отмена заливки закрывает при следующем щелчке зазоры больше, пока вы не выберете другой инструмент
+	Close Gap widened to {px} px: click again to fill	«Закрыть зазоры» расширено до {px} пикс.: щёлкните снова, чтобы залить
+	Pick From	Выбирать от
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Насколько непрозрачным должен быть слой под указателем, чтобы Ctrl-щелчок и Автовыбор выбрали его: более слабые пиксели, например почти чёрная маска, пропускаются (0: любой видимый пиксель)

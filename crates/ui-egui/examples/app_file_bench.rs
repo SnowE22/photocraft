@@ -262,6 +262,8 @@ fn pan_rows(h: &mut H, reps: usize) {
         let mut times = Vec::new();
         let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
         let mut spans: std::collections::BTreeMap<&'static str, Vec<f64>> = Default::default();
+        // egui runs a frame's UI twice when a widget asks to discard the first pass.
+        let mut passes = 0u64;
         for rep in 0..reps.max(3) {
             let dir = if rep.is_multiple_of(2) { 1.0 } else { -1.0 };
             let mut p = c;
@@ -275,7 +277,9 @@ fn pan_rows(h: &mut H, reps: usize) {
                 h.event(Event::PointerMoved(p));
                 h.state_mut().perf.last_refresh = "";
                 h.state_mut().perf.spans.clear();
+                let pass_before = h.ctx.cumulative_pass_nr();
                 times.push(frame(h));
+                passes += h.ctx.cumulative_pass_nr() - pass_before;
                 *kinds.entry(h.state().perf.last_refresh.to_string()).or_default() += 1;
                 for (k, v) in &h.state().perf.spans {
                     spans.entry(k).or_default().push(*v);
@@ -285,7 +289,9 @@ fn pan_rows(h: &mut H, reps: usize) {
             frame(h);
             settle(h, 2);
         }
+        let n = times.len();
         row(&format!("pan with the Hand tool, {label}: frames"), times);
+        println!("    UI passes: {passes} for {n} frames");
         println!("    canvas work in those frames: {kinds:?}");
         let mut by: Vec<(f64, &str)> = spans.iter().map(|(k, v)| (v.iter().sum::<f64>() / v.len().max(1) as f64, *k)).collect();
         by.sort_by(|a, b| b.0.total_cmp(&a.0));

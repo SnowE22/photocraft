@@ -3619,3 +3619,13 @@ curves	Smooth	Lisser
 	Disable Second Mask	Désactiver le second masque
 	Enable Second Mask	Activer le second masque
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Verrouiller la sélection : les clics sur la zone de travail la traversent (le panneau Calques la sélectionne toujours)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Définir le calque actuel
+	Editing layer blocks the fill	Le calque modifié arrête le remplissage
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	La peinture du calque rempli arrête le remplissage quelle que soit la tolérance, et le remplissage passe derrière : peignez sur un trou pour le fermer
+	Undo widens Close Gap	Annuler élargit Fermer les trous
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Chaque annulation d’un remplissage ferme des trous plus grands au clic suivant, jusqu’au choix d’un autre outil
+	Close Gap widened to {px} px: click again to fill	Fermer les trous élargi à {px} px : cliquez à nouveau pour remplir
+	Pick From	Sélectionner dès
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Opacité qu’un calque doit avoir sous le pointeur pour que Ctrl-clic et Sélection automatique le choisissent : les pixels plus faibles, comme un masque presque noir, sont traversés (0 : tout pixel visible)

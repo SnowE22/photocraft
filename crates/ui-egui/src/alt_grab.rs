@@ -37,9 +37,30 @@ pub(crate) fn message() -> &'static str {
     tl!("Alt-click went to the desktop, which moves windows with Alt-drag. Set its window-move key to Super, or latch Alt in Window › Modifier Keys.")
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Tests of the Linux behaviour run on every platform.
+    pub(crate) static TEST_GRABS: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// Whether this platform's window managers can take an Alt+click.
+fn desktop_may_grab_alt() -> bool {
+    #[cfg(test)]
+    if let Some(v) = TEST_GRABS.with(std::cell::Cell::get) {
+        return v;
+    }
+    cfg!(all(unix, not(target_os = "macos")))
+}
+
 /// Watch one canvas view's frame for an ⌥-click the window manager grabbed. `rect` is the view's
 /// canvas area, `tool` the tool in effect, `active` false while a dialog owns the canvas.
 pub(crate) fn watch(app: &mut PhotocraftApp, ctx: &Context, id: Id, rect: Rect, tool: Tool, active: bool) {
+    // Only Linux desktops take Alt+click for themselves. On Windows and macOS the pointer leaves
+    // the window with ⌥ held for other reasons (Alt+Tab with the pointer still, a menu, another
+    // window under it), and the message showed with nothing gone wrong.
+    if !desktop_may_grab_alt() {
+        return;
+    }
     let (gone, hover, mods, down, focused) =
         ctx.input(|i| (i.events.iter().any(|e| matches!(e, Event::PointerGone)), i.pointer.hover_pos(), i.modifiers, i.pointer.any_down(), i.focused));
     let mut w = ctx.data(|d| d.get_temp::<Watch>(id)).unwrap_or_default();

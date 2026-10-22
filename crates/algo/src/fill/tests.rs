@@ -464,7 +464,7 @@ fn the_lasso_box_gives_what_the_whole_page_gave() {
                     for border in [false, true] {
                         let o = FillOptions { close_gap: gap, scale: amount, scaling, image_border: border, tolerance: 20.0, ..FillOptions::default() };
                         let got = enclosed_region(&img.px, img.area(), &lasso, Target::Transparent, &o);
-                        let want = enclosed_in(&img.px, img.area(), &lasso, w, h, [border; 4], Target::Transparent, &o);
+                        let want = enclosed_in(&img.px, img.area(), &lasso, w, h, [border; 4], Target::Transparent, &o, None);
                         assert_eq!(got, want, "page {page}, lasso {k} {poly:?}, gap {gap}, {scaling:?} {amount}, border {border}");
                         checked += 1;
                         let r = (gap + 2.0) / 2.0;
@@ -478,4 +478,52 @@ fn the_lasso_box_gives_what_the_whole_page_gave() {
         }
     }
     assert!(checked > 1500 && cropped > 500, "{checked} cases, {cropped} cropped");
+}
+
+#[test]
+fn the_editing_layers_paint_blocks_a_fill_at_any_colour_margin() {
+    // Line art with a 6 px gap the user closed on the colour layer with a pale stroke: at a 90 %
+    // colour margin the stroke's colour stops nothing, but as the editing layer's paint it does.
+    let mut img = open_box(6);
+    let mut block = vec![0u8; img.px.len()];
+    for x in 17..25 {
+        // The pale stroke shows in the referenced composite too, nearly the colour clicked.
+        img.set(x, 5, [250, 250, 250, 40]);
+        block[5 * 40 + x] = 255;
+        // A soft edge below it, inside the box.
+        block[6 * 40 + x] = 60;
+    }
+    let o = FillOptions { tolerance: 90.0, ..hard() };
+    let leaked = img.click(20, 20, o).unwrap();
+    assert!(filled(&leaked, 20, 2), "without the block the fill runs out through the gap");
+    let r = click_region_blocked(&img.px, img.area(), (20, 20), &o, Some(&block)).unwrap();
+    assert!(filled(&r, 20, 20));
+    assert!(!filled(&r, 20, 2), "the stroke on the editing layer closes the gap");
+    // The fill reaches in under the stroke's soft edge and its core: no faint line between them.
+    assert!(filled(&r, 20, 6) && filled(&r, 20, 5));
+    // Not past it.
+    assert!(!filled(&r, 20, 4));
+    // A click on the layer's own paint recolours it as without the block.
+    let on_paint = click_region_blocked(&img.px, img.area(), (20, 5), &o, Some(&block));
+    assert_eq!(on_paint.map(|r| filled(&r, 0, 0)), img.click(20, 5, o).map(|r| filled(&r, 0, 0)));
+    // A block of the wrong size is ignored.
+    let wrong = click_region_blocked(&img.px, img.area(), (20, 20), &o, Some(&block[1..])).unwrap();
+    assert!(filled(&wrong, 20, 2));
+}
+
+#[test]
+fn the_editing_layers_paint_closes_an_enclosed_area() {
+    // A transparent page: the lasso around a box whose gap only the editing layer's stroke closes.
+    let img = open_box(6);
+    let mut block = vec![0u8; img.px.len()];
+    for x in 17..25 {
+        block[5 * 40 + x] = 255;
+    }
+    let lasso = lasso_mask(&[(2.0, 2.0), (38.0, 2.0), (38.0, 38.0), (2.0, 38.0)], img.area());
+    // Through the gap the box's inside joins the page around it, which reaches past the lasso:
+    // only the editing layer's stroke keeps it enclosed.
+    let o = hard();
+    let r = enclosed_region_blocked(&img.px, img.area(), &lasso, Target::Transparent, &o, Some(&block)).unwrap();
+    assert!(filled(&r, 20, 20));
+    assert!(enclosed_region(&img.px, img.area(), &lasso, Target::Transparent, &o).is_none_or(|r| !filled(&r, 20, 20)), "without the block the inside leaks out past the lasso");
 }

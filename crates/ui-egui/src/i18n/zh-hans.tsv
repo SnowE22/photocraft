@@ -3240,3 +3240,13 @@ curves	Smooth	平滑
 	Disable Second Mask	停用第二个蒙版
 	Enable Second Mask	启用第二个蒙版
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	锁定选择：画布上的点按会穿过它（图层面板仍可选择）
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	设置当前图层
+	Editing layer blocks the fill	编辑中的图层阻挡填充
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	被填充图层上的绘画在任何容差下都会阻挡填充，填充会进入其后方：在间隙上画一笔即可闭合它
+	Undo widens Close Gap	撤销时扩大闭合间隙
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	每次撤销填充，下一次点按都会闭合更大的间隙，直到您选择其他工具
+	Close Gap widened to {px} px: click again to fill	闭合间隙已扩大到 {px} 像素：再次点按以填充
+	Pick From	选取起点
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	图层在指针下需要多不透明，Ctrl 点按和自动选择才会选中它：更淡的像素（如几乎全黑的蒙版）会被点穿（0：任何可见像素）

@@ -4284,3 +4284,13 @@ curves	Smooth	スムーズ
 	Disable Second Mask	2 つ目のマスクを無効にする
 	Enable Second Mask	2 つ目のマスクを有効にする
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	選択をロック：カンバス上のクリックは通り抜けます (レイヤーパネルでは選択できます)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	現在のレイヤーを設定
+	Editing layer blocks the fill	編集中のレイヤーで塗りを止める
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	塗りつぶすレイヤー上の描画が許容値に関係なく塗りを止め、塗りはその背面に入ります：隙間の上に描くと閉じられます
+	Undo widens Close Gap	取り消しで隙間閉じを広げる
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	塗りを取り消すたびに次のクリックでより大きな隙間を閉じます (別のツールを選ぶまで)
+	Close Gap widened to {px} px: click again to fill	隙間閉じを {px} px に広げました：もう一度クリックして塗りつぶします
+	Pick From	選択する不透明度
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl+クリックと自動選択でレイヤーを選ぶのに必要な、ポインター下の不透明度です。ほぼ黒のマスクのような薄いピクセルは通り抜けます (0：見えるピクセルすべて)

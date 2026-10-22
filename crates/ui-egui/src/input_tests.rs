@@ -223,7 +223,7 @@ fn color_picker_samples_the_image_under_its_pipette() {
 
     h.hover_at(red);
     h.run_steps(1);
-    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::None, "the pipette replaces the pointer");
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("pipette"), "the pipette replaces the pointer");
     h.hover_at(r.center());
     h.run_steps(1);
     assert_ne!(h.output().platform_output.cursor_icon, egui::CursorIcon::None, "over the dialog it is the normal pointer");
@@ -294,7 +294,7 @@ fn curves_picker_samples_document_coordinates_through_the_view_transform() {
     let left = pos2(canvas.left() + 60.0, canvas.center().y);
     h.hover_at(left);
     h.run_steps(1);
-    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::None);
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("pipette"));
     press(&mut h, left, true);
     press(&mut h, left, false);
     h.run_steps(3);
@@ -836,11 +836,17 @@ fn eyedropper_and_alt_sampling_show_a_pipette() {
         h.run_steps(2);
         h.output().platform_output.cursor_icon
     };
+    // The pipette is the pointer: an OS bitmap on the desktop (moving with the hardware pointer).
+    let pipette = |h: &mut Harness<'static, PhotocraftApp>| {
+        cursor(h);
+        (crate::tool_cursor::shown_icon(&h.ctx), h.output().platform_output.cursor_image.is_some())
+    };
+    let desktop = cfg!(not(target_arch = "wasm32"));
     h.state_mut().ui.tool = crate::state::Tool::Eyedropper;
-    assert_eq!(cursor(&mut h), egui::CursorIcon::None, "the pipette replaces the pointer");
+    assert_eq!(pipette(&mut h), (Some("pipette"), desktop), "the pipette replaces the pointer");
     h.state_mut().ui.tool = crate::state::Tool::Brush;
     h.event(egui::Event::ModifiersChanged(Modifiers::ALT));
-    assert_eq!(cursor(&mut h), egui::CursorIcon::None, "⌥ samples with a pipette");
+    assert_eq!(pipette(&mut h), (Some("pipette"), desktop), "⌥ samples with a pipette");
     h.state_mut().run("prefs.set", json!({"values": {"cursors.other": "precise"}})).unwrap();
     // Every platform reports the crosshair. The desktop builds also hand the OS a black-and-white
     // bitmap for it (`tool_cursor`, #1160, #1343), with `Crosshair` underneath as the fallback.
@@ -848,8 +854,8 @@ fn eyedropper_and_alt_sampling_show_a_pipette() {
         let icon = cursor(h);
         (icon, h.output().platform_output.cursor_image.is_some())
     };
-    let desktop = cfg!(not(target_arch = "wasm32"));
     assert_eq!(precise(&mut h), (egui::CursorIcon::Crosshair, desktop), "Precise keeps the crosshair");
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), None);
     h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
     h.state_mut().ui.tool = crate::state::Tool::Eyedropper;
     assert_eq!(precise(&mut h), (egui::CursorIcon::Crosshair, desktop));
@@ -864,7 +870,7 @@ fn paint_bucket_shows_a_bucket_cursor() {
     h.state_mut().ui.tool = crate::state::Tool::PaintBucket;
     h.hover_at(p);
     h.run_steps(2);
-    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::None, "the bucket replaces the pointer");
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("paint-bucket"), "the bucket replaces the pointer");
     h.state_mut().run("prefs.set", json!({"values": {"cursors.other": "precise"}})).unwrap();
     h.hover_at(p);
     h.run_steps(2);
@@ -1177,8 +1183,8 @@ fn move_tool_controls_rotate_from_just_outside_the_box() {
 }
 
 /// A user report: the Pen's pointer felt less smooth than the brush's. The icon cursors (Pen,
-/// Eyedropper, Paint Bucket) are painted straight onto a top layer now, as the brush's is onto the
-/// canvas, not through an `egui::Area`: hovering with the Pen paints its icon at the pointer.
+/// Eyedropper, Paint Bucket) are OS cursor bitmaps on the desktop now, which move with the
+/// hardware pointer (elsewhere painted straight onto a top layer), never an `egui::Area`.
 #[test]
 fn the_pen_cursor_is_painted_at_the_pointer_without_an_area() {
     let mut h = harness();
@@ -1190,8 +1196,9 @@ fn the_pen_cursor_is_painted_at_the_pointer_without_an_area() {
         h.event(egui::Event::PointerMoved(at));
         h.run_steps(2);
     }
-    let textured = |s: &egui::Shape| matches!(s, egui::Shape::Mesh(m) if m.texture_id != egui::TextureId::default() && m.calc_bounds().expand(24.0).contains(at));
-    let n = h.output().shapes.iter().filter(|c| textured(&c.shape)).count();
-    assert!(n >= 9, "the icon and its 8-way outline at the pointer ({n} textured shapes there)");
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some(crate::icons::tool_icon(crate::state::Tool::Pen)));
+    let image = h.output().platform_output.cursor_image.clone().expect("an OS cursor bitmap");
+    // The nib is the hotspot: up and left in the bitmap, the pen running down and right of it.
+    assert!(image.hotspot[0] < image.size[0] / 2 && image.hotspot[1] < image.size[1] / 2, "{:?} {:?}", image.hotspot, image.size);
     assert!(!h.ctx.memory(|m| m.areas().visible_layer_ids().iter().any(|l| l.id == egui::Id::new("pc-icon-cursor"))), "no Area for the cursor");
 }

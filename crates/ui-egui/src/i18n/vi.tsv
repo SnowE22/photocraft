@@ -4096,3 +4096,13 @@ curves	Smooth	Làm mượt
 	Disable Second Mask	Tắt mặt nạ thứ hai
 	Enable Second Mask	Bật mặt nạ thứ hai
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Khóa chọn: nhấp trên canvas sẽ xuyên qua (bảng Layers vẫn chọn được)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Đặt lớp hiện tại
+	Editing layer blocks the fill	Lớp đang sửa chặn vùng tô
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Nét vẽ trên lớp đang tô chặn vùng tô ở mọi dung sai, và vùng tô đi vào phía sau nó: vẽ qua khe hở để đóng lại
+	Undo widens Close Gap	Hoàn tác nới rộng Đóng khe hở
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Mỗi lần hoàn tác một lần tô sẽ đóng khe hở lớn hơn ở lần nhấp tiếp theo, cho đến khi bạn chọn công cụ khác
+	Close Gap widened to {px} px: click again to fill	Đã nới Đóng khe hở lên {px} px: nhấp lại để tô
+	Pick From	Chọn từ
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Độ đục cần có của lớp dưới con trỏ để Ctrl-nhấp và Tự chọn chọn nó: các điểm ảnh mờ hơn, như mặt nạ gần như đen, sẽ được nhấp xuyên qua (0: mọi điểm ảnh nhìn thấy)

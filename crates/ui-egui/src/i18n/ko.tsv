@@ -3795,3 +3795,13 @@ curves	Smooth	매끄럽게
 	Disable Second Mask	두 번째 마스크 비활성화
 	Enable Second Mask	두 번째 마스크 활성화
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	선택 잠금: 캔버스 클릭이 통과합니다 (레이어 패널에서는 계속 선택됨)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	현재 레이어 설정
+	Editing layer blocks the fill	편집 중인 레이어가 채우기를 막음
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	채우는 레이어의 칠이 허용치와 상관없이 채우기를 막고, 채우기는 그 뒤로 들어갑니다: 틈 위에 그려서 닫으세요
+	Undo widens Close Gap	실행 취소로 틈 닫기 넓히기
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	채우기를 실행 취소할 때마다 다른 도구를 고를 때까지 다음 클릭에서 더 큰 틈을 닫습니다
+	Close Gap widened to {px} px: click again to fill	틈 닫기를 {px} px로 넓혔습니다: 다시 클릭하여 채우세요
+	Pick From	선택 시작 불투명도
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl+클릭과 자동 선택이 레이어를 고르려면 포인터 아래에서 얼마나 불투명해야 하는지: 거의 검은 마스크처럼 옅은 픽셀은 클릭이 통과합니다 (0: 보이는 모든 픽셀)

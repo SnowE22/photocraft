@@ -551,6 +551,11 @@ pub fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui, shown: &[Group], mut bod
                 crate::panel_docking::legacy_tab(app, &mut child, panel, response);
             }
         }
+        // The strip's empty part, dragged out sideways, takes the shown panel out as its tab
+        // does (dragged along the dock it still moves the group).
+        if let Some(panel) = tabs.get(sel) {
+            crate::panel_docking::legacy_tab(app, &mut child, panel, &resp.strip);
+        }
         strips.push(StripRects {
             group: g,
             area: Rect::from_min_max(pos2(rect.left(), resp.menu.rect.top()), pos2(resp.menu.rect.left(), resp.menu.rect.bottom())),

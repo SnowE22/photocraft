@@ -4213,3 +4213,13 @@ navigator	Zoom	Zvětšení
 	Disable Second Mask	Vypnout druhou masku
 	Enable Second Mask	Zapnout druhou masku
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Zamknout výběr: kliknutí na plátno projde skrz (panel Vrstvy ji stále vybere)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Nastavit aktuální vrstvu
+	Editing layer blocks the fill	Upravovaná vrstva zastaví výplň
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Malba na vyplňované vrstvě zastaví výplň při jakékoli toleranci a výplň se dostane pod ni: přetažením přes mezeru ji uzavřete
+	Undo widens Close Gap	Zpět rozšíří Uzavřít mezeru
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Každé Zpět u výplně uzavře pro další kliknutí větší mezery, dokud nezvolíte jiný nástroj
+	Close Gap widened to {px} px: click again to fill	Uzavřít mezeru rozšířeno na {px} px: klikněte znovu pro vyplnění
+	Pick From	Vybírat od
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Jak neprůhledná musí být vrstva pod ukazatelem, aby ji Ctrl+klik a Automatický výběr vybraly: slabší pixely, například téměř černá maska, se proklikne (0: jakýkoli viditelný pixel)

@@ -4316,3 +4316,13 @@ curves	Smooth	Згладити
 	Disable Second Mask	Вимкнути другу маску
 	Enable Second Mask	Увімкнути другу маску
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Заблокувати вибір: клацання по полотну проходять крізь нього (панель «Шари» все одно вибирає його)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Задати поточний шар
+	Editing layer blocks the fill	Редагований шар зупиняє заливку
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Фарба на шарі, який заливають, зупиняє заливку за будь-якого допуску, а заливка йде під неї: проведіть по зазору, щоб закрити його
+	Undo widens Close Gap	Скасування розширює «Закрити зазори»
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Кожне скасування заливки закриває під час наступного клацання більші зазори, доки ви не виберете інший інструмент
+	Close Gap widened to {px} px: click again to fill	«Закрити зазори» розширено до {px} пікс.: клацніть знову, щоб залити
+	Pick From	Вибирати від
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Наскільки непрозорим має бути шар під вказівником, щоб Ctrl-клацання та Автоматичний вибір вибрали його: слабші пікселі, як-от майже чорна маска, пропускаються (0: будь-який видимий піксель)

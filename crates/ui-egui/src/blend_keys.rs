@@ -68,7 +68,7 @@ pub fn press(app: &mut PhotocraftApp, step: i32) {
             }
         }
         Tool::Fill => {
-            let o = &mut app.ui.tool_options.fill_tool;
+            let o = app.ui.tool_options.fill_tool.current_mut();
             if let Some(mode) = stepped(&BlendMode::LAYER_MODES, o.mode, step) {
                 o.mode = mode;
             }

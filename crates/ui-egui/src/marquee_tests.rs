@@ -570,12 +570,20 @@ fn a_moved_selection_snaps_to_guides_and_the_document_not_its_start() {
 }
 
 /// #5646: the Move tool keeps Photoshop's arrow pointer instead of the 4-way move cursor (the
-/// hover outline still marks the layer under the pointer).
+/// hover outline still marks the layer under the pointer): its black arrow, with ⌥ (a drag
+/// duplicates) its double arrow, so ⌥ and ⌘ no longer look the same.
 #[test]
 fn the_move_tool_keeps_the_arrow_pointer() {
     let mut h = harness(Tool::Move);
     move_to(&mut h, 200.0, 150.0);
-    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::Default);
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("move"));
+    assert!(h.output().platform_output.cursor_image.is_some(), "an OS bitmap, not the system arrow");
+    h.event(egui::Event::ModifiersChanged(Modifiers::ALT));
+    move_to(&mut h, 201.0, 150.0);
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("duplicate"));
+    h.event(egui::Event::ModifiersChanged(Modifiers::COMMAND));
+    move_to(&mut h, 202.0, 150.0);
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("move"), "⌘ is the plain Move arrow");
 }
 
 /// #1428: hovering inside the ants with a marquee shows the move cursor (a press there drags the

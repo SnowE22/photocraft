@@ -376,7 +376,10 @@ fn composite_rgba8(doc: &Document, area: Rect) -> Vec<[u8; 4]> {
 
 /// The pixels the fill reads, over the canvas: the target's own for [`Reference::Layer`], else the
 /// composite of the referenced layers (hidden layers are never read), kept for the next click.
-fn reference_image(s: &Session, r: Reference, ex: Exclude, p: &Value) -> Result<(Rect, Arc<Vec<[u8; 4]>>)> {
+/// With `paper`, the document's Background is left out of a multi-layer reference, as Clip Studio
+/// leaves out its paper layer: Enclose and Fill and Paint Unfilled Area fill transparent areas,
+/// and over an opaque white Background there were none, so they filled nothing.
+fn reference_image(s: &Session, r: Reference, ex: Exclude, p: &Value, paper: bool) -> Result<(Rect, Arc<Vec<[u8; 4]>>)> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let area = d.doc.bounds();
     if r == Reference::Layer {
@@ -402,6 +405,7 @@ fn reference_image(s: &Session, r: Reference, ex: Exclude, p: &Value) -> Result<
             Reference::Reference => l.reference || reference_groups.iter().any(|g| path.starts_with(g)),
         };
         let left_out = (ex.layer && Some(l.id) == active)
+            || (paper && d.doc.is_background(l.id))
             || (ex.text && matches!(l.content, LayerContent::Text(_)))
             || (ex.locked && {
                 let locks = d.doc.locks_at(&path);
@@ -461,6 +465,27 @@ pub(crate) struct Gesture {
 /// or the enclosed areas inside the lasso or stroke. A click in a drag's `gesture` fills only an
 /// area like the first one's that it hasn't filled yet.
 pub(crate) fn region(s: &Session, p: &Value) -> Result<Option<Region>> {
+    Ok(region_blocked(s, p)?.0)
+}
+
+/// The editing layer's alpha over the canvas when `layerBlocks` asks its paint to stop the fill
+/// (a multi-layer reference only: with Editing Layer alone that paint is what the fill reads).
+fn layer_block(s: &Session, p: &Value, r: Reference) -> Result<Option<Vec<u8>>> {
+    let on = flag(p, "layerBlocks", false)?;
+    if r == Reference::Layer || !on {
+        return Ok(None);
+    }
+    if crate::channel_cmds::target_of(p) != crate::channel_cmds::Target::Pixels {
+        return Ok(None);
+    }
+    let d = s.active().ok_or(EngineError::NoDocument)?;
+    let Some(surf) = d.active_layer.and_then(|id| d.doc.layer(id)).and_then(|l| l.surface()) else { return Ok(None) };
+    Ok(Some(rgba8_image(surf, d.doc.bounds()).iter().map(|px| px[3]).collect()))
+}
+
+/// [`region`], and whether the editing layer's paint stopped it (the fill then goes behind that
+/// paint).
+fn region_blocked(s: &Session, p: &Value) -> Result<(Option<Region>, bool)> {
     let mut o = options(p)?;
     let r = Reference::from_name(name(p, "reference", "layer")?).ok_or_else(|| bad(format!("`reference` must be one of {}", Reference::NAMES.join(", "))))?;
     let target = Target::from_name(name(p, "targetColor", "transparent")?).ok_or_else(|| bad("`targetColor` must be transparent or whiteAndTransparent"))?;
@@ -484,18 +509,20 @@ pub(crate) fn region(s: &Session, p: &Value) -> Result<Option<Region>> {
         if let Some(st) = state.as_ref().filter(|st| st.id == *g && st.doc == doc) {
             // Already filled by this drag: nothing more to do there (and no composite needed).
             if st.filled.iter().any(|r| r.at(x, y) > 0.5) {
-                return Ok(None);
+                return Ok((None, false));
             }
             o.match_color = Some(st.color);
         }
     }
-    let (area, img) = reference_image(s, r, exclusions(p)?, p)?;
+    let enclosing = lasso.is_some() || stroke.is_some();
+    let (area, img) = reference_image(s, r, exclusions(p)?, p, enclosing && target == Target::Transparent)?;
+    let block = layer_block(s, p, r)?;
     let region = if let Some(pts) = lasso {
-        fill::enclosed_region(&img, area, &fill::lasso_mask(&pts, area), target, &o)
+        fill::enclosed_region_blocked(&img, area, &fill::lasso_mask(&pts, area), target, &o, block.as_deref())
     } else if let Some(pts) = stroke {
-        fill::enclosed_region(&img, area, &fill::stroke_mask(&pts, size / 2.0, area), target, &o)
+        fill::enclosed_region_blocked(&img, area, &fill::stroke_mask(&pts, size / 2.0, area), target, &o, block.as_deref())
     } else {
-        seed.and_then(|seed| fill::click_region(&img, area, seed, &o))
+        seed.and_then(|seed| fill::click_region_blocked(&img, area, seed, &o, block.as_deref()))
     };
     if let (Some(g), Some((x, y))) = (gesture, seed) {
         let mut state = s.fill_gesture.lock().unwrap_or_else(PoisonError::into_inner);
@@ -511,7 +538,7 @@ pub(crate) fn region(s: &Session, p: &Value) -> Result<Option<Region>> {
             st.filled.push(r.clone());
         }
     }
-    Ok(region)
+    Ok((region, block.is_some()))
 }
 
 fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
@@ -529,7 +556,11 @@ fn run_fill(s: &mut Session, p: &Value) -> Result<Value> {
         "transparent" => (FillPaint::Erase, [0.0; 4]),
         _ => return Err(bad("`contents` must be foreground, background, color or transparent")),
     };
-    let Some(region) = region(s, p)? else { return Ok(json!({ "filled": false })) };
+    let (region, blocked) = region_blocked(s, p)?;
+    let Some(region) = region else { return Ok(json!({ "filled": false })) };
+    // Stopped by the layer's own paint, the fill reaches in under its soft edges: behind it, so
+    // the strokes stay as they are.
+    let paint = if blocked && paint == FillPaint::Blend(BlendMode::Normal) { FillPaint::Behind } else { paint };
     // A colour picked as CMYK fills a CMYK document with the picked inks (#4196).
     let inks = s.tools.picked_cmyk([c[0], c[1], c[2]]).filter(|_| c[3] >= 1.0 && paint == FillPaint::Blend(BlendMode::Normal));
     s.edit("Fill Tool", |doc, active| {
@@ -573,7 +604,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Fill Tool",
             menu: &[],
             shortcut: None,
-            params: r##"{"x":px,"y":px (a click) | "lasso":[[x,y],…] (Enclose and Fill) | "stroke":[[x,y],…] with "size":px=20 (Paint Unfilled Area),"reference":"layer|all|selected|folder|reference"="layer","exclude":["layer"|"text"|"locked"]? (multi-layer references),"tolerance":0..100=10 (% colour margin),"contiguous":bool=true (Follow adjacent pixels),"closeGap":0..100=0 (px),"areaScaling":-100..100=0 (px),"scalingMode":"darkest|round|square"="darkest","antiAlias":bool=true,"imageBorder":bool=false,"targetColor":"transparent|whiteAndTransparent"="transparent" (lasso/stroke),"contents":"foreground|background|color|transparent"="foreground","color":"#rrggbb"?,"opacity":1..100=100,"mode":"normal|multiply|…"="normal","target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target,"gesture":str? (a drag going on from its click: later clicks with the same gesture fill only areas like the first one's they haven't filled; pass the same \"coalesce\" to make the drag one undo step)} → {"filled":bool,"bounds":[x0,y0,x1,y1]?}"##,
+            params: r##"{"x":px,"y":px (a click) | "lasso":[[x,y],…] (Enclose and Fill) | "stroke":[[x,y],…] with "size":px=20 (Paint Unfilled Area),"reference":"layer|all|selected|folder|reference"="layer","exclude":["layer"|"text"|"locked"]? (multi-layer references),"tolerance":0..100=10 (% colour margin),"contiguous":bool=true (Follow adjacent pixels),"closeGap":0..100=0 (px),"areaScaling":-100..100=0 (px),"scalingMode":"darkest|round|square"="darkest","antiAlias":bool=true,"imageBorder":bool=false,"layerBlocks":bool=false (multi-layer references: the editing layer's paint stops the fill at any tolerance, and the fill goes in behind it),"targetColor":"transparent|whiteAndTransparent"="transparent" (lasso/stroke),"contents":"foreground|background|color|transparent"="foreground","color":"#rrggbb"?,"opacity":1..100=100,"mode":"normal|multiply|…"="normal","target":"pixels"|"mask"|"quickMask"|{"channel":i}=Channels panel target,"gesture":str? (a drag going on from its click: later clicks with the same gesture fill only areas like the first one's they haven't filled; pass the same \"coalesce\" to make the drag one undo step)} → {"filled":bool,"bounds":[x0,y0,x1,y1]?}"##,
             enabled: crate::commands::has_paintable,
             run: run_fill,
             journal: true,

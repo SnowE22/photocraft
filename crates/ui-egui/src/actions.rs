@@ -518,6 +518,9 @@ fn step_label(id: &str, params: &Value) -> String {
     if id == "actions.play" {
         let target = params.get("action").map(|v| v.as_str().map(str::to_owned).unwrap_or_else(|| v.to_string())).unwrap_or_default();
         format!("{}: {target}", label_of(id))
+    } else if id == "layer.setProps" && params.get("layer").is_none() && params.get("layers").is_none() {
+        // Photoshop's name for a recorded rename, opacity or blend change of the current layer.
+        tl!("Set Current Layer").to_string()
     } else if id == "layer.select" {
         let target = params
             .get("name")
@@ -1902,6 +1905,8 @@ pub(crate) mod tests {
         app.run("file.new", json!({"width":4,"height":4})).unwrap();
         app.run("layer.setProps", json!({"name":"Background"})).unwrap();
         let layer = app.session.active().unwrap().active_layer.unwrap();
+        // Another layer selected first: selecting the one already selected isn't recorded.
+        app.run("layer.new.layer", json!({})).unwrap();
         app.run("actions.record", json!({"name":"Select photo"})).unwrap();
         app.ui.actions.expanded = vec![true];
         app.run("layer.select", json!({"layer":layer.0})).unwrap();

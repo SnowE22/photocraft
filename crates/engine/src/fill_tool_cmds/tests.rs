@@ -136,6 +136,64 @@ fn enclose_and_fill_and_paint_unfilled_area_fill_the_enclosed_areas() {
 }
 
 #[test]
+fn enclose_and_fill_reads_all_layers_over_a_white_background() {
+    // The Fill tool refers to All Layers by default, and a page has a white Background: it is
+    // left out, as Clip Studio's paper is, so the transparent areas between the lines fill.
+    let (mut s, _, colour) = inked(8);
+    let base = json!({"reference": "all", "closeGap": 4, "antiAlias": false, "color": RED});
+    let mut p = base.clone();
+    p["lasso"] = json!([[2, 2], [38, 2], [38, 38], [2, 38]]);
+    assert_eq!(s.execute(FILL_ID, p).unwrap()["filled"], true);
+    assert!(is_red(rgba(&s, colour, 20, 20)) && rgba(&s, colour, 1, 1)[3] == 0.0);
+    s.execute("edit.undo", json!({})).unwrap();
+    let mut p = base.clone();
+    p["stroke"] = json!([[0, 20], [39, 20]]);
+    p["size"] = json!(80);
+    assert_eq!(s.execute(FILL_ID, p).unwrap()["filled"], true);
+    assert!(is_red(rgba(&s, colour, 20, 20)));
+    // White and Transparent still reads the white paper.
+    s.execute("edit.undo", json!({})).unwrap();
+    let mut p = base;
+    p["lasso"] = json!([[2, 2], [38, 2], [38, 38], [2, 38]]);
+    p["targetColor"] = json!("whiteAndTransparent");
+    assert_eq!(s.execute(FILL_ID, p).unwrap()["filled"], true);
+}
+
+#[test]
+fn the_editing_layers_paint_blocks_the_fill_and_the_fill_goes_behind_it() {
+    for depth in [8, 16, 32] {
+        let (mut s, _, colour) = inked(depth);
+        // A pale stroke on the colour layer across the 3 px gap, with a faint edge inside the box.
+        s.edit("close the gap", |doc, _| {
+            let surf = doc.layer_mut(colour).unwrap().surface_mut().unwrap();
+            surf.fill_rect(Rect::new(16, 5, 23, 6), &[0.95, 0.95, 1.0, 1.0]);
+            surf.fill_rect(Rect::new(16, 6, 23, 7), &[0.95, 0.95, 1.0, 0.3]);
+            Ok(())
+        })
+        .unwrap();
+        let p = json!({"x": 20, "y": 20, "reference": "all", "tolerance": 60, "antiAlias": false, "color": RED});
+        s.execute(FILL_ID, p.clone()).unwrap();
+        assert!(is_red(rgba(&s, colour, 0, 0)), "a pale stroke doesn't stop a fill at a high tolerance ({depth})");
+        s.execute("edit.undo", json!({})).unwrap();
+        let mut blocked = p.clone();
+        blocked["layerBlocks"] = json!(true);
+        s.execute(FILL_ID, blocked.clone()).unwrap();
+        assert!(is_red(rgba(&s, colour, 20, 20)), "{depth}");
+        assert_eq!(rgba(&s, colour, 0, 0)[3], 0.0, "the stroke on the editing layer holds ({depth})");
+        // The stroke stays; its faint edge has the fill behind it: no see-through line.
+        let core = rgba(&s, colour, 20, 5);
+        assert!(core[2] > 0.99 && core[0] > 0.9 && core[3] > 0.99, "{core:?} ({depth})");
+        let edge = rgba(&s, colour, 20, 6);
+        assert!(edge[3] > 0.99 && edge[0] > 0.9 && edge[1] < 0.5, "{edge:?} ({depth})");
+        // Editing Layer alone: the option has nothing to add (the layer is what is read).
+        s.execute("edit.undo", json!({})).unwrap();
+        blocked["reference"] = json!("layer");
+        assert!(s.execute(FILL_ID, blocked).is_ok());
+        assert!(s.execute(FILL_ID, json!({"x": 1, "y": 1, "layerBlocks": "yes"})).is_err());
+    }
+}
+
+#[test]
 fn transparent_contents_erase_and_blend_modes_apply() {
     let (mut s, lines, colour) = inked(8);
     s.execute(REFERENCE_ID, json!({"layer": lines})).unwrap();
@@ -261,7 +319,7 @@ fn all_layers_patch_the_kept_composite_where_the_last_fill_painted() {
         let doc = s.active().unwrap().doc.clone();
         composite_rgba8(&doc, doc.bounds())
     };
-    let read = |s: &Session| reference_image(s, Reference::All, Exclude::default(), &json!({})).unwrap().1;
+    let read = |s: &Session| reference_image(s, Reference::All, Exclude::default(), &json!({}), false).unwrap().1;
     for (i, (x, y, c)) in [(20, 20, "#ff0000"), (2, 2, "#00ff00"), (20, 25, "#0000ff"), (37, 2, "#ffff00")].into_iter().enumerate() {
         s.execute(FILL_ID, json!({"x": x, "y": y, "reference": "all", "closeGap": 4, "color": c})).unwrap();
         // What the next click reads: the kept composite, patched where this fill painted (or
@@ -298,7 +356,7 @@ fn type_and_shapes_stay_in_the_kept_composite_and_are_followed() {
         let doc = s.active().unwrap().doc.clone();
         composite_rgba8(&doc, doc.bounds())
     };
-    let read = |s: &Session| reference_image(s, Reference::All, Exclude::default(), &json!({})).unwrap().1;
+    let read = |s: &Session| reference_image(s, Reference::All, Exclude::default(), &json!({}), false).unwrap().1;
     s.execute(FILL_ID, json!({"x": 5, "y": 5, "reference": "all", "tolerance": 0, "color": RED})).unwrap();
     let first = Arc::as_ptr(&read(&s));
     s.execute("select.rect", json!({"x": 900, "y": 500, "width": 30, "height": 30})).unwrap();

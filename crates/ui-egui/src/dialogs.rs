@@ -68,6 +68,21 @@ pub fn free_press(ctx: &egui::Context, canvas: egui::Rect) -> Option<egui::Pos2>
     })
 }
 
+/// A drag with the primary button that started on the free canvas under an open dialog and is now
+/// off it (over a panel, the dialog, the pasteboard's edge or another application): where the
+/// pointer is. The Color Picker's eyedropper samples the screen there, as the Eyedropper tool does.
+pub fn drag_off_canvas(ctx: &egui::Context, canvas: egui::Rect) -> Option<egui::Pos2> {
+    if egui::Popup::is_any_open(ctx) {
+        return None;
+    }
+    let rects = rects(ctx);
+    let free = |p: egui::Pos2| canvas.contains(p) && !rects.iter().any(|r| r.contains(p));
+    ctx.input(|i| {
+        let held = !i.key_down(egui::Key::Space) && i.pointer.primary_down() && i.pointer.is_decidedly_dragging() && i.pointer.press_origin().is_some_and(free);
+        i.pointer.latest_pos().filter(|p| held && !free(*p))
+    })
+}
+
 /// Height of a dialog's title, rule, button row and frame margins (points), around a body that
 /// scrolls.
 const DIALOG_CHROME: f32 = 150.0;

@@ -4676,3 +4676,13 @@ shape	Appearance	Izgled
 	Disable Second Mask	Искључи другу маску
 	Enable Second Mask	Укључи другу маску
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Закључај избор: кликови на платно пролазе кроз њега (панел Слојеви га и даље бира)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Postavi trenutni sloj
+	Editing layer blocks the fill	Sloj koji se uređuje zaustavlja ispunu
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Boja na sloju koji se ispunjava zaustavlja ispunu pri bilo kojoj toleranciji, a ispuna ide iza nje: precrtajte prazninu da biste je zatvorili
+	Undo widens Close Gap	Opoziv proširuje Zatvori praznine
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Svaki opoziv ispune zatvara veće praznine pri sledećem kliku, dok ne izaberete drugu alatku
+	Close Gap widened to {px} px: click again to fill	Zatvori praznine prošireno na {px} px: kliknite ponovo za ispunu
+	Pick From	Biraj od
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Koliko neprozirno sloj mora biti ispod pokazivača da bi ga Ctrl-klik i Automatski izbor izabrali: slabiji pikseli, poput skoro crne maske, propuštaju klik (0: bilo koji vidljiv piksel)

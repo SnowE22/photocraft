@@ -4304,3 +4304,13 @@ curves	Smooth	Εξομάλυνση
 	Disable Second Mask	Απενεργοποίηση δεύτερης μάσκας
 	Enable Second Mask	Ενεργοποίηση δεύτερης μάσκας
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Κλείδωμα επιλογής: τα κλικ στον καμβά περνούν από μέσα (το πάνελ Επίπεδα την επιλέγει ακόμη)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Ορισμός τρέχοντος επιπέδου
+	Editing layer blocks the fill	Το επίπεδο επεξεργασίας σταματά το γέμισμα
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Η βαφή στο επίπεδο που γεμίζει σταματά το γέμισμα σε κάθε ανοχή και το γέμισμα μπαίνει πίσω της: ζωγραφίστε πάνω από ένα κενό για να το κλείσετε
+	Undo widens Close Gap	Η αναίρεση διευρύνει το Κλείσιμο κενών
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Κάθε αναίρεση γεμίσματος κλείνει μεγαλύτερα κενά στο επόμενο κλικ, μέχρι να επιλέξετε άλλο εργαλείο
+	Close Gap widened to {px} px: click again to fill	Το Κλείσιμο κενών διευρύνθηκε σε {px} px: κάντε ξανά κλικ για γέμισμα
+	Pick From	Επιλογή από
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Πόσο αδιαφανές πρέπει να είναι ένα επίπεδο κάτω από τον δείκτη για να το επιλέξουν το Ctrl-κλικ και η Αυτόματη επιλογή: πιο αχνά εικονοστοιχεία, όπως μια σχεδόν μαύρη μάσκα, παρακάμπτονται (0: κάθε ορατό εικονοστοιχείο)

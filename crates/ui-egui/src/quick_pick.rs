@@ -25,7 +25,7 @@ pub fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers) ->
             if app.drag.is_some() || app.session.active().is_none() || !is_gesture(mods) {
                 return false;
             }
-            if let Err(e) = app.run("layer.pickAt", json!({"x": x, "y": y, "target": "layer", "mode": "replace"})) {
+            if let Err(e) = app.run("layer.pickAt", json!({"x": x, "y": y, "target": "layer", "mode": "replace", "minOpacity": app.ui.tool_options.move_pick_opacity})) {
                 app.ui.status = e;
                 app.ui.status_error = true;
             }

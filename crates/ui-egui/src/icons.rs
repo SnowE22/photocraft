@@ -23,6 +23,18 @@ pub fn exists(name: &str) -> bool {
     white_icons().contains(name)
 }
 
+/// An icon's SVG (drawn white), for drawing it outside egui: the tool cursors' bitmaps. `None`
+/// for a name the set doesn't have.
+pub fn svg_bytes(name: &str) -> Option<Vec<u8>> {
+    if !exists(name) {
+        return None;
+    }
+    match white_icons().source(name) {
+        egui::ImageSource::Bytes { bytes, .. } => Some(bytes.to_vec()),
+        _ => None,
+    }
+}
+
 /// An egui image for an icon, tinted.
 pub fn image(name: &str, size: f32, tint: Color32) -> egui::Image<'static> {
     egui::Image::new(white_icons().source(name)).fit_to_exact_size(Vec2::splat(size)).tint(tint)

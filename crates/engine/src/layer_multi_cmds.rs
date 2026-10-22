@@ -118,6 +118,22 @@ pub(crate) fn recorded_selection(s: &Session, mut p: Value) -> Value {
     p
 }
 
+/// A change to the active layer's properties (a rename, its opacity) as Photoshop records it:
+/// "Set Current Layer", for whatever layer is current when the action plays. A layer id means
+/// nothing in another document (and the same id is another layer there), so a recorded rename
+/// renamed some other layer, or failed.
+pub(crate) fn recorded_current_layer(s: &Session, mut p: Value) -> Value {
+    let Some(active) = s.active().and_then(|st| st.active_layer) else { return p };
+    let Some(fields) = p.as_object_mut() else { return p };
+    if fields.get("layer").and_then(Value::as_u64) == Some(active.0) {
+        fields.remove("layer");
+    }
+    if fields.get("layers").and_then(Value::as_array).is_some_and(|a| a.len() == 1 && a.first().and_then(Value::as_u64) == Some(active.0)) {
+        fields.remove("layers");
+    }
+    p
+}
+
 fn selection_target(s: &Session, p: &Value) -> Result<LayerId> {
     let Some(name) = p.get("name") else {
         if p.get("occurrence").is_some() {
@@ -1348,6 +1364,10 @@ pub fn group_layers(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(EngineError::Other("no layer selected".into()));
     }
     let name = p.get("name").and_then(Value::as_str).map(str::to_string);
+    let closed = match p.get("closed") {
+        None | Some(Value::Null) => false,
+        Some(v) => v.as_bool().ok_or_else(|| bad("layer.groupLayers", "`closed` must be true or false"))?,
+    };
     let gid = s.edit("Group Layers", |doc, active| {
         let ids = top_level(doc, &ids);
         let top = *ids.last().ok_or(EngineError::NoLayer(LayerId(0)))?;
@@ -1357,7 +1377,13 @@ pub fn group_layers(s: &mut Session, p: &Value) -> Result<Value> {
         for id in &ids {
             children.push(doc.remove(*id).ok_or(EngineError::NoLayer(*id))?);
         }
-        *doc.layer_mut(gid).and_then(Layer::children_mut).ok_or(EngineError::NoLayer(gid))? = children;
+        let group = doc.layer_mut(gid).ok_or(EngineError::NoLayer(gid))?;
+        *group.children_mut().ok_or(EngineError::NoLayer(gid))? = children;
+        // The Layers panel's group button groups several selected layers closed, so the panel
+        // stays as short as it was.
+        if closed && let LayerContent::Group(g) = &mut group.content {
+            g.expanded = false;
+        }
         check_group_depth(doc, "Group Layers")?;
         *active = Some(gid);
         Ok(gid)
@@ -2421,9 +2447,19 @@ mod tests {
         assert_eq!(sel(&s), vec![g]);
         s.undo();
         assert_eq!(doc(&s).layers.len(), 5);
-        // ⌘G with several selected groups them too.
+        // ⌘G with several selected groups them too; `closed` (the panel's button) leaves it closed.
+        let open = |s: &Session| {
+            let st = s.active().unwrap();
+            matches!(st.doc.layer(st.active_layer.unwrap()).map(|l| &l.content), Some(LayerContent::Group(g)) if g.expanded)
+        };
+        select_all(&mut s, &[b, d]);
+        s.execute("layer.groupLayers", json!({"closed": true})).unwrap();
+        assert!(!open(&s), "closed");
+        s.undo();
+        assert!(s.execute("layer.groupLayers", json!({"closed": "yes"})).is_err());
         select_all(&mut s, &[b, d]);
         s.execute("layer.groupLayers", json!({})).unwrap();
+        assert!(open(&s));
         assert_eq!(doc(&s).layers.len(), 4);
     }
 

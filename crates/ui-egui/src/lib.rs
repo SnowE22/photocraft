@@ -778,6 +778,8 @@ pub struct PhotocraftApp {
     pub(crate) action_run: Option<actions::Run>,
     /// A Fill tool click (or Magic Wand click) being dragged on, filling each area it reaches.
     pub(crate) fill_drag: Option<fill_tool_ui::DragFill>,
+    /// Close Gap widened by Undo after a fill that leaked (`fill_tool_ui::after_undo`).
+    pub(crate) fill_gap_retry: Option<fill_tool_ui::GapRetry>,
     /// Levels/Curves histogram cache: (document, adjustment layer, revision it is valid for).
     pub(crate) tone_hist: Option<(DocId, photocraft_doc::LayerId, u64, std::sync::Arc<tone::Histograms>)>,
     /// The Levels/Curves histogram being computed on a worker thread (`tone::histograms`).
@@ -1000,6 +1002,7 @@ impl PhotocraftApp {
             automation_input: false,
             action_run: None,
             fill_drag: None,
+            fill_gap_retry: None,
             channel_thumbs: None,
             channel_views: HashMap::new(),
             type_layout: None,
@@ -1172,9 +1175,13 @@ impl PhotocraftApp {
             self.session.authorize = gate;
         }
         let work_before = self.session.active().map(|st| (st.doc.id, st.doc.work_path.clone()));
+        let undone = matches!(id, "edit.undo" | "edit.stepBackward").then(|| self.session.active().and_then(|st| st.history.undo_label().map(str::to_string))).flatten();
         let result = self.run_command(id, params);
         if gate.is_some() {
             self.session.authorize = None;
+        }
+        if result.is_ok() && undone.is_some() {
+            fill_tool_ui::after_undo(self, undone.as_deref());
         }
         // A command that makes or changes the work path selects it in the Paths panel, as in
         // Photoshop, so the canvas shows it (only the selected path is drawn).
@@ -2296,10 +2303,14 @@ impl PhotocraftApp {
             self.perf.record_gpu(t);
         }
         self.perf.frame(ui_ms);
+        fill_tool_ui::tick(self);
         if self.stroke_trace.enabled() {
             self.stroke_trace.canvas(self.perf.frame_refresh_ms);
             // This frame's spans only: each is set again by the frame that measures it.
-            let spans: Vec<String> = self.perf.spans.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            let mut spans: Vec<String> = self.perf.spans.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            // A pass egui runs again (a widget asked for a discard) costs a whole UI build more.
+            spans.push(format!("pass={}", ctx.current_pass_index()));
+            spans.extend(ctx.output(|o| o.request_discard_reasons.iter().map(|r| format!("discard={}:{} {}", r.file, r.line, r.reason)).collect::<Vec<_>>()));
             self.stroke_trace.spans(spans.join(";"));
             self.perf.spans.clear();
             let info = &self.perf.gpu_info;
@@ -2363,6 +2374,13 @@ impl PhotocraftApp {
         if !photocraft_engine::channel_cmds::follows_target(id) || params.get("target").is_some() || !self.layer_mask_targeted() {
             return params;
         }
+        // Paste makes a new layer even with a mask targeted (an adjustment layer's, or a mask
+        // thumbnail clicked), as in Photoshop: only a mask shown on its own (⌥-click) or picked
+        // in the Channels panel takes the pasted pixels. Pasting into the mask by mistake looked
+        // like the paste had done nothing.
+        if matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace") && !self.paste_goes_to_mask() {
+            return params;
+        }
         let target = self.mask_target_name();
         match params {
             Value::Object(mut m) => {
@@ -2371,6 +2389,13 @@ impl PhotocraftApp {
             }
             _ => serde_json::json!({ "target": target }),
         }
+    }
+
+    /// Whether a paste goes into the targeted mask: shown on its own, or the Channels panel's target.
+    fn paste_goes_to_mask(&self) -> bool {
+        self.session.active().is_some_and(|st| {
+            photocraft_engine::mask_view_cmds::current(st).is_some() || st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::LayerMask
+        })
     }
 
     /// The `"target"` naming the targeted pixel mask: `"secondMask"` when the Layers panel
@@ -3399,8 +3424,10 @@ mod clipboard_tests {
         assert!(clip.surface.rgba(20, 20)[0] < 0.01, "the hidden area copies as black");
     }
 
-    /// #1035: with the layer mask targeted (its thumbnail clicked), ⌘V pastes the clipboard's
-    /// luminosity into the mask instead of making a layer.
+    /// #1035: with the layer mask shown on its own (⌥-click on its thumbnail), ⌘V pastes the
+    /// clipboard's luminosity into the mask instead of making a layer. Only targeted (its
+    /// thumbnail clicked, or an adjustment layer selected), the paste is a new layer, as in
+    /// Photoshop: an image pasted into a mask by mistake looked like a paste that did nothing.
     #[test]
     fn paste_with_the_mask_targeted_goes_into_the_mask() {
         let (os, reads) = (OsClip::default(), Arc::default());
@@ -3411,6 +3438,12 @@ mod clipboard_tests {
         app.ui.views[0].center = [32.0, 32.0];
         *os.lock().unwrap() = Some((4, 4, [128u8, 128, 128, 255].repeat(16)));
         let layers = app.session.active().unwrap().doc.layer_count();
+        crate::menus::invoke(&mut app, &egui::Context::default(), "edit.paste", serde_json::json!({})).unwrap();
+        assert_eq!(app.session.active().unwrap().doc.layer_count(), layers + 1, "targeted only: a new layer");
+        app.run("edit.undo", serde_json::json!({})).unwrap();
+        app.ui.mask_target = true;
+        app.run(photocraft_engine::mask_view_cmds::ID, serde_json::json!({})).unwrap();
+        assert!(photocraft_engine::mask_view_cmds::current(app.session.active().unwrap()).is_some(), "the mask is shown");
         crate::menus::invoke(&mut app, &egui::Context::default(), "edit.paste", serde_json::json!({})).unwrap();
         let st = app.session.active().unwrap();
         assert_eq!(st.doc.layer_count(), layers, "no new layer");

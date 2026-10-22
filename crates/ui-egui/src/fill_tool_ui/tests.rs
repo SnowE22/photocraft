@@ -25,8 +25,11 @@ fn inked() -> (PhotocraftApp, LayerId) {
     app.run("tools.setColors", json!({"foreground": [1.0, 0.0, 0.0, 1.0], "background": [1.0, 1.0, 1.0, 1.0]})).unwrap();
     app.ui.tool = Tool::Fill;
     let o = &mut app.ui.tool_options.fill_tool;
-    o.reference = "reference".into();
-    o.anti_alias = false;
+    for sub in [SubTool::Click, SubTool::Enclose, SubTool::Unfilled] {
+        let o = o.of_mut(sub);
+        o.reference = "reference".into();
+        o.anti_alias = false;
+    }
     (app, colour)
 }
 
@@ -64,7 +67,7 @@ fn a_click_fills_from_the_reference_layer_and_holds_at_the_gap() {
     assert_eq!(app.session.active().unwrap().history.undo_label(), Some("Fill Tool"));
     // Close Gap off: it runs out of the box.
     app.run("edit.undo", json!({})).unwrap();
-    app.ui.tool_options.fill_tool.close_gap = 0.0;
+    app.ui.tool_options.fill_tool.click.close_gap = 0.0;
     drag(&mut app, &[[20.0, 20.0]]);
     assert_eq!(alpha(&app, colour, 0, 0), 1.0);
     // Without a reference layer to read, the click says so.
@@ -95,7 +98,7 @@ fn paint_unfilled_area_fills_what_the_stroke_covers() {
     let (mut app, colour) = inked();
     let o = &mut app.ui.tool_options.fill_tool;
     o.sub_tool = SubTool::Unfilled;
-    o.size = 80.0;
+    o.unfilled.size = 80.0;
     drag(&mut app, &[[10.0, 20.0], [30.0, 20.0]]);
     assert_eq!(alpha(&app, colour, 20, 20), 1.0);
 }
@@ -103,12 +106,12 @@ fn paint_unfilled_area_fills_what_the_stroke_covers() {
 #[test]
 fn the_options_reach_the_command() {
     let (mut app, _) = inked();
-    let o = &mut app.ui.tool_options.fill_tool;
+    let o = &mut app.ui.tool_options.fill_tool.click;
     o.exclude_layer = true;
     o.exclude_locked = true;
     o.mode = BlendMode::Multiply;
     o.scaling_mode = "round".into();
-    app.ui.tool_options.fill_opacity = 40.0;
+    o.opacity = 40.0;
     let p = params(&app);
     assert_eq!(p["exclude"], json!(["layer", "locked"]));
     assert_eq!(p["scalingMode"], "round");
@@ -119,7 +122,73 @@ fn the_options_reach_the_command() {
     assert_eq!(app.ui.tool_options.fill_tool, FillToolOptions::default());
     // Saved options without the Fill tool's load with its defaults.
     let o: crate::state::ToolOptions = serde_json::from_value(json!({})).unwrap();
-    assert_eq!(o.fill_tool.close_gap, GAP_LEVELS[1]);
+    assert_eq!(o.fill_tool.click.close_gap, GAP_LEVELS[1]);
+}
+
+#[test]
+fn each_sub_tool_keeps_its_own_settings() {
+    let (mut app, _) = inked();
+    let o = &mut app.ui.tool_options.fill_tool;
+    o.sub_tool = SubTool::Enclose;
+    o.current_mut().tolerance = 70.0;
+    o.current_mut().opacity = 25.0;
+    assert_eq!(params(&app)["tolerance"], 70.0);
+    assert_eq!(params(&app)["opacity"], 25.0);
+    // The click and Paint Unfilled Area keep theirs.
+    let o = &mut app.ui.tool_options.fill_tool;
+    o.sub_tool = SubTool::Click;
+    assert_eq!(params(&app)["tolerance"], 10.0);
+    assert_eq!(params(&app)["opacity"], 100.0);
+    app.ui.tool_options.fill_tool.sub_tool = SubTool::Unfilled;
+    assert_eq!(params(&app)["tolerance"], 10.0);
+    // The number keys set the opacity of the sub tool in use.
+    crate::opacity_keys::press(&mut app, 5, false, 0.0);
+    assert_eq!(app.ui.tool_options.fill_tool.unfilled.opacity, 50.0);
+    assert_eq!(app.ui.tool_options.fill_tool.click.opacity, 100.0);
+    // Settings saved before the split (one flat set) load as the click's.
+    let old: FillToolOptions = serde_json::from_value(json!({"tolerance": 33.0, "subTool": "enclose"})).unwrap();
+    assert_eq!((old.click.tolerance, old.enclose.tolerance, old.sub_tool), (33.0, 10.0, SubTool::Enclose));
+    let back: FillToolOptions = serde_json::from_value(serde_json::to_value(&app.ui.tool_options.fill_tool).unwrap()).unwrap();
+    assert_eq!(back, app.ui.tool_options.fill_tool);
+}
+
+#[test]
+fn undo_widens_close_gap_until_the_fill_holds_and_another_tool_puts_it_back() {
+    let (mut app, colour) = inked();
+    let o = &mut app.ui.tool_options.fill_tool;
+    o.undo_widens_gap = true;
+    o.click.close_gap = 0.0;
+    o.click.area_scaling = 0.0;
+    // It leaks through the 3 px gap; each Undo closes bigger gaps for the next click.
+    drag(&mut app, &[[20.0, 20.0]]);
+    assert_eq!(alpha(&app, colour, 0, 0), 1.0);
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(app.ui.tool_options.fill_tool.click.close_gap, 2.0);
+    drag(&mut app, &[[20.0, 20.0]]);
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(app.ui.tool_options.fill_tool.click.close_gap, 4.0);
+    drag(&mut app, &[[20.0, 20.0]]);
+    assert_eq!(alpha(&app, colour, 20, 20), 1.0);
+    assert_eq!(alpha(&app, colour, 0, 0), 0.0, "the widened gap holds");
+    // Kept: the next click (another area) is back at the user's own Close Gap.
+    drag(&mut app, &[[2.0, 2.0]]);
+    assert_eq!(app.ui.tool_options.fill_tool.click.close_gap, 0.0);
+    // Undo, then another tool: back too.
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(app.ui.tool_options.fill_tool.click.close_gap, 2.0);
+    app.ui.tool = Tool::Brush;
+    tick(&mut app);
+    assert_eq!(app.ui.tool_options.fill_tool.click.close_gap, 0.0);
+    // Off, an Undo leaves Close Gap alone; so does undoing something else.
+    app.ui.tool = Tool::Fill;
+    app.ui.tool_options.fill_tool.undo_widens_gap = false;
+    drag(&mut app, &[[20.0, 20.0]]);
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(app.ui.tool_options.fill_tool.click.close_gap, 0.0);
+    app.ui.tool_options.fill_tool.undo_widens_gap = true;
+    app.run("layer.new.layer", json!({})).unwrap();
+    app.run("edit.undo", json!({})).unwrap();
+    assert_eq!(app.ui.tool_options.fill_tool.click.close_gap, 0.0);
 }
 
 #[test]

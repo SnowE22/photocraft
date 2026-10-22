@@ -4333,3 +4333,13 @@ cameraData	Lens	Lens
 	Disable Second Mask	İkinci Maskeyi Devre Dışı Bırak
 	Enable Second Mask	İkinci Maskeyi Etkinleştir
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Seçimi kilitle: tuvaldeki tıklamalar içinden geçer (Katmanlar paneli yine de seçer)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Geçerli Katmanı Ayarla
+	Editing layer blocks the fill	Düzenlenen katman dolguyu durdurur
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Doldurulan katmandaki boya her toleransta dolguyu durdurur ve dolgu onun arkasına girer: kapatmak için bir boşluğun üzerine çizin
+	Undo widens Close Gap	Geri alma Boşlukları Kapat'ı genişletir
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Bir dolgunun her geri alınışı, başka bir araç seçene kadar sonraki tıklamada daha büyük boşlukları kapatır
+	Close Gap widened to {px} px: click again to fill	Boşlukları Kapat {px} px'e genişletildi: doldurmak için yeniden tıklayın
+	Pick From	Seçme Eşiği
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl-tıklama ve Otomatik Seç'in bir katmanı seçmesi için işaretçinin altında ne kadar opak olması gerektiği: neredeyse siyah bir maske gibi daha soluk pikseller tıklamayı geçirir (0: görünen her piksel)

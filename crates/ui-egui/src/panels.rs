@@ -1665,6 +1665,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                         // And Show Transform Controls (#5740): without it the box could not be
                         // turned on outside the Pro themes.
                         widgets::checkbox(ui, &mut app.ui.tool_options.move_show_transform, tl!("Show Transform Controls"));
+                        opt_label(ui, tl!("Pick From"));
+                        widgets::value_field(ui, &mut app.ui.tool_options.move_pick_opacity, 0.0..=100.0, "%", 58.0)
+                            .on_hover_text(tl!("How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)"));
                         hint(ui, tl!("Drag to move the active layer"));
                     }
                     Tool::Eyedropper => crate::eyedropper_ui::options(app, ui),
@@ -3036,11 +3039,13 @@ fn layers(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         actions.extend(footer_drop(ui, &new_layer, footer_drag, "layer.duplicate"));
         let group = icons::button(ui, "folder", 26.0, false, tl!("Create a new group"));
         if group.clicked() {
-            // Like Photoshop a plain click adds an empty group; Shift-click groups the selected
-            // layers, the same as Layer › Group Layers (#2561).
+            // With several layers selected a click groups them (closed), as Layer › Group Layers
+            // does; with one, a plain click adds an empty group and Shift-click groups the layer
+            // (#2561).
             let shift = ui.input(|i| i.modifiers.shift);
-            let cmd = if shift && active_layer.is_some() { "layer.groupLayers" } else { "layer.new.group" };
-            actions.push((cmd.into(), json!({})));
+            let several = app.session.active().is_some_and(|st| st.selected_layers().len() > 1);
+            let cmd = if several || (shift && active_layer.is_some()) { "layer.groupLayers" } else { "layer.new.group" };
+            actions.push((cmd.into(), if several { json!({"closed": true}) } else { json!({}) }));
         }
         actions.extend(footer_drop(ui, &group, footer_drag, "layer.groupLayers"));
         let adj = footer_menu_button(ui, "adjustment-layer", 26.0, tl!("Create new fill or adjustment layer"));

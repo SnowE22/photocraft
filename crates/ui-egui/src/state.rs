@@ -670,6 +670,9 @@ pub struct ToolOptions {
     /// ⌘/Ctrl-click inverts it.
     #[serde(default = "yes")]
     pub move_auto_select: bool,
+    /// How opaque a layer must be under the pointer, %, for ⌘-click and Auto-Select to pick it
+    /// (0: any visible pixel); fainter pixels are clicked through.
+    pub move_pick_opacity: f32,
     #[serde(default = "default_move_target")]
     pub move_target: String,
     #[serde(default)]
@@ -948,6 +951,7 @@ impl Default for ToolOptions {
             marquee_width: 1.0,
             marquee_height: 1.0,
             move_auto_select: true,
+            move_pick_opacity: 0.0,
             move_target: default_move_target(),
             move_show_transform: false,
             crop_ratio: String::new(),

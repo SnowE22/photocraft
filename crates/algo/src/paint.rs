@@ -62,6 +62,21 @@ pub enum FillPaint {
     Blend(BlendMode),
     /// Clears the pixels instead (the Fill tool's transparent colour): coverage takes alpha away.
     Erase,
+    /// Lays the colour down behind the pixels already there (Photoshop's Behind mode): a fill that
+    /// reaches in under the layer's own strokes leaves them as they are and fills their soft edges.
+    Behind,
+}
+
+/// `c` with coverage `k` composited behind `d` (straight RGBA).
+fn behind(d: [f32; 4], c: [f32; 4], k: f32) -> [f32; 4] {
+    let a = (c[3] * k).clamp(0.0, 1.0);
+    let da = d[3].clamp(0.0, 1.0);
+    let out = da + a * (1.0 - da);
+    if out <= 0.0 {
+        return [0.0; 4];
+    }
+    let ch = |i: usize| (d[i] * da + c[i] * a * (1.0 - da)) / out;
+    [ch(0), ch(1), ch(2), out]
 }
 
 /// Composites `color(i)` over `area` of the surface with per-pixel coverage.
@@ -101,6 +116,7 @@ fn composite_area(
                 let mut o = match paint {
                     FillPaint::Blend(mode) => blend::composite(mode, d, color(x, y), k),
                     FillPaint::Erase => [d[0], d[1], d[2], d[3] * (1.0 - k.clamp(0.0, 1.0))],
+                    FillPaint::Behind => behind(d, color(x, y), k),
                 };
                 if lock_transparency {
                     o[3] = d[3];
@@ -286,6 +302,16 @@ pub fn fill_region(
 mod tests {
     use super::*;
     use photocraft_color::PixelFormat;
+
+    #[test]
+    fn behind_fills_under_the_pixels_already_there() {
+        // An opaque pixel stays as it is; a soft edge gets the colour under it; nothing gets it all.
+        assert_eq!(behind([1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0], 1.0), [1.0, 0.0, 0.0, 1.0]);
+        let edge = behind([1.0, 0.0, 0.0, 0.25], [0.0, 0.0, 1.0, 1.0], 1.0);
+        assert!((edge[3] - 1.0).abs() < 1e-6 && (edge[0] - 0.25).abs() < 1e-6 && (edge[2] - 0.75).abs() < 1e-6, "{edge:?}");
+        assert_eq!(behind([0.0; 4], [0.0, 1.0, 0.0, 1.0], 0.5), [0.0, 1.0, 0.0, 0.5]);
+        assert_eq!(behind([0.0; 4], [0.0, 1.0, 0.0, 1.0], 0.0), [0.0; 4]);
+    }
 
     #[test]
     fn gradient_t_shapes() {

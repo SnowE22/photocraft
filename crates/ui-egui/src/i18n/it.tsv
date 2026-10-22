@@ -4720,3 +4720,13 @@ shape	Appearance	Aspetto
 	Disable Second Mask	Disattiva seconda maschera
 	Enable Second Mask	Attiva seconda maschera
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Blocca selezione: i clic sulla tela la attraversano (il pannello Livelli la seleziona ancora)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Imposta livello attuale
+	Editing layer blocks the fill	Il livello in modifica blocca il riempimento
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Il colore sul livello da riempire ferma il riempimento con qualsiasi tolleranza e il riempimento passa dietro: dipingi su uno spazio per chiuderlo
+	Undo widens Close Gap	Annulla allarga Chiudi spazi
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Ogni Annulla di un riempimento chiude spazi più grandi al clic successivo, finché non scegli un altro strumento
+	Close Gap widened to {px} px: click again to fill	Chiudi spazi allargato a {px} px: fai clic di nuovo per riempire
+	Pick From	Seleziona da
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Quanto deve essere opaco un livello sotto il puntatore perché Ctrl-clic e Selezione automatica lo scelgano: i pixel più tenui, come una maschera quasi nera, vengono attraversati (0: qualsiasi pixel visibile)

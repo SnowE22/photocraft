@@ -4393,3 +4393,13 @@ layerLabel	No Color	Sem cor
 	Disable Second Mask	Desativar segunda máscara
 	Enable Second Mask	Ativar segunda máscara
 	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Bloquear seleção: cliques na tela a atravessam (o painel Camadas ainda a seleciona)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Definir camada atual
+	Editing layer blocks the fill	A camada em edição bloqueia o preenchimento
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	A pintura na camada preenchida bloqueia o preenchimento em qualquer tolerância, e o preenchimento passa por trás dela: pinte sobre uma lacuna para fechá-la
+	Undo widens Close Gap	Desfazer amplia Fechar lacunas
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Cada Desfazer de um preenchimento fecha lacunas maiores no próximo clique, até você escolher outra ferramenta
+	Close Gap widened to {px} px: click again to fill	Fechar lacunas ampliado para {px} px: clique de novo para preencher
+	Pick From	Selecionar a partir de
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Quão opaca uma camada precisa ser sob o ponteiro para que Ctrl+clique e Seleção automática a escolham: pixels mais fracos, como uma máscara quase preta, são atravessados (0: qualquer pixel visível)

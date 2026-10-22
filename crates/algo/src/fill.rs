@@ -102,6 +102,22 @@ impl Default for FillOptions {
 /// all over, with gaps closed and Area Scaling applied. `None` if the seed is outside `area` or
 /// nothing would be filled.
 pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptions) -> Option<Region> {
+    click_region_blocked(img, area, seed, o, None)
+}
+
+/// The alpha (0..=255) from which a pixel of the editing layer stops a fill ([`click_region_blocked`]).
+pub const BLOCK_ALPHA: u8 = 13;
+
+/// How far a fill blocked by the editing layer's paint reaches in under that paint's soft edge,
+/// pixels: up to its opaque core, so no faint line shows between the paint and the fill.
+const TUCK: f32 = 16.0;
+
+/// [`click_region`] where `block`, the editing layer's alpha over `area`, is a wall wherever it is
+/// at least [`BLOCK_ALPHA`], however close its colour is to the clicked one: a stroke drawn on the
+/// layer being filled closes a gap even in a light colour at a high colour margin. The fill then
+/// reaches in under the stroke's soft edge (it is laid down behind the layer's paint). A click on
+/// the layer's own paint (recolouring a flat) fills as without `block`.
+pub fn click_region_blocked(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptions, block: Option<&[u8]>) -> Option<Region> {
     if !area.contains(seed.0, seed.1) {
         return None;
     }
@@ -112,12 +128,18 @@ pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptio
     if difference(*img.get(si)?, target) > margin {
         return None;
     }
-    let strength = strengths(img, |p| difference(p, target));
-    let free: Vec<bool> = crate::par::map(strength.len(), strength.len() >= 65_536, |i| strength.get(i).is_some_and(|s| *s <= margin));
+    let block = block.filter(|b| b.len() == img.len() && b.get(si).is_some_and(|a| *a < BLOCK_ALPHA));
+    let mut strength = strengths(img, |p| difference(p, target));
+    blocked_strength(&mut strength, block);
+    let open = |i: usize| strength.get(i).is_some_and(|s| *s <= margin) && block.is_none_or(|b| b.get(i).is_some_and(|a| *a < BLOCK_ALPHA));
+    let free: Vec<bool> = crate::par::map(strength.len(), strength.len() >= 65_536, open);
     let gap = finite(o.close_gap, MAX_GAP);
     if !o.contiguous {
         let mut fill = free.clone();
         scale(&mut fill, &strength, &free, w, h, o);
+        if let Some(b) = block {
+            tuck(&mut fill, b, w, h);
+        }
         return to_region(&fill, w, h, area, o.anti_alias);
     }
     // The seed's area before any gap is closed. Closing gaps only splits it, and Area Scaling
@@ -126,12 +148,15 @@ pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptio
     let mut spot = vec![false; free.len()];
     let (x0, y0, x1, y1) = flood(&free, &mut spot, w, h, si, true)?;
     let amount = if o.scale.is_finite() { o.scale.clamp(-MAX_SCALE, MAX_SCALE).abs() } else { 0.0 };
-    let pad = (gap / 2.0).ceil() as usize + amount.ceil() as usize + 4;
+    let tucks = if block.is_some() { TUCK as usize } else { 0 };
+    let pad = (gap / 2.0).ceil() as usize + amount.ceil() as usize + tucks + 4;
     let (cx0, cy0) = (x0.saturating_sub(pad), y0.saturating_sub(pad));
     let (cx1, cy1) = ((x1 + pad + 1).min(w), (y1 + pad + 1).min(h));
     let (cw, ch) = (cx1 - cx0, cy1 - cy0);
     let crop = |v: &[bool]| -> Vec<bool> { (cy0..cy1).flat_map(|y| v.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect() };
-    let strength: Vec<u8> = (cy0..cy1).flat_map(|y| strength.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect();
+    let crop8 = |v: &[u8]| -> Vec<u8> { (cy0..cy1).flat_map(|y| v.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect() };
+    let strength: Vec<u8> = crop8(&strength);
+    let block: Option<Vec<u8>> = block.map(crop8);
     let (spot, free) = (crop(&spot), crop(&free));
     let csi = (si / w - cy0) * cw + si % w - cx0;
     let carea = Rect::new(area.x0 + cx0 as i32, area.y0 + cy0 as i32, area.x0 + cx1 as i32, area.y0 + cy1 as i32);
@@ -149,7 +174,32 @@ pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptio
         fill
     };
     scale(&mut fill, &strength, &free, cw, ch, o);
+    if let Some(b) = &block {
+        tuck(&mut fill, b, cw, ch);
+    }
     to_region(&fill, cw, ch, carea, o.anti_alias)
+}
+
+/// The editing layer's paint (`block`) is at least as far from the filled colour as it is opaque,
+/// so Area Scaling's To Darkest Pixel grows into its soft edge up to its core and no further.
+fn blocked_strength(strength: &mut [u8], block: Option<&[u8]>) {
+    let Some(b) = block else { return };
+    for (s, a) in strength.iter_mut().zip(b) {
+        if *a >= BLOCK_ALPHA {
+            *s = (*s).max(*a);
+        }
+    }
+}
+
+/// Grows `fill` in under the editing layer's paint (`block`, its alpha) up to [`TUCK`] pixels,
+/// while the paint gets more opaque: the fill, laid down behind the paint, then meets it without
+/// the faint line a fill stopping at the paint's soft edge leaves.
+fn tuck(fill: &mut [bool], block: &[u8], w: usize, h: usize) {
+    if block.len() != fill.len() {
+        return;
+    }
+    let free: Vec<bool> = block.iter().map(|a| *a < BLOCK_ALPHA).collect();
+    grow_to_darkest(fill, block, &free, w, h, TUCK);
 }
 
 
@@ -157,10 +207,17 @@ pub fn click_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), o: &FillOptio
 /// [`click_region`]) that lies wholly inside `inside` (the lasso or the painted stroke, a mask
 /// over `area`). An area that reaches outside it is left as it is. `contiguous` is not used.
 pub fn enclosed_region(img: &[[u8; 4]], area: Rect, inside: &[bool], target: Target, o: &FillOptions) -> Option<Region> {
+    enclosed_region_blocked(img, area, inside, target, o, None)
+}
+
+/// [`enclosed_region`] with the editing layer's paint (`block`, its alpha over `area`) a wall
+/// wherever it is at least [`BLOCK_ALPHA`], as in [`click_region_blocked`].
+pub fn enclosed_region_blocked(img: &[[u8; 4]], area: Rect, inside: &[bool], target: Target, o: &FillOptions, block: Option<&[u8]>) -> Option<Region> {
     let (w, h) = dims(img, area)?;
     if inside.len() != w * h {
         return None;
     }
+    let block = block.filter(|b| b.len() == img.len());
     // Only areas wholly inside the lasso fill, so the work is done on its box and a margin, not
     // the page. An area reaching into the margin leaves the lasso there. The margin is wide enough
     // that an area that goes on past it (blank past the margin's edge, as past a canvas edge with
@@ -171,19 +228,21 @@ pub fn enclosed_region(img: &[[u8; 4]], area: Rect, inside: &[bool], target: Tar
     let gap = finite(o.close_gap, MAX_GAP);
     let amount = if o.scale.is_finite() { o.scale.clamp(-MAX_SCALE, MAX_SCALE).abs() } else { 0.0 };
     let r = (gap + 2.0) / 2.0;
-    let pad = if gap < 1.0 { 2 } else { (8.0 * r).ceil() as usize } + amount.ceil() as usize + 4;
+    let tucks = if block.is_some() { TUCK as usize } else { 0 };
+    let pad = if gap < 1.0 { 2 } else { (8.0 * r).ceil() as usize } + amount.ceil() as usize + tucks + 4;
     let (cx0, cy0) = (x0.saturating_sub(pad), y0.saturating_sub(pad));
     let (cx1, cy1) = ((x1 + pad + 1).min(w), (y1 + pad + 1).min(h));
     // The canvas edge closes gaps only where it is the box's edge too, and with Image Border on.
     let border = [cx0 == 0, cy0 == 0, cx1 == w, cy1 == h].map(|edge| edge && o.image_border);
     if (cx0, cy0, cx1, cy1) == (0, 0, w, h) {
-        return enclosed_in(img, area, inside, w, h, border, target, o);
+        return enclosed_in(img, area, inside, w, h, border, target, o, block);
     }
     let (cw, ch) = (cx1 - cx0, cy1 - cy0);
     let img: Vec<[u8; 4]> = (cy0..cy1).flat_map(|y| img.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect();
     let inside: Vec<bool> = (cy0..cy1).flat_map(|y| inside.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect();
+    let block: Option<Vec<u8>> = block.map(|b| (cy0..cy1).flat_map(|y| b.get(y * w + cx0..y * w + cx1).unwrap_or(&[]).iter().copied()).collect());
     let carea = Rect::new(area.x0 + cx0 as i32, area.y0 + cy0 as i32, area.x0 + cx1 as i32, area.y0 + cy1 as i32);
-    enclosed_in(&img, carea, &inside, cw, ch, border, target, o)
+    enclosed_in(&img, carea, &inside, cw, ch, border, target, o, block.as_deref())
 }
 
 /// The box of the `true` pixels of a `w`-wide mask, inclusive (`None` when there are none).
@@ -200,13 +259,15 @@ fn mark_box(m: &[bool], w: usize) -> Option<(usize, usize, usize, usize)> {
 /// [`enclosed_region`] over `img` (`w` × `h`, covering `area`), the canvas edge a line on the
 /// sides `border` says (left, top, right, bottom).
 #[allow(clippy::too_many_arguments)]
-fn enclosed_in(img: &[[u8; 4]], area: Rect, inside: &[bool], w: usize, h: usize, border: [bool; 4], target: Target, o: &FillOptions) -> Option<Region> {
-    let strength = match target {
+fn enclosed_in(img: &[[u8; 4]], area: Rect, inside: &[bool], w: usize, h: usize, border: [bool; 4], target: Target, o: &FillOptions, block: Option<&[u8]>) -> Option<Region> {
+    let mut strength = match target {
         Target::Transparent => strengths(img, |p| difference(p, [0; 4])),
         Target::WhiteAndTransparent => strengths(img, darkness),
     };
+    blocked_strength(&mut strength, block);
     let margin = margin(o.tolerance);
-    let free: Vec<bool> = strength.iter().map(|s| *s <= margin).collect();
+    let free: Vec<bool> =
+        strength.iter().enumerate().map(|(i, s)| *s <= margin && block.is_none_or(|b| b.get(i).is_some_and(|a| *a < BLOCK_ALPHA))).collect();
     let gap = finite(o.close_gap, MAX_GAP);
     let labels = if gap < 1.0 { components(&free, w, h) } else { areas(&free, w, h, gap, border, None).0 };
     let count = labels.iter().copied().max().unwrap_or(0) as usize + 1;
@@ -224,6 +285,9 @@ fn enclosed_in(img: &[[u8; 4]], area: Rect, inside: &[bool], w: usize, h: usize,
         cover_seams(&mut fill, &labels, &free, w, h);
     }
     scale(&mut fill, &strength, &free, w, h, o);
+    if let Some(b) = block {
+        tuck(&mut fill, b, w, h);
+    }
     to_region(&fill, w, h, area, o.anti_alias)
 }
 

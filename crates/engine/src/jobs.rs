@@ -758,6 +758,9 @@ impl Session {
         // being recorded, nor move the recording mark past the entries it is about to replace.
         let recording = if spec.journal && crate::actions_cmds::replayable(id) { self.actions.recording.take() } else { None };
         let before = self.active().map(|st| st.doc.clone());
+        // A click on the layer already selected selects nothing new: recording leaves it out, as
+        // Photoshop does, so an action doesn't fill up with redundant Select steps.
+        let selection_before = (id == "layer.select" && (recording.is_some() || self.actions.recording.is_some())).then(|| self.active().map(|st| (st.selected_layers(), st.active_layer)));
         // Last-resort guard (AGENTS.md, Never crash): a command that panics anyway fails with an
         // error instead of taking the app down. `edit` only commits a document after its closure
         // returns, so the documents are unchanged.
@@ -788,7 +791,8 @@ impl Session {
                 if let Some(before) = before {
                     self.add_relayout_damage(&before);
                 }
-                self.after_command(id, params, spec.journal, Some(nested_from));
+                let unchanged = selection_before.is_some_and(|b| b == self.active().map(|st| (st.selected_layers(), st.active_layer)));
+                self.after_command(id, params, spec.journal && !unchanged, Some(nested_from));
                 Ok(Started::Done(v))
             }
         }
@@ -844,6 +848,7 @@ impl Session {
             let params = match id {
                 _ if self.actions.recording.is_none() => params,
                 "layer.select" => crate::layer_multi_cmds::recorded_selection(self, params),
+                "layer.setProps" => crate::layer_multi_cmds::recorded_current_layer(self, params),
                 "layerComp.apply" => crate::comps_cmds::recorded_apply(self, params),
                 _ => params,
             };
