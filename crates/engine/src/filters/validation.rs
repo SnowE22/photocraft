@@ -148,7 +148,10 @@ pub(crate) fn validate_params(id: &str, params: &Value) -> Result<()> {
         }
         return Ok(());
     }
-    let Some(fields) = fields(id) else { return crate::gallery_cmds::validate_params(id, params) };
+    let Some(fields) = fields(id) else {
+        crate::screentone_cmds::validate_params(id, params)?;
+        return crate::gallery_cmds::validate_params(id, params);
+    };
     if params.is_null() {
         return Ok(());
     }

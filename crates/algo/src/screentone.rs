@@ -1,0 +1,1265 @@
+//! Procedural screentone generator (GenTonik engine) for manga, comics and graphic arts.
+//!
+//! Features:
+//! * 12 pattern types: dots, lines, crosshatch, noise, gaussian_noise, stipple,
+//!   hexgrid, checker, concentric, stars, hearts, triangles.
+//! * 4 dot shapes: circle, square, diamond, hexagon.
+//! * Corner roundness (0.0 = sharp polygon, 1.0 = fully rounded).
+//! * Orbital satellite system (1–4 satellites, angle, distance, shape, stretch toward parent).
+//! * Gradient modulation (linear, radial) with midpoint curve bias.
+//! * Subpixel antialiasing or 1-bit binary threshold (manga print mode).
+//! * Layer-luminance halftone modulation (manga shading) or pure procedural sheet fill.
+//! * Depth-agnostic, selection-aware and tile-invariant.
+
+use photocraft_geom::Rect;
+use serde::{Deserialize, Serialize};
+
+use crate::Ctx;
+use crate::Halo;
+use crate::fxutil::{luma, rgba, set_rgba, xy};
+use crate::image::Image;
+
+/// 12 pattern types supported by the GenTonik screentone engine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum PatternType {
+    #[default]
+    Dots,
+    Lines,
+    Crosshatch,
+    Noise,
+    GaussianNoise,
+    Stipple,
+    Hexgrid,
+    Checker,
+    Concentric,
+    Stars,
+    Hearts,
+    Triangles,
+}
+
+/// Geometric dot shapes for raster dots and satellites.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum DotShape {
+    #[default]
+    Circle,
+    Square,
+    Diamond,
+    Hexagon,
+}
+
+/// Gradient mapping type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ScreentoneGradientType {
+    #[default]
+    None,
+    Linear,
+    Radial,
+}
+
+/// Parameters for procedural screentone generation.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ScreentoneSpec {
+    // ---- Pattern ----
+    pub pattern_type: PatternType,
+    pub dot_shape: DotShape,
+    pub dot_size: f32,
+    pub spacing_x: f32,
+    pub spacing_y: f32,
+    pub density: f32,
+    pub angle: f32,
+    pub line_width: f32,
+    pub cross_angle: f32,
+
+    // ---- Satellites ----
+    pub satellite_enabled: bool,
+    pub satellite_size: f32,
+    pub satellite_distance: f32,
+    pub satellite_count: u32,
+    pub satellite_angle: f32,
+    pub satellite_dot_shape: DotShape,
+    pub satellite_stretch: f32,
+
+    // ---- Distortion & Geometry ----
+    pub aspect_x: f32,
+    pub aspect_y: f32,
+    pub row_offset: f32,
+    pub merge_factor: f32,
+    pub jitter_pos: f32,
+    pub jitter_size: f32,
+    pub roundness: f32,
+
+    // ---- Gradient Mapping ----
+    pub grad_type: ScreentoneGradientType,
+    pub grad_angle: f32,
+    pub grad_reverse: bool,
+    pub grad_midpoint: f32,
+    pub grad_size_start: f32,
+    pub grad_size_end: f32,
+    pub grad_stretch_start: f32,
+    pub grad_stretch_end: f32,
+    pub grad_color_trans: bool,
+
+    // ---- Colors ----
+    /// Straight sRGB RGBA for foreground (pattern/ink).
+    pub foreground: [f32; 4],
+    /// Straight sRGB RGBA for background.
+    pub background: [f32; 4],
+
+    // ---- Rotations ----
+    pub rot_canvas: f32,
+    pub rot_pattern: f32,
+
+    // ---- Manga Shading & Antialiasing ----
+    /// Modulate dot size by underlying layer darkness (halftone manga shading mode).
+    pub use_source_luminance: bool,
+    /// Edge smoothness: 1.0 = smooth antialiased, 0.0 = pure 1-bit manga threshold.
+    pub smoothness: f32,
+    /// Seed for noise and stipple patterns.
+    pub seed: u32,
+}
+
+impl Default for ScreentoneSpec {
+    fn default() -> Self {
+        Self {
+            pattern_type: PatternType::Dots,
+            dot_shape: DotShape::Circle,
+            dot_size: 6.0,
+            spacing_x: 16.0,
+            spacing_y: 16.0,
+            density: 0.5,
+            angle: 0.0,
+            line_width: 1.5,
+            cross_angle: 45.0,
+
+            satellite_enabled: false,
+            satellite_size: 4.0,
+            satellite_distance: 18.0,
+            satellite_count: 4,
+            satellite_angle: 0.0,
+            satellite_dot_shape: DotShape::Circle,
+            satellite_stretch: 0.0,
+
+            aspect_x: 1.0,
+            aspect_y: 1.0,
+            row_offset: 0.0,
+            merge_factor: 0.0,
+            jitter_pos: 0.0,
+            jitter_size: 0.0,
+            roundness: 0.0,
+
+            grad_type: ScreentoneGradientType::None,
+            grad_angle: 90.0,
+            grad_reverse: false,
+            grad_midpoint: 0.5,
+            grad_size_start: 1.0,
+            grad_size_end: 0.0,
+            grad_stretch_start: 1.0,
+            grad_stretch_end: 1.0,
+            grad_color_trans: false,
+
+            foreground: [0.0, 0.0, 0.0, 1.0],
+            background: [1.0, 1.0, 1.0, 0.0],
+
+            rot_canvas: 0.0,
+            rot_pattern: 0.0,
+
+            use_source_luminance: true,
+            smoothness: 1.0,
+            seed: 42,
+        }
+    }
+}
+
+impl ScreentoneSpec {
+    /// Pixels read outside an output tile.
+    pub fn halo(&self) -> Halo {
+        if self.use_source_luminance {
+            let max_spacing = self.spacing_x.max(self.spacing_y).clamp(1.0, 256.0);
+            Halo::Radius((max_spacing * 0.5).ceil() as i32 + 2)
+        } else {
+            Halo::Radius(0)
+        }
+    }
+}
+
+/// Built-in preset descriptor for manga screentone styles.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScreentonePreset {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub category: &'static str,
+    pub spec: ScreentoneSpec,
+}
+
+/// Collection of classic manga screentone presets.
+pub fn built_in_presets() -> Vec<ScreentonePreset> {
+    vec![
+        ScreentonePreset {
+            id: "classic-10",
+            name: "Deleter 10% Dot",
+            category: "Classic Dots",
+            spec: ScreentoneSpec {
+                dot_size: 3.0,
+                spacing_x: 25.0,
+                spacing_y: 25.0,
+                density: 0.1,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "classic-30",
+            name: "Deleter 30% Dot",
+            category: "Classic Dots",
+            spec: ScreentoneSpec {
+                dot_size: 5.5,
+                spacing_x: 22.0,
+                spacing_y: 22.0,
+                density: 0.3,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "classic-60",
+            name: "Deleter 60% Dot",
+            category: "Classic Dots",
+            spec: ScreentoneSpec {
+                dot_size: 8.0,
+                spacing_x: 20.0,
+                spacing_y: 20.0,
+                density: 0.6,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "square-dots",
+            name: "Square Dots 45°",
+            category: "Classic Dots",
+            spec: ScreentoneSpec {
+                dot_shape: DotShape::Square,
+                dot_size: 6.0,
+                spacing_x: 22.0,
+                spacing_y: 22.0,
+                density: 0.4,
+                angle: 45.0,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "diamond-dots",
+            name: "Diamond Dots",
+            category: "Classic Dots",
+            spec: ScreentoneSpec {
+                dot_shape: DotShape::Diamond,
+                dot_size: 7.0,
+                spacing_x: 22.0,
+                spacing_y: 22.0,
+                density: 0.4,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "lines-45",
+            name: "Parallel Lines 45°",
+            category: "Lines & Hatching",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Lines,
+                spacing_y: 12.0,
+                line_width: 1.5,
+                angle: 45.0,
+                density: 0.5,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "crosshatch",
+            name: "Crosshatch 45°/90°",
+            category: "Lines & Hatching",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Crosshatch,
+                spacing_y: 15.0,
+                line_width: 1.0,
+                angle: 45.0,
+                cross_angle: 90.0,
+                density: 0.5,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "fine-lines",
+            name: "Fine Lines 0°",
+            category: "Lines & Hatching",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Lines,
+                spacing_y: 8.0,
+                line_width: 0.8,
+                angle: 0.0,
+                density: 0.3,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "gauze",
+            name: "Gauze / Sand Noise",
+            category: "Texture",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Noise,
+                dot_size: 2.0,
+                spacing_x: 6.0,
+                spacing_y: 6.0,
+                density: 0.3,
+                jitter_pos: 30.0,
+                jitter_size: 50.0,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "heavy-noise",
+            name: "Heavy Noise",
+            category: "Texture",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::GaussianNoise,
+                dot_size: 2.0,
+                spacing_x: 4.0,
+                spacing_y: 4.0,
+                density: 0.5,
+                jitter_pos: 50.0,
+                jitter_size: 60.0,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "stipple",
+            name: "Stipple Pointillism",
+            category: "Texture",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Stipple,
+                dot_size: 2.0,
+                spacing_x: 8.0,
+                spacing_y: 8.0,
+                density: 0.4,
+                jitter_pos: 40.0,
+                jitter_size: 40.0,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "hex-grid",
+            name: "Hex Grid Honeycomb",
+            category: "Geometric",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Hexgrid,
+                dot_shape: DotShape::Hexagon,
+                dot_size: 8.0,
+                spacing_x: 20.0,
+                spacing_y: 20.0,
+                density: 0.5,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "checker",
+            name: "Checkerboard",
+            category: "Geometric",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Checker,
+                spacing_x: 20.0,
+                spacing_y: 20.0,
+                density: 0.5,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "triangles",
+            name: "Triangles",
+            category: "Geometric",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Triangles,
+                dot_size: 10.0,
+                spacing_x: 30.0,
+                spacing_y: 30.0,
+                density: 0.4,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "concentric",
+            name: "Concentric Rings",
+            category: "Effects",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Concentric,
+                spacing_x: 20.0,
+                spacing_y: 20.0,
+                line_width: 1.5,
+                density: 0.5,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "stars",
+            name: "Shojo Stars",
+            category: "Fun & Shojo",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Stars,
+                dot_size: 8.0,
+                spacing_x: 40.0,
+                spacing_y: 40.0,
+                density: 0.4,
+                jitter_pos: 20.0,
+                jitter_size: 20.0,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "hearts",
+            name: "Romantic Hearts",
+            category: "Fun & Shojo",
+            spec: ScreentoneSpec {
+                pattern_type: PatternType::Hearts,
+                dot_size: 8.0,
+                spacing_x: 35.0,
+                spacing_y: 35.0,
+                density: 0.3,
+                jitter_pos: 15.0,
+                jitter_size: 15.0,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "radial-fade",
+            name: "Radial Gradient Fade",
+            category: "Gradient Effects",
+            spec: ScreentoneSpec {
+                dot_size: 6.0,
+                spacing_x: 18.0,
+                spacing_y: 18.0,
+                grad_type: ScreentoneGradientType::Radial,
+                grad_size_start: 1.5,
+                grad_size_end: 0.0,
+                ..Default::default()
+            },
+        },
+        ScreentonePreset {
+            id: "planets",
+            name: "Planets & Satellites",
+            category: "Original",
+            spec: ScreentoneSpec {
+                dot_size: 12.0,
+                spacing_x: 70.0,
+                spacing_y: 60.0,
+                density: 0.5,
+                satellite_enabled: true,
+                satellite_size: 5.0,
+                satellite_distance: 22.0,
+                satellite_count: 4,
+                row_offset: 0.5,
+                ..Default::default()
+            },
+        },
+    ]
+}
+
+// ────────────────────────────────────────────────────────────
+// Math & Distance Field Helpers
+// ────────────────────────────────────────────────────────────
+
+#[inline]
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+#[inline]
+fn mid_bias_curve(t: f32, midpoint: f32) -> f32 {
+    if t <= 0.0 {
+        return 0.0;
+    }
+    if t >= 1.0 {
+        return 1.0;
+    }
+    if midpoint <= 0.001 || midpoint >= 0.999 {
+        return t;
+    }
+    let exponent = 0.5f32.ln() / midpoint.clamp(0.001, 0.999).ln();
+    if exponent.is_finite() {
+        t.powf(exponent).clamp(0.0, 1.0)
+    } else {
+        t
+    }
+}
+
+/// Stable integer grid hash returning [0.0, 1.0).
+fn hash_coord(x: i32, y: i32, seed: u32) -> f32 {
+    let mut h = (x.wrapping_mul(374761393) ^ y.wrapping_mul(668265263) ^ (seed as i32).wrapping_mul(1274126177)) & 0x7fffffff;
+    h = ((h ^ (h >> 13)).wrapping_mul(1274126177)) & 0x7fffffff;
+    h = (h ^ (h >> 16)) & 0x7fffffff;
+    (h as f32) / 2147483647.0
+}
+
+/// Box-Muller normal random pair from cell coordinate.
+fn hash_gaussian(ix: i32, iy: i32, seed: u32) -> (f32, f32) {
+    let u1 = hash_coord(ix, iy, seed).clamp(1e-6, 1.0);
+    let u2 = hash_coord(ix.wrapping_add(1000), iy.wrapping_add(1000), seed);
+    let r = (-2.0 * u1.ln()).sqrt();
+    let theta = 2.0 * std::f32::consts::PI * u2;
+    (r * theta.cos(), r * theta.sin())
+}
+
+/// Compute gradient factor in [0.0, 1.0] at relative position `(x, y)` from center.
+fn compute_grad_factor(x: f32, y: f32, width: f32, height: f32, spec: &ScreentoneSpec) -> f32 {
+    if spec.grad_type == ScreentoneGradientType::None {
+        return 0.5;
+    }
+    let rad = spec.grad_angle.to_radians();
+    let (dir_y, dir_x) = rad.sin_cos();
+    let raw_grad = match spec.grad_type {
+        ScreentoneGradientType::Linear => {
+            let proj = x * dir_x + y * dir_y;
+            proj / (width * 0.8).max(1.0) + 0.5
+        }
+        ScreentoneGradientType::Radial => {
+            let dist = x.hypot(y);
+            dist / (width.min(height) * 0.6).max(1.0)
+        }
+        ScreentoneGradientType::None => 0.5,
+    };
+    let mut g = raw_grad.clamp(0.0, 1.0);
+    if spec.grad_reverse {
+        g = 1.0 - g;
+    }
+    mid_bias_curve(g, spec.grad_midpoint)
+}
+
+/// Distance from point `p` to line segment `a -> b`.
+#[inline]
+fn dist_to_segment(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let pax = p.0 - a.0;
+    let pay = p.1 - a.1;
+    let bax = b.0 - a.0;
+    let bay = b.1 - a.1;
+    let len_sq = bax * bax + bay * bay;
+    if len_sq < 1e-8 {
+        return pax.hypot(pay);
+    }
+    let h = ((pax * bax + pay * bay) / len_sq).clamp(0.0, 1.0);
+    let dx = pax - bax * h;
+    let dy = pay - bay * h;
+    dx.hypot(dy)
+}
+
+/// Signed distance field to a 2D box with rounded corners.
+#[inline]
+fn sdf_box_rounded(px: f32, py: f32, half_w: f32, half_h: f32, radius: f32) -> f32 {
+    let r = radius.clamp(0.0, half_w.min(half_h));
+    let qx = px.abs() - (half_w - r);
+    let qy = py.abs() - (half_h - r);
+    qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - r
+}
+
+/// Signed distance field for Square dot shape.
+#[inline]
+fn sdf_square(px: f32, py: f32, size: f32, roundness: f32) -> f32 {
+    if roundness >= 0.95 {
+        return px.hypot(py) - size;
+    }
+    let s = size * 0.8;
+    let r = roundness.clamp(0.0, 1.0) * s * 0.5;
+    sdf_box_rounded(px, py, s, s, r)
+}
+
+/// Signed distance field for Diamond dot shape (rotated rhombus).
+#[inline]
+fn sdf_diamond(px: f32, py: f32, size: f32, roundness: f32) -> f32 {
+    if roundness >= 0.95 {
+        return px.hypot(py) - size;
+    }
+    let u = (px + py) * std::f32::consts::FRAC_1_SQRT_2;
+    let v = (-px + py) * std::f32::consts::FRAC_1_SQRT_2;
+    let s = size * std::f32::consts::FRAC_1_SQRT_2;
+    let r = roundness.clamp(0.0, 1.0) * s * 0.5;
+    sdf_box_rounded(u, v, s, s, r)
+}
+
+/// Signed distance field for a general polygon with ray-casting winding check.
+fn sdf_polygon(p: (f32, f32), pts: &[[f32; 2]], roundness: f32) -> f32 {
+    let n = pts.len();
+    if n < 3 {
+        return f32::MAX;
+    }
+    let mut min_d = f32::MAX;
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let vi = (pts[i][0], pts[i][1]);
+        let vj = (pts[j][0], pts[j][1]);
+        if ((vi.1 > p.1) != (vj.1 > p.1)) && (p.0 < (vj.0 - vi.0) * (p.1 - vi.1) / (vj.1 - vi.1).abs().max(1e-6) + vi.0) {
+            inside = !inside;
+        }
+        let seg_d = dist_to_segment(p, vj, vi);
+        if seg_d < min_d {
+            min_d = seg_d;
+        }
+        j = i;
+    }
+    let signed_d = if inside { -min_d } else { min_d };
+    let r = roundness.clamp(0.0, 1.0);
+    if r > 0.01 {
+        let corner_rad = min_d.min(2.0) * 0.5 * r;
+        signed_d - corner_rad
+    } else {
+        signed_d
+    }
+}
+
+/// Polygon vertices for Hexagon.
+fn hexagon_vertices(size: f32) -> [[f32; 2]; 6] {
+    let mut pts = [[0.0f32; 2]; 6];
+    for (i, p) in pts.iter_mut().enumerate() {
+        let a = (std::f32::consts::PI / 3.0) * i as f32 - std::f32::consts::FRAC_PI_6;
+        p[0] = a.cos() * size;
+        p[1] = a.sin() * size;
+    }
+    pts
+}
+
+/// Polygon vertices for 5-pointed Star.
+fn star_vertices(size: f32) -> [[f32; 2]; 10] {
+    let mut pts = [[0.0f32; 2]; 10];
+    for (i, p) in pts.iter_mut().enumerate() {
+        let r = if i % 2 == 0 { size } else { size * 0.4 };
+        let a = (std::f32::consts::PI / 5.0) * i as f32 - std::f32::consts::FRAC_PI_2;
+        p[0] = a.cos() * r;
+        p[1] = a.sin() * r;
+    }
+    pts
+}
+
+/// Polygon vertices for Equilateral Triangle.
+fn triangle_vertices(size: f32) -> [[f32; 2]; 3] {
+    [[0.0, -size], [size * 0.8660254, size * 0.5], [-size * 0.8660254, size * 0.5]]
+}
+
+/// Polygon vertices for Heart shape curve (28 sample points).
+fn heart_vertices(size: f32) -> [[f32; 2]; 28] {
+    let mut pts = [[0.0f32; 2]; 28];
+    let sc = size / 17.0;
+    for (i, p) in pts.iter_mut().enumerate() {
+        let t = (i as f32 / 28.0) * std::f32::consts::PI * 2.0;
+        let sin_t = t.sin();
+        let x = sc * 16.0 * sin_t * sin_t * sin_t;
+        let y = -sc * (13.0 * t.cos() - 5.0 * (2.0 * t).cos() - 2.0 * (3.0 * t).cos() - (4.0 * t).cos());
+        p[0] = x;
+        p[1] = y;
+    }
+    pts
+}
+
+/// Per-pixel shape transform (stretch, corner roundness, pattern rotation) shared by all SDF
+/// evaluations, so the helpers stay within the crate's argument limit.
+#[derive(Clone, Copy, Debug)]
+struct ShapeXform {
+    stretch_x: f32,
+    stretch_y: f32,
+    roundness: f32,
+    rot_pattern_rad: f32,
+}
+
+/// Evaluates Signed Distance to a specific shape at `(px, py)` with stretch and rotation.
+fn eval_shape_sdf(px: f32, py: f32, shape: DotShape, size: f32, xf: ShapeXform) -> f32 {
+    if size <= 0.05 {
+        return 1e6;
+    }
+    let (sin_p, cos_p) = xf.rot_pattern_rad.sin_cos();
+    let rx = px * cos_p + py * sin_p;
+    let ry = -px * sin_p + py * cos_p;
+    let sx = rx / xf.stretch_x.max(0.01);
+    let sy = ry / xf.stretch_y.max(0.01);
+
+    if shape == DotShape::Circle || xf.roundness >= 0.95 {
+        return sx.hypot(sy) - size;
+    }
+    match shape {
+        DotShape::Circle => sx.hypot(sy) - size,
+        DotShape::Square => sdf_square(sx, sy, size, xf.roundness),
+        DotShape::Diamond => sdf_diamond(sx, sy, size, xf.roundness),
+        DotShape::Hexagon => {
+            let verts = hexagon_vertices(size);
+            sdf_polygon((sx, sy), &verts, xf.roundness)
+        }
+    }
+}
+
+/// Evaluates special pattern shape SDF (star, heart, triangle).
+fn eval_special_shape_sdf(px: f32, py: f32, pattern: PatternType, size: f32, xf: ShapeXform) -> f32 {
+    if size <= 0.05 {
+        return 1e6;
+    }
+    let (sin_p, cos_p) = xf.rot_pattern_rad.sin_cos();
+    let rx = px * cos_p + py * sin_p;
+    let ry = -px * sin_p + py * cos_p;
+    let sx = rx / xf.stretch_x.max(0.01);
+    let sy = ry / xf.stretch_y.max(0.01);
+
+    match pattern {
+        PatternType::Stars => {
+            let verts = star_vertices(size);
+            sdf_polygon((sx, sy), &verts, xf.roundness)
+        }
+        PatternType::Hearts => {
+            let verts = heart_vertices(size);
+            sdf_polygon((sx, sy), &verts, xf.roundness)
+        }
+        PatternType::Triangles => {
+            let verts = triangle_vertices(size);
+            sdf_polygon((sx, sy), &verts, xf.roundness)
+        }
+        _ => sx.hypot(sy) - size,
+    }
+}
+
+/// Convert Signed Distance to coverage in [0.0, 1.0].
+#[inline]
+fn coverage_from_sdf(dist: f32, smoothness: f32) -> f32 {
+    if smoothness < 0.05 {
+        if dist <= 0.0 { 1.0 } else { 0.0 }
+    } else {
+        ((0.5 - dist) / smoothness).clamp(0.0, 1.0)
+    }
+}
+
+// ────────────────────────────────────────────────────────────
+// Screentone Kernel Execution
+// ────────────────────────────────────────────────────────────
+
+/// Core screentone rendering kernel over tile `out`.
+pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> Vec<f32> {
+    let n = src.ch;
+    let mut res = src.crop(out);
+    let b = ctx.bounds;
+    let (bw, bh) = (b.width().max(1) as f32, b.height().max(1) as f32);
+    let (cx, cy) = (b.x0 as f32 + bw * 0.5, b.y0 as f32 + bh * 0.5);
+
+    let rot_canvas_rad = spec.rot_canvas.to_radians();
+    let (sin_canvas, cos_canvas) = rot_canvas_rad.sin_cos();
+    let rot_pattern_rad = spec.rot_pattern.to_radians();
+    let rot_sat_rad = spec.satellite_angle.to_radians();
+    let (sin_sat, cos_sat) = rot_sat_rad.sin_cos();
+
+    let spacing_x = spec.spacing_x.clamp(1.0, 2000.0);
+    let spacing_y = spec.spacing_y.clamp(1.0, 2000.0);
+
+    let fg = spec.foreground;
+    let bg = spec.background;
+
+    // Fast-path helper to read ink (1.0 - luminance) from source image
+    let sample_ink = |doc_x: f32, doc_y: f32| -> f32 {
+        if src.rect.is_empty() {
+            return 0.5;
+        }
+        let ix = (doc_x.floor() as i32).clamp(src.rect.x0, src.rect.x1.saturating_sub(1));
+        let iy = (doc_y.floor() as i32).clamp(src.rect.y0, src.rect.y1.saturating_sub(1));
+        if src.rect.contains(ix, iy) {
+            let px = src.px(ix, iy);
+            (1.0 - luma(ctx, px)).clamp(0.0, 1.0)
+        } else {
+            0.5
+        }
+    };
+
+    for (i, px) in res.chunks_exact_mut(n).enumerate() {
+        let (x, y) = xy(out, i);
+        let doc_x = x as f32 + 0.5;
+        let doc_y = y as f32 + 0.5;
+
+        // Vector from center in rotated frame
+        let rel_x = doc_x - cx;
+        let rel_y = doc_y - cy;
+        let local_x = rel_x * cos_canvas + rel_y * sin_canvas;
+        let local_y = -rel_x * sin_canvas + rel_y * cos_canvas;
+
+        // Gradient factor at this coordinate
+        let gf = compute_grad_factor(local_x, local_y, bw, bh, spec);
+        let mut mod_size = 1.0f32;
+        let mut mod_aspect_x = spec.aspect_x;
+        let mut mod_aspect_y = spec.aspect_y;
+
+        if spec.grad_type != ScreentoneGradientType::None {
+            mod_size = lerp(spec.grad_size_start, spec.grad_size_end, gf);
+            let stretch_mod = lerp(spec.grad_stretch_start, spec.grad_stretch_end, gf);
+            mod_aspect_x *= stretch_mod;
+            mod_aspect_y *= stretch_mod;
+        }
+
+        let cur_fg = if spec.grad_color_trans && spec.grad_type != ScreentoneGradientType::None {
+            [lerp(fg[0], bg[0], gf), lerp(fg[1], bg[1], gf), lerp(fg[2], bg[2], gf), fg[3]]
+        } else {
+            fg
+        };
+
+        let xf = ShapeXform {
+            stretch_x: mod_aspect_x,
+            stretch_y: mod_aspect_y,
+            roundness: spec.roundness,
+            rot_pattern_rad,
+        };
+
+        let mut cov = 0.0f32;
+
+        match spec.pattern_type {
+            PatternType::Lines => {
+                let angle_rad = spec.angle.to_radians();
+                let (sin_l, cos_l) = angle_rad.sin_cos();
+                let ly = -local_x * sin_l + local_y * cos_l;
+                let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
+                let sp = spacing_y.max(1.0);
+                let dist = (((ly % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                cov = coverage_from_sdf(dist, spec.smoothness);
+            }
+            PatternType::Crosshatch => {
+                let a1_rad = spec.angle.to_radians();
+                let a2_rad = (spec.angle + spec.cross_angle).to_radians();
+                let (sin1, cos1) = a1_rad.sin_cos();
+                let (sin2, cos2) = a2_rad.sin_cos();
+                let ly1 = -local_x * sin1 + local_y * cos1;
+                let ly2 = -local_x * sin2 + local_y * cos2;
+                let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
+                let sp = spacing_y.max(1.0);
+                let d1 = (((ly1 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                let d2 = (((ly2 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                let c1 = coverage_from_sdf(d1, spec.smoothness);
+                let c2 = coverage_from_sdf(d2, spec.smoothness);
+                cov = c1.max(c2);
+            }
+            PatternType::Concentric => {
+                let r = local_x.hypot(local_y);
+                let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
+                let sp = spacing_x.max(1.0);
+                let dist = (((r % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                cov = coverage_from_sdf(dist, spec.smoothness);
+            }
+            PatternType::Checker => {
+                let ix = (local_x / spacing_x).floor() as i32;
+                let iy = (local_y / spacing_y).floor() as i32;
+                if ((ix.wrapping_add(iy)) & 1) == 0 {
+                    let cell_cx = (ix as f32 + 0.5) * spacing_x;
+                    let cell_cy = (iy as f32 + 0.5) * spacing_y;
+                    let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                    let size = (spacing_x * 0.45 * mod_size * spec.density * ink).max(0.0);
+                    let dist = eval_shape_sdf(local_x - cell_cx, local_y - cell_cy, DotShape::Square, size, xf);
+                    cov = coverage_from_sdf(dist, spec.smoothness);
+                }
+            }
+            PatternType::Hexgrid => {
+                let hy = spacing_y * 0.8660254;
+                let cy_idx = (local_y / hy).round() as i32;
+                for dy in -1..=1 {
+                    let iy = cy_idx + dy;
+                    let cell_y = iy as f32 * hy;
+                    let row_shift = if (iy & 1) != 0 { spacing_x * 0.5 } else { 0.0 };
+                    let cx_idx = ((local_x - row_shift) / spacing_x).round() as i32;
+                    for dx in -1..=1 {
+                        let ix = cx_idx + dx;
+                        let cell_x = ix as f32 * spacing_x + row_shift;
+                        let ink = if spec.use_source_luminance {
+                            let doc_dot_x = cx + cell_x * cos_canvas - cell_y * sin_canvas;
+                            let doc_dot_y = cy + cell_x * sin_canvas + cell_y * cos_canvas;
+                            sample_ink(doc_dot_x, doc_dot_y)
+                        } else {
+                            1.0
+                        };
+                        let size = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
+                        let dist = eval_shape_sdf(local_x - cell_x, local_y - cell_y, DotShape::Hexagon, size, xf);
+                        let cell_cov = coverage_from_sdf(dist, spec.smoothness);
+                        cov = cov.max(cell_cov);
+                    }
+                }
+            }
+            PatternType::Noise => {
+                let seed = spec.seed;
+                let cx_idx = (local_x / spacing_x).floor() as i32;
+                let cy_idx = (local_y / spacing_y).floor() as i32;
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let ix = cx_idx + dx;
+                        let iy = cy_idx + dy;
+                        let h1 = hash_coord(ix, iy, seed);
+                        let h2 = hash_coord(ix.wrapping_add(300), iy.wrapping_add(300), seed);
+                        let h3 = hash_coord(ix.wrapping_add(700), iy.wrapping_add(700), seed);
+                        if h1 > spec.density {
+                            continue;
+                        }
+                        let jx = (h2 - 0.5) * spacing_x * (spec.jitter_pos * 0.01 + 0.8);
+                        let jy = (h3 - 0.5) * spacing_y * (spec.jitter_pos * 0.01 + 0.8);
+                        let dot_cx = (ix as f32 + 0.5) * spacing_x + jx;
+                        let dot_cy = (iy as f32 + 0.5) * spacing_y + jy;
+                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        let sz = (spec.dot_size * (1.0 + (h2 - 0.5) * spec.jitter_size * 0.02) * mod_size * ink).max(0.0);
+                        let dist = (local_x - dot_cx).hypot(local_y - dot_cy) - sz;
+                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                    }
+                }
+            }
+            PatternType::GaussianNoise => {
+                let seed = spec.seed.wrapping_add(137);
+                let cx_idx = (local_x / spacing_x).floor() as i32;
+                let cy_idx = (local_y / spacing_y).floor() as i32;
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let ix = cx_idx + dx;
+                        let iy = cy_idx + dy;
+                        let h1 = hash_coord(ix, iy, seed);
+                        if h1 > spec.density {
+                            continue;
+                        }
+                        let (gx, gy) = hash_gaussian(ix, iy, seed);
+                        let dot_cx = (ix as f32 + 0.5) * spacing_x + gx * spacing_x * 0.4;
+                        let dot_cy = (iy as f32 + 0.5) * spacing_y + gy * spacing_y * 0.4;
+                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        let sz = (spec.dot_size * (0.6 + h1 * 0.8) * mod_size * ink).max(0.0);
+                        let dist = (local_x - dot_cx).hypot(local_y - dot_cy) - sz;
+                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                    }
+                }
+            }
+            PatternType::Stipple => {
+                let seed = spec.seed.wrapping_add(999);
+                let cx_idx = (local_x / spacing_x).floor() as i32;
+                let cy_idx = (local_y / spacing_y).floor() as i32;
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let ix = cx_idx + dx;
+                        let iy = cy_idx + dy;
+                        let h_keep = hash_coord(ix, iy, seed);
+                        let h_jx = hash_coord(ix.wrapping_add(100), iy, seed);
+                        let h_jy = hash_coord(ix.wrapping_add(200), iy, seed);
+                        let h_sz = hash_coord(ix.wrapping_add(500), iy, seed);
+
+                        let mut dot_cx = ix as f32 * spacing_x + (h_jx - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
+                        let dot_cy = iy as f32 * spacing_y + (h_jy - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
+                        if (iy & 1) != 0 {
+                            dot_cx += spacing_x * spec.row_offset;
+                        }
+
+                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        if h_keep > spec.density * ink {
+                            continue;
+                        }
+                        let sz = (spec.dot_size * (0.5 + h_sz * 0.5) * mod_size).max(0.0);
+                        let dist = eval_shape_sdf(local_x - dot_cx, local_y - dot_cy, spec.dot_shape, sz, xf);
+                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                    }
+                }
+            }
+            PatternType::Stars | PatternType::Hearts | PatternType::Triangles => {
+                let cx_idx = (local_x / spacing_x).floor() as i32;
+                let cy_idx = (local_y / spacing_y).floor() as i32;
+                for dy in -1..=1 {
+                    for dx in -1..=1 {
+                        let ix = cx_idx + dx;
+                        let iy = cy_idx + dy;
+                        let mut dot_cx = ix as f32 * spacing_x;
+                        let mut dot_cy = iy as f32 * spacing_y;
+                        if (iy & 1) != 0 {
+                            dot_cx += spacing_x * spec.row_offset;
+                        }
+                        if spec.jitter_pos > 0.0 {
+                            dot_cx += (hash_coord(ix, iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
+                            dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
+                        }
+                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        let sz = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
+                        let dist = eval_special_shape_sdf(local_x - dot_cx, local_y - dot_cy, spec.pattern_type, sz, xf);
+                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                    }
+                }
+            }
+            PatternType::Dots => {
+                // Default Dots + Satellite system
+                let cy_idx = (local_y / spacing_y).floor() as i32;
+                for dy in -1..=1 {
+                    let iy = cy_idx + dy;
+                    let mut row_shift = 0.0f32;
+                    if (iy & 1) != 0 {
+                        row_shift = spacing_x * spec.row_offset;
+                    }
+                    let cx_idx = ((local_x - row_shift) / spacing_x).floor() as i32;
+                    for dx in -1..=1 {
+                        let ix = cx_idx + dx;
+                        let mut dot_cx = ix as f32 * spacing_x + row_shift;
+                        let mut dot_cy = iy as f32 * spacing_y;
+
+                        if spec.jitter_pos > 0.0 {
+                            dot_cx += (hash_coord(ix, iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
+                            dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
+                        }
+
+                        let ink = if spec.use_source_luminance {
+                            let doc_dot_x = cx + dot_cx * cos_canvas - dot_cy * sin_canvas;
+                            let doc_dot_y = cy + dot_cx * sin_canvas + dot_cy * cos_canvas;
+                            sample_ink(doc_dot_x, doc_dot_y)
+                        } else {
+                            1.0
+                        };
+
+                        let merged_size = spec.dot_size + spec.merge_factor * spacing_x * 0.2;
+                        let psize = (merged_size * mod_size * spec.density * ink).max(0.0);
+                        let ssize = ((spec.satellite_size + spec.merge_factor * spacing_x * 0.4) * mod_size * spec.density * ink).max(0.0);
+                        let sdist = spec.satellite_distance * (1.0 - spec.merge_factor * 0.6);
+
+                        let mut final_size = psize;
+                        if spec.jitter_size > 0.0 {
+                            let jval = hash_coord(ix.wrapping_add(5000), iy.wrapping_add(5000), spec.seed);
+                            final_size *= (1.0 + (jval - 0.5) * spec.jitter_size * 0.02).max(0.0);
+                        }
+
+                        // Main dot
+                        let dist_main = eval_shape_sdf(local_x - dot_cx, local_y - dot_cy, spec.dot_shape, final_size, xf);
+                        cov = cov.max(coverage_from_sdf(dist_main, spec.smoothness));
+
+                        // Satellites
+                        if spec.satellite_enabled && ssize > 0.05 {
+                            let sat_offsets: [(f32, f32); 4] = [
+                                (0.0, -sdist),
+                                (0.0, sdist),
+                                (sdist, 0.0),
+                                (-sdist, 0.0),
+                            ];
+                            let sat_count = (spec.satellite_count as usize).min(4);
+                            for &(ox, oy) in sat_offsets.iter().take(sat_count) {
+                                let rsx = ox * cos_sat - oy * sin_sat;
+                                let rsy = ox * sin_sat + oy * cos_sat;
+                                let sat_x = dot_cx + rsx;
+                                let sat_y = dot_cy + rsy;
+
+                                let mut spx = local_x - sat_x;
+                                let mut spy = local_y - sat_y;
+
+                                if spec.satellite_stretch > 0.0 && (rsx != 0.0 || rsy != 0.0) {
+                                    let stretch_dir = (-rsy).atan2(-rsx);
+                                    let (s_sin, s_cos) = stretch_dir.sin_cos();
+                                    let rot_sx = spx * s_cos + spy * s_sin;
+                                    let rot_sy = -spx * s_sin + spy * s_cos;
+                                    let scaled_sx = rot_sx / (1.0 + spec.satellite_stretch).max(0.01);
+                                    spx = scaled_sx * s_cos - rot_sy * s_sin;
+                                    spy = scaled_sx * s_sin + rot_sy * s_cos;
+                                }
+
+                                let dist_sat = eval_shape_sdf(spx, spy, spec.satellite_dot_shape, ssize, xf);
+                                cov = cov.max(coverage_from_sdf(dist_sat, spec.smoothness));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        cov = cov.clamp(0.0, 1.0);
+
+        // Blend pattern output:
+        let out_color = if bg[3] <= 0.001 {
+            // Transparent background: blend pattern foreground over underlying layer
+            let base_c = rgba(ctx, px);
+            let alpha = cov * cur_fg[3];
+            [
+                lerp(base_c[0], cur_fg[0], alpha),
+                lerp(base_c[1], cur_fg[1], alpha),
+                lerp(base_c[2], cur_fg[2], alpha),
+                base_c[3].max(alpha),
+            ]
+        } else {
+            // Opaque or specified background: blend between background and foreground
+            [
+                lerp(bg[0], cur_fg[0], cov),
+                lerp(bg[1], cur_fg[1], cov),
+                lerp(bg[2], cur_fg[2], cov),
+                lerp(bg[3], cur_fg[3], cov),
+            ]
+        };
+
+        set_rgba(ctx, px, out_color);
+    }
+
+    res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use photocraft_color::ColorMode;
+
+    fn make_test_image(w: i32, h: i32, value: f32) -> Image {
+        let rect = Rect::new(0, 0, w, h);
+        Image { rect, ch: 3, data: vec![value; (w * h * 3) as usize] }
+    }
+
+    #[test]
+    fn test_all_12_patterns_render_safely() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let img = make_test_image(64, 64, 0.5);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: false };
+
+        let patterns = [
+            PatternType::Dots,
+            PatternType::Lines,
+            PatternType::Crosshatch,
+            PatternType::Noise,
+            PatternType::GaussianNoise,
+            PatternType::Stipple,
+            PatternType::Hexgrid,
+            PatternType::Checker,
+            PatternType::Concentric,
+            PatternType::Stars,
+            PatternType::Hearts,
+            PatternType::Triangles,
+        ];
+
+        for pattern in patterns {
+            let spec = ScreentoneSpec {
+                pattern_type: pattern,
+                dot_size: 4.0,
+                spacing_x: 12.0,
+                spacing_y: 12.0,
+                density: 0.5,
+                use_source_luminance: false,
+                ..Default::default()
+            };
+            let out_px = screentone(&img, bounds, &ctx, &spec);
+            assert_eq!(out_px.len(), 64 * 64 * 3);
+            for (idx, val) in out_px.iter().enumerate() {
+                assert!(val.is_finite(), "Pattern {pattern:?} produced non-finite sample at {idx}");
+                assert!(*val >= -0.01 && *val <= 1.01, "Pattern {pattern:?} sample {val} out of bounds at {idx}");
+            }
+        }
+    }
+
+    #[test]
+    fn test_dot_shapes_and_roundness() {
+        let bounds = Rect::new(0, 0, 32, 32);
+        let img = make_test_image(32, 32, 0.0);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: false };
+
+        let shapes = [DotShape::Circle, DotShape::Square, DotShape::Diamond, DotShape::Hexagon];
+        for shape in shapes {
+            for roundness in [0.0, 0.3, 0.7, 1.0] {
+                let spec = ScreentoneSpec {
+                    pattern_type: PatternType::Dots,
+                    dot_shape: shape,
+                    roundness,
+                    dot_size: 5.0,
+                    spacing_x: 16.0,
+                    spacing_y: 16.0,
+                    ..Default::default()
+                };
+                let out_px = screentone(&img, bounds, &ctx, &spec);
+                assert_eq!(out_px.len(), 32 * 32 * 3);
+            }
+        }
+    }
+
+    #[test]
+    fn test_satellites_orbit() {
+        let bounds = Rect::new(0, 0, 48, 48);
+        let img = make_test_image(48, 48, 0.5);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: false };
+
+        let spec = ScreentoneSpec {
+            pattern_type: PatternType::Dots,
+            dot_size: 6.0,
+            spacing_x: 24.0,
+            spacing_y: 24.0,
+            satellite_enabled: true,
+            satellite_size: 3.0,
+            satellite_distance: 8.0,
+            satellite_count: 4,
+            satellite_stretch: 0.5,
+            satellite_angle: 30.0,
+            ..Default::default()
+        };
+        let out_px = screentone(&img, bounds, &ctx, &spec);
+        assert_eq!(out_px.len(), 48 * 48 * 3);
+        assert!(out_px.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn test_gradients_linear_and_radial() {
+        let bounds = Rect::new(0, 0, 40, 40);
+        let img = make_test_image(40, 40, 0.5);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: false };
+
+        for grad in [ScreentoneGradientType::Linear, ScreentoneGradientType::Radial] {
+            let spec = ScreentoneSpec {
+                grad_type: grad,
+                grad_angle: 45.0,
+                grad_size_start: 2.0,
+                grad_size_end: 0.1,
+                grad_color_trans: true,
+                ..Default::default()
+            };
+            let out_px = screentone(&img, bounds, &ctx, &spec);
+            assert_eq!(out_px.len(), 40 * 40 * 3);
+            assert!(out_px.iter().all(|v| v.is_finite()));
+        }
+    }
+
+    #[test]
+    fn test_tile_invariance() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let img = make_test_image(64, 64, 0.4);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: false };
+
+        let spec = ScreentoneSpec {
+            pattern_type: PatternType::Dots,
+            dot_size: 5.0,
+            spacing_x: 16.0,
+            spacing_y: 16.0,
+            density: 0.5,
+            use_source_luminance: false,
+            ..Default::default()
+        };
+
+        // Render whole tile
+        let whole = screentone(&img, bounds, &ctx, &spec);
+
+        // Render in 4 sub-tiles of 32x32
+        let tiles = [
+            (screentone(&img, Rect::new(0, 0, 32, 32), &ctx, &spec), 0, 0),
+            (screentone(&img, Rect::new(32, 0, 64, 32), &ctx, &spec), 32, 0),
+            (screentone(&img, Rect::new(0, 32, 32, 64), &ctx, &spec), 0, 32),
+            (screentone(&img, Rect::new(32, 32, 64, 64), &ctx, &spec), 32, 32),
+        ];
+
+        for (tile, ox, oy) in tiles {
+            for y in 0..32 {
+                for x in 0..32 {
+                    for c in 0..3 {
+                        let whole_idx = (((y + oy) * 64 + (x + ox)) * 3 + c) as usize;
+                        let tile_idx = ((y * 32 + x) * 3 + c) as usize;
+                        assert!(
+                            (whole[whole_idx] - tile[tile_idx]).abs() < 1e-5,
+                            "Mismatch between whole and tiled output at ({}, {}) channel {c}",
+                            x + ox,
+                            y + oy
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_presets_validity() {
+        let presets = built_in_presets();
+        assert_eq!(presets.len(), 19);
+        for p in presets {
+            assert!(!p.name.is_empty());
+            assert!(!p.category.is_empty());
+            assert!(p.spec.spacing_x > 0.0);
+            assert!(p.spec.spacing_y > 0.0);
+        }
+    }
+}

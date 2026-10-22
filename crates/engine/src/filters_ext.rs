@@ -401,7 +401,7 @@ pub fn params_for(id: &str, p: &Value) -> Option<FilterParams> {
             interpolate: s(p, "createBy", "interpolation") != "duplication",
         },
         "filter.video.ntscColors" => FilterParams::NtscColors,
-        _ => return crate::gallery_cmds::params_for(id, p),
+        _ => return crate::screentone_cmds::params_for(id, p).or_else(|| crate::gallery_cmds::params_for(id, p)),
     })
 }
 
