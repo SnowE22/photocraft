@@ -3867,7 +3867,9 @@ curves	Smooth	Сгладить
 # Screentone dialog: labels generated from the spec keys (camelCase to words)
 	Aspect X	Пропорции X
 	Aspect Y	Пропорции Y
+	Origin X	Точка отсчёта X
 	Checker	Шахматные клетки
+	Origin Y	Точка отсчёта Y
 	Concentric	Концентрические
 	Cross Angle	Угол перекрестия
 	Dot Shape	Форма точки

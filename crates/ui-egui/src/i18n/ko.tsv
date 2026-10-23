@@ -3591,7 +3591,9 @@ curves	Smooth	매끄럽게
 	Satellite Stretch	위성 늘리기
 	Aspect X	가로 비율
 	Aspect Y	세로 비율
+	Origin X	원점 X
 	Row Offset	행 오프셋
+	Origin Y	원점 Y
 	Merge Factor	병합 정도
 	Jitter Position	위치 흔들림
 	Jitter Size	크기 흔들림

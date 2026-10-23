@@ -73,6 +73,11 @@ pub struct ScreentoneSpec {
     pub angle: f32,
     pub line_width: f32,
     pub cross_angle: f32,
+    /// Phase offset of the lattice in the tone's own rotated frame: where cell `0, 0`
+    /// anchors (the origin the on-canvas gizmo's handle drags). `0, 0` anchors the lattice
+    /// at the render bounds' center and matches every pre-origin document.
+    pub origin_x: f32,
+    pub origin_y: f32,
 
     // ---- Satellites ----
     pub satellite_enabled: bool,
@@ -134,6 +139,8 @@ impl Default for ScreentoneSpec {
             angle: 0.0,
             line_width: 1.5,
             cross_angle: 45.0,
+            origin_x: 0.0,
+            origin_y: 0.0,
 
             satellite_enabled: false,
             satellite_size: 4.0,
@@ -805,6 +812,11 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
             rot_pattern_rad,
         };
 
+        // A shifted origin phase-moves the whole lattice (cells, dots, satellites, line
+        // stripes). The gradient factor and the ink sampling above were already computed from
+        // the unshifted coordinates, so the origin only slides the pattern, never its shading.
+        let (local_x, local_y) = (local_x - spec.origin_x, local_y - spec.origin_y);
+
         let mut cov = 0.0f32;
 
         match spec.pattern_type {
@@ -866,8 +878,10 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         let ix = cx_idx + dx;
                         let cell_x = ix as f32 * spacing_x + row_shift;
                         let ink = if spec.use_source_luminance {
-                            let doc_dot_x = cx + cell_x * cos_canvas - cell_y * sin_canvas;
-                            let doc_dot_y = cy + cell_x * sin_canvas + cell_y * cos_canvas;
+                            // The cell's lattice coordinate is phase-shifted by the origin;
+                            // sample the canvas at the dot's true position (undo the shift).
+                            let doc_dot_x = cx + (cell_x + spec.origin_x) * cos_canvas - (cell_y + spec.origin_y) * sin_canvas;
+                            let doc_dot_y = cy + (cell_x + spec.origin_x) * sin_canvas + (cell_y + spec.origin_y) * cos_canvas;
                             sample_ink(doc_dot_x, doc_dot_y)
                         } else {
                             1.0
@@ -999,8 +1013,10 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         }
 
                         let ink = if spec.use_source_luminance {
-                            let doc_dot_x = cx + dot_cx * cos_canvas - dot_cy * sin_canvas;
-                            let doc_dot_y = cy + dot_cx * sin_canvas + dot_cy * cos_canvas;
+                            // The dot's lattice coordinate is phase-shifted by the origin;
+                            // sample the canvas at the dot's true position (undo the shift).
+                            let doc_dot_x = cx + (dot_cx + spec.origin_x) * cos_canvas - (dot_cy + spec.origin_y) * sin_canvas;
+                            let doc_dot_y = cy + (dot_cx + spec.origin_x) * sin_canvas + (dot_cy + spec.origin_y) * cos_canvas;
                             sample_ink(doc_dot_x, doc_dot_y)
                         } else {
                             1.0
@@ -1261,5 +1277,61 @@ mod tests {
             assert!(p.spec.spacing_x > 0.0);
             assert!(p.spec.spacing_y > 0.0);
         }
+    }
+
+    #[test]
+    fn test_origin_shifts_the_lattice_phase() {
+        let bounds = Rect::new(0, 0, 96, 48);
+        let img = make_test_image(96, 48, 0.5);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: false };
+        let base = ScreentoneSpec {
+            pattern_type: PatternType::Dots,
+            dot_size: 5.0,
+            spacing_x: 16.0,
+            spacing_y: 16.0,
+            use_source_luminance: false,
+            ..Default::default()
+        };
+        let plain = screentone(&img, bounds, &ctx, &base);
+
+        // A period-16 lattice queried through `local - origin` sees exactly the same cells a
+        // plain render computes 16 px earlier, so an origin of (16, 0) slides the sheet a full
+        // tile: the shifted output at x equals the plain output at x - 16 (dyadic f32 math,
+        // bit-identical).
+        let shifted_x = screentone(&img, bounds, &ctx, &ScreentoneSpec { origin_x: 16.0, ..base.clone() });
+        for y in 0..48 {
+            for x in 16..96 {
+                for c in 0..3 {
+                    assert_eq!(shifted_x[(y * 96 + x) * 3 + c], plain[(y * 96 + (x - 16)) * 3 + c], "origin x shift at {x}, {y} ch {c}");
+                }
+            }
+        }
+
+        let shifted_y = screentone(&img, bounds, &ctx, &ScreentoneSpec { origin_y: 16.0, ..base.clone() });
+        // Row parity comes from the shifted lattice, so the y shift is a full-row translation
+        // too (spacing 16 keeps odd rows identified with plain rows).
+        for y in 16..48 {
+            for x in 0..96 {
+                for c in 0..3 {
+                    assert_eq!(shifted_y[(y * 96 + x) * 3 + c], plain[((y - 16) * 96 + x) * 3 + c], "origin y shift at {x}, {y} ch {c}");
+                }
+            }
+        }
+
+        // The satellite ring travels with its dot: satellites on and the same equality holds.
+        let sat = ScreentoneSpec { satellite_enabled: true, satellite_size: 3.0, satellite_distance: 7.0, ..base.clone() };
+        let plain_sat = screentone(&img, bounds, &ctx, &sat);
+        let shifted_sat = screentone(&img, bounds, &ctx, &ScreentoneSpec { origin_x: 16.0, ..sat });
+        for y in 0..48 {
+            for x in 16..96 {
+                for c in 0..3 {
+                    assert_eq!(shifted_sat[(y * 96 + x) * 3 + c], plain_sat[(y * 96 + (x - 16)) * 3 + c], "satellite origin shift at {x}, {y} ch {c}");
+                }
+            }
+        }
+
+        // An untouched origin renders exactly as before the field existed.
+        let unchanged = screentone(&img, bounds, &ctx, &base);
+        assert_eq!(unchanged, plain);
     }
 }

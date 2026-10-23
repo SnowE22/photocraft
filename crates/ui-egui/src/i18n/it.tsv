@@ -4499,7 +4499,9 @@ shape	Appearance	Aspetto
 	Satellite Stretch	Allungamento satellite
 	Aspect X	Proporzioni X
 	Aspect Y	Proporzioni Y
+	Origin X	Origine X
 	Row Offset	Scostamento riga
+	Origin Y	Origine Y
 	Merge Factor	Fattore di fusione
 	Jitter Position	Oscillazione posizione
 	Jitter Size	Oscillazione dimensione

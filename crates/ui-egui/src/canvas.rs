@@ -1601,7 +1601,7 @@ pub fn navigator_texture(app: &mut PhotocraftApp, ctx: &egui::Context, idx: usiz
 /// document pixel as a crisp square, as the GPU canvas's sharp nearest filter and Photoshop do;
 /// zoomed out it is still filtered. A reduced texture (`factor` > 1) stays bilinear: its texels
 /// are averages of several pixels, and squares of them would be blocks the image doesn't have.
-fn canvas_texture_options(factor: u32) -> TextureOptions {
+pub(crate) fn canvas_texture_options(factor: u32) -> TextureOptions {
     if factor > 1 { TextureOptions::LINEAR } else { TextureOptions { magnification: egui::TextureFilter::Nearest, ..TextureOptions::LINEAR } }
 }
 
@@ -3391,6 +3391,9 @@ fn hdr_preview(app: &PhotocraftApp, doc: &photocraft_doc::Document) -> Option<[f
 /// Draw one canvas view and handle its input. `primary` = main window (tools active).
 pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect: Rect, mut view: View, primary: bool) -> View {
     let ctx = ui.ctx().clone();
+    // The Screentones gizmo's Escape: cancel a running drag and restore the spec it started
+    // from (no render, no journal step).
+    crate::screentone_gizmo::escape(app, &ctx);
     // The camera as the app holds it before this frame's input. The canvas works on its own copy
     // (`view`) and writes it back at the end; a tool that moves the camera itself meanwhile (the
     // Crop tool's default mode pans and turns the view with the image, `crop_mode`) must not be
@@ -4437,6 +4440,9 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
         }
         // The pending crop frame shows on its own document only, not on the other tiles (#1918).
         let foreign_crop = if app.session.active_index() == Some(idx) { None } else { app.ui.crop_rect.take() };
+        // The Screentones gizmo's live preview: refreshed ahead of the tool state so its mesh
+        // and handles hold this frame's texture.
+        crate::screentone_gizmo::refresh_preview(app, &ctx, &xf, output);
         draw_drag_preview(app, &painter, &xf);
         if app.session.active_index() == Some(idx) {
             crate::move_box::draw(app, &painter, &xf);
@@ -4538,6 +4544,11 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
                 let toward = xf.to_screen((d[0] + k[0] * 16.0) as f32, (d[1] + k[1] * 16.0) as f32) - p;
                 crate::crop_ui::draw_turn_cursor(&ctx, p, toward);
             }
+        } else if let Some(c) = response
+            .hover_pos()
+            .and_then(|p| crate::screentone_gizmo::hover_cursor(app, &xf, xf.to_doc(p)))
+        {
+            ui.ctx().set_cursor_icon(c);
         } else if let Some(p) = response.hover_pos()
             && let Some(c) = selection_cursor(app, tool, xf.to_doc(p), crate::workspace_ui::sticky_mods(app, ui.input(|i| i.modifiers)))
         {
@@ -5292,6 +5303,7 @@ fn draw_tool_state(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform,
     }
     crate::crop_straighten::draw(app, painter, |p| xf.to_screen(p[0] as f32, p[1] as f32), hover);
     crate::blur_pins::draw(app, painter, xf);
+    crate::screentone_gizmo::draw(app, painter, xf);
     if let Some(c) = app.ui.crop_rect {
         let deg = crate::crop_ui::angle(app);
         let shield = crate::crop_shield::current(app, painter.ctx());
@@ -5744,6 +5756,9 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
         crate::guide_select::clear(app);
     }
     if crate::symmetry_ui::pointer(app, ev, crate::workspace_ui::sticky_mods(app, mods)) {
+        return;
+    }
+    if crate::screentone_gizmo::pointer(app, ev, crate::workspace_ui::sticky_mods(app, mods)) {
         return;
     }
     // An Alt+right-drag armed for this press (`paint_mouse`): taken before anything else can

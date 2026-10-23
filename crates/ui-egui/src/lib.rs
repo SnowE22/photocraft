@@ -192,6 +192,7 @@ mod rgb_histogram;
 pub mod rotate_view;
 pub mod rulers;
 pub mod screen_picker;
+pub mod screentone_gizmo;
 pub mod screentone_panel;
 pub mod scrollbars;
 mod scrub_wrap;
@@ -917,6 +918,8 @@ pub struct PhotocraftApp {
     /// Layer hovered on the canvas, highlighted in the Layers panel.
     pub(crate) canvas_hover_layer: Option<photocraft_doc::LayerId>,
     pub(crate) clone_preview: Option<crate::canvas::ClonePreviewCache>,
+    /// The Screentones gizmo: its restyle target, running drag and preview cache.
+    pub(crate) screentone_gizmo: screentone_gizmo::Gizmo,
     /// Info panel sample cache: ((x, y, revision, Sample Size), composite RGBA).
     info_sample: Option<(InfoSampleKey, [f32; 4])>,
     /// Guide being dragged (from a ruler or with the Move tool).
@@ -1106,6 +1109,7 @@ impl PhotocraftApp {
             hover_layer: None,
             canvas_hover_layer: None,
             clone_preview: None,
+            screentone_gizmo: screentone_gizmo::Gizmo::default(),
             info_sample: None,
             os_clip_sig: None,
             clip_unmirrored: true,

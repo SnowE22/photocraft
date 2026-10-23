@@ -336,7 +336,10 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     app.ui.screentone_ui = st;
     if let Some(command) = action {
         let params = params(&app.ui.screentone_ui);
-        crate::preset_panels::run(app, command, params);
+        let result = crate::preset_panels::run(app, command, params);
+        // A New Layer run's result binds the gizmo to the generated sheet: the drags restyle
+        // that layer in place (see `screentone_gizmo`).
+        crate::screentone_gizmo::bind_layer_result(app, command, &result);
     }
 }
 

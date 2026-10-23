@@ -7,7 +7,9 @@
 //! `layer.screentone` renders a procedural sheet onto a **new** pixel layer (no source needed),
 //! which is what the Screentones panel uses to drop a tone onto the document; when a selection
 //! is active the new layer carries it as its own mask, so the tone keeps the selection's shape
-//! (not just its frame) in the document.
+//! (not just its frame) in the document. The same command with a `layer` id **restyles** that
+//! layer in place — same id, name and mask, one history step — which is the on-canvas gizmo's
+//! commit for a pointer drag of the pending spec.
 //!
 //! Both commands take the same flat parameter object (the dialog's notation), so a preset saved
 //! from one is replayable through the other. `pattern.screentone` renders that same sheet into
@@ -35,10 +37,10 @@ const SHAPES: &str = "circle|square|diamond|hexagon";
 const GRADIENTS: &str = "none|linear|radial";
 
 /// The flat parameter notation shared by both commands (Photoshop-style dialog units).
-const PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"layer":id?,"name":text?} → {layer,bounds}"##;
+const PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"layer":id?,"name":text?} → {layer,bounds}"##;
 
 /// [PATTERN]'s notation: the same dialog fields, but the pattern library is the target.
-const PATTERN_PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"name":text?} → {pattern,bounds}"##;
+const PATTERN_PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"name":text?} → {pattern,bounds}"##;
 
 fn f_any(p: &Value, keys: &[&str], d: f32) -> f32 {
     for &k in keys {
@@ -154,6 +156,8 @@ pub fn spec(p: &Value) -> ScreentoneSpec {
         angle: f_any(p, &["angle"], base.angle).clamp(-360.0, 360.0),
         line_width: f_any(p, &["lineWidth"], base.line_width).clamp(0.0, 200.0),
         cross_angle: f_any(p, &["crossAngle"], base.cross_angle).clamp(-360.0, 360.0),
+        origin_x: f_any(p, &["originX"], base.origin_x).clamp(-100_000.0, 100_000.0),
+        origin_y: f_any(p, &["originY"], base.origin_y).clamp(-100_000.0, 100_000.0),
         satellite_enabled: b_any(p, &["satelliteEnabled"], base.satellite_enabled),
         satellite_size: f_any(p, &["satelliteSize"], base.satellite_size).clamp(0.0, 500.0),
         satellite_distance: f_any(p, &["satelliteDistance"], base.satellite_distance).clamp(0.0, 2000.0),
@@ -260,12 +264,21 @@ fn requested_name(p: &Value) -> String {
 }
 
 /// Renders a procedural screentone sheet onto a new pixel layer above the active one.
+///
+/// With a `layer` id the same command **restyles** that existing pixel layer instead: the sheet
+/// is re-rendered and its raster content replaced in place — same layer id, name and mask, one
+/// history step. That is the on-canvas gizmo's per-drag commit (see `screentone_gizmo`): drags
+/// edit the pending spec live, and the pointer-up runs this once.
 fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     validate_params(LAYER, p)?;
     let mut spec = spec(p);
     // A generated sheet has no source luminance to modulate by: always procedural.
     spec.use_source_luminance = false;
     let params = FilterParams::Screentone { spec };
+
+    if let Some(id) = p.get("layer").and_then(Value::as_u64) {
+        return restyle_layer(s, photocraft_doc::LayerId(id), params);
+    }
 
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let doc_bounds = st.doc.bounds();
@@ -300,6 +313,98 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
         let id = doc.insert_above(*active, l);
         *active = Some(id);
         Ok(id)
+    })?;
+    Ok(json!({
+        "layer": id.0,
+        "bounds": [area.x0, area.y0, area.x1, area.y1],
+    }))
+}
+
+/// The reference bounds a sheet renders over — the lattice anchor sits at their center
+/// ([`ScreentoneSpec`]'s origin is a phase against that center), so creation and restyle must
+/// share this rule or the pattern would slide between a gizmo drag's preview and its committed
+/// render: a restyled layer covers the region its mask reveals (the mask's stored pixels mark
+/// what it hides; the revealed area is the canvas boxed around that cover), a not-yet-created
+/// sheet covers the active selection's frame, and the whole canvas covers the rest.
+pub fn sheet_bounds(s: &Session, target: Option<u64>) -> Rect {
+    let Some(st) = s.active() else {
+        return Rect::EMPTY;
+    };
+    let canvas = st.doc.bounds();
+    if let Some(id) = target
+        && let Some(layer) = st.doc.layer(photocraft_doc::LayerId(id))
+        && let Some(mask) = layer.mask.as_ref()
+    {
+        // A mask's default pixel (1.0) reveals everything, so `content_bounds` reports the
+        // *hidden* cover; the visible area is the canvas left of / above / beyond that cover,
+        // boxed — the mask itself does the exact shaping at composite time.
+        let hidden = mask.surface.content_bounds();
+        if hidden.is_empty() {
+            return canvas;
+        }
+        return visible_within(canvas, hidden).unwrap_or(canvas);
+    }
+    if let Some(sel) = st.doc.selection.as_ref().map(Surface::content_bounds).filter(|b| !b.is_empty()) {
+        return sel.intersect(&canvas);
+    }
+    canvas
+}
+
+/// The bounding box of the canvas a cover leaves visible: the cover cuts the canvas on every
+/// axis with an open strip. A cover with strips on both sides of an axis keeps the whole axis
+/// (both strips' bbox spans the canvas); nothing visible at all collapses to the full canvas,
+/// where the mask keeps whatever thin reveal remains.
+fn visible_within(canvas: Rect, hidden: Rect) -> Option<Rect> {
+    let mut r = canvas;
+    if hidden.x0 > canvas.x0 && hidden.x1 < canvas.x1 {
+        // strips on both sides — the axis's bbox already spans the canvas
+    } else if hidden.x0 > canvas.x0 {
+        r.x1 = hidden.x0;
+    } else if hidden.x1 < canvas.x1 {
+        r.x0 = hidden.x1;
+    }
+    if hidden.y0 > canvas.y0 && hidden.y1 < canvas.y1 {
+        // strips on both sides — the axis's bbox already spans the canvas
+    } else if hidden.y0 > canvas.y0 {
+        r.y1 = hidden.y0;
+    } else if hidden.y1 < canvas.y1 {
+        r.y0 = hidden.y1;
+    }
+    (r != Rect::EMPTY).then_some(r)
+}
+
+/// The gizmo's restyle commit: re-render the sheet with the pending spec and replace the pixel
+/// layer's content in place. The layer id, name and mask survive — only the pixels change — and
+/// the swap is a single journalled edit, so a drag undoes as exactly one step. The render stays
+/// procedural (a fresh sheet, `useSourceLuminance` off) and covers [`sheet_bounds`] with the
+/// target; the mask is never re-derived from the selection.
+fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: FilterParams) -> Result<Value> {
+    let FilterParams::Screentone { spec } = &mut params else {
+        return Err(EngineError::Other("restyle expects screentone parameters".into()));
+    };
+    spec.use_source_luminance = false;
+
+    let st = s.active().ok_or(EngineError::NoDocument)?;
+    let bounds = sheet_bounds(s, Some(id.0));
+    let Some(layer) = st.doc.layer(id) else {
+        return Err(EngineError::Other(format!("no layer {} to restyle", id.0)));
+    };
+    let Some(surface) = layer.surface() else {
+        return Err(EngineError::Other(format!("layer {} is not a pixel layer", id.0)));
+    };
+    let format = surface.format();
+    let area = algo::output_area(&params, bounds, bounds, None);
+    if area.is_empty() {
+        return Err(EngineError::Other("nothing to render: the layer's area is empty".into()));
+    }
+    // Render a standalone sheet, then swap it for the layer's content in one edit.
+    let rendered = algo::apply(&Surface::new(format), &params, area, bounds, None);
+    s.edit("Screentone", |doc, _| {
+        let layer = doc
+            .layer_mut(id)
+            .ok_or_else(|| EngineError::Other("the layer to restyle is gone".into()))?;
+        layer.content = LayerContent::Raster(rendered);
+        Ok(())
     })?;
     Ok(json!({
         "layer": id.0,
@@ -568,5 +673,70 @@ mod tests {
             assert!(s.execute(PATTERN, p.clone()).is_err(), "{p}");
             assert_eq!(s.patterns.items.len(), before, "{p}");
         }
+    }
+
+    #[test]
+    fn restyle_replaces_the_content_keeping_identity_mask_and_one_history_step() {
+        let mut s = session(8);
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 40, "height": 72})).unwrap();
+        let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10, "name": "Mesh"})).unwrap();
+        let id = r["layer"].as_u64().unwrap();
+        let layer = s.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap();
+        let name = layer.name.clone();
+        assert!(layer.mask.is_some(), "the generated sheet carries the selection");
+        let before = read_layer(&s, id);
+        let count = s.active().unwrap().history.entries().len();
+
+        let r2 = s.execute(LAYER, json!({"layer": id, "patternType": "dots", "spacingX": 12, "spacingY": 12})).unwrap();
+        assert_eq!(r2["layer"].as_u64().unwrap(), id, "the same layer restyles in place");
+        assert!(r2["bounds"].is_array(), "{r2}");
+        let state = s.active().unwrap();
+        let layer = state.doc.layer(photocraft_doc::LayerId(id)).unwrap();
+        assert_eq!(layer.name, name, "the name survives a restyle");
+        assert!(layer.mask.is_some(), "the mask survives a restyle");
+        assert_eq!(state.history.entries().len(), count + 1, "one restyle = one history step");
+        assert_ne!(read_layer(&s, id), before, "the content changes with the new pattern");
+
+        s.execute("edit.undo", json!({})).unwrap();
+        assert_eq!(read_layer(&s, id), before, "undo restores the previous sheet");
+    }
+
+    #[test]
+    fn restyle_renders_under_the_layers_mask_not_the_current_selection() {
+        let mut s = session(8);
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 40, "height": 72})).unwrap();
+        let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10})).unwrap();
+        let id = r["layer"].as_u64().unwrap();
+        // The selection has moved on since the layer was generated: the restyle ignores it and
+        // re-renders under the mask the generation left behind.
+        s.execute("select.rect", json!({"x": 60, "y": 0, "width": 20, "height": 72})).unwrap();
+        let r2 = s.execute(LAYER, json!({"layer": id, "patternType": "dots", "spacingX": 12, "spacingY": 12})).unwrap();
+        let b: Vec<i64> = r2["bounds"].as_array().unwrap().iter().map(|v| v.as_i64().unwrap()).collect();
+        assert_eq!(b, vec![0, 0, 40, 72], "the mask bounds render, not the 20 px selection");
+        let state = s.active().unwrap();
+        let mask = state.doc.layer(photocraft_doc::LayerId(id)).unwrap().mask.clone().expect("mask intact");
+        for (x, y, want) in [(20i32, 40, 1.0f32), (39, 71, 1.0), (50, 40, 0.0), (80, 50, 0.0)] {
+            assert_eq!(mask.value(x, y), want, "mask at ({x}, {y}) is untouched");
+        }
+        let px = read_layer(&s, id).as_chunks::<4>().0.to_vec();
+        assert!(
+            !px.iter().enumerate().any(|(i, q)| (i % 96) > 41 && q[3] > 0.0),
+            "nothing appears outside the mask bounds",
+        );
+    }
+
+    #[test]
+    fn restyle_fails_cleanly_for_unknown_or_non_pixel_layers() {
+        let mut s = session(8);
+        let count = s.active().unwrap().history.entries().len();
+        let e = s.execute(LAYER, json!({"layer": 9999, "patternType": "dots"})).unwrap_err();
+        assert!(matches!(e, EngineError::Other(ref m) if m.contains("no layer 9999")), "{e}");
+        // A group is not a pixel layer to restyle.
+        s.execute("layer.new.group", json!({"name": "Group"})).unwrap();
+        let gid = s.active().unwrap().active_layer.unwrap().0;
+        let count = s.active().unwrap().history.entries().len();
+        let e = s.execute(LAYER, json!({"layer": gid, "patternType": "dots"})).unwrap_err();
+        assert!(matches!(e, EngineError::Other(ref m) if m.contains("not a pixel layer")), "{e}");
+        assert_eq!(s.active().unwrap().history.entries().len(), count, "no history for refused restyles");
     }
 }
