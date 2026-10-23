@@ -196,7 +196,9 @@ fn remove_params(o: &crate::state::ToolOptions) -> Value {
     if remove_model(o) == "nanoBanana"
         && let Some(m) = p.as_object_mut()
     {
-        m.insert("mark".into(), json!(if o.remove_mark == "paint" { "paint" } else { "mask" }));
+        m.insert("mark".into(), json!(if o.remove_nano_mark == "mask" { "mask" } else { "paint" }));
+        m.insert("area".into(), json!(if o.remove_area == "page" { "page" } else { "near" }));
+        m.insert("creative".into(), json!(o.remove_creative));
     }
     p
 }
@@ -775,14 +777,31 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                     if o.remove_model == "nanoBanana" {
                         // How the model is shown the area: a mask image, or painted red.
                         let marks = [
-                            ("mask".to_string(), tl!("Mask image"), tl!("Nano Banana gets the picture as it is and a separate mask of the area to remove")),
                             (
                                 "paint".to_string(),
                                 tl!("Painted red"),
                                 tl!("Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine"),
                             ),
+                            ("mask".to_string(), tl!("Mask image"), tl!("Nano Banana gets the picture as it is and a separate mask of the area to remove")),
                         ];
-                        crate::widgets::dropdown_with_tooltips(ui, "remove-mark", &mut o.remove_mark, &marks, 110.0);
+                        crate::widgets::dropdown_with_tooltips(ui, "remove-mark", &mut o.remove_nano_mark, &marks, 110.0);
+                        // What it is sent: the area near the selection (sharper) or the page.
+                        let areas = [
+                            (
+                                "near".to_string(),
+                                tl!("Close up"),
+                                tl!("Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution"),
+                            ),
+                            (
+                                "page".to_string(),
+                                tl!("Whole page"),
+                                tl!("Nano Banana gets the whole page: more to go on, but a softer result"),
+                            ),
+                        ];
+                        crate::widgets::dropdown_with_tooltips(ui, "remove-area", &mut o.remove_area, &areas, 100.0);
+                        crate::widgets::checkbox(ui, &mut o.remove_creative, tl!("Creative")).on_hover_text(tl!(
+                            "Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)"
+                        ));
                         nano_banana_key(ui);
                     }
                 } else {
@@ -1779,9 +1798,12 @@ mod tests {
         assert!(generative_models().iter().any(|(k, _)| k == "nanoBanana"));
         let mut o = crate::state::ToolOptions { remove_model: "nanoBanana".into(), remove_prompt: " a window ".into(), ..Default::default() };
         let p = remove_params(&o);
-        assert_eq!((&p["model"], &p["prompt"], &p["mark"]), (&json!("nanoBanana"), &json!("a window"), &json!("mask")));
-        o.remove_mark = "paint".into();
-        assert_eq!(remove_params(&o)["mark"], "paint");
+        assert_eq!((&p["model"], &p["prompt"], &p["mark"]), (&json!("nanoBanana"), &json!("a window"), &json!("paint")));
+        assert_eq!((&p["area"], &p["creative"]), (&json!("near"), &json!(false)), "close up, only the area removed");
+        o.remove_nano_mark = "mask".into();
+        assert_eq!(remove_params(&o)["mark"], "mask");
+        (o.remove_area, o.remove_creative) = ("page".into(), true);
+        assert_eq!((&remove_params(&o)["area"], &remove_params(&o)["creative"]), (&json!("page"), &json!(true)));
         o.remove_model = "unknown".into();
         assert_eq!(remove_params(&o)["model"], "lama");
     }

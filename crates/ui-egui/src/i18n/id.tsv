@@ -3674,3 +3674,9 @@ curves	Smooth	Haluskan
 	Painted red	Dicat merah
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana menerima gambar apa adanya dan mask terpisah untuk area yang dihapus
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana menerima gambar dengan area yang dihapus dicat merah, seperti cara di Photoshop
+	Close up	Jarak dekat
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana menerima area di sekitar yang Anda hapus, sehingga menggambarnya sekitar dua kali resolusi halaman
+	Whole page	Seluruh halaman
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana menerima seluruh halaman: lebih banyak acuan, tetapi hasilnya lebih lembut
+	Creative	Kreatif
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Tampilkan semua yang digambar Nano Banana, juga yang diubahnya di sekitar area yang Anda hapus (mask layer memudar di tepinya)

@@ -4396,3 +4396,9 @@ cameraData	Lens	Lens
 	Painted red	Kırmızıya boyalı
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana resmi olduğu gibi ve kaldırılacak alanın ayrı bir maskesini alır
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana resmi, kaldırılacak alan kırmızıya boyanmış olarak alır; Photoshop yöntemindeki gibi
+	Close up	Yakından
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana, kaldırdığınız şeyin çevresindeki alanı alır; böylece onu sayfanın yaklaşık iki katı çözünürlükte çizer
+	Whole page	Tüm sayfa
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana tüm sayfayı alır: daha çok ipucu, ama daha yumuşak bir sonuç
+	Creative	Yaratıcı
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Nano Banana'nın çizdiği her şeyi, kaldırdığınız alanın çevresinde değiştirdiklerini de göster (katman maskesi kenarlarda solar)

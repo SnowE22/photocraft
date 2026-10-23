@@ -2,17 +2,20 @@
 //! paid, online, and much better than the local models at knowing what lies behind something.
 //!
 //! The hole goes to Google the way people use the model in Photoshop, but without the manual
-//! work: the page (or, on a page larger than [`MAX_SEND`], a wide area around the hole) with the
-//! hole shown either as a separate mask image ([`Mark::Mask`], the default) or painted one solid
-//! colour ([`Mark::Paint`], [`MARKERS`]: red, or on a colour picture whichever of the markers it has
-//! least of), and a prompt asking for it to be removed and what is behind it drawn in the
-//! surrounding style. The model sees as much of the picture as Photoshop users
-//! give it with a large selection: a crop just around the hole left it too little to go on. The answer is scaled back to the
-//! crop and only the hole's pixels are taken from it, shifted to the surrounding colours (the
-//! model's output drifts a little in tone), so nothing outside the hole changes. Each part of the
-//! hole far from the others is one request ([`crate::inpaint::groups`]), each billed by Google:
-//! about [`PRICE_1K`] (a crop up to [`MAX_1K`] px) or [`PRICE_2K`] (larger crops, sent at most
-//! [`MAX_SEND`] px across).
+//! work: an area around the hole ([`Area::Near`], the default: about twice the hole, at most
+//! [`NEAR_MAX`] px across unless the hole needs more) or the whole page ([`Area::Page`]; on a
+//! page larger than [`MAX_SEND`], a wide area around the hole), with the hole shown either as a
+//! separate mask image ([`Mark::Mask`]) or painted one solid colour ([`Mark::Paint`], the default,
+//! [`MARKERS`]: red, or on a colour picture whichever of the markers it has least of), and a
+//! prompt asking for it to be removed and what is behind it drawn in the surrounding style. The
+//! model draws its whole output image at about the same level of detail, so the less of the page
+//! it is sent, the sharper the fill: a 1200 × 1800 page sent whole came back at 2K with its fine
+//! hatching soft; the area near the hole comes back at about twice the page's resolution. The
+//! answer is scaled back to the crop and only the hole's pixels are taken from it, shifted to the
+//! surrounding colours (the model's output drifts a little in tone), so nothing outside the hole
+//! changes. Each part of the hole far from the others is one request ([`crate::inpaint::groups`]),
+//! each billed by Google: about [`PRICE_1K`] (a crop up to [`MAX_1K`] px) or [`PRICE_2K`] (larger
+//! crops, sent at most [`MAX_SEND`] px across).
 //!
 //! The request goes to the Interactions API with `store: false`, so Google doesn't keep it (it
 //! keeps interactions for 55 days otherwise). The API key is the user's own: the one saved with
@@ -41,8 +44,9 @@ pub const ENV_KEY: &str = "GEMINI_API_KEY";
 pub const PRICE_1K: f64 = 0.0336;
 /// Google's standard price of one 2K output image (USD).
 pub const PRICE_2K: f64 = 0.0504;
-/// Crops up to this long side ask for the 1K output, larger ones for 2K.
-pub const MAX_1K: u32 = 1100;
+/// Crops up to this long side ask for the 1K output (at least about 1.6 times their size),
+/// larger ones for 2K.
+pub const MAX_1K: u32 = 640;
 /// Longest side sent: larger crops are scaled down to it (the 2K output's side).
 pub const MAX_SEND: u32 = 2048;
 
@@ -54,13 +58,24 @@ const TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
 /// Largest answer read (a 2K PNG in base64 is a few MB).
 #[cfg(not(target_arch = "wasm32"))]
 const MAX_ANSWER: u64 = 64 << 20;
-/// Smallest crop side worth sending where the canvas allows: the model needs to see what is
-/// around the hole to continue it.
+/// Smallest crop side worth sending where the canvas allows, with [`Area::Page`] on a page larger
+/// than [`MAX_SEND`]: the model needs to see what is around the hole to continue it.
 const MIN_CONTEXT: u32 = 1024;
+/// [`Area::Near`]: the smallest crop side where the canvas allows.
+pub const NEAR_MIN: u32 = 768;
+/// [`Area::Near`]: the largest crop side, unless the hole itself needs more (the 2K output still
+/// draws that at about 1.6 times).
+pub const NEAR_MAX: u32 = 1280;
+/// [`Area::Near`]: the least context kept on each side of a hole too large for [`NEAR_MAX`].
+const NEAR_MARGIN: u32 = 64;
 /// More separate parts than this go in one request (the parts' bounding box).
 const MAX_REQUESTS: usize = 4;
-/// Pixels around the hole whose colours the answer is matched to.
+/// Pixels around the hole that [`Crop::align`] leaves out (the model may redraw them).
 const RING: usize = 24;
+/// Least correlation between the answer's detail and the page's away from the hole: below it the
+/// model changed the picture's framing (zoomed in, shifted) beyond what [`Crop::align`] corrects,
+/// and its fill wouldn't meet the page.
+const MIN_MATCH: f64 = 0.5;
 /// The largest shift the colour match applies (0–1 sRGB).
 const MAX_SHIFT: f32 = 0.25;
 /// The range of the contrast match's gain.
@@ -96,38 +111,65 @@ pub(crate) const MARKERS: [([f32; 3], &str); 4] = [
     ([1.0, 0.0, 1.0], "solid pure magenta (#FF00FF)"),
 ];
 
+/// What both prompts ask of the fill: continue only what reaches the hole, keep blank paper blank.
+/// Without it the model made up a scene: asked to remove a title box at the foot of a manga page
+/// (legs over blank paper), it drew a marsh of cattails, water and bushes into the box and
+/// redrew the paper around it as ground (2026-10-23).
+const RESTRAINT: &str = "Continue only what reaches the edge of that area from outside it: the lines, shapes, \
+hatching, screentones and colours that run into it, in exactly the same style, scale and lighting. Where the picture \
+next to the area is blank paper or a flat tone, keep the matching part of the area blank or flat too. Do not invent \
+scenery, ground, plants, water, objects, people, text or speech bubbles that are not already there.";
+
 /// The prompt for one request with the hole painted in `marker` (its name, [`MARKERS`]); `extra`
 /// is what the user asked to be there instead.
 pub(crate) fn prompt(extra: &str, marker: &str) -> String {
     let base = format!(
-        "Remove the area painted in {marker} from this image and redraw what would naturally be behind it, continuing the \
-surrounding lines, shapes, textures, hatching, patterns, screentones and colours seamlessly, in exactly the same style, \
-scale and lighting. Keep the rest of the image exactly as it is, at the same framing. Do not add new objects, people, \
-text or speech bubbles, and leave none of the marker colour."
+        "Remove the area painted in {marker} from this image and fill it with what would naturally be behind it. \
+{RESTRAINT} Keep the rest of the image exactly as it is, at the same framing, and leave none of the marker colour."
     );
     let extra: String = extra.trim().chars().take(500).collect();
     if extra.is_empty() { base } else { format!("{base} What should be there instead: {extra}") }
 }
 
-/// How the hole is shown to the model. On a manga page both removed a title cleanly; the mask
-/// continued the fine hatching and screen a little more naturally (one run each, 2026-10-23).
+/// How much of the page the model is sent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Area {
+    /// About twice the hole, [`NEAR_MIN`]–[`NEAR_MAX`] px across: sharper.
+    #[default]
+    Near,
+    /// The whole page (on one larger than [`MAX_SEND`], a wide area around the hole): more to go
+    /// on, softer.
+    Page,
+}
+
+/// How a removal asks the model.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Options {
+    pub mark: Mark,
+    pub area: Area,
+}
+
+/// How the hole is shown to the model. Painted, it keeps the picture's framing and what is around
+/// the hole: on a title box at the foot of a manga page it continued the legs over blank paper
+/// twice, aligned to 0.97, where with a mask it drew a marsh into the box once and zoomed the
+/// whole picture in once (a 0.02 match, refused); on lashes it kept the eye a mask erased
+/// (2026-10-23). On another page's title the mask continued the hatching a little more naturally.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Mark {
     /// Painted in a marker colour in the one image sent ([`MARKERS`]): the Photoshop routine.
+    #[default]
     Paint,
     /// The picture as it is, and a second image, the mask: white where the hole is.
-    #[default]
     Mask,
 }
 
 /// The prompt for one request with the hole shown as a mask (the second image).
 pub(crate) fn mask_prompt(extra: &str) -> String {
-    let base = "The second image is a mask for the first: remove whatever is in the white area of the mask from the first \
-image and redraw what would naturally be behind it, continuing the surrounding lines, shapes, textures, hatching, \
-patterns, screentones and colours seamlessly, in exactly the same style, scale and lighting. Return only the edited first \
-image, at the same framing, with everything outside the white area unchanged. Do not add new objects, people, text or \
-speech bubbles."
-        .to_string();
+    let base = format!(
+        "The second image is a mask for the first: remove whatever is in the white area of the mask from the first image \
+and fill that area with what would naturally be behind it. {RESTRAINT} Return only the edited first image, at the same \
+framing, with every pixel outside the white area unchanged."
+    );
     let extra: String = extra.trim().chars().take(500).collect();
     if extra.is_empty() { base } else { format!("{base} What should be there instead: {extra}") }
 }
@@ -287,20 +329,29 @@ pub fn price(sides: &[u32]) -> f64 {
 
 // --- Geometry ----------------------------------------------------------------------------------
 
-/// The crop sent for a part of the hole with bounding box `part`: the whole canvas when it fits
-/// in [`MAX_SEND`] (sent as it is); on a larger canvas the part with context on every side (its
-/// own size, at least 384 px), grown to [`MIN_CONTEXT`] across, kept inside the canvas (shifted
+/// The crop sent for a part of the hole with bounding box `part`, kept inside the canvas (shifted
 /// rather than cut where it can be) and scaled down to [`MAX_SEND`] when larger.
-pub(crate) fn context(part: Rect, canvas: Rect) -> Rect {
-    if canvas.width().max(canvas.height()) <= MAX_SEND {
-        return canvas;
-    }
+/// - [`Area::Near`]: the part with half its longer side around it (at least 192 px), cut to
+///   [`NEAR_MAX`] across (keeping [`NEAR_MARGIN`] around a part too large for that), then grown
+///   to [`NEAR_MIN`] across.
+/// - [`Area::Page`]: the whole canvas when it fits in [`MAX_SEND`] (sent as it is); on a larger
+///   canvas the part with context on every side (its own size, at least 384 px), grown to
+///   [`MIN_CONTEXT`] across.
+pub(crate) fn context(part: Rect, canvas: Rect, area: Area) -> Rect {
     let side = part.width().max(part.height());
-    let margin = i32::try_from(side.max(384)).unwrap_or(i32::MAX);
-    let r = part.inflate(margin);
-    // One axis: at least `min` long, then moved inside `lo..hi` (or cut to it when longer).
+    let (r, least) = match area {
+        Area::Page if canvas.width().max(canvas.height()) <= MAX_SEND => return canvas,
+        Area::Page => (part.inflate(i32::try_from(side.max(384)).unwrap_or(i32::MAX)), MIN_CONTEXT),
+        Area::Near => {
+            let wanted = (side / 2).max(192);
+            let room = NEAR_MAX.saturating_sub(side) / 2;
+            let margin = wanted.min(room.max(NEAR_MARGIN));
+            (part.inflate(i32::try_from(margin).unwrap_or(i32::MAX)), NEAR_MIN)
+        }
+    };
+    // One axis: at least `least` long, then moved inside `lo..hi` (or cut to it when longer).
     let fit = |a: i32, b: i32, lo: i32, hi: i32| -> (i32, i32) {
-        let min = i64::from(MIN_CONTEXT);
+        let min = i64::from(least);
         let (mut a, mut b) = (i64::from(a), i64::from(b));
         if b - a < min {
             let d = min - (b - a);
@@ -485,8 +536,8 @@ fn model_rgb(req: &Request, px: &[f32]) -> ([f32; 3], f32) {
 /// The crop for the part of the hole in `part`, read from the source: the hole red, the frame
 /// beyond the crop mirrored. `MlError::Unsuitable` when transparent pixels surround the hole and
 /// the request doesn't allow it.
-pub(crate) fn crop(req: &Request, part: Rect, read: &mut dyn FnMut(Rect) -> Vec<f32>) -> Result<Crop, MlError> {
-    let rect = context(part, req.canvas);
+pub(crate) fn crop(req: &Request, part: Rect, area: Area, read: &mut dyn FnMut(Rect) -> Vec<f32>) -> Result<Crop, MlError> {
+    let rect = context(part, req.canvas, area);
     if rect.is_empty() {
         return Err(MlError::BadInput("the hole is outside the canvas".into()));
     }
@@ -562,12 +613,13 @@ impl Crop {
     }
 
     /// The answer (`aw` × `ah`, interleaved sRGB) for the crop's pixels: placed over the frame,
-    /// cut to the crop, and its tone matched to the original in a ring around the hole; and where
-    /// it was found to lie.
-    pub(crate) fn fitted_placed(&self, answer: &[f32], aw: usize, ah: usize) -> (Vec<f32>, Placement) {
+    /// cut to the crop, and its black and white points matched to the original's outside the
+    /// hole ([`levels`]); where it was found to lie, and how well it matches there (the
+    /// correlation of their detail away from the hole, 1 when it can't be judged).
+    pub(crate) fn fitted_placed(&self, answer: &[f32], aw: usize, ah: usize) -> (Vec<f32>, Placement, f64) {
         let (cw, ch) = (self.rect.width() as usize, self.rect.height() as usize);
         let fw = self.frame.width() as usize;
-        let (framed, placed) = self.framed_answer(answer, aw, ah);
+        let (framed, placed, matched) = self.framed_answer(answer, aw, ah);
         let (ox, oy) = ((self.rect.x0 - self.frame.x0) as usize, (self.rect.y0 - self.frame.y0) as usize);
         let mut out = Vec::with_capacity(cw * ch * 3);
         for y in 0..ch {
@@ -577,23 +629,22 @@ impl Crop {
                 None => out.extend(std::iter::repeat_n(0.0, cw * 3)),
             }
         }
-        // The ring: just outside the hole, where the answer should equal the original.
-        let near = dilate(&self.hole, cw, ch, RING);
-        // The ring's pixels, original and answer, per channel.
-        let ring: Vec<usize> = self.hole.iter().zip(&near).enumerate().filter(|(_, (h, r))| **r && !**h).map(|(k, _)| k).collect();
-        if !ring.is_empty() {
+        // Every few pixels outside the hole (at most about 200,000), original and answer.
+        let step = ((cw * ch) / 200_000).max(1);
+        let outside: Vec<usize> = (0..cw * ch).step_by(step).filter(|k| !self.hole.get(*k).copied().unwrap_or(true)).collect();
+        if !outside.is_empty() {
             let fit = [0, 1, 2].map(|c| {
                 let at = |v: &[f32], k: usize| f64::from(v.get(k * 3 + c).copied().unwrap_or(0.0));
-                let (o, a): (Vec<f64>, Vec<f64>) = ring.iter().map(|&k| (at(&self.rgb, k), at(&out, k))).unzip();
-                ring_fit(&o, &a)
+                let (o, a): (Vec<f64>, Vec<f64>) = outside.iter().map(|&k| (at(&self.rgb, k), at(&out, k))).unzip();
+                levels(o, a)
             });
             for px in out.as_chunks_mut::<3>().0 {
-                for (v, (ma, gain, shift)) in px.iter_mut().zip(fit) {
-                    *v = (ma + (*v - ma) * gain + shift).clamp(0.0, 1.0);
+                for (v, (from, gain, to)) in px.iter_mut().zip(fit) {
+                    *v = (to + (*v - from) * gain).clamp(0.0, 1.0);
                 }
             }
         }
-        (out, placed)
+        (out, placed, matched)
     }
 
     /// The answer over the frame (interleaved sRGB, the frame's size). The model keeps the
@@ -601,23 +652,24 @@ impl Crop {
     /// 750 × 500 frame came back 1264 × 848: scaled 1.696, 4 px cut from each side), so stretching
     /// the answer to the frame put it up to 2–3 px off at the sides. The answer is scaled back
     /// evenly, then placed where it matches the frame's own pixels best ([`Self::align`]).
-    fn framed_answer(&self, answer: &[f32], aw: usize, ah: usize) -> (Vec<f32>, Placement) {
+    fn framed_answer(&self, answer: &[f32], aw: usize, ah: usize) -> (Vec<f32>, Placement, f64) {
         let (fw, fh) = (self.frame.width() as usize, self.frame.height() as usize);
         if aw == 0 || ah == 0 || fw == 0 || fh == 0 {
-            return (vec![0.0; fw * fh * 3], Placement::IDENTITY);
+            return (vec![0.0; fw * fh * 3], Placement::IDENTITY, 0.0);
         }
         let cover = (aw as f64 / fw as f64).max(ah as f64 / fh as f64);
         let (rw, rh) = (((aw as f64 / cover).round() as usize).max(1), ((ah as f64 / cover).round() as usize).max(1));
         let small = resize(answer, aw, ah, rw, rh);
-        let placed = self.align(&small, rw, rh);
-        (place(&small, rw, rh, fw, fh, placed), placed)
+        let (placed, matched) = self.align(&small, rw, rh);
+        (place(&small, rw, rh, fw, fh, placed), placed, matched)
     }
 
     /// Where the answer (scaled to about the frame's size, `rw` × `rh`) lies over the frame:
     /// the scale and shift (within [`ALIGN_SCALE`] and [`ALIGN_SHIFT`] px) at which it best
     /// matches the crop's own pixels away from the hole, both blurred so the model's redrawn
-    /// texture counts less than where things are, and their tone taken out.
-    fn align(&self, small: &[f32], rw: usize, rh: usize) -> Placement {
+    /// texture counts less than where things are, and their tone taken out; and the correlation
+    /// of the two there (1 when there is too little to judge).
+    fn align(&self, small: &[f32], rw: usize, rh: usize) -> (Placement, f64) {
         let (cw, ch) = (self.rect.width() as usize, self.rect.height() as usize);
         let (fw, fh) = (self.frame.width() as usize, self.frame.height() as usize);
         let grey = |rgb: &[f32]| -> Vec<f32> { rgb.chunks(3).map(|p| p.iter().sum::<f32>() / 3.0).collect() };
@@ -640,7 +692,7 @@ impl Crop {
             .map(|(x, y)| (ox + x as f64, oy + y as f64, ours.get(y * cw + x).copied().unwrap_or(0.0)))
             .collect();
         if samples.len() < 64 {
-            return Placement::IDENTITY;
+            return (Placement::IDENTITY, 1.0);
         }
         let error = |p: Placement| -> f64 {
             samples
@@ -673,7 +725,16 @@ impl Crop {
         let fine_shifts: Vec<f64> = (-4..=4).map(|k| f64::from(k) * 0.25).collect();
         let around = best.1;
         search(&mut best, &fine_scales, &fine_shifts, around);
-        best.1
+        let (mut so, mut st, mut c) = (0.0f64, 0.0f64, 0.0f64);
+        for &(x, y, v) in &samples {
+            let (u, w) = best.1.map(x, y, fw, fh, rw, rh);
+            let (a, b) = (f64::from(v), f64::from(bilinear(&theirs, rw, rh, u, w)));
+            so += a * a;
+            st += b * b;
+            c += a * b;
+        }
+        let matched = if so > 1e-9 && st > 1e-9 { c / (so * st).sqrt() } else { 1.0 };
+        (best.1, matched)
     }
 }
 
@@ -700,31 +761,32 @@ const ALIGN_SCALE: f64 = 0.015;
 /// How far its shift is searched, in frame pixels.
 const ALIGN_SHIFT: i32 = 6;
 
-/// How the answer's values (`a`) are matched to the original's (`o`) in the ring around the hole:
-/// its mean, the gain about it, and the shift after. The answer comes back a little off in tone
-/// and softer (its fine lines greyer). The shift is the median difference, and the contrast is
-/// matched only where the answer follows the original there (correlation over 0.6): where the
-/// model also redrew the ring (it erased a whole eye around the lashes asked for), matching its
-/// averages darkened a white fill to grey.
-pub(crate) fn ring_fit(o: &[f64], a: &[f64]) -> (f32, f32, f32) {
-    let n = o.len().min(a.len());
-    if n == 0 {
+/// How the answer's values (`a`) are matched to the original's (`o`), both sampled outside the
+/// hole: `(from, gain, to)`, the answer's value `v` becoming `to + (v − from) · gain`. Its black
+/// and white points (1st and 99th percentiles) are mapped to the original's: on paper and ink they
+/// hold even where the model redrew what is around the hole, which threw a match of the ring's
+/// averages (a 245 grey paper came back from a marsh drawn around a title box, 2026-10-23). With
+/// too little range to measure (a flat area), the medians are matched. The gain stays within
+/// [`MIN_GAIN`]–[`MAX_GAIN`], the shift within [`MAX_SHIFT`].
+pub(crate) fn levels(mut o: Vec<f64>, mut a: Vec<f64>) -> (f32, f32, f32) {
+    if o.is_empty() || a.is_empty() {
         return (0.0, 1.0, 0.0);
     }
-    let nf = n as f64;
-    let (mo, ma) = (o.iter().take(n).sum::<f64>() / nf, a.iter().take(n).sum::<f64>() / nf);
-    let (mut so, mut sa, mut cov) = (0.0, 0.0, 0.0);
-    for (x, y) in o.iter().zip(a).take(n) {
-        so += (x - mo) * (x - mo);
-        sa += (y - ma) * (y - ma);
-        cov += (x - mo) * (y - ma);
-    }
-    let follows = so > 1e-6 && sa > 1e-6 && cov / (so * sa).sqrt() > 0.6;
-    let gain = if follows { (so / sa).sqrt().clamp(MIN_GAIN, MAX_GAIN) } else { 1.0 };
-    let mut d: Vec<f64> = o.iter().zip(a).take(n).map(|(x, y)| x - y).collect();
-    d.sort_by(f64::total_cmp);
-    let shift = d.get(n / 2).copied().unwrap_or(0.0).clamp(-f64::from(MAX_SHIFT), f64::from(MAX_SHIFT));
-    (ma as f32, gain as f32, shift as f32)
+    o.sort_by(f64::total_cmp);
+    a.sort_by(f64::total_cmp);
+    let at = |v: &[f64], q: f64| v.get(((v.len() - 1) as f64 * q).round() as usize).copied().unwrap_or(0.0);
+    let (o1, o99, a1, a99) = (at(&o, 0.01), at(&o, 0.99), at(&a, 0.01), at(&a, 0.99));
+    let shift = |from: f64, to: f64| (from, to.clamp(from - f64::from(MAX_SHIFT), from + f64::from(MAX_SHIFT)));
+    let (from, gain, to) = if a99 - a1 > 0.1 && o99 - o1 > 0.1 {
+        let gain = ((o99 - o1) / (a99 - a1)).clamp(MIN_GAIN, MAX_GAIN);
+        // About the answer's middle, so the gain cap leaves both ends equally off.
+        let (from, to) = shift((a1 + a99) / 2.0, (o1 + o99) / 2.0);
+        (from, gain, to)
+    } else {
+        let (from, to) = shift(at(&a, 0.5), at(&o, 0.5));
+        (from, 1.0, to)
+    };
+    (from as f32, gain as f32, to as f32)
 }
 
 /// One channel `v` (`w` × `h`) at `(u, w)`, bilinear, the edge repeated beyond it.
@@ -862,11 +924,11 @@ pub(crate) type Transport<'a> = dyn FnMut(&str, &Interrupt) -> Result<String, Ml
 
 /// Fill the hole of `req` with the model (`read` gives the source's pixels), `extra` what the
 /// user asked to be there. The window comes back with only the hole changed.
-pub fn fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, mark: Mark, ctl: &Interrupt) -> Result<Vec<f32>, MlError> {
+pub fn fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, opts: Options, ctl: &Interrupt) -> Result<Vec<f32>, MlError> {
     let Some(key) = key() else {
         return Err(availability().err().unwrap_or(MlError::Unsupported));
     };
-    fill_via(req, read, extra, mark, ctl, &mut |body, ctl| post(&key, body, ctl))
+    fill_via(req, read, extra, opts, ctl, &mut |body, ctl| post(&key, body, ctl))
 }
 
 /// [`fill`], also writing the image sent to the file `sent` and Google's image to
@@ -880,7 +942,9 @@ pub fn eval_fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &
     };
     // `PHOTOCRAFT_EVAL_MARK=mask` sends the picture and a mask instead of painting the hole.
     let mark = if std::env::var("PHOTOCRAFT_EVAL_MARK").is_ok_and(|m| m == "mask") { Mark::Mask } else { Mark::Paint };
-    pieces_via(req, read, extra, mark, ctl, &mut |body, ctl| {
+    // `PHOTOCRAFT_EVAL_AREA=page` sends the whole page instead of the area near the hole.
+    let area = if std::env::var("PHOTOCRAFT_EVAL_AREA").is_ok_and(|a| a == "page") { Area::Page } else { Area::Near };
+    pieces_via(req, read, extra, Options { mark, area }, ctl, &mut |body, ctl| {
         let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         if let Some(Ok(png)) = v.pointer("/input/1/data").and_then(Value::as_str).map(|d| base64::engine::general_purpose::STANDARD.decode(d)) {
             let _ = std::fs::write(sent, png);
@@ -921,11 +985,11 @@ pub struct Piece {
 
 /// The model's whole picture of each area it drew for `req`, not only the hole (the Remove tool
 /// keeps it on a layer masked to the hole, so more of it can be shown).
-pub fn generate(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, mark: Mark, ctl: &Interrupt) -> Result<Vec<Piece>, MlError> {
+pub fn generate(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, opts: Options, ctl: &Interrupt) -> Result<Vec<Piece>, MlError> {
     let Some(key) = key() else {
         return Err(availability().err().unwrap_or(MlError::Unsupported));
     };
-    pieces_via(req, read, extra, mark, ctl, &mut |body, ctl| post(&key, body, ctl))
+    pieces_via(req, read, extra, opts, ctl, &mut |body, ctl| post(&key, body, ctl))
 }
 
 /// A piece's pixels as the request's samples (`req.ch` per pixel: its colours, linear light in a
@@ -944,11 +1008,11 @@ pub(crate) fn fill_via(
     req: &Request,
     read: &mut dyn FnMut(Rect) -> Vec<f32>,
     extra: &str,
-    mark: Mark,
+    opts: Options,
     ctl: &Interrupt,
     send: &mut Transport<'_>,
 ) -> Result<Vec<f32>, MlError> {
-    let pieces = pieces_via(req, read, extra, mark, ctl, send)?;
+    let pieces = pieces_via(req, read, extra, opts, ctl, send)?;
     let mut out = req.pixels.to_vec();
     for piece in &pieces {
         let cw = piece.rect.width() as usize;
@@ -969,7 +1033,7 @@ pub(crate) fn pieces_via(
     req: &Request,
     read: &mut dyn FnMut(Rect) -> Vec<f32>,
     extra: &str,
-    mark: Mark,
+    opts: Options,
     ctl: &Interrupt,
     send: &mut Transport<'_>,
 ) -> Result<Vec<Piece>, MlError> {
@@ -977,20 +1041,13 @@ pub(crate) fn pieces_via(
     if req.hole.len() != w * h || req.pixels.len() != w * h * req.ch {
         return Err(MlError::BadInput("the hole or pixels don't match the window".into()));
     }
-    let mut parts = groups(req.window, req.hole);
-    // One request for every part on a page sent whole (each would send the same page), or when
-    // there are many.
-    let whole = req.canvas.width().max(req.canvas.height()) <= MAX_SEND;
-    if (whole || parts.len() > MAX_REQUESTS)
-        && let Some(all) = parts.iter().copied().reduce(|a, b| a.union(&b))
-    {
-        parts = vec![all];
-    }
+    let parts = merged(groups(req.window, req.hole), req.canvas, opts.area);
+    let mark = opts.mark;
     let mut pieces = Vec::with_capacity(parts.len());
     let count = parts.len().max(1) as f32;
     for (g, part) in parts.iter().enumerate() {
         ctl.check()?;
-        let c = crop(req, *part, read)?;
+        let c = crop(req, *part, opts.area, read)?;
         let (sw, sh) = c.send;
         let png = |rgb: &[f32]| -> Result<String, MlError> {
             use base64::Engine as _;
@@ -1018,19 +1075,49 @@ pub(crate) fn pieces_via(
         let (rgb, aw, ah) = answered?;
         let elapsed = started.elapsed().as_secs_f32();
         ctl.check()?;
-        let (fitted, placed) = c.fitted_placed(&rgb, aw, ah);
+        let (fitted, placed, matched) = c.fitted_placed(&rgb, aw, ah);
         log::info!(
-            "[ml] {NAME}: sent {sw} x {sh} ({}, {}, {shown}), answered {aw} x {ah} in {elapsed:.1} s, placed at scale {:.4}, shift {:.2}, {:.2}",
+            "[ml] {NAME}: sent {sw} x {sh} ({}, {}, {shown}), answered {aw} x {ah} in {elapsed:.1} s, placed at scale {:.4}, shift {:.2}, {:.2}, match {matched:.2}",
             c.ratio,
             image_size(sw, sh),
             placed.scale,
             placed.dx,
             placed.dy
         );
+        if matched < MIN_MATCH {
+            return Err(MlError::Inference(format!(
+                "Google's picture doesn't line up with the page (it changed the framing; {:.0} % match), so its fill wouldn't fit: try again (each try is billed)",
+                matched.max(0.0) * 100.0
+            )));
+        }
         pieces.push(Piece { rect: c.rect, rgb: fitted, hole: c.hole });
         ctl.progress(progress(1.0));
     }
     Ok(pieces)
+}
+
+/// The parts of the hole sent one request each: parts whose crops overlap become one (else the
+/// later answer would cover the earlier one's surroundings, drawn and paid twice); all of them
+/// when the whole page goes (each would send the same page) or when there are more than
+/// [`MAX_REQUESTS`].
+pub(crate) fn merged(mut parts: Vec<Rect>, canvas: Rect, area: Area) -> Vec<Rect> {
+    let whole = area == Area::Page && canvas.width().max(canvas.height()) <= MAX_SEND;
+    loop {
+        if (whole || parts.len() > MAX_REQUESTS)
+            && let Some(all) = parts.iter().copied().reduce(|a, b| a.union(&b))
+        {
+            return vec![all];
+        }
+        let overlap = parts.iter().enumerate().find_map(|(i, a)| {
+            let ca = context(*a, canvas, area);
+            parts.iter().enumerate().skip(i + 1).find(|(_, b)| !ca.intersect(&context(**b, canvas, area)).is_empty()).map(|(j, _)| (i, j))
+        });
+        let Some((i, j)) = overlap else { return parts };
+        let b = parts.remove(j);
+        if let Some(a) = parts.get_mut(i) {
+            *a = a.union(&b);
+        }
+    }
 }
 
 /// Send `body` to Google with `key` on a thread, waiting for the answer while checking `ctl`

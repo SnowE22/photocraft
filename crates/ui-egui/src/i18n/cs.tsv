@@ -4281,3 +4281,9 @@ navigator	Zoom	Zvětšení
 	Painted red	Natřeno červeně
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana dostane obraz beze změny a samostatnou masku oblasti k odstranění
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana dostane obraz s oblastí k odstranění natřenou červeně, jako při postupu ve Photoshopu
+	Close up	Zblízka
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana dostane oblast kolem toho, co odstraňujete, takže ji nakreslí asi v dvojnásobném rozlišení stránky
+	Whole page	Celá stránka
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana dostane celou stránku: víc podkladů, ale měkčí výsledek
+	Creative	Kreativní
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Zobrazit vše, co Nano Banana nakreslila, i to, co změnila kolem odstraňované oblasti (maska vrstvy se k okrajům vytrácí)

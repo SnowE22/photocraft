@@ -26,9 +26,11 @@
 //! diffusion model what should be there. When the diffusion model isn't installed, Auto uses
 //! LaMa and says so. `nanoBanana` is Google's Nano Banana 2.1 (`photocraft_ml::gemini`): online and
 //! paid with the user's own API key, and the best at what lies behind; without a key Auto uses
-//! LaMa and says so. Its result always goes to a new layer above the target: everything the model
-//! drew (the page, or the area around the hole it was sent), with a layer mask showing only the
-//! hole, so painting the mask shows more of it where the edge doesn't meet.
+//! LaMa and says so. It is sent the area near the hole (`area: "near"`, sharper) or the whole page
+//! (`"page"`). Its result always goes to a new layer above the target: everything the model drew,
+//! with a layer mask showing only the hole, so painting the mask shows more of it where the edge
+//! doesn't meet; `creative: true` shows all of it (fading out at the edges of the area sent), the
+//! model's changes around the hole too.
 //!
 //! `selection: true` removes the selection itself instead of strokes: what is selected is the
 //! hole (Photoshop's way of asking Generative Fill to remove something, without a prompt).
@@ -137,16 +139,24 @@ pub(crate) fn diffusion_settings(p: &Value) -> photocraft_ml::diffusion::Setting
     if s.prompt.trim().is_empty() { s.for_removal() } else { s }
 }
 
-/// `mark`: how Nano Banana is shown the hole, `"mask"` (the default: the picture and a mask
-/// image) or `"paint"` (the hole painted red, the Photoshop routine).
-pub(crate) fn mark(p: &Value, cmd: &str) -> Result<photocraft_ml::gemini::Mark> {
-    use photocraft_ml::gemini::Mark;
-    match p.get("mark") {
-        None | Some(Value::Null) => Ok(Mark::Mask),
-        Some(Value::String(v)) if v == "mask" => Ok(Mark::Mask),
-        Some(Value::String(v)) if v == "paint" => Ok(Mark::Paint),
-        Some(v) => Err(bad(cmd, format!("`mark` is \"mask\" or \"paint\", not {v}"))),
-    }
+/// How Nano Banana is asked: `mark`, how it is shown the hole, `"paint"` (the default: the hole
+/// painted red, the Photoshop routine) or `"mask"` (the picture and a mask image); `area`, what it is
+/// sent, `"near"` (the default: the area around the hole, sharper) or `"page"` (the whole page).
+pub(crate) fn nano_options(p: &Value, cmd: &str) -> Result<photocraft_ml::gemini::Options> {
+    use photocraft_ml::gemini::{Area, Mark, Options};
+    let mark = match p.get("mark") {
+        None | Some(Value::Null) => Mark::Paint,
+        Some(Value::String(v)) if v == "mask" => Mark::Mask,
+        Some(Value::String(v)) if v == "paint" => Mark::Paint,
+        Some(v) => return Err(bad(cmd, format!("`mark` is \"mask\" or \"paint\", not {v}"))),
+    };
+    let area = match p.get("area") {
+        None | Some(Value::Null) => Area::Near,
+        Some(Value::String(v)) if v == "near" => Area::Near,
+        Some(Value::String(v)) if v == "page" => Area::Page,
+        Some(v) => return Err(bad(cmd, format!("`area` is \"near\" or \"page\", not {v}"))),
+    };
+    Ok(Options { mark, area })
 }
 
 /// `quality`: `"standard"` (the default) or `"high"`, LaMa's Quality mode
@@ -166,7 +176,7 @@ pub(crate) fn high_quality(p: &Value, cmd: &str) -> Result<bool> {
 pub(crate) fn fill_with_model(
     model: AiModel,
     high: bool,
-    mark: photocraft_ml::gemini::Mark,
+    nano: photocraft_ml::gemini::Options,
     settings: &photocraft_ml::diffusion::Settings,
     req: &Request,
     read: &mut dyn FnMut(Rect) -> Vec<f32>,
@@ -189,7 +199,7 @@ pub(crate) fn fill_with_model(
             *device = Some(d);
             out
         }),
-        AiModel::NanoBanana => photocraft_ml::gemini::fill(req, read, &settings.prompt, mark, ctl).inspect(|_| *device = Some(Device::Google)),
+        AiModel::NanoBanana => photocraft_ml::gemini::fill(req, read, &settings.prompt, nano, ctl).inspect(|_| *device = Some(Device::Google)),
     }
 }
 
@@ -228,8 +238,10 @@ pub(super) struct Plan {
     pub(super) model: AiModel,
     /// LaMa's Quality mode (`quality: "high"`).
     pub(super) high: bool,
-    /// How Nano Banana is shown the hole (`mark`).
-    mark: photocraft_ml::gemini::Mark,
+    /// How Nano Banana is asked (`mark`, `area`).
+    nano: photocraft_ml::gemini::Options,
+    /// Nano Banana's layer shows everything it drew, not only the hole (`creative`).
+    creative: bool,
     settings: photocraft_ml::diffusion::Settings,
 }
 
@@ -288,7 +300,8 @@ pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     let mode = generative(p)?;
     let model = AiModel::parse(p, CMD)?;
     let high = high_quality(p, CMD)?;
-    let mark = mark(p, CMD)?;
+    let nano = nano_options(p, CMD)?;
+    let creative = flag(p, "creative", false);
     let from_selection = flag(p, "selection", false);
     let (strokes, id) = if from_selection { (Vec::new(), selection_target(s, p)?) } else { parse_strokes(s, p)? };
     let d = s.active().ok_or(EngineError::NoDocument)?;
@@ -319,7 +332,7 @@ pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
     {
         return Err(bad(CMD, format!("Generative AI is on, but {e}")));
     }
-    Ok(Plan { id, strokes, from_selection, window, close_loops, all_layers, new_layer, generative, model, high, mark, settings: diffusion_settings(p) })
+    Ok(Plan { id, strokes, from_selection, window, close_loops, all_layers, new_layer, generative, model, high, nano, creative, settings: diffusion_settings(p) })
 }
 
 /// The hole over the plan's window: the strokes' footprints, their enclosed areas and a margin,
@@ -474,10 +487,10 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
         let filled = ctx.stage(0.0, 1.0, message, |ctl| {
             fill_generative(doc, plan, p, &img, &hole, ctl, &mut |req, read, ctl| {
                 if model != AiModel::NanoBanana {
-                    return fill_with_model(model, plan.high, plan.mark, &plan.settings, req, read, ctl, &mut device);
+                    return fill_with_model(model, plan.high, plan.nano, &plan.settings, req, read, ctl, &mut device);
                 }
                 // Everything the model drew, for its own layer; the window stays as it is.
-                let pieces = photocraft_ml::gemini::generate(req, read, &plan.settings.prompt, plan.mark, ctl)?;
+                let pieces = photocraft_ml::gemini::generate(req, read, &plan.settings.prompt, plan.nano, ctl)?;
                 device = Some(Device::Google);
                 drawn = Some(pieces.iter().map(|g| Region { rect: g.rect, ch: req.ch, data: photocraft_ml::gemini::samples(req, g) }).collect());
                 Ok(req.pixels.to_vec())
@@ -555,10 +568,21 @@ fn fill_to_new_layer(doc: &mut Document, id: Option<LayerId>, out: &Region, hole
     Ok((out.rect, nid))
 }
 
+/// How far a creative layer's mask fades out inside the edges of each area drawn, in pixels.
+const CREATIVE_FADE: i32 = 48;
+
 /// Nano Banana's pictures on a new layer above `id`: every area it drew, whole, under a layer mask
-/// that shows only the hole (over `win`), so painting the mask shows more of the picture. Returns
-/// the damage and the new layer.
-pub(super) fn generated_layer(doc: &mut Document, id: Option<LayerId>, pieces: &[Region], hole: &[bool], win: Rect) -> Result<(Rect, LayerId)> {
+/// that shows only the hole (over `win`), so painting the mask shows more of the picture. With
+/// `creative` the mask shows every area drawn, fading out over [`CREATIVE_FADE`] px inside its
+/// edges (not at the canvas's edges), and the hole whole. Returns the damage and the new layer.
+pub(super) fn generated_layer(
+    doc: &mut Document,
+    id: Option<LayerId>,
+    pieces: &[Region],
+    hole: &[bool],
+    win: Rect,
+    creative: bool,
+) -> Result<(Rect, LayerId)> {
     let base = doc.pixel_format();
     let fmt = PixelFormat::new(base.mode, base.sample, true);
     let n = fmt.channels();
@@ -578,7 +602,32 @@ pub(super) fn generated_layer(doc: &mut Document, id: Option<LayerId>, pieces: &
         damage = Some(damage.map_or(piece.rect, |d| d.union(&piece.rect)));
     }
     let mut mask = photocraft_doc::LayerMask::hide_all();
-    let shown: Vec<f32> = hole.iter().map(|h| if *h { 1.0 } else { 0.0 }).collect();
+    if creative {
+        let canvas = doc.bounds();
+        for piece in pieces {
+            let r = piece.rect;
+            // Distance to the nearest edge of the area that isn't the canvas's edge.
+            let fade = |v: i32, lo: i32, hi: i32, clo: i32, chi: i32| -> f32 {
+                let a = if lo <= clo { i32::MAX } else { v - lo };
+                let b = if hi >= chi { i32::MAX } else { hi - 1 - v };
+                (a.min(b) as f32 / CREATIVE_FADE as f32).clamp(0.0, 1.0)
+            };
+            let mut shown = mask.surface.read_region(r);
+            let w = r.width().max(1) as usize;
+            for (k, v) in shown.iter_mut().enumerate() {
+                let (x, y) = (r.x0 + (k % w) as i32, r.y0 + (k / w) as i32);
+                let f = fade(x, r.x0, r.x1, canvas.x0, canvas.x1).min(fade(y, r.y0, r.y1, canvas.y0, canvas.y1));
+                *v = v.max(f * f * (3.0 - 2.0 * f));
+            }
+            mask.surface.write_region(r, &shown);
+        }
+    }
+    let mut shown = mask.surface.read_region(win);
+    for (v, h) in shown.iter_mut().zip(hole) {
+        if *h {
+            *v = 1.0;
+        }
+    }
     mask.surface.write_region(win, &shown);
     l.mask = Some(crate::commands::mask_at_depth(mask, doc.depth)?);
     let nid = doc.insert_above(id, l);
@@ -593,6 +642,7 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
     let p = p.clone();
     let id = plan.id;
     let new_layer = plan.new_layer;
+    let creative = plan.creative;
     crate::jobs::run(
         s,
         label,
@@ -610,7 +660,7 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
             if let Some(pieces) = drawn {
                 let win = out.rect;
                 let (damage, nid) = s.edit(label, |doc, active| {
-                    let r = generated_layer(doc, id, &pieces, &hole, win)?;
+                    let r = generated_layer(doc, id, &pieces, &hole, win, creative)?;
                     *active = Some(r.1);
                     Ok(r)
                 })?;

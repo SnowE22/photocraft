@@ -4351,3 +4351,9 @@ curves	Smooth	スムーズ
 	Painted red	赤で塗りつぶし
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana には画像をそのまま渡し、削除する範囲は別のマスクで示します
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana には削除する範囲を赤で塗った画像を渡します（Photoshop での手順と同じ）
+	Close up	近接
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana に削除する部分の周囲だけを送るため、ページの約 2 倍の解像度で描かれます
+	Whole page	ページ全体
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana にページ全体を送ります。手がかりは多いものの、仕上がりは柔らかくなります
+	Creative	クリエイティブ
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Nano Banana が描いたものをすべて表示し、削除する部分の周囲で変えた箇所も見せます (レイヤーマスクは端でフェードアウト)

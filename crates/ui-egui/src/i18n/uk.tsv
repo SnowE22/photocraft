@@ -4383,3 +4383,9 @@ curves	Smooth	Згладити
 	Painted red	Зафарбовано червоним
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana отримує зображення як є та окрему маску області, що видаляється
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana отримує зображення з областю, що видаляється, зафарбованою червоним, як у прийомі з Photoshop
+	Close up	Зблизька
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana отримує область навколо того, що ви видаляєте, тож малює її приблизно в подвійній роздільності сторінки
+	Whole page	Уся сторінка
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana отримує всю сторінку: більше контексту, але м'якший результат
+	Creative	Творчий
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Показати все, що намалювала Nano Banana, зокрема зміни навколо області, яку ви видаляєте (маска шару згасає біля країв)

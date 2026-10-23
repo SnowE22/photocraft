@@ -3313,3 +3313,9 @@ curves	Smooth	平滑
 	Painted red	涂成红色
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana 获得原样的图像，以及要移除区域的单独蒙版
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana 获得将要移除区域涂成红色的图像，与 Photoshop 中的做法相同
+	Close up	近景
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	只把要移除部分周围的区域发给 Nano Banana，它会以约两倍于页面的分辨率绘制
+	Whole page	整页
+	Nano Banana gets the whole page: more to go on, but a softer result	把整页发给 Nano Banana：参考更多，但结果更柔和
+	Creative	创意
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	显示 Nano Banana 绘制的全部内容，包括它在移除区域周围所做的更改（图层蒙版在边缘渐隐）

@@ -4739,3 +4739,9 @@ shape	Appearance	Izgled
 	Painted red	Obojeno crveno
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana dobija sliku kakva jeste i posebnu masku oblasti za uklanjanje
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana dobija sliku sa oblašću za uklanjanje obojenom crveno, kao u postupku iz Photoshop-a
+	Close up	Изблиза
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana добија област око онога што уклањате, па је црта у отприлике двострукој резолуцији странице
+	Whole page	Цела страница
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana добија целу страницу: више упоришта, али мекши резултат
+	Creative	Креативно
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Прикажи све што је Nano Banana нацртала, и оно што је променила око области коју уклањате (маска слоја бледи на ивицама)

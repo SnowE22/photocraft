@@ -16,7 +16,23 @@ fn save(path: &str, rgb: &[f32], w: u32, h: u32) {
     std::fs::write(path, photocraft_codecs::encode(&img, Format::Png, &EncodeOptions::default()).expect("png")).expect("write");
 }
 
+/// The model's `[ml]` lines (what was sent, how the answer was placed and matched) on stderr.
+struct Stderr;
+
+impl log::Log for Stderr {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        m.level() <= log::Level::Info
+    }
+    fn log(&self, r: &log::Record) {
+        if self.enabled(r.metadata()) {
+            eprintln!("{}", r.args());
+        }
+    }
+    fn flush(&self) {}
+}
+
 fn main() {
+    let _ = log::set_logger(&Stderr).map(|()| log::set_max_level(log::LevelFilter::Info));
     let args: Vec<String> = std::env::args().skip(1).collect();
     let [page, rects, out, rest @ ..] = &args[..] else {
         eprintln!("usage: nano_banana_eval page.png x,y,w,h[;x,y,w,h…] out.png [prompt]");

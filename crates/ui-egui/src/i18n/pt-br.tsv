@@ -4459,3 +4459,9 @@ layerLabel	No Color	Sem cor
 	Painted red	Pintado de vermelho
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	O Nano Banana recebe a imagem como está e uma máscara separada da área a remover
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	O Nano Banana recebe a imagem com a área a remover pintada de vermelho, como no método do Photoshop
+	Close up	De perto
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	O Nano Banana recebe a área ao redor do que você remove, então a desenha com cerca do dobro da resolução da página
+	Whole page	Página inteira
+	Nano Banana gets the whole page: more to go on, but a softer result	O Nano Banana recebe a página inteira: mais contexto, mas um resultado mais suave
+	Creative	Criativo
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Mostrar tudo o que o Nano Banana desenhou, inclusive o que ele mudou ao redor da área removida (a máscara da camada esmaece nas bordas)

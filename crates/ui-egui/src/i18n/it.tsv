@@ -4786,3 +4786,9 @@ shape	Appearance	Aspetto
 	Painted red	Dipinto di rosso
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana riceve l'immagine così com'è e una maschera separata dell'area da rimuovere
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana riceve l'immagine con l'area da rimuovere dipinta di rosso, come nel metodo di Photoshop
+	Close up	Da vicino
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana riceve l'area intorno a ciò che rimuovi, così la disegna a circa il doppio della risoluzione della pagina
+	Whole page	Pagina intera
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana riceve la pagina intera: più contesto, ma un risultato più morbido
+	Creative	Creativo
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Mostra tutto ciò che Nano Banana ha disegnato, anche ciò che ha cambiato intorno all'area rimossa (la maschera del livello sfuma ai bordi)

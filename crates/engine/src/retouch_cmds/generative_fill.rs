@@ -10,7 +10,7 @@
 //! Canvas Size or the Crop tool), select the new, empty area and Generative Fill. Transparent
 //! pixels around the selection are unknown to the model rather than a reason to refuse.
 
-use super::remove::{AiModel, diffusion_settings, fill_with_model, mark};
+use super::remove::{AiModel, diffusion_settings, fill_with_model, nano_options};
 use super::*;
 use photocraft_color::ColorMode;
 use photocraft_doc::Layer;
@@ -44,8 +44,8 @@ struct Plan {
     model: AiModel,
     /// LaMa's Quality mode (`quality: "high"`).
     high: bool,
-    /// How Nano Banana is shown the selection (`mark`, as `paint.remove`'s).
-    mark: photocraft_ml::gemini::Mark,
+    /// How Nano Banana is asked (`mark`, `area`, as `paint.remove`'s).
+    nano: photocraft_ml::gemini::Options,
     settings: photocraft_ml::diffusion::Settings,
     above: Option<LayerId>,
     name: String,
@@ -83,7 +83,7 @@ fn plan(s: &Session, p: &Value) -> Result<Plan> {
         alpha,
         model,
         high: super::remove::high_quality(p, CMD)?,
-        mark: mark(p, CMD)?,
+        nano: nano_options(p, CMD)?,
         settings: diffusion_settings(p),
         above: d.active_layer,
         name,
@@ -126,7 +126,7 @@ pub(super) fn generative_fill(s: &mut Session, p: &Value) -> Result<Value> {
                 fill_with_model(
                     plan.model,
                     plan.high,
-                    plan.mark,
+                    plan.nano,
                     &plan.settings,
                     &req,
                     &mut |r| composite_region(&doc, None, SampleLayers::All, r, fmt).data,

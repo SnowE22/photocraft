@@ -2528,10 +2528,11 @@ fn nano_banana_without_a_key_says_so_or_uses_lama() {
     assert_eq!(remove::AiModel::parse(&json!({"model": "nanoBanana"}), "paint.remove").unwrap(), remove::AiModel::NanoBanana);
     let err = remove::AiModel::parse(&json!({"model": "gemini"}), "paint.remove").unwrap_err().to_string();
     assert!(err.contains("nanoBanana"), "{err}");
-    use photocraft_ml::gemini::Mark;
-    assert_eq!(remove::mark(&json!({}), "paint.remove").unwrap(), Mark::Mask, "a mask image by default");
-    assert_eq!(remove::mark(&json!({"mark": "paint"}), "paint.remove").unwrap(), Mark::Paint);
-    assert!(remove::mark(&json!({"mark": "red"}), "paint.remove").is_err());
+    use photocraft_ml::gemini::{Area, Mark, Options};
+    assert_eq!(remove::nano_options(&json!({}), "paint.remove").unwrap(), Options { mark: Mark::Paint, area: Area::Near }, "the area near the hole, painted red, by default");
+    assert_eq!(remove::nano_options(&json!({"mark": "mask", "area": "page"}), "paint.remove").unwrap(), Options { mark: Mark::Mask, area: Area::Page });
+    assert!(remove::nano_options(&json!({"mark": "red"}), "paint.remove").is_err());
+    assert!(remove::nano_options(&json!({"area": 3}), "paint.remove").is_err());
     // Only meaningful where no key is set (this machine's credential store or GEMINI_API_KEY).
     if photocraft_ml::gemini::key_source().is_some() {
         return;
@@ -2555,7 +2556,7 @@ fn nano_banana_keeps_everything_it_drew_on_a_layer_masked_to_the_hole() {
     let picture = Region { rect: canvas, ch: 3, data: vec![0.25; 96 * 64 * 3] };
     let hole: Vec<bool> = (0..36 * 30).map(|k| (10..26).contains(&(k % 36)) && (9..21).contains(&(k / 36))).collect();
     let mut doc = (*s.active().unwrap().doc).clone();
-    let (damage, nid) = remove::generated_layer(&mut doc, id, &[picture], &hole, win).unwrap();
+    let (damage, nid) = remove::generated_layer(&mut doc, id, &[picture], &hole, win, false).unwrap();
     assert_eq!(damage, canvas);
     let l = doc.layer(nid).unwrap();
     assert!(l.name.starts_with("Nano Banana"), "{}", l.name);
@@ -2568,4 +2569,22 @@ fn nano_banana_keeps_everything_it_drew_on_a_layer_masked_to_the_hole() {
     let flat = photocraft_compose::flatten(&doc);
     let at = |x: usize, y: usize| flat.px[y * 96 + x];
     assert!((at(10, 10)[0] - before[0]).abs() < 0.01 && (at(46, 30)[0] - 0.25).abs() < 0.02, "{:?} {:?}", at(10, 10), at(46, 30));
+}
+
+#[test]
+fn a_creative_nano_banana_layer_shows_all_it_drew_fading_at_the_inner_edges() {
+    let s = square_session(8, "rgb");
+    let id = s.active().unwrap().active_layer;
+    let win = Rect::new(30, 15, 66, 45);
+    let hole: Vec<bool> = (0..36 * 30).map(|k| (10..26).contains(&(k % 36)) && (9..21).contains(&(k / 36))).collect();
+    // The area sent: from the canvas's left edge to x 80, rows 0–64 (the canvas is 96 × 64).
+    let drawn = Rect::new(0, 0, 80, 64);
+    let picture = Region { rect: drawn, ch: 3, data: vec![0.25; 80 * 64 * 3] };
+    let mut doc = (*s.active().unwrap().doc).clone();
+    let (_, nid) = remove::generated_layer(&mut doc, id, &[picture], &hole, win, true).unwrap();
+    let mask = doc.layer(nid).unwrap().mask.as_ref().unwrap();
+    let v = |x, y| mask.value(x, y);
+    assert_eq!((v(46, 30), v(10, 10), v(0, 0), v(20, 63)), (1.0, 1.0, 1.0, 1.0), "the hole and all of the area, the canvas's edges too");
+    assert!(v(79, 30) < 0.05 && v(70, 30) > 0.0 && v(70, 30) < 1.0, "fading out at the area's inner edge: {} {}", v(79, 30), v(70, 30));
+    assert_eq!(v(85, 30), 0.0, "nothing past the area drawn");
 }

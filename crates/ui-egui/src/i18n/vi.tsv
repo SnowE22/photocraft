@@ -4164,3 +4164,9 @@ curves	Smooth	Làm mượt
 	Painted red	Tô đỏ
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana nhận ảnh nguyên trạng và một mặt nạ riêng cho vùng cần xóa
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana nhận ảnh với vùng cần xóa được tô đỏ, như cách làm trong Photoshop
+	Close up	Cận cảnh
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana nhận vùng xung quanh thứ bạn xóa, nên vẽ nó ở khoảng gấp đôi độ phân giải của trang
+	Whole page	Toàn trang
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana nhận toàn bộ trang: nhiều căn cứ hơn, nhưng kết quả mềm hơn
+	Creative	Sáng tạo
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Hiện mọi thứ Nano Banana đã vẽ, cả những gì nó thay đổi quanh vùng bạn xóa (mặt nạ lớp mờ dần ở các cạnh)

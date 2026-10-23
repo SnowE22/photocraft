@@ -3683,3 +3683,9 @@ curves	Smooth	Glätten
 	Painted red	Rot übermalt
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana erhält das Bild unverändert und eine eigene Maske des zu entfernenden Bereichs
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana erhält das Bild mit dem zu entfernenden Bereich rot übermalt, wie beim Vorgehen in Photoshop
+	Close up	Nahbereich
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana erhält den Bereich um das zu Entfernende und zeichnet ihn so in etwa doppelter Auflösung der Seite
+	Whole page	Ganze Seite
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana erhält die ganze Seite: mehr Anhaltspunkte, aber ein weicheres Ergebnis
+	Creative	Kreativ
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Alles zeigen, was Nano Banana gezeichnet hat, auch was es um den entfernten Bereich verändert hat (die Ebenenmaske läuft an den Rändern aus)

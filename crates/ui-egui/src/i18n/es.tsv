@@ -4631,3 +4631,9 @@ navigator	Zoom	Zoom
 	Painted red	Pintado de rojo
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana recibe la imagen tal cual y una máscara aparte del área que se quita
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana recibe la imagen con el área que se quita pintada de rojo, como en el método de Photoshop
+	Close up	De cerca
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana recibe la zona alrededor de lo que quitas, así la dibuja a casi el doble de la resolución de la página
+	Whole page	Página entera
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana recibe la página entera: más contexto, pero un resultado más suave
+	Creative	Creativo
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Mostrar todo lo que dibujó Nano Banana, también lo que cambió alrededor de la zona que quitas (la máscara de la capa se desvanece en los bordes)

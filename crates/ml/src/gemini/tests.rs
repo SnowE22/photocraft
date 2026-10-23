@@ -1,6 +1,9 @@
 use super::*;
 use base64::Engine as _;
 
+/// The red marker and the whole page: what the tests below were written for.
+const PAINT: Options = Options { mark: Mark::Paint, area: Area::Page };
+
 fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
@@ -38,19 +41,49 @@ fn frames_take_the_nearest_ratio_and_hold_the_crop() {
 fn the_model_sees_the_whole_page_or_a_wide_area_around_the_hole() {
     // A page that fits what is sent goes whole, as a large Photoshop selection gives it.
     for page in [Rect::new(0, 0, 729, 500), Rect::new(0, 0, 2048, 1400), Rect::new(0, 0, 300, 200)] {
-        assert_eq!(context(Rect::new(100, 50, 150, 90), page), page);
+        assert_eq!(context(Rect::new(100, 50, 150, 90), page, Area::Page), page);
     }
     let canvas = Rect::new(0, 0, 6000, 4000);
     // A small hole far from the edges: at least MIN_CONTEXT across, the hole in the middle.
-    let c = context(Rect::new(3000, 2000, 3040, 2020), canvas);
+    let c = context(Rect::new(3000, 2000, 3040, 2020), canvas, Area::Page);
     assert_eq!((c.width(), c.height()), (MIN_CONTEXT, MIN_CONTEXT));
     assert!(c.contains_rect(&Rect::new(3000, 2000, 3040, 2020)));
     // Near a corner: shifted inside, not cut.
-    let c = context(Rect::new(5, 5, 45, 25), canvas);
+    let c = context(Rect::new(5, 5, 45, 25), canvas, Area::Page);
     assert_eq!((c.x0, c.y0, c.width(), c.height()), (0, 0, MIN_CONTEXT, MIN_CONTEXT));
     // A large hole: its own size around it.
-    let c = context(Rect::new(2000, 1500, 2800, 1900), canvas);
+    let c = context(Rect::new(2000, 1500, 2800, 1900), canvas, Area::Page);
     assert_eq!(c, Rect::new(1200, 700, 3600, 2700));
+}
+
+#[test]
+fn near_sends_about_twice_the_hole_for_a_sharper_fill() {
+    let page = Rect::new(0, 0, 1200, 1800);
+    // A small hole: NEAR_MIN across, around it (sent at 2K: drawn at about 2.7 times).
+    let c = context(Rect::new(500, 900, 600, 980), page, Area::Near);
+    assert_eq!((c.width(), c.height()), (NEAR_MIN, NEAR_MIN));
+    assert!(c.contains_rect(&Rect::new(500, 900, 600, 980)));
+    assert_eq!(image_size(c.width(), c.height()), "2K");
+    // A 400 × 300 hole: half its longer side around it.
+    assert_eq!(context(Rect::new(400, 700, 800, 1000), page, Area::Near), Rect::new(200, 466, 1000, 1234), "200 px around, grown to NEAR_MIN tall");
+    // A wide title (1000 × 150): at most NEAR_MAX across (here the page's width), NEAR_MIN tall.
+    assert_eq!(context(Rect::new(100, 1200, 1100, 1350), page, Area::Near), Rect::new(0, 891, 1200, 1659));
+    // A hole larger than NEAR_MAX keeps NEAR_MARGIN around it.
+    let c = context(Rect::new(1000, 1000, 2500, 1400), Rect::new(0, 0, 6000, 4000), Area::Near);
+    assert_eq!(c, Rect::new(1000 - NEAR_MARGIN as i32, 816, 2500 + NEAR_MARGIN as i32, 1584));
+    // The whole page, as before, when asked for.
+    assert_eq!(context(Rect::new(500, 900, 600, 980), page, Area::Page), page);
+}
+
+#[test]
+fn parts_whose_areas_overlap_are_one_request() {
+    let canvas = Rect::new(0, 0, 3000, 2000);
+    let (a, b, far) = (Rect::new(500, 500, 540, 540), Rect::new(900, 500, 940, 540), Rect::new(2500, 1500, 2540, 1540));
+    assert_eq!(merged(vec![a, b, far], canvas, Area::Near), vec![a.union(&b), far]);
+    assert_eq!(merged(vec![a, far], canvas, Area::Near), vec![a, far]);
+    // The whole page: one request.
+    let small = Rect::new(0, 0, 2000, 1500);
+    assert_eq!(merged(vec![a, far.intersect(&small).union(&Rect::new(1900, 1400, 1940, 1440))], small, Area::Page).len(), 1);
 }
 
 #[test]
@@ -70,9 +103,10 @@ fn large_frames_are_sent_smaller_and_ask_for_2k() {
     assert_eq!(send_size(1000, 750), (1000, 750));
     assert_eq!(send_size(4000, 3000), (2048, 1536));
     assert_eq!(send_size(300, 9000), (68, 2048));
-    assert_eq!(image_size(1024, 768), "1K");
+    assert_eq!(image_size(640, 480), "1K");
+    assert_eq!(image_size(1024, 768), "2K", "a crop past 640 px asks for 2K, drawn at about twice its size");
     assert_eq!(image_size(2048, 1536), "2K");
-    assert_eq!(price(&[800, 1500]), PRICE_1K + PRICE_2K);
+    assert_eq!(price(&[600, 1500]), PRICE_1K + PRICE_2K);
 }
 
 #[test]
@@ -194,7 +228,7 @@ fn a_fill_changes_only_the_hole_and_matches_the_surrounding_colours() {
         }
         out
     };
-    let out = fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
+    let out = fill_via(&req, &mut read, "", PAINT, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
     assert_eq!(sent.len(), 1, "one part, one request");
     assert_eq!(sent[0]["store"], false);
     // The canvas (200 × 120) is smaller than the context: all of it, in the nearest ratio to
@@ -229,7 +263,7 @@ fn transparent_surroundings_are_refused_unless_unknown() {
     };
     let req = request(win, &px, &hole, 4, Some(3));
     let mut calls = 0;
-    let e = fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut |_, _| {
+    let e = fill_via(&req, &mut read, "", PAINT, &Interrupt::NONE, &mut |_, _| {
         calls += 1;
         Err(MlError::Inference("not reached".into()))
     })
@@ -238,7 +272,7 @@ fn transparent_surroundings_are_refused_unless_unknown() {
     assert_eq!(calls, 0, "nothing is sent");
     let req = Request { transparent_unknown: true, ..req };
     let mut sent = Vec::new();
-    let out = fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
+    let out = fill_via(&req, &mut read, "", PAINT, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
     let k = 60 * 200 + 100;
     assert_eq!(out[k * 4 + 3], 1.0, "the hole comes back opaque");
 }
@@ -250,7 +284,7 @@ fn a_cancelled_fill_sends_nothing() {
     let cancel = || true;
     let ctl = Interrupt::cancel_only(&cancel);
     let mut calls = 0;
-    let e = fill_via(&req, &mut |_| Vec::new(), "", Mark::Paint, &ctl, &mut |_, _| {
+    let e = fill_via(&req, &mut |_| Vec::new(), "", PAINT, &ctl, &mut |_, _| {
         calls += 1;
         Ok(String::new())
     })
@@ -268,7 +302,7 @@ fn far_apart_parts_of_a_large_page_are_one_request_each_and_a_small_page_one() {
         let req = request(win, &px, &hole, 3, None);
         let mut sent = Vec::new();
         let mut read = |r: Rect| vec![0.5f32; r.width() as usize * r.height() as usize * 3];
-        fill_via(&req, &mut read, "", Mark::Paint, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
+        fill_via(&req, &mut read, "", PAINT, &Interrupt::NONE, &mut fake(&mut sent)).unwrap();
         assert_eq!(sent.len(), requests, "{w} px wide");
     }
 }
@@ -279,7 +313,7 @@ fn a_mismatched_request_is_an_error_not_a_panic() {
     let px = vec![0.0f32; 10];
     let hole = vec![true; 100];
     let req = request(win, &px, &hole, 3, None);
-    assert!(matches!(fill_via(&req, &mut |_| Vec::new(), "", Mark::Paint, &Interrupt::NONE, &mut |_, _| Ok(String::new())), Err(MlError::BadInput(_))));
+    assert!(matches!(fill_via(&req, &mut |_| Vec::new(), "", PAINT, &Interrupt::NONE, &mut |_, _| Ok(String::new())), Err(MlError::BadInput(_))));
 }
 
 #[test]
@@ -310,23 +344,64 @@ fn an_answer_that_covers_its_frame_is_put_back_where_it_was() {
         let (sum, n) = out.chunks(3).zip(rgb.chunks(3)).zip(&hole).filter(|(_, h)| !**h).fold((0.0, 0), |(s, n), ((a, b), _)| (s + (a[0] - b[0]).abs(), n + 1));
         sum / n as f32
     };
-    let (fitted, placed) = c.fitted_placed(&answer, 252, 170);
+    let (fitted, placed, matched) = c.fitted_placed(&answer, 252, 170);
+    assert!(matched > 0.9, "it matches the page once placed: {matched}");
     let stretched = resize(&answer, 252, 170, fw, fh);
     assert!(err(&fitted) < 0.03 && err(&fitted) < err(&stretched) / 3.0, "placed {placed:?}: {} vs stretched {}", err(&fitted), err(&stretched));
 }
 
 #[test]
-fn the_colour_match_ignores_a_ring_the_model_redrew() {
-    // The original ring has lines (dark on white); the answer erased them: all white.
-    let o: Vec<f64> = (0..400).map(|i| if i % 4 == 0 { 0.1 } else { 1.0 }).collect();
-    let a = vec![0.98; 400];
-    let (ma, gain, shift) = ring_fit(&o, &a);
-    assert!((ma + (0.98 - ma) * gain + shift - 1.0).abs() < 0.03, "white stays white: {ma} {gain} {shift}");
-    // An answer that follows the original, lighter and softer, is brought back to it.
-    let soft: Vec<f64> = o.iter().map(|v| 0.6 + 0.35 * v).collect();
-    let (ma, gain, shift) = ring_fit(&o, &soft);
-    assert!(gain > 1.5, "{gain}");
-    let back = |v: f64| f64::from(ma) + (v - f64::from(ma)) * f64::from(gain) + f64::from(shift);
-    assert!((back(0.6 + 0.35 * 0.1) - back(0.6 + 0.35)).abs() > 0.5, "the contrast comes back, up to the gain cap");
-    assert_eq!(ring_fit(&[], &[]), (0.0, 1.0, 0.0));
+fn the_tone_match_maps_black_and_white_points_even_where_the_model_redrew() {
+    // Paper and ink: the original's white 1.0 and black 0.0; the answer's paper 0.96 and ink 0.1,
+    // with three times as much ink (it drew a marsh around the hole).
+    let o: Vec<f64> = (0..1000).map(|i| if i % 10 == 0 { 0.0 } else { 1.0 }).collect();
+    let a: Vec<f64> = (0..1000).map(|i| if i % 3 == 0 { 0.1 } else { 0.96 }).collect();
+    let (from, gain, to) = levels(o, a);
+    let map = |v: f32| to + (v - from) * gain;
+    assert!((map(0.96) - 1.0).abs() < 0.01 && map(0.1).abs() < 0.01, "paper white, ink black: {} {}", map(0.96), map(0.1));
+    // A flat area: the medians.
+    let (from, gain, to) = levels(vec![0.5; 100], vec![0.45; 100]);
+    assert!(gain == 1.0 && (to + (0.45 - from) * gain - 0.5).abs() < 1e-6);
+    assert_eq!(levels(Vec::new(), Vec::new()), (0.0, 1.0, 0.0));
+}
+
+#[test]
+fn an_answer_that_changed_the_framing_is_refused() {
+    let (w, h) = (300usize, 200usize);
+    let win = Rect::new(0, 0, 300, 200);
+    let px: Vec<f32> = (0..w * h)
+        .flat_map(|i| {
+            let (x, y) = ((i % w) as f32, (i / w) as f32);
+            let v = 0.5 + 0.45 * (x * 0.37 + y * 0.13).sin() * (y * 0.21).cos();
+            [v, v, v]
+        })
+        .collect();
+    let hole: Vec<bool> = (0..w * h).map(|i| (120..180).contains(&(i % w)) && (80..120).contains(&(i / w))).collect();
+    let req = request(win, &px, &hole, 3, None);
+    let mut read = |r: Rect| {
+        let mut out = Vec::new();
+        for y in r.y0..r.y1 {
+            for x in r.x0..r.x1 {
+                let k = (y as usize * w + x as usize) * 3;
+                out.extend_from_slice(&px[k..k + 3]);
+            }
+        }
+        out
+    };
+    // Google zoomed in: the middle two thirds of what was sent, at 1.5 times its size.
+    let mut zoomed = |body: &str, _: &Interrupt| -> Result<String, MlError> {
+        let v: Value = serde_json::from_str(body).unwrap();
+        let img = photocraft_codecs::decode(&base64::engine::general_purpose::STANDARD.decode(v["input"][1]["data"].as_str().unwrap()).unwrap()).unwrap();
+        let (iw, ih) = (img.width() as usize, img.height() as usize);
+        let rgb: Vec<f32> = img.to_rgba_f32().as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect();
+        let (cx, cy, cw, ch) = (iw / 6, ih / 6, iw * 2 / 3, ih * 2 / 3);
+        let middle: Vec<f32> = (cy..cy + ch).flat_map(|y| rgb[(y * iw + cx) * 3..(y * iw + cx + cw) * 3].to_vec()).collect();
+        let (bw, bh) = (iw * 3 / 2, ih * 3 / 2);
+        Ok(answer_with(&png(&resize(&middle, cw, ch, bw, bh), bw as u32, bh as u32)))
+    };
+    let e = fill_via(&req, &mut read, "", Options::default(), &Interrupt::NONE, &mut zoomed).unwrap_err();
+    assert!(e.to_string().contains("doesn't line up"), "{e}");
+    // The same picture answered in its framing is taken.
+    let mut sent = Vec::new();
+    assert!(fill_via(&req, &mut read, "", Options::default(), &Interrupt::NONE, &mut fake(&mut sent)).is_ok());
 }

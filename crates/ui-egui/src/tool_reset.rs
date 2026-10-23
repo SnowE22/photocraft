@@ -189,7 +189,7 @@ pub fn option_keys(tool: Tool) -> &'static [&'static str] {
         Tool::Brush => reset!(brush_clear),
         Tool::Pencil => reset!(pencil_auto_erase, pencil_clear),
         Tool::Eraser => reset!(eraser_mode),
-        Tool::Remove => reset!(remove_new_layer, remove_after_each_stroke, remove_generative, remove_model, remove_mark, remove_quality, remove_prompt),
+        Tool::Remove => reset!(remove_new_layer, remove_after_each_stroke, remove_generative, remove_model, remove_nano_mark, remove_area, remove_creative, remove_quality, remove_prompt),
         Tool::BackgroundEraser => reset!(bg_sampling, bg_limits, bg_tolerance, bg_protect_fg),
         Tool::ColorReplacement => reset!(cr_mode, cr_sampling, cr_limits, cr_tolerance, cr_anti_alias),
         Tool::MagicEraser => reset!(tolerance, anti_alias, contiguous, magic_eraser_opacity),

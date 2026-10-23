@@ -3687,3 +3687,9 @@ curves	Smooth	Lisser
 	Painted red	Peint en rouge
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana reçoit l'image telle quelle et un masque séparé de la zone à supprimer
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana reçoit l'image avec la zone à supprimer peinte en rouge, comme dans la méthode Photoshop
+	Close up	Gros plan
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana reçoit la zone autour de ce que vous supprimez et la dessine ainsi à environ deux fois la résolution de la page
+	Whole page	Page entière
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana reçoit la page entière : plus de contexte, mais un résultat plus doux
+	Creative	Créatif
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Afficher tout ce que Nano Banana a dessiné, y compris ce qu'il a modifié autour de la zone supprimée (le masque du calque s'estompe sur les bords)

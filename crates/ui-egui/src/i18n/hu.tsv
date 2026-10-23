@@ -4585,3 +4585,9 @@ cameraRaw	Yellow	Sárga
 	Painted red	Pirosra festve
 	Nano Banana gets the picture as it is and a separate mask of the area to remove	A Nano Banana változatlanul kapja a képet, és külön maszkot az eltávolítandó területről
 	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	A Nano Banana úgy kapja a képet, hogy az eltávolítandó terület pirosra van festve, mint a Photoshopos módszerben
+	Close up	Közeli
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	A Nano Banana az eltávolítandó rész környékét kapja meg, így nagyjából az oldal kétszeres felbontásában rajzolja meg
+	Whole page	Teljes oldal
+	Nano Banana gets the whole page: more to go on, but a softer result	A Nano Banana a teljes oldalt kapja meg: több támpont, de lágyabb eredmény
+	Creative	Kreatív
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Minden megjelenítése, amit a Nano Banana rajzolt, azt is, amit az eltávolított terület körül megváltoztatott (a rétegmaszk a széleken elhalványul)
