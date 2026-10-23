@@ -1355,8 +1355,9 @@ mod tests {
         assert_eq!(
             s.actions.list[0].steps,
             vec![
+                // Show Only acts on the current layer when played, whichever eye was ⌥-clicked.
                 ("layer.showOnly".to_string(), json!({})),
-                ("layer.showOnly".to_string(), json!({"layer": {"name": "A"}})),
+                ("layer.showOnly".to_string(), json!({})),
                 // The name before the rename.
                 ("layer.setProps".to_string(), json!({"layer": {"name": "A"}, "name": "Ink"})),
             ]
@@ -1374,11 +1375,14 @@ mod tests {
         replay.execute("layer.new.layer", json!({"name": "A"})).unwrap();
         let ra = replay.active().unwrap().active_layer.unwrap();
         replay.execute("layer.new.layer", json!({"name": "B"})).unwrap();
+        let rb = replay.active().unwrap().active_layer.unwrap();
+        // One ⌥-click, recorded on A while B was current, shows the replay's current layer alone.
+        replay.actions.list[0].steps = vec![("layer.showOnly".to_string(), json!({"layer": {"name": "A"}}))];
         let r = replay.execute("actions.play", json!({"action": 0})).unwrap();
         assert!(r.get("failed").is_none(), "{r}");
         let doc = &replay.active().unwrap().doc;
-        assert_eq!(doc.layer(ra).unwrap().name, "Ink");
-        assert!(doc.walk().iter().all(|(_, _, l)| l.visible == (l.id == ra)));
+        assert!(doc.walk().iter().all(|(_, _, l)| l.visible == (l.id == rb)), "an older step naming A still shows the current layer alone");
+        assert!(doc.layer(ra).is_some_and(|l| !l.visible));
     }
 
     #[test]

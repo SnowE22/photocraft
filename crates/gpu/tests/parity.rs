@@ -704,6 +704,9 @@ fn adjustments() -> Vec<Adjustment> {
         lookup(17, false, false),
         lookup(5, true, false),
         lookup(33, false, true),
+        Adjustment::Grain { amount: 60.0, size: 34.0, roughness: 50.0 },
+        Adjustment::Grain { amount: 100.0, size: 0.0, roughness: 0.0 },
+        Adjustment::Grain { amount: 40.0, size: 100.0, roughness: 100.0 },
     ]
 }
 
@@ -747,6 +750,9 @@ fn adjustment_layers() {
         // Threshold: whole 16-bit samples against the level in 16 bits, or the float luminosity.
         d.layers.push(Layer::new("th", LayerContent::Adjustment(Adjustment::Threshold { level: 0.5 })));
         check(&mut g, &d, &format!("threshold {depth:?}"));
+        // Grain: the same position hash as the CPU's, float values over white kept in 32-bit.
+        d.layers.push(Layer::new("gr", LayerContent::Adjustment(Adjustment::Grain { amount: 70.0, size: 50.0, roughness: 60.0 })));
+        check(&mut g, &d, &format!("grain {depth:?}"));
     }
     for adj in adjustments() {
         for (mode, opacity, masked) in [(BlendMode::Normal, 1.0, false), (BlendMode::Multiply, 0.7, true)] {

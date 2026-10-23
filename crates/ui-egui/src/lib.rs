@@ -18,6 +18,7 @@ pub mod actions;
 pub mod actions_dialogs;
 pub mod adjust_dialog;
 pub mod adjust_editors;
+pub mod adjust_icons;
 pub mod adjust_preview;
 pub mod adjust_ui;
 mod alt_grab;

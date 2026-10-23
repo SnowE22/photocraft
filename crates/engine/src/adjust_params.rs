@@ -22,6 +22,10 @@ pub const HUE_RANGES: [&str; 6] = ["reds", "yellows", "greens", "cyans", "blues"
 /// Black & White default weights (percent) for [`HUE_RANGES`].
 pub const BW_DEFAULTS: [f32; 6] = [40.0, 60.0, 40.0, 60.0, 20.0, 80.0];
 
+/// A new Grain adjustment layer's Amount, Size and Roughness. Like Photoshop 2026's, a new Grain
+/// layer adds none (Amount 0; Size and Roughness only apply from Amount 1).
+pub const GRAIN_DEFAULTS: (f32, f32, f32) = (0.0, 34.0, 50.0);
+
 /// Photo Filter presets `(id, label, colour)`: common photographic filter colours.
 pub const PHOTO_FILTERS: &[(&str, &str, [u8; 3])] = &[
     ("warming85", "Warming Filter (85)", [236, 138, 0]),
@@ -205,6 +209,13 @@ pub fn from_params(kind: &str, p: &Value, base: Option<&Adjustment>, mode: Color
         }
         "selectiveColor" => crate::adjust_cmds::selective_from_params(p, base.filter(|b| matches!(b, Adjustment::SelectiveColor { .. })))?,
         "colorLookup" => crate::adjust_cmds::lookup_from_params(p, base.filter(|b| matches!(b, Adjustment::ColorLookup { .. })))?,
+        "grain" => {
+            let (a, s, ro) = match base {
+                Some(Adjustment::Grain { amount, size, roughness }) => (*amount, *size, *roughness),
+                _ => GRAIN_DEFAULTS,
+            };
+            Adjustment::Grain { amount: r.num("amount", a, 0.0, 100.0)?, size: r.num("size", s, 0.0, 100.0)?, roughness: r.num("roughness", ro, 0.0, 100.0)? }
+        }
         other => return Err(bad("adjustment", format!("unknown adjustment kind `{other}`"))),
     })
 }
@@ -286,6 +297,7 @@ pub fn to_params(adj: &Adjustment) -> Value {
         Adjustment::ColorLookup { tetrahedral, dither, .. } => {
             json!({"interpolation": if *tetrahedral { "tetrahedral" } else { "trilinear" }, "dither": dither})
         }
+        Adjustment::Grain { amount, size, roughness } => json!({"amount": amount, "size": size, "roughness": roughness}),
     }
 }
 
@@ -1084,7 +1096,8 @@ pub fn user_keys(p: &Value) -> Map<String, Value> {
 mod tests {
     use super::*;
 
-    const KINDS: [&str; 15] = [
+    const KINDS: [&str; 16] = [
+        "grain",
         "invert",
         "brightnessContrast",
         "threshold",
@@ -1121,6 +1134,7 @@ mod tests {
             "channelMixer" => json!({"red": [80, 30, -10, 5], "blue": [0, 10, 90, 0]}),
             "gradientMap" => json!({"stops": [[0, "#000000"], [0.5, "#ff0000"], [1, [1, 1, 1]]], "reverse": true, "dither": true}),
             "selectiveColor" => json!({"method": "absolute", "reds": [10, 0, -20, 5]}),
+            "grain" => json!({"amount": 60, "size": 10, "roughness": 80}),
             _ => json!({}),
         }
     }
@@ -1578,6 +1592,28 @@ mod tests {
         s
     }
 
+    /// Photoshop 2026's Grain is a layer-only adjustment: a new one adds no grain (Amount 0),
+    /// values clamp to 0..100 and a wrong type is refused.
+    #[test]
+    fn grain_is_an_adjustment_layer_only() {
+        let mut s = colourful("rgb", 16);
+        let grain = |s: &crate::Session| {
+            let d = s.active().unwrap();
+            match &d.doc.layer(d.active_layer.unwrap()).unwrap().content {
+                photocraft_doc::LayerContent::Adjustment(a) => a.clone(),
+                other => panic!("{other:?}"),
+            }
+        };
+        s.execute("layer.newAdjustmentLayer.grain", json!({})).unwrap();
+        assert_eq!(grain(&s), Adjustment::Grain { amount: 0.0, size: 34.0, roughness: 50.0 });
+        assert_eq!(grain(&s).label(), "Grain");
+        s.execute("layer.newAdjustmentLayer.grain", json!({"amount": 500, "size": -3})).unwrap();
+        assert_eq!(grain(&s), Adjustment::Grain { amount: 100.0, size: 0.0, roughness: 50.0 });
+        assert!(s.execute("layer.newAdjustmentLayer.grain", json!({"amount": "lots"})).is_err());
+        assert!(crate::commands::find("layer.newAdjustmentLayer.grain").is_some());
+        assert!(crate::commands::find("image.adjustments.grain").is_none(), "no Image › Adjustments › Grain");
+    }
+
     fn pixels(s: &crate::Session) -> Vec<Vec<f32>> {
         let d = s.active().unwrap();
         let bg = d.doc.layers[0].surface().unwrap();
@@ -1587,7 +1623,7 @@ mod tests {
     #[test]
     fn destructive_commands_apply_their_params_at_every_depth() {
         for depth in [8, 16, 32] {
-            for kind in KINDS.iter().filter(|k| **k != "invert") {
+            for kind in KINDS.iter().filter(|k| !matches!(**k, "invert" | "grain")) {
                 let mut s = colourful("rgb", depth);
                 let before = pixels(&s);
                 let steps = s.active().unwrap().history.past_len();

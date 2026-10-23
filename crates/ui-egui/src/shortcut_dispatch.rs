@@ -263,8 +263,12 @@ pub fn dispatch_pressed(app: &mut PhotocraftApp, ctx: &egui::Context, focus: Foc
         }
         let id = clip_key_command(app, delete_key_command(app, id));
         let owner = key_owner(app, ctx);
-        dispatch(app, ctx, &id);
-        crate::brush_key_repeat::pressed(app, ctx, &id, key);
+        // A brush key during a stroke waits for it to end (`brush_key_repeat::painting`).
+        let waits = crate::brush_key_repeat::IDS.contains(&id.as_str()) && crate::brush_key_repeat::painting(app);
+        if !waits {
+            dispatch(app, ctx, &id);
+        }
+        crate::brush_key_repeat::pressed(app, ctx, &id, key, !waits);
         ran = true;
         if key_owner(app, ctx) != owner {
             break;

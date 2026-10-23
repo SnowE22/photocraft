@@ -512,6 +512,7 @@ fn color_field(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let (fx, fy, fz) = locate(&mode, hsv, rgb, lab);
     // Colour field.
     let (field, resp) = ui.allocate_exact_size(vec2(FIELD, FIELD), Sense::click_and_drag());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, tl!("Color field")));
     let web_only = f.get("__webOnly").and_then(Value::as_bool).unwrap_or(false);
     // Only Web Colors bands the field to the 216 web-safe colours, as in Photoshop (#4107).
     let mesh = |rect: Rect, color: &dyn Fn(f32, f32) -> [f32; 3]| {
@@ -521,7 +522,8 @@ fn color_field(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     ui.painter().rect_stroke(field, 0.0, Stroke::new(1.0, t.field_border), StrokeKind::Outside);
     let marker = pos2(field.left() + fx * field.width(), field.top() + fy * field.height());
     ui.painter().circle_stroke(marker, 5.0, Stroke::new(1.5, if hsv[2] > 0.6 && hsv[1] < 0.4 { Color32::BLACK } else { Color32::WHITE }));
-    if let Some(p) = resp.interact_pointer_pos().filter(|_| resp.dragged() || resp.clicked()) {
+    // Picks on the press and follows the drag, like the Color panel (not on release).
+    if let Some(p) = resp.interact_pointer_pos().filter(|_| resp.is_pointer_button_down_on() || resp.clicked()) {
         let (x, y) = (((p.x - field.left()) / field.width()).clamp(0.0, 1.0), ((p.y - field.top()) / field.height()).clamp(0.0, 1.0));
         let c = field_color(&mode, fz, x, y);
         let keep = match mode.as_str() {
@@ -534,13 +536,14 @@ fn color_field(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     }
     // Component slider (hue runs 360° at the top to 0° at the bottom, like Photoshop).
     let (strip, sresp) = ui.allocate_exact_size(vec2(18.0, FIELD), Sense::click_and_drag());
+    sresp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, tl!("Color slider")));
     ui.painter().add(mesh(strip, &|_, y| slider_color(&mode, 1.0 - y, hsv, rgb, lab)));
     let sy = strip.top() + (1.0 - fz) * strip.height();
     for (x, dir) in [(strip.left() - 1.0, 1.0f32), (strip.right() + 1.0, -1.0)] {
         let tri = vec![pos2(x, sy), pos2(x - 6.0 * dir, sy - 4.0), pos2(x - 6.0 * dir, sy + 4.0)];
         ui.painter().add(egui::Shape::convex_polygon(tri, t.text, Stroke::NONE));
     }
-    if let Some(p) = sresp.interact_pointer_pos().filter(|_| sresp.dragged() || sresp.clicked()) {
+    if let Some(p) = sresp.interact_pointer_pos().filter(|_| sresp.is_pointer_button_down_on() || sresp.clicked()) {
         let z = 1.0 - ((p.y - strip.top()) / strip.height()).clamp(0.0, 1.0);
         let h = match mode.as_str() {
             "h" => Some([z * 360.0, hsv[1], hsv[2]]),

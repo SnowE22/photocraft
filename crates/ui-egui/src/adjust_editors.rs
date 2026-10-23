@@ -134,6 +134,7 @@ pub fn editor(ui: &mut egui::Ui, kind: &str, v: &mut Value, cx: &EditorCx) -> Ed
         "posterize" => sliders(ui, v, &[("levels", "Levels", 2.0, 255.0, 4.0, "", None)]),
         "threshold" => threshold(ui, v, cx),
         "gradientMap" => gradient_map(ui, v, cx),
+        "grain" => grain(ui, v),
         _ => Edit::default(),
     }
 }
@@ -920,6 +921,21 @@ fn levels(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         write_levels(v, chan.key, &l);
         e.changed = true;
     }
+    e
+}
+
+// ---------------------------------------------------------------------------------------------
+// Grain
+
+/// Amount, then Size and Roughness, which (as in Photoshop) only apply, and so only edit, once
+/// Amount is at least 1.
+fn grain(ui: &mut egui::Ui, v: &mut Value) -> Edit {
+    let (amount, size, roughness) = adjust_params::GRAIN_DEFAULTS;
+    let mut e = sliders(ui, v, &[("amount", tl!("Amount:"), 0.0, 100.0, amount, "", None)]);
+    let on = num(v, "amount", amount) >= 1.0;
+    ui.add_enabled_ui(on, |ui| {
+        e.add(sliders(ui, v, &[("size", tl!("Size:"), 0.0, 100.0, size, "", None), ("roughness", tl!("Roughness:"), 0.0, 100.0, roughness, "", None)]));
+    });
     e
 }
 

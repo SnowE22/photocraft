@@ -1786,6 +1786,15 @@ pub fn adjustment_program(adj: &Adjustment, transfer: Transfer, depth: photocraf
             p[0] = [n as f32, if *tetrahedral { 1.0 } else { 0.0 }, if *dither { 1.0 } else { 0.0 }, 0.0];
             (16, p, Some(rows))
         }
+        Adjustment::Grain { amount, size, roughness } => {
+            // compose::adjust::grain_px with the same parameters (the hash is integer-exact).
+            let g = photocraft_compose::adjust::GrainParams::new(*amount, *size, *roughness);
+            if g.strength <= 0.0 {
+                return (0, p, None);
+            }
+            p[0] = [g.strength, g.inv_cell, g.inv_clump, g.rough];
+            (18, p, None)
+        }
         // Identity on the CPU too (not evaluated there).
         Adjustment::ColorLookup { .. } | Adjustment::Unsupported { .. } => (0, p, None),
     }

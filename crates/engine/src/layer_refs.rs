@@ -32,6 +32,13 @@ fn current_by_default(id: &str) -> bool {
     matches!(id, "layer.setProps" | "layer.showOnly")
 }
 
+/// Steps that always act on the current layer when an action plays (user report: an action's
+/// Show Only must show the layer you're on, not the one ⌥-clicked while recording): recorded
+/// without a layer, and a layer an older recording named is ignored.
+fn current_only(id: &str) -> bool {
+    id == "layer.showOnly"
+}
+
 fn reference(doc: &Document, active: Option<LayerId>, id: LayerId) -> Option<Value> {
     if Some(id) == active {
         return Some(json!({"current": true}));
@@ -55,13 +62,19 @@ pub(crate) fn record(s: &Session, id: &str, p: &Value) -> Option<Value> {
         let new = match v {
             Value::Number(n) => n.as_u64().and_then(|l| reference(&st.doc, st.active_layer, LayerId(l))),
             // Every element a layer id, or the list stays as it is.
-            Value::Array(a) => a.iter().map(|e| e.as_u64().and_then(|l| reference(&st.doc, st.active_layer, LayerId(l)))).collect::<Option<Vec<_>>>().map(Value::Array),
+            Value::Array(a) => {
+                a.iter().map(|e| e.as_u64().and_then(|l| reference(&st.doc, st.active_layer, LayerId(l)))).collect::<Option<Vec<_>>>().map(Value::Array)
+            }
             _ => None,
         };
         if let Some(new) = new {
             fields.insert((*key).to_string(), new);
             changed = true;
         }
+    }
+    if current_only(id) {
+        let named = fields.remove("layer").is_some() | fields.remove("layers").is_some();
+        return (changed || named).then_some(out);
     }
     if current_by_default(id) {
         let current = json!({"current": true});
@@ -102,6 +115,16 @@ fn resolve_one(s: &Session, cmd: &str, v: &Value) -> Result<Option<LayerId>> {
 pub(crate) fn resolve(s: &Session, id: &str, mut p: Value) -> Result<Value> {
     let keys = keys(id);
     let Some(fields) = p.as_object_mut() else { return Ok(p) };
+    if current_only(id) {
+        // Only a recorded reference: a plain id is a live ⌥-click on that layer's eye.
+        for key in ["layer", "layers"] {
+            let recorded = |v: &Value| v.is_object() || v.as_array().is_some_and(|a| a.iter().any(Value::is_object));
+            if fields.get(key).is_some_and(recorded) {
+                fields.remove(key);
+            }
+        }
+        return Ok(p);
+    }
     for key in keys {
         let Some(v) = fields.get(*key) else { continue };
         let new = match v {
@@ -171,9 +194,15 @@ mod tests {
             record(&s, "layer.moveTo", &json!({"layers": [a.0, t1.0], "target": t2.0})),
             Some(json!({"layers": [{"name": "A"}, {"name": "Twin", "occurrence": 0}], "target": {"current": true}}))
         );
-        // The current layer is left out where that is the step's default.
+        // The current layer is left out where that is the step's default; Show Only always
+        // plays on the current layer, whichever eye was ⌥-clicked.
         assert_eq!(record(&s, "layer.showOnly", &json!({"layer": t2.0})), Some(json!({})));
-        assert_eq!(record(&s, "layer.setProps", &json!({"layer": t1.0, "visible": false})), Some(json!({"layer": {"name": "Twin", "occurrence": 0}, "visible": false})));
+        assert_eq!(record(&s, "layer.showOnly", &json!({"layer": a.0})), Some(json!({})));
+        assert_eq!(record(&s, "layer.showOnly", &json!({})), None);
+        assert_eq!(
+            record(&s, "layer.setProps", &json!({"layer": t1.0, "visible": false})),
+            Some(json!({"layer": {"name": "Twin", "occurrence": 0}, "visible": false}))
+        );
         // Not layer ids: as given.
         assert_eq!(record(&s, "layer.hideLayers", &json!({"layer": u64::MAX})), None);
         assert_eq!(record(&s, "layer.hideLayers", &json!({"layers": [a.0, u64::MAX]})), None);
@@ -186,9 +215,17 @@ mod tests {
         let (s, a, t1, t2) = session();
         assert_eq!(resolve(&s, "layer.hideLayers", json!({"layer": {"name": "A"}})).unwrap(), json!({"layer": a.0}));
         assert_eq!(resolve(&s, "layer.hideLayers", json!({"layer": {"current": true}})).unwrap(), json!({"layer": t2.0}));
-        assert_eq!(resolve(&s, "layer.moveTo", json!({"layers": [{"name": "Twin", "occurrence": 1}, t1.0], "target": {"name": "A"}})).unwrap(), json!({"layers": [t2.0, t1.0], "target": a.0}));
+        assert_eq!(
+            resolve(&s, "layer.moveTo", json!({"layers": [{"name": "Twin", "occurrence": 1}, t1.0], "target": {"name": "A"}})).unwrap(),
+            json!({"layers": [t2.0, t1.0], "target": a.0})
+        );
         // Plain params pass through.
         assert_eq!(resolve(&s, "layer.hideLayers", json!({"layer": 5})).unwrap(), json!({"layer": 5}));
+        // A Show Only step an older recording tied to a layer plays on the current one; a live
+        // ⌥-click (a plain id) still names its layer.
+        assert_eq!(resolve(&s, "layer.showOnly", json!({"layer": {"name": "A"}})).unwrap(), json!({}));
+        assert_eq!(resolve(&s, "layer.showOnly", json!({"layers": [{"name": "A"}]})).unwrap(), json!({}));
+        assert_eq!(resolve(&s, "layer.showOnly", json!({"layer": a.0})).unwrap(), json!({"layer": a.0}));
         // Bad references are errors, not panics.
         for bad in [
             json!({"layer": {"name": "nope"}}),

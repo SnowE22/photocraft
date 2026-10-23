@@ -20,7 +20,7 @@ fn the_pause_and_the_interval_set_when_each_step_comes() {
         assert!(r.due(0.0, 0.0) >= f64::from(MIN_INTERVAL_MS) / 1000.0 - 1e-9, "{ms}");
     }
     assert!((KeyRepeat { pause: false, interval_ms: 1e9 }.due(0.0, 0.0) - 5.0).abs() < 1e-9);
-    let held = Held { id: "tools.increaseBrushSize".into(), key: Key::CloseBracket, pressed: 0.0, last: 0.0 };
+    let held = Held { id: "tools.increaseBrushSize".into(), key: Key::CloseBracket, pressed: 0.0, last: 0.0, deferred: false };
     assert!(swallows(Some(&held), "tools.increaseBrushSize", true), "the held key's system repeat");
     assert!(!swallows(Some(&held), "tools.increaseBrushSize", false), "a fresh press");
     assert!(!swallows(Some(&held), "tools.decreaseBrushHardness", true), "another brush key");
@@ -36,7 +36,7 @@ fn frame(ctx: &egui::Context, app: &mut PhotocraftApp, t: f64, events: Vec<Event
         if press {
             // What the shortcut dispatch does for the press itself.
             crate::shortcut_dispatch::dispatch(app, ui.ctx(), "tools.increaseBrushSize");
-            pressed(app, ui.ctx(), "tools.increaseBrushSize", Key::CloseBracket);
+            pressed(app, ui.ctx(), "tools.increaseBrushSize", Key::CloseBracket, true);
         }
     })
     .textures_delta
@@ -120,4 +120,64 @@ fn the_settings_live_beside_the_size_field() {
     h.run();
     assert!(h.query_by_label("Pause before repeating").is_some());
     assert!(h.query_by_label_contains("Change every").is_some());
+}
+
+/// User report: resizing with ] while starting to paint drew the cursor at a size the stroke
+/// wasn't using, and the release re-rendered the stroke at it. The brush now stays as the stroke
+/// began until it ends; a press made meanwhile takes its step afterwards, and a held key resumes.
+#[test]
+fn brush_keys_wait_for_the_stroke_being_painted() {
+    use crate::canvas::{ToolEvent, tool_event};
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.run("file.new", json!({"width": 200, "height": 100, "background": "white"})).unwrap();
+    app.run("tools.setBrush", json!({"brush": {"size": 10, "hardness": 1.0}})).unwrap();
+    app.session.tools.foreground = [0.0, 0.0, 0.0, 1.0];
+    app.ui.tool = crate::state::Tool::Brush;
+    let ctx = egui::Context::default();
+    let key = |ctx: &egui::Context, app: &mut PhotocraftApp, t: f64, pressed: bool| {
+        let raw = egui::RawInput { time: Some(t), events: bracket(pressed), ..Default::default() };
+        ctx.run_ui(raw, |ui| {
+            tick(app, ui.ctx());
+            crate::shortcut_dispatch::dispatch_pressed(app, ui.ctx(), crate::shortcut_dispatch::Focus::None, false);
+        })
+        .textures_delta
+        .clear();
+    };
+    let m = Modifiers::NONE;
+    tool_event(&mut app, ToolEvent::Down { x: 20.0, y: 50.0, pressure: 1.0 }, m);
+    assert!(painting(&app), "the stroke is being painted");
+    // A ] tap mid-stroke: the brush (and so the cursor and the stroke) stays at 10.
+    key(&ctx, &mut app, 0.0, true);
+    key(&ctx, &mut app, 0.02, false);
+    assert_eq!(app.session.tools.brush.size, 10.0);
+    tool_event(&mut app, ToolEvent::Move { x: 180.0, y: 50.0, pressure: 1.0 }, m);
+    key(&ctx, &mut app, 0.1, false);
+    assert_eq!(app.session.tools.brush.size, 10.0, "still painting");
+    tool_event(&mut app, ToolEvent::Up { x: 180.0, y: 50.0 }, m);
+    // The committed stroke is the 10 px one that was shown: about 10 px tall at its middle.
+    let doc = app.session.active().unwrap().doc.clone();
+    let px = photocraft_compose::flatten(&doc);
+    let inked = (0..100).filter(|y| px.px[(y * 200 + 100) as usize][0] < 0.5).count();
+    assert!((9..=11).contains(&inked), "the stroke is {inked} px wide, not the resized brush");
+    // Then the tap takes its step.
+    key(&ctx, &mut app, 0.2, false);
+    assert!(app.session.tools.brush.size > 10.0, "the deferred press applies after the stroke");
+    assert!(app.brush_key_held.is_none(), "and the released key stops there");
+
+    // A key held through a stroke: no steps while painting, steps again after.
+    let size = app.session.tools.brush.size;
+    app.ui.tool_options.brush_key_repeat = KeyRepeat { pause: false, interval_ms: 50.0 };
+    tool_event(&mut app, ToolEvent::Down { x: 20.0, y: 20.0, pressure: 1.0 }, m);
+    key(&ctx, &mut app, 1.0, true);
+    for t in [1.1, 1.2, 1.3] {
+        let raw = egui::RawInput { time: Some(t), ..Default::default() };
+        ctx.run_ui(raw, |ui| tick(&mut app, ui.ctx())).textures_delta.clear();
+    }
+    assert_eq!(app.session.tools.brush.size, size, "held through the stroke: unchanged");
+    tool_event(&mut app, ToolEvent::Up { x: 20.0, y: 20.0 }, m);
+    for t in [1.4, 1.5] {
+        let raw = egui::RawInput { time: Some(t), ..Default::default() };
+        ctx.run_ui(raw, |ui| tick(&mut app, ui.ctx())).textures_delta.clear();
+    }
+    assert!(app.session.tools.brush.size > size, "still held after the stroke: it steps again");
 }

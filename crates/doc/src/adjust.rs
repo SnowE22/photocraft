@@ -281,6 +281,13 @@ pub enum Adjustment {
         relative: bool,
         adjustments: [[f32; 4]; 9],
     },
+    /// Photoshop 2026's Grain: film-style monochrome noise, the same for a document every time it
+    /// renders (it depends only on the pixel's position). Amount, Size and Roughness in 0..=100.
+    Grain {
+        amount: f32,
+        size: f32,
+        roughness: f32,
+    },
     /// A PSD adjustment we can't evaluate yet; preserved raw for round-trip.
     Unsupported {
         psd_key: String,
@@ -307,6 +314,7 @@ impl Adjustment {
             Adjustment::Threshold { .. } => "Threshold",
             Adjustment::GradientMap { .. } => "Gradient Map",
             Adjustment::SelectiveColor { .. } => "Selective Color",
+            Adjustment::Grain { .. } => "Grain",
             Adjustment::Unsupported { .. } => "Adjustment",
         }
     }

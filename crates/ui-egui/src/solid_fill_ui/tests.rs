@@ -283,3 +283,37 @@ fn cmyk_lab_preview_thumbnail_cancel_and_ok_are_consistent() {
         assert_eq!(app.session.active().unwrap().doc.layer(id).unwrap().content, LayerContent::Fill(Fill::Solid(preview)));
     }
 }
+
+/// Like the Color panel (user report), the picker's colour field and slider pick on the press,
+/// not on release, and follow the drag while the button is held.
+#[test]
+fn picker_field_and_slider_pick_on_press_and_follow_the_drag() {
+    use egui_kittest::kittest::Queryable;
+    let (mut h, _) = harness(1.0);
+    let ctx = h.ctx.clone();
+    let opened = crate::menus::invoke(h.state_mut(), &ctx, "layer.newFillLayer.solidColor", json!({})).unwrap();
+    let dialog = opened["dialog"].as_u64().unwrap();
+    h.run_steps(6);
+    let color = |h: &Harness<'_, PhotocraftApp>| h.state().ui.dialogs.iter().find(|d| d.id == dialog).unwrap().fields["color"].clone();
+    let button = |h: &mut Harness<'_, PhotocraftApp>, at: Pos2, pressed: bool| {
+        h.event(Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE });
+        h.step();
+    };
+    for label in ["Color field", "Color slider"] {
+        let r = h.get_by_label(label).rect();
+        let (a, b) = (pos2(r.left() + r.width() * 0.3, r.top() + r.height() * 0.25), pos2(r.left() + r.width() * 0.7, r.top() + r.height() * 0.6));
+        h.hover_at(a);
+        h.step();
+        let before = color(&h);
+        button(&mut h, a, true);
+        let pressed = color(&h);
+        assert_ne!(pressed, before, "{label}: the press picks at once");
+        h.hover_at(b);
+        h.step();
+        h.step();
+        let dragged = color(&h);
+        assert_ne!(dragged, pressed, "{label}: the drag follows the pointer");
+        button(&mut h, b, false);
+        assert_eq!(color(&h), dragged, "{label}: release keeps the dragged colour");
+    }
+}

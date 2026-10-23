@@ -1,6 +1,27 @@
 //! Icons embedded and tinted at runtime; sources and licences are listed in `ATTRIBUTION.md`.
 
 pub static ICONS: &[(&str, &[u8])] = &[
+    // PhotoCraft originals: one glyph per adjustment type (`adjust_icons`).
+    ("adj-black-white", include_bytes!("../../../assets/icons/adj-black-white.svg")),
+    ("adj-brightness-contrast", include_bytes!("../../../assets/icons/adj-brightness-contrast.svg")),
+    ("adj-channel-mixer", include_bytes!("../../../assets/icons/adj-channel-mixer.svg")),
+    ("adj-clarity-dehaze", include_bytes!("../../../assets/icons/adj-clarity-dehaze.svg")),
+    ("adj-color-balance", include_bytes!("../../../assets/icons/adj-color-balance.svg")),
+    ("adj-color-lookup", include_bytes!("../../../assets/icons/adj-color-lookup.svg")),
+    ("adj-color-vibrance", include_bytes!("../../../assets/icons/adj-color-vibrance.svg")),
+    ("adj-curves", include_bytes!("../../../assets/icons/adj-curves.svg")),
+    ("adj-exposure", include_bytes!("../../../assets/icons/adj-exposure.svg")),
+    ("adj-gradient-map", include_bytes!("../../../assets/icons/adj-gradient-map.svg")),
+    ("adj-grain", include_bytes!("../../../assets/icons/adj-grain.svg")),
+    ("adj-hue-saturation", include_bytes!("../../../assets/icons/adj-hue-saturation.svg")),
+    ("adj-invert", include_bytes!("../../../assets/icons/adj-invert.svg")),
+    ("adj-levels", include_bytes!("../../../assets/icons/adj-levels.svg")),
+    ("adj-light", include_bytes!("../../../assets/icons/adj-light.svg")),
+    ("adj-photo-filter", include_bytes!("../../../assets/icons/adj-photo-filter.svg")),
+    ("adj-posterize", include_bytes!("../../../assets/icons/adj-posterize.svg")),
+    ("adj-selective-color", include_bytes!("../../../assets/icons/adj-selective-color.svg")),
+    ("adj-threshold", include_bytes!("../../../assets/icons/adj-threshold.svg")),
+    ("adj-vibrance", include_bytes!("../../../assets/icons/adj-vibrance.svg")),
     ("adjustment-layer", include_bytes!("../../../assets/icons/adjustment-layer.svg")),
     ("align-center", include_bytes!("../../../assets/icons/align-center.svg")),
     ("align-justify", include_bytes!("../../../assets/icons/align-justify.svg")),

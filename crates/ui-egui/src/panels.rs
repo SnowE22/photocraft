@@ -3813,10 +3813,13 @@ fn draw_layer_thumb(app: &mut PhotocraftApp, ctx: &egui::Context, ui: &egui::Ui,
     let t = Tokens::get(ctx);
     let p = ui.painter();
     match &l.content {
-        LayerContent::Adjustment(_) | LayerContent::Group(_) => {
+        LayerContent::Adjustment(adj) => {
+            // Photoshop: each adjustment type's own glyph, on the panel itself (no tile).
+            crate::adjust_icons::paint(ui, rect, adj, t.icon);
+        }
+        LayerContent::Group(_) => {
             p.rect_filled(rect, 6.0, t.field);
-            let icon = if l.is_group() { "folder" } else { "contrast" };
-            icons::paint(ui, rect, icon, 18.0, t.icon);
+            icons::paint(ui, rect, "folder", 18.0, t.icon);
         }
         LayerContent::Text(_) => {
             // Photoshop: type layers show a "T" tile rather than a pixel thumbnail.
@@ -4364,9 +4367,13 @@ fn properties_body_inner(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 /// The Layers panel's "Create new fill or adjustment layer" menu, in Photoshop's groups and order.
 /// Photoshop 2026 starts with Light, Color and vibrance, Clarity and dehaze and Grain; PhotoCraft's
-/// nearest, Brightness/Contrast and Vibrance, stand in their place.
+/// nearest, Brightness/Contrast and Vibrance, stand in for the first three.
 pub(crate) const ADJUSTMENT_MENU: [&[(&str, &str)]; 5] = [
-    &[("layer.newAdjustmentLayer.brightnessContrast", "Brightness/Contrast…"), ("layer.newAdjustmentLayer.vibrance", "Vibrance…")],
+    &[
+        ("layer.newAdjustmentLayer.brightnessContrast", "Brightness/Contrast…"),
+        ("layer.newAdjustmentLayer.vibrance", "Vibrance…"),
+        ("layer.newAdjustmentLayer.grain", "Grain…"),
+    ],
     &[("layer.newAdjustmentLayer.levels", "Levels…"), ("layer.newAdjustmentLayer.curves", "Curves…"), ("layer.newAdjustmentLayer.exposure", "Exposure…")],
     &[
         ("layer.newAdjustmentLayer.hueSaturation", "Hue/Saturation…"),
@@ -4391,29 +4398,30 @@ fn adjustments_grid(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let t = Tokens::get(ui.ctx());
     ui.label(RichText::new(tl!("Add an adjustment")).color(t.text_dim));
     ui.add_space(4.0);
-    let items: [(&str, &str, &str); 16] = [
-        ("brightnessContrast", "sun", tl!("Brightness/Contrast")),
-        ("levels", "gauge", tl!("Levels")),
-        ("curves", "pen-tool", tl!("Curves")),
-        ("exposure", "scan", tl!("Exposure")),
-        ("vibrance", "sparkles", tl!("Vibrance")),
-        ("hueSaturation", "droplet", tl!("Hue/Saturation")),
-        ("colorBalance", "blend", tl!("Color Balance")),
-        ("blackWhite", "contrast", tl!("Black & White")),
-        ("photoFilter", "circle-dot", tl!("Photo Filter")),
-        ("channelMixer", "sliders-horizontal", tl!("Channel Mixer")),
-        ("invert", "squares-subtract", tl!("Invert")),
-        ("posterize", "layers", tl!("Posterize")),
-        ("threshold", "square", tl!("Threshold")),
-        ("gradientMap", "palette", tl!("Gradient Map")),
-        ("selectiveColor", "swatch-book", tl!("Selective Color")),
-        ("colorLookup", "grid-3x3", tl!("Color Lookup")),
+    let items: [(&str, &str); 17] = [
+        ("brightnessContrast", tl!("Brightness/Contrast")),
+        ("levels", tl!("Levels")),
+        ("curves", tl!("Curves")),
+        ("exposure", tl!("Exposure")),
+        ("vibrance", tl!("Vibrance")),
+        ("grain", tl!("Grain")),
+        ("hueSaturation", tl!("Hue/Saturation")),
+        ("colorBalance", tl!("Color Balance")),
+        ("blackWhite", tl!("Black & White")),
+        ("photoFilter", tl!("Photo Filter")),
+        ("channelMixer", tl!("Channel Mixer")),
+        ("invert", tl!("Invert")),
+        ("posterize", tl!("Posterize")),
+        ("threshold", tl!("Threshold")),
+        ("gradientMap", tl!("Gradient Map")),
+        ("selectiveColor", tl!("Selective Color")),
+        ("colorLookup", tl!("Color Lookup")),
     ];
     let mut run = None;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
-        for (kind, icon, tip) in items {
-            if icons::button(ui, icon, 30.0, false, tip).clicked() {
+        for (kind, tip) in items {
+            if icons::button(ui, crate::adjust_icons::for_kind(kind), 30.0, false, tip).clicked() {
                 run = Some(format!("layer.newAdjustmentLayer.{kind}"));
             }
         }
@@ -7768,6 +7776,6 @@ mod adjustment_menu_tests {
             assert_eq!(listed.iter().filter(|l| *l == id).count(), 1, "{id}");
         }
         assert_eq!(listed.len(), wanted.len(), "{listed:?}");
-        assert_eq!(super::ADJUSTMENT_MENU.map(|g| g.len()), [2, 3, 7, 4, 3]);
+        assert_eq!(super::ADJUSTMENT_MENU.map(|g| g.len()), [3, 3, 7, 4, 3]);
     }
 }

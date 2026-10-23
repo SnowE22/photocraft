@@ -1195,6 +1195,20 @@ pub struct DockTabs {
     pub timelapse: usize,
 }
 
+/// Select › Color Range… choices kept between openings, as Photoshop keeps them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ColorRangeState {
+    /// Selection Preview: "none", "grayscale", "blackMatte", "whiteMatte" or "quickMask".
+    pub selection_preview: String,
+}
+
+impl Default for ColorRangeState {
+    fn default() -> Self {
+        Self { selection_preview: "none".into() }
+    }
+}
+
 /// Color panel state.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -1396,6 +1410,9 @@ pub struct UiState {
     /// Which chip the Color panel edits.
     #[serde(default)]
     pub color_panel: ColorPanelState,
+    /// Select › Color Range…'s Selection Preview, kept between openings.
+    #[serde(default)]
+    pub color_range: ColorRangeState,
     /// Brush Settings: selected section (0 = Brush Tip Shape) and tab (0 settings, 1 Brushes).
     #[serde(default)]
     pub brush_section: usize,
@@ -1529,6 +1546,7 @@ impl Default for UiState {
             docking_collapsed: Vec::new(),
             docking_reveal: None,
             color_panel: Default::default(),
+            color_range: Default::default(),
             brush_section: 0,
             brush_tab: 0,
             brushes_panel: Default::default(),

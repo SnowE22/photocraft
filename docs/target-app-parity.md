@@ -1,6 +1,6 @@
 # PhotoCraft vs Adobe Photoshop: target-app parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-18 · **Change:** minor (the Remove tool's Generative AI mode on a local LaMa model, percentages unchanged; Photoshop's Actions palette loads whole, 96 % of a user's palette steps map; `.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment; stale missing-tool rows corrected: Color Replacement and Red Eye are live toolbar tools, Frame landed; percentages unchanged) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-23 · **Change:** minor (Photoshop 2026's Grain adjustment layer and per-type adjustment icons, percentages unchanged; 2026-10-18: the Remove tool's Generative AI mode on a local LaMa model, percentages unchanged; Photoshop's Actions palette loads whole, 96 % of a user's palette steps map; `.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment; stale missing-tool rows corrected: Color Replacement and Red Eye are live toolbar tools, Frame landed; percentages unchanged) · **Target:** Adobe Photoshop 2026
 
 The authoritative answer to "how close is PhotoCraft to Photoshop, and how much work is left". The
 one-page summary is [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [`gaps.md`](gaps.md);
@@ -278,7 +278,7 @@ just presence.
 | Layers, masks, groups, blend modes, smart objects, layer styles | ~92% | Broad + GPU-accelerated; bevel/satin shapes and a few blend edge cases remain |
 | Selections, paths, vector shapes, pen | ~90% | Select menu 100% of items; Select Subject/Sky are heuristic, not ML |
 | Paint / brush engine, retouch (clone, healing) | ~85% | Solid; no Mixer Brush depth, no Content-Aware healing |
-| Adjustments + adjustment layers | ~90% | All kinds present; Camera Raw depth and a few toe-curve models approximate |
+| Adjustments + adjustment layers | ~90% | All classic kinds present, plus Photoshop 2026's Grain (2026-10-23; saved in PSD as a private block); Photoshop 2026's Light, Color and vibrance and Clarity and dehaze layers still missing; Camera Raw depth and a few toe-curve models approximate |
 | Filters (incl. Filter Gallery ×47, Liquify, blurs, render) | ~88% | Gallery looks are approximations; no Neural Filters |
 | Type / text engine, character & paragraph styles, glyphs | ~90% | Vertical type laid out and rendered (#199; no mojikumi or upright-Roman option yet); OpenType alternates thin |
 | Color management (ICC v2/v4, intents, soft-proof) | ~90% | Own pure-Rust CMS; no Adobe CMYK profiles (synthetic) |
@@ -568,6 +568,7 @@ See [method, raw measurements and reproduction](five-algorithm-performance.md).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-23 | minor | Adjustments: Photoshop 2026's Grain adjustment layer (Amount, Size, Roughness; deterministic, CPU and GPU, .pcraft and a private PSD block); every adjustment type has its own Layers panel icon; Color Range remembers Selection Preview and previews Fuzziness off the UI thread; percentages unchanged |
 | 2026-10-18 | minor | Layers: with no selection, Copy takes fill and adjustment layers whole and Paste recreates them (#2344); UI-217-23 stays partial; percentages unchanged |
 | 2026-10-16 | minor | Content-Aware Move: live result preview for every selection the command takes (TOOL-213-4 done, #6680); percentages unchanged |
 | 2026-10-15 | minor | Vector shapes: shape layers take Density and Feather (Properties › Masks), PSD and .pcraft round trip; TOOL-214-12 done (#5846); estimates unchanged |

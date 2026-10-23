@@ -316,6 +316,8 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["Layer", "New Adjustment Layer"], "Threshold…", None, "layer.newAdjustmentLayer.threshold"),
     (&["Layer", "New Adjustment Layer"], "Gradient Map…", None, "layer.newAdjustmentLayer.gradientMap"),
     (&["Layer", "New Adjustment Layer"], "Selective Color…", None, "layer.newAdjustmentLayer.selectiveColor"),
+    (&["Layer", "New Adjustment Layer"], "---", None, "---"),
+    (&["Layer", "New Adjustment Layer"], "Grain…", None, "layer.newAdjustmentLayer.grain"),
     (&["Layer"], "Layer Content Options…", None, "layer.layerContentOptions"),
     (&["Layer"], "---", None, "---"),
     (&["Layer", "Layer Mask"], "Reveal All", None, "layer.layerMask.revealAll"),

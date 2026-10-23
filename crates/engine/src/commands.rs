@@ -1369,6 +1369,8 @@ fn build() -> Vec<CommandSpec> {
             "Color Lookup…",
             r##"{"lut":"none|warm|cool|tealOrange|bleachBypass|fadedFilm|dayForNight|monoContrast|crossProcess"="none","file":text,"interpolation":"trilinear|tetrahedral"="trilinear","dither":bool=false,"data":json} (file: .cube/.3dl/.look path; data: file text + "fileName")"##,
         ),
+        // Photoshop 2026: film grain, the same every render (it depends on the pixel position).
+        ("grain", "Grain…", r##"{"amount":0..100=0,"size":0..100=34,"roughness":0..100=50}"##),
     ];
     for &(kind, label, params) in ADJ {
         let layer_id: &'static str = Box::leak(format!("layer.newAdjustmentLayer.{kind}").into_boxed_str());
@@ -1391,6 +1393,10 @@ fn build() -> Vec<CommandSpec> {
             },
             journal: true,
         });
+        // Grain is an adjustment layer only in Photoshop (no Image › Adjustments entry).
+        if kind == "grain" {
+            continue;
+        }
         v.push(CommandSpec {
             id: image_id,
             label,
@@ -1601,6 +1607,7 @@ pub fn adjustment_kind(a: &Adjustment) -> &'static str {
         Adjustment::GradientMap { .. } => "gradientMap",
         Adjustment::SelectiveColor { .. } => "selectiveColor",
         Adjustment::ColorLookup { .. } => "colorLookup",
+        Adjustment::Grain { .. } => "grain",
         _ => "invert",
     }
 }

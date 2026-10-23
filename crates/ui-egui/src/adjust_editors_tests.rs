@@ -11,7 +11,8 @@ use serde_json::json;
 
 use crate::PhotocraftApp;
 
-const ALL_KINDS: [&str; 16] = [
+const ALL_KINDS: [&str; 17] = [
+    "grain",
     "brightnessContrast",
     "levels",
     "curves",
@@ -119,6 +120,7 @@ fn every_adjustment_layer_edits_through_properties() {
                 "posterize" => Some("Levels"),
                 "threshold" => Some("Threshold Level"),
                 "selectiveColor" => Some("Cyan"),
+                "grain" => Some("Amount:"),
                 _ => None,
             };
             match kind {
@@ -847,4 +849,21 @@ fn row_values_round_to_their_own_decimals() {
     assert_eq!(row_value(4.6, 2.0, 255.0, None), 5.0, "wide ranges stay whole numbers");
     assert!((row_value(1.234, 0.01, 9.99, None) - 1.23).abs() < 1e-6, "small ranges keep two decimals");
     assert!(row_value(f32::NAN, -20.0, 20.0, Some(u32::MAX)).is_nan(), "no panic on odd input");
+}
+
+/// Like Photoshop 2026's, a new Grain layer starts at Amount 0, and Size and Roughness only
+/// apply, and so only edit, from Amount 1 (user report).
+#[test]
+fn grain_size_and_roughness_wait_for_an_amount() {
+    use egui_kittest::kittest::NodeT;
+    let mut h = app_harness("grain", "rgb", 8);
+    let disabled = |h: &Harness<'static, PhotocraftApp>, label: &str| {
+        h.query_all_by_label(label).last().unwrap_or_else(|| panic!("{label}")).accesskit_node().is_disabled()
+    };
+    let (id, adj) = layer(&h);
+    assert_eq!(adj, Adjustment::Grain { amount: 0.0, size: 34.0, roughness: 50.0 });
+    assert!(!disabled(&h, "Amount:") && disabled(&h, "Size:") && disabled(&h, "Roughness:"));
+    h.state_mut().run("layer.setAdjustment", json!({"layer": id.0, "amount": 1})).unwrap();
+    h.run_steps(4);
+    assert!(!disabled(&h, "Size:") && !disabled(&h, "Roughness:"));
 }

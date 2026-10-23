@@ -3,6 +3,10 @@
 //! between steps are settings ([`KeyRepeat`], the gear beside the brush picker's Size field). The
 //! system's repeat presses for these keys are dropped ([`swallows`]); [`tick`] steps while the key
 //! is down.
+//!
+//! While a stroke is being painted the brush stays as the stroke began (user report: holding `]`
+//! and starting to paint drew the cursor at a size the stroke wasn't using, and the release
+//! re-rendered the stroke at it): a press or a step waits for the stroke to end ([`painting`]).
 
 use egui::{Key, Ui};
 use serde::{Deserialize, Serialize};
@@ -54,6 +58,13 @@ pub struct Held {
     pub key: Key,
     pub pressed: f64,
     pub last: f64,
+    /// Pressed during a stroke: its first step comes when the stroke ends.
+    pub deferred: bool,
+}
+
+/// A brush stroke is being painted: the brush keys wait for it to end.
+pub fn painting(app: &PhotocraftApp) -> bool {
+    app.drag.as_ref().is_some_and(|d| crate::brush_resize::applies(d.tool))
 }
 
 /// Whether the shortcut `id` fired by a key event is the system repeating the brush key being
@@ -63,11 +74,12 @@ pub fn swallows(held: Option<&Held>, id: &str, repeat: bool) -> bool {
     repeat && IDS.contains(&id) && held.is_some_and(|h| h.id == id)
 }
 
-/// A brush key went down (not a repeat) and its command ran: start pacing it.
-pub fn pressed(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, key: Key) {
+/// A brush key went down (not a repeat): start pacing it. `ran`: its command ran (false when it
+/// waits for the stroke being painted, [`painting`]).
+pub fn pressed(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, key: Key, ran: bool) {
     if IDS.contains(&id) {
         let now = ctx.input(|i| i.time);
-        app.brush_key_held = Some(Held { id: id.into(), key, pressed: now, last: now });
+        app.brush_key_held = Some(Held { id: id.into(), key, pressed: now, last: now, deferred: !ran });
         ctx.request_repaint();
     }
 }
@@ -76,6 +88,23 @@ pub fn pressed(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, key: Key)
 pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
     let Some(held) = app.brush_key_held.clone() else { return };
     let (down, now) = ctx.input(|i| (i.key_down(held.key), i.time));
+    let interval = std::time::Duration::from_secs_f64(app.ui.tool_options.brush_key_repeat.interval_s());
+    if painting(app) {
+        // The stroke keeps its brush; the key carries on once it ends (a press made during the
+        // stroke still takes its step then, even if let go).
+        if down || held.deferred {
+            ctx.request_repaint_after(interval);
+        } else {
+            app.brush_key_held = None;
+        }
+        return;
+    }
+    if held.deferred {
+        crate::shortcut_dispatch::dispatch(app, ctx, &held.id);
+        app.brush_key_held = down.then_some(Held { last: now, deferred: false, ..held });
+        ctx.request_repaint_after(interval);
+        return;
+    }
     if !down {
         app.brush_key_held = None;
         return;
@@ -86,7 +115,7 @@ pub fn tick(app: &mut PhotocraftApp, ctx: &egui::Context) {
         if let Some(h) = app.brush_key_held.as_mut() {
             h.last = now;
         }
-        ctx.request_repaint_after(std::time::Duration::from_secs_f64(app.ui.tool_options.brush_key_repeat.interval_s()));
+        ctx.request_repaint_after(interval);
     } else {
         ctx.request_repaint_after(std::time::Duration::from_secs_f64((due - now).max(0.0)));
     }

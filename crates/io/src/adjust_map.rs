@@ -9,14 +9,23 @@
 //! than two stops as the equivalent two-stop gradient, so nothing is dropped on save. Blocks
 //! that cannot be read (noise gradients, profile lookups, CMYK channel mixers, unknown versions)
 //! stay [`Adjustment::Unsupported`] and are written back verbatim.
+//!
+//! Grain (Photoshop 2026) has no published block layout: PhotoCraft writes it as a private
+//! [`GRAIN_KEY`] block (version, then Amount, Size and Roughness as big-endian `f32`s), which it
+//! reads back; other readers see an empty layer.
 
 use photocraft_doc::Adjustment;
 use photocraft_doc::adjust::{CURVE_MAP_LEN, CurvePoint, HueRange, LevelsChannel, ToneSpace, curve_map, curve_map_outputs};
 use photocraft_psd::descriptor::{Descriptor, Value, VersionedDescriptor};
 
+/// PhotoCraft's private block for a Grain adjustment layer (see the module docs).
+pub const GRAIN_KEY: [u8; 4] = *b"PCgr";
+const GRAIN_VERSION: u32 = 1;
+
 /// All PSD adjustment keys recognized as adjustment layers.
-pub const ADJUSTMENT_KEYS: [&[u8; 4]; 16] =
-    [b"levl", b"curv", b"hue2", b"brit", b"nvrt", b"thrs", b"post", b"expA", b"vibA", b"blnc", b"mixr", b"grdm", b"phfl", b"selc", b"blwh", b"clrL"];
+pub const ADJUSTMENT_KEYS: [&[u8; 4]; 17] = [
+    b"levl", b"curv", b"hue2", b"brit", b"nvrt", b"thrs", b"post", b"expA", b"vibA", b"blnc", b"mixr", b"grdm", b"phfl", b"selc", b"blwh", b"clrL", &GRAIN_KEY,
+];
 
 fn be16(d: &[u8], at: usize) -> Option<u16> {
     d.get(at..at + 2).map(|b| u16::from_be_bytes([b[0], b[1]]))
@@ -135,6 +144,7 @@ pub fn label(key: &[u8; 4]) -> &'static str {
         b"selc" => "Selective Color",
         b"blwh" => "Black & White",
         b"clrL" => "Color Lookup",
+        b"PCgr" => "Grain",
         _ => "adjustment",
     }
 }
@@ -202,6 +212,12 @@ pub fn parse(key: &[u8; 4], data: &[u8], cged: Option<&[u8]>, channels: Channels
 fn parse_any(key: &[u8; 4], data: &[u8], cged: Option<&[u8]>) -> Adjustment {
     let parsed = match key {
         b"nvrt" => Some(Adjustment::Invert),
+        b"PCgr" => {
+            let known = data.get(..4).is_some_and(|v| u32::from_be_bytes([v[0], v[1], v[2], v[3]]) == GRAIN_VERSION);
+            // Hostile values are clamped to the sliders' range (NaN → 0).
+            let pct = |at: usize| bef32(data, at).map(|v| if v.is_finite() { v.clamp(0.0, 100.0) } else { 0.0 });
+            known.then(|| Some(Adjustment::Grain { amount: pct(4)?, size: pct(8)?, roughness: pct(12)? })).flatten()
+        }
         b"thrs" => be16(data, 0).map(|v| Adjustment::Threshold { level: f32::from(v) / 255.0 }),
         b"post" => be16(data, 0).map(|v| Adjustment::Posterize { levels: u32::from(v) }),
         b"brit" => {
@@ -792,6 +808,13 @@ pub fn write(adj: &Adjustment) -> Vec<([u8; 4], Vec<u8>)> {
             }
             return vec![(*b"mixr", v)];
         }
+        Adjustment::Grain { amount, size, roughness } => {
+            v.extend_from_slice(&GRAIN_VERSION.to_be_bytes());
+            for x in [amount, size, roughness] {
+                v.extend_from_slice(&x.to_be_bytes());
+            }
+            return vec![(GRAIN_KEY, v)];
+        }
         Adjustment::Unsupported { psd_key, raw } => {
             let k = psd_key.as_bytes();
             if k.len() == 4 {
@@ -1014,6 +1037,8 @@ mod tests {
         let b = write(&inkl);
         assert_eq!(parse(&b[0].0, &b[0].1, None, Channels::Cmyk), inkl);
         rt(Adjustment::Unsupported { psd_key: "selc".into(), raw: vec![1, 2, 3] });
+        rt(Adjustment::Grain { amount: 32.0, size: 34.0, roughness: 50.0 });
+        rt(Adjustment::Grain { amount: 0.0, size: 100.0, roughness: 0.0 });
         rt(Adjustment::GradientMap { stops: vec![(0.0, [0.0, 0.0, 0.0]), (0.5, [1.0, 0.0, 0.0]), (1.0, [1.0, 1.0, 1.0])], reverse: true, dither: false });
         rt(Adjustment::GradientMap { stops: vec![(0.0, [0.0, 0.0, 0.0]), (1.0, [1.0, 1.0, 1.0])], reverse: false, dither: true });
         rt(Adjustment::SelectiveColor { relative: true, adjustments: std::array::from_fn(|r| [r as f32 * 10.0 - 40.0, 5.0, -100.0, 100.0]) });
@@ -1091,6 +1116,14 @@ mod tests {
         assert_eq!(label(b"clrL"), "Color Lookup");
         assert!(matches!(parse(b"clrL", &[0, 1, 9], None, Channels::Rgb), Adjustment::Unsupported { .. }));
         assert!(matches!(parse(b"selc", &[0, 1, 0, 0], None, Channels::Rgb), Adjustment::Unsupported { .. }));
+        // Grain's private block: short, unknown versions and hostile values never panic.
+        assert!(matches!(parse(b"PCgr", &[0, 0, 0, 1, 0, 0], None, Channels::Rgb), Adjustment::Unsupported { .. }));
+        assert!(matches!(parse(b"PCgr", &[0, 0, 0, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], None, Channels::Rgb), Adjustment::Unsupported { .. }));
+        let mut hostile = 1u32.to_be_bytes().to_vec();
+        for v in [f32::NAN, 1e9, -5.0] {
+            hostile.extend_from_slice(&v.to_be_bytes());
+        }
+        assert_eq!(parse(b"PCgr", &hostile, None, Channels::Rgb), Adjustment::Grain { amount: 0.0, size: 100.0, roughness: 0.0 });
     }
 
     #[test]
