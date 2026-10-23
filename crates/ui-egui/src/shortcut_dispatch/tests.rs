@@ -359,6 +359,24 @@ fn alternate_keys_run_their_command() {
     assert!(take_log(&h.ctx).is_empty());
 }
 
+/// Ctrl+F4 closes the document beside Ctrl+W, as in Photoshop on Windows, through the same
+/// guarded Close: unsaved changes still get the save prompt.
+#[cfg(not(target_os = "macos"))]
+#[test]
+fn ctrl_f4_closes_the_document() {
+    let mut h = harness();
+    put_focus(&mut h, Place::Canvas);
+    press(&mut h, "Cmd+F4");
+    assert!(matches!(take_log(&h.ctx).as_slice(), [(id, Outcome::Ran)] if id == "file.close"));
+    assert!(h.state().discard.is_some(), "unsaved changes ask first");
+    assert_eq!(h.state().session.documents().len(), 1);
+    h.state_mut().discard = None;
+    let st = h.state_mut().session.active_mut().unwrap();
+    st.saved_revision = st.revision;
+    press(&mut h, "Cmd+F4");
+    assert!(h.state().session.documents().is_empty(), "a saved document closes");
+}
+
 /// #352: ⌥[ ⌥] ⌥, ⌥. and ⇧⌥[ walk the Layers panel's rows from the keyboard.
 #[test]
 fn alt_brackets_walk_the_layers_panel() {

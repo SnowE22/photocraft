@@ -63,9 +63,10 @@ fn tool_key(tool: Tool) -> String {
 /// `Preferences::tool_brushes`: `{"active": <the live brush's tool>, "tools": {<tool>: <brush>}}`.
 /// A brush with a sampled bitmap too big to embed is left out (it stays the tool's this run).
 pub(crate) fn tool_brushes_json(app: &PhotocraftApp) -> serde_json::Value {
+    let owner = saved_brush_owner(app);
     let mut tools = serde_json::Map::new();
     for (tool, brush) in &app.ui.tool_brushes {
-        if *tool == app.ui.brush_tool {
+        if *tool == app.ui.brush_tool || *tool == owner {
             continue;
         }
         let preset = app.ui.tool_presets.iter().find(|(t, _)| t == tool).map(|(_, p)| p.as_str());
@@ -73,7 +74,19 @@ pub(crate) fn tool_brushes_json(app: &PhotocraftApp) -> serde_json::Value {
             tools.insert(tool_key(*tool), v);
         }
     }
-    serde_json::json!({"active": tool_key(app.ui.brush_tool), "tools": tools})
+    serde_json::json!({"active": tool_key(owner), "tools": tools})
+}
+
+/// The tool whose brush `Preferences::last_brush` holds: the one that owns the live brush once
+/// that brush is saved. Until then (a sampled tip too big to embed, before the preset store takes
+/// it) `last_brush` still holds the previously saved owner's brush, so that owner stands (#6212);
+/// with none saved, the Brush.
+pub(crate) fn saved_brush_owner(app: &PhotocraftApp) -> Tool {
+    let t = &app.session.tools;
+    if t.brush_rev == t.brush_saved_rev {
+        return app.ui.brush_tool;
+    }
+    app.session.prefs().tool_brushes.get("active").and_then(serde_json::Value::as_str).and_then(Tool::from_name).unwrap_or(Tool::Brush)
 }
 
 /// Restore `Preferences::tool_brushes` at launch, after `last_brush` (whose brush is `active`'s):
@@ -177,9 +190,15 @@ pub struct Buttons {
     pub clicked: bool,
 }
 
-/// Tools whose right-click opens the Brush Preset picker (those with the options-bar brush chip).
+/// Tools with the options-bar brush chip, which opens the Brush Preset picker.
 pub fn has_brush_picker(tool: Tool) -> bool {
     tool.is_brushlike() || tool == Tool::QuickSelection
+}
+
+/// Tools whose canvas right-click opens the Brush Preset picker: the painting tools. The Quick
+/// Selection tool has the picker too, but its right-click opens the selection menu (#7268).
+pub fn right_click_picker(tool: Tool) -> bool {
+    has_brush_picker(tool) && !crate::canvas_tool_menu::applies(tool)
 }
 
 /// Does a right-button drag with `tool` erase (rather than open the picker)?
@@ -221,7 +240,7 @@ pub fn canvas_buttons(app: &mut PhotocraftApp, response: &Response, tool: Tool) 
     if right_click
         && !erase
         && !layer_menu
-        && has_brush_picker(tool)
+        && right_click_picker(tool)
         && let Some(p) = response.interact_pointer_pos()
     {
         crate::brush_picker::open(&mut app.ui, &response.ctx, [p.x, p.y]);
@@ -251,7 +270,7 @@ pub fn pointer_secondary(app: &mut PhotocraftApp, ctx: &egui::Context, down: boo
         app.secondary_erase = down;
         return true;
     }
-    if down && has_brush_picker(tool) {
+    if down && right_click_picker(tool) {
         crate::brush_picker::open(&mut app.ui, ctx, at);
     }
     false

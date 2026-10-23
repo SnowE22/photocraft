@@ -142,6 +142,11 @@ pub fn params(f: &Map<String, Value>) -> Value {
         p.insert("fuzziness".into(), json!(num(f, "fuzziness", 40.0)));
         let (add, sub) = (points(f, "points"), points(f, "subtractPoints"));
         let picked = !add.is_empty() || !sub.is_empty();
+        // The colours an action step recorded (opened from the Actions panel): Add to Sample
+        // grows them; a plain eyedropper click or Clear Samples drops them.
+        if let Some(r) = f.get("labRange").filter(|r| r.is_object()) {
+            p.insert("labRange".into(), r.clone());
+        }
         if !add.is_empty() {
             p.insert("points".into(), json!(add));
         }
@@ -645,7 +650,9 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
                     }
                 });
                 let (add, sub) = (points(f, "points").len(), points(f, "subtractPoints").len());
+                let recorded = f.get("labRange").is_some_and(Value::is_object);
                 let what = match (add, sub) {
+                    (0, 0) if recorded => tl!("Sample: recorded colours").to_string(),
                     (0, 0) => tl!("Sample: foreground colour").to_string(),
                     (a, 0) => crate::i18n::trn(crate::i18n::current(), a as u64, "{n} sample", "{n} samples"),
                     (a, s) => crate::i18n::fmt(
@@ -654,7 +661,8 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
                     ),
                 };
                 ui.label(egui::RichText::new(what).size(11.0).color(t.text_faint));
-                if add + sub > 0 && widgets::secondary_button(ui, tl!("Clear Samples"), 0.0).clicked() {
+                if (add + sub > 0 || recorded) && widgets::secondary_button(ui, tl!("Clear Samples"), 0.0).clicked() {
+                    f.remove("labRange");
                     set_points(f, "points", &[]);
                     set_points(f, "subtractPoints", &[]);
                     f.insert("__order".into(), json!([]));
@@ -861,6 +869,7 @@ pub fn pick(app: &PhotocraftApp, f: &mut Map<String, Value>, at: [f64; 2], mods:
             order.push(json!("-"));
         }
         _ => {
+            f.remove("labRange");
             set_points(f, "points", &[at]);
             set_points(f, "subtractPoints", &[]);
             order = vec![json!("+")];
@@ -1002,6 +1011,21 @@ mod tests {
         settle(&mut h);
         let want = query_key(h.state(), &params(&f));
         assert_eq!(h.state().color_range.as_ref().unwrap().mask_key, want, "and shows once ready");
+    }
+
+    /// An action step's recorded colours (`labRange`, opened from the Actions panel) stay in the
+    /// query, Add to Sample grows them, and a plain eyedropper click or Clear Samples drops them.
+    #[test]
+    fn recorded_colours_stay_until_a_new_sample_replaces_them() {
+        let app = app_with_doc();
+        let range = json!({"min": [50, 60, 40], "max": [55, 70, 50]});
+        let mut f: Map<String, Value> = serde_json::from_value(json!({"select": "sampledColors", "fuzziness": 30, "labRange": range.clone()})).unwrap();
+        assert_eq!(params(&f)["labRange"], range);
+        pick(&app, &mut f, [5.0, 5.0], egui::Modifiers::SHIFT);
+        assert_eq!((params(&f)["labRange"].clone(), params(&f)["points"].clone()), (range, json!([[5.0, 5.0]])), "Add to Sample");
+        pick(&app, &mut f, [6.0, 6.0], egui::Modifiers::NONE);
+        assert!(params(&f).get("labRange").is_none(), "a new sample replaces them");
+        assert_eq!(params(&f)["points"], json!([[6.0, 6.0]]));
     }
 
     /// Photoshop keeps the Selection Preview choice between openings (user report), across

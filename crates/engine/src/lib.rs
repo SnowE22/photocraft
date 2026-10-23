@@ -32,6 +32,7 @@ pub mod color_cmds;
 pub mod color_to_alpha_cmds;
 pub mod commands;
 pub mod comps_cmds;
+pub mod contour_lib_cmds;
 mod crop_fill;
 pub mod cutout_cmds;
 pub mod display_color;
@@ -80,6 +81,7 @@ pub mod layer_menu_cmds;
 pub mod layer_multi_cmds;
 pub mod layer_nav_cmds;
 pub mod layer_style;
+pub mod layer_xmp_cmds;
 pub mod lens_cmds;
 pub mod link_watch;
 pub mod magnetic_cmds;
@@ -220,6 +222,8 @@ pub struct DocState {
     /// Increments on every change; UIs re-render when it moves.
     pub revision: u64,
     pub saved_revision: u64,
+    /// Native save cache shared with this document's workers, released with the editing state.
+    pub pcraft_cache: photocraft_io::PcraftExportCache,
     /// How much of `revision` came from view-only changes (channel eyes, targeting): pixel caches can ignore those.
     pub view_revision: u64,
     /// Area changed by the latest revision (None = assume everything changed).
@@ -284,6 +288,7 @@ impl DocState {
             source_read_only: false,
             revision: 1,
             saved_revision: 1,
+            pcraft_cache: Default::default(),
             view_revision: 0,
             last_damage: None,
             coalesce: None,
@@ -312,6 +317,21 @@ impl DocState {
     }
     pub fn is_dirty(&self) -> bool {
         self.revision != self.saved_revision
+    }
+    /// Whether the step from `before` to the current document leaves a clean document clean:
+    /// it changed nothing but the selection (#6865). Making, changing or dropping a selection
+    /// (marquee, lasso, Magic Wand, Quick / Object Selection, Select › …) is a history step but
+    /// not an edit, so it neither marks the file modified nor makes closing ask to save.
+    pub(crate) fn keeps_clean(&self, before: &Document) -> bool {
+        self.saved_revision == self.revision && layer_multi_cmds::selection_only_change(before, &self.doc)
+    }
+    /// Move to the next revision; `keep_clean` (from [`Self::keeps_clean`]) moves the saved
+    /// revision with it.
+    pub(crate) fn bump_revision(&mut self, keep_clean: bool) {
+        self.revision += 1;
+        if keep_clean {
+            self.saved_revision = self.revision;
+        }
     }
     /// The targeted layers, as history stores them with each state.
     fn layer_target(&self) -> LayerTarget {
@@ -873,6 +893,7 @@ impl Session {
         // duplicate or a paste), and everything when that can't be bounded. A command may still
         // report its own, tighter damage after this.
         let damage = layer_multi_cmds::step_damage(&before, &st.doc);
+        let keep_clean = st.keeps_clean(&before);
         let key = self.coalesce_request.clone();
         let st = self.active_mut().ok_or(EngineError::NoDocument)?;
         let layers = st.layer_target();
@@ -884,7 +905,7 @@ impl Session {
             st.history.set_current_layers(layers);
         }
         st.coalesce = key;
-        st.revision += 1;
+        st.bump_revision(keep_clean);
         st.last_damage = damage;
         self.samplers_removed += samplers_removed;
         if damage.is_none_or(|d| !d.is_empty()) {
@@ -906,6 +927,31 @@ impl Session {
         st.layer_anchor = Some(id);
         channel_cmds::fix_view(st);
         // Selecting a layer is not an edit: keep a clean document clean.
+        let clean = st.saved_revision == st.revision;
+        st.revision += 1;
+        if clean {
+            st.saved_revision = st.revision;
+        }
+        st.last_damage = Some(photocraft_geom::Rect::EMPTY);
+        Ok(())
+    }
+
+    /// Put back a layer selection (active layer, selected layers, anchor) that a step moved, such
+    /// as the undo ending an empty Type Mask, which restores the selection from before it. `None`
+    /// is no layer selected. Selected layers that are gone are dropped; an active layer that is
+    /// gone is an error and changes nothing. Like [`Self::select_layer`], not an edit.
+    pub fn restore_layer_selection(&mut self, active: Option<LayerId>, selected: &[LayerId], anchor: Option<LayerId>) -> Result<()> {
+        let st = self.active_mut().ok_or(EngineError::NoDocument)?;
+        if let Some(id) = active
+            && st.doc.layer(id).is_none()
+        {
+            return Err(EngineError::NoLayer(id));
+        }
+        st.active_layer = active;
+        st.selected_layers = selected.to_vec();
+        st.layer_anchor = anchor.filter(|_| active.is_some());
+        fix_selection(st);
+        channel_cmds::fix_view(st);
         let clean = st.saved_revision == st.revision;
         st.revision += 1;
         if clean {
@@ -985,9 +1031,10 @@ impl Session {
                 // Pixels this step can have touched, so the canvas recomposites only that
                 // (it recomposited everything before).
                 let damage = layer_multi_cmds::step_damage(&d, &st.doc);
-                st.doc = d;
+                let before = std::mem::replace(&mut st.doc, d);
+                let keep_clean = st.keeps_clean(&before);
                 restore_target(st, layers);
-                st.revision += 1;
+                st.bump_revision(keep_clean);
                 st.last_damage = damage;
                 true
             }
@@ -1007,9 +1054,10 @@ impl Session {
                     Arc::make_mut(&mut d).name.clone_from(&st.doc.name);
                 }
                 let damage = layer_multi_cmds::step_damage(&st.doc, &d);
-                st.doc = d;
+                let before = std::mem::replace(&mut st.doc, d);
+                let keep_clean = st.keeps_clean(&before);
                 restore_target(st, layers);
-                st.revision += 1;
+                st.bump_revision(keep_clean);
                 st.last_damage = damage;
                 true
             }

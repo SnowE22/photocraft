@@ -211,6 +211,7 @@ fn layer_m(l: &Layer, sink: &mut dyn Sink) -> LayerM {
         advanced: l.advanced,
         video: l.video.as_ref().map(|v| video_m(v, sink)),
         reference: l.reference,
+        xmp: l.xmp.as_deref().map(str::to_string),
     }
 }
 
@@ -555,6 +556,7 @@ impl Loader<'_> {
             advanced: m.advanced,
             video: m.video.as_ref().map(|v| self.video(v)).transpose()?,
             reference: m.reference,
+            xmp: m.xmp.as_deref().map(Arc::from),
         })
     }
 

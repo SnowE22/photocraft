@@ -446,7 +446,7 @@ fn layer_step(d: &Descriptor, id: &str) -> Mapped {
 }
 
 fn layer_desc(_: &str, p: &Value) -> Option<Descriptor> {
-    Some(desc("null").with("null", layer_ref(p)))
+    Some(desc("null").with("null", layer_ref(p)?))
 }
 
 /// Color Range's preset ranges (`Clrs`) ↔ `select.colorRange`'s `select`.
@@ -464,10 +464,9 @@ const COLOR_RANGES: &[(&str, &str)] = &[
     ("skinTone", "skinTones"),
 ];
 
-/// Select › Color Range: a preset range, or one sampled colour (`Mnm` = `Mxm`, CIE Lab) with
-/// its fuzziness. A range sampled over several colours selects a Lab box Photoshop's way, which
-/// `select.colorRange` can't express yet.
-fn color_range_from(d: &Descriptor) -> Mapped {
+/// Select › Color Range: a preset range, or the sampled colours (`Mnm` – `Mxm`, a CIE Lab box)
+/// with their fuzziness: one colour as `color`, several as `labRange`.
+pub(super) fn color_range_from(d: &Descriptor) -> Mapped {
     let unsupported = Mapped::Unsupported { harmless: false };
     if d.items.iter().any(|(k, _)| !matches!(trimmed(k).as_str(), "Fzns" | "Mnm" | "Mxm" | "colorModel" | "Clrs" | "Invr")) {
         return unsupported;
@@ -479,11 +478,12 @@ fn color_range_from(d: &Descriptor) -> Mapped {
     } else {
         let lab = |k: &str| get_obj(d, k).and_then(|c| Some([get_num(c, "Lmnc")?, get_num(c, "A   ")?, get_num(c, "B   ")?]));
         let (Some(lo), Some(hi)) = (lab("Mnm "), lab("Mxm ")) else { return unsupported };
-        if lo != hi {
-            return unsupported;
+        if lo == hi {
+            let Some(color) = get_obj(d, "Mnm ").and_then(color_hex) else { return unsupported };
+            p.insert("color".into(), color.into());
+        } else {
+            p.insert("labRange".into(), json!({"min": lo, "max": hi}));
         }
-        let Some(color) = get_obj(d, "Mnm ").and_then(color_hex) else { return unsupported };
-        p.insert("color".into(), color.into());
     }
     if let Some(f) = get_num(d, "Fzns") {
         p.insert("fuzziness".into(), f.into());
@@ -494,13 +494,21 @@ fn color_range_from(d: &Descriptor) -> Mapped {
     step("select.colorRange", Value::Object(p))
 }
 
-fn color_range_to(_: &str, p: &Value) -> Option<Descriptor> {
-    let known = ["select", "color", "fuzziness", "invert"];
+pub(super) fn color_range_to(_: &str, p: &Value) -> Option<Descriptor> {
+    let known = ["select", "color", "labRange", "fuzziness", "invert"];
     if p.as_object()?.keys().any(|k| !known.contains(&k.as_str())) {
         return None;
     }
     let mut d = desc("null").with("Fzns", long(jnum(p, "fuzziness").unwrap_or(40.0)));
     match jstr(p, "select").unwrap_or("sampledColors") {
+        "sampledColors" if p.get("labRange").is_some() => {
+            let lab = |k: &str| -> Option<D> {
+                let a = p.get("labRange")?.get(k)?.as_array()?;
+                let n = |i: usize| a.get(i)?.as_f64().filter(|x| x.is_finite());
+                Some(D::Descriptor(desc("LbCl").with("Lmnc", D::Double(n(0)?)).with("A   ", D::Double(n(1)?)).with("B   ", D::Double(n(2)?))))
+            };
+            d = d.with("Mnm ", lab("min")?).with("Mxm ", lab("max")?).with("colorModel", long(0.0));
+        }
         "sampledColors" => {
             let hex = jstr(p, "color")?;
             let c = color_desc(hex)?;
@@ -709,7 +717,6 @@ pub(super) const EVENTS: &[Event] = &[
         from: |d| layer_step(d, "layer.ungroupLayers"),
         to: layer_desc,
     },
-    Event { code: "ClrR", name: "colorRange", label: "Color Range", ids: &["select.colorRange"], from: color_range_from, to: color_range_to },
     Event { code: "", name: "Adobe Camera Raw Filter", label: "Camera Raw Filter", ids: &["filter.cameraRaw"], from: camera_raw_from, to: camera_raw_to },
     Event { code: "Dfs ", name: "diffuse", label: "Diffuse", ids: &["filter.stylize.diffuse"], from: diffuse_from, to: diffuse_to },
     Event { code: "", name: "photocopy", label: "Photocopy", ids: &[], from: photocopy_from, to: no_export },

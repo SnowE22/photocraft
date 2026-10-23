@@ -118,7 +118,7 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
     let (cmd, mut p): (&str, Value) = match tool {
         Tool::SpotHealing => ("paint.spotHealing", json!({"type": o.spot_type, "sampleAllLayers": o.sample_all.spot_healing})),
         Tool::Remove => {
-            if !o.remove_after_each_stroke {
+            if !remove_options(&o, remove_model(&o)).after_each_stroke {
                 remove_pending_add(app, points);
                 return true;
             }
@@ -180,20 +180,43 @@ pub fn finish_stroke(app: &mut PhotocraftApp, tool: Tool, points: &[[f64; 3]], m
 
 /// `paint.remove` params from the options bar (without the strokes).
 fn remove_params(o: &crate::state::ToolOptions) -> Value {
-    let mut p = json!({"sampleAllLayers": o.sample_all.remove, "newLayer": o.remove_new_layer, "generative": o.remove_generative, "model": remove_model(o)});
-    if remove_model(o) == "lama"
+    model_params(o, remove_model(o), &o.remove_generative)
+}
+
+/// The settings the Remove tool's `model` keeps for itself ([`crate::state::RemoveModelOptions`]).
+pub(crate) fn remove_options<'a>(o: &'a crate::state::ToolOptions, model: &str) -> &'a crate::state::RemoveModelOptions {
+    match model {
+        "diffusion" => &o.remove_diffusion,
+        "nanoBanana" => &o.remove_nano,
+        _ => &o.remove_lama,
+    }
+}
+
+fn remove_options_mut<'a>(o: &'a mut crate::state::ToolOptions, model: &str) -> &'a mut crate::state::RemoveModelOptions {
+    match model {
+        "diffusion" => &mut o.remove_diffusion,
+        "nanoBanana" => &mut o.remove_nano,
+        _ => &mut o.remove_lama,
+    }
+}
+
+/// `paint.remove` params for `model` with its own settings and the Mode `generative`.
+fn model_params(o: &crate::state::ToolOptions, model: &str, generative: &str) -> Value {
+    let own = remove_options(o, model);
+    let mut p = json!({"sampleAllLayers": o.sample_all.remove, "newLayer": own.new_layer, "generative": generative, "model": model});
+    if model == "lama"
         && o.remove_quality == "high"
         && let Some(m) = p.as_object_mut()
     {
         m.insert("quality".into(), json!("high"));
     }
-    if matches!(remove_model(o), "diffusion" | "nanoBanana")
-        && !o.remove_prompt.trim().is_empty()
+    if matches!(model, "diffusion" | "nanoBanana")
+        && !own.prompt.trim().is_empty()
         && let Some(m) = p.as_object_mut()
     {
-        m.insert("prompt".into(), json!(o.remove_prompt.trim()));
+        m.insert("prompt".into(), json!(own.prompt.trim()));
     }
-    if remove_model(o) == "nanoBanana"
+    if model == "nanoBanana"
         && let Some(m) = p.as_object_mut()
     {
         m.insert("mark".into(), json!(if o.remove_nano_mark == "mask" { "mask" } else { "paint" }));
@@ -221,15 +244,23 @@ fn generative_models() -> Vec<(String, &'static str)> {
     v
 }
 
-/// Remove what is selected (`paint.remove` `selection`) with the options bar's settings: the
-/// options bar's Remove Selection, or Enter with the Remove tool and a selection.
-pub fn remove_selection(app: &mut PhotocraftApp) -> bool {
-    if !app.session.active().is_some_and(|st| st.doc.selection.is_some()) {
-        return false;
-    }
-    let mut p = remove_params(&app.ui.tool_options);
+/// AI Remove's `paint.remove` params: what is selected, always with Nano Banana and its own
+/// settings, whatever model the strokes use (user request).
+fn ai_remove_params(app: &PhotocraftApp) -> Value {
+    let mut p = model_params(&app.ui.tool_options, "nanoBanana", "on");
     p["selection"] = json!(true);
     p["target"] = crate::canvas::paint_target(app);
+    p
+}
+
+/// AI Remove: remove what is selected with Nano Banana (`paint.remove` `selection`), from the
+/// options bar's button or Enter with the Remove tool and a selection. Nano Banana is online
+/// only: nothing on the web.
+pub fn remove_selection(app: &mut PhotocraftApp) -> bool {
+    if cfg!(target_arch = "wasm32") || !app.session.active().is_some_and(|st| st.doc.selection.is_some()) {
+        return false;
+    }
+    let p = ai_remove_params(app);
     app.ui.status.clear();
     if let Err(e) = app.run("paint.remove", p) {
         app.ui.status = e;
@@ -772,7 +803,9 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                 opt(ui, tl!("Model:"));
                 crate::widgets::dropdown(ui, "remove-model", &mut o.remove_model, &generative_models(), 140.0);
                 if matches!(o.remove_model.as_str(), "diffusion" | "nanoBanana") {
-                    crate::widgets::text_field_ex(ui, egui::Id::new("remove-prompt"), &mut o.remove_prompt, tl!("Prompt (optional)"), 180.0, false, Some(500))
+                    let model = remove_model(o);
+                    let prompt = &mut remove_options_mut(o, model).prompt;
+                    crate::widgets::text_field_ex(ui, egui::Id::new(("remove-prompt", model)), prompt, tl!("Prompt (optional)"), 180.0, false, Some(500))
                         .on_hover_text(tl!("What should be there. Empty: the model's own guess."));
                     if o.remove_model == "nanoBanana" {
                         // How the model is shown the area: a mask image, or painted red.
@@ -814,14 +847,16 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             crate::widgets::vline(ui, 22.0);
             let o = &mut app.ui.tool_options;
             crate::widgets::checkbox(ui, &mut o.sample_all.remove, tl!("Sample All Layers"));
-            crate::widgets::checkbox(ui, &mut o.remove_new_layer, tl!("Create a new layer"));
-            crate::widgets::checkbox(ui, &mut o.remove_after_each_stroke, tl!("Remove after each stroke"));
+            let model = remove_model(o);
+            let own = remove_options_mut(o, model);
+            crate::widgets::checkbox(ui, &mut own.new_layer, tl!("Create a new layer"));
+            crate::widgets::checkbox(ui, &mut own.after_each_stroke, tl!("Remove after each stroke"));
             let selected = app.session.active().is_some_and(|st| st.doc.selection.is_some());
-            if app.remove_pending.is_empty() && selected {
+            if app.remove_pending.is_empty() && selected && !cfg!(target_arch = "wasm32") {
                 // Inline after the checkboxes: right-aligned, a narrow bar put it over them.
                 crate::widgets::vline(ui, 22.0);
-                if crate::widgets::primary_button(ui, tl!("Remove Selection"), 0.0)
-                    .on_hover_text(crate::i18n::fmt(tl!("Remove what is selected ({key})"), &[("key", &crate::shortcuts::pretty("Enter"))]))
+                if crate::widgets::primary_button(ui, tl!("AI Remove"), 0.0)
+                    .on_hover_text(crate::i18n::fmt(tl!("Remove what is selected with Nano Banana ({key})"), &[("key", &crate::shortcuts::pretty("Enter"))]))
                     .clicked()
                 {
                     remove_selection(app);
@@ -1507,7 +1542,7 @@ mod tests {
         app.run("paint.pencil", json!({"points": [[0, 30], [100, 30]], "size": 200, "color": "#808080"})).unwrap();
         app.run("paint.pencil", json!({"points": [[30, 20], [30, 40]], "size": 4, "color": "#000000"})).unwrap();
         app.ui.tool = Tool::Remove;
-        app.ui.tool_options.remove_after_each_stroke = false;
+        app.ui.tool_options.remove_lama.after_each_stroke = false;
         let m = egui::Modifiers::NONE;
         let journal = app.session.journal.len();
         for x in [28.0, 32.0] {
@@ -1547,7 +1582,7 @@ mod tests {
         // #6555: each stroke used to be stamped only past the previous stroke's point count.
         let mut app = app();
         app.ui.tool = Tool::Remove;
-        app.ui.tool_options.remove_after_each_stroke = false;
+        app.ui.tool_options.remove_lama.after_each_stroke = false;
         let strokes: [&[[f64; 3]]; 3] = [
             &[[10.0, 10.0, 1.0], [40.0, 10.0, 1.0], [70.0, 10.0, 1.0]],
             &[[10.0, 30.0, 1.0], [40.0, 30.0, 1.0]],
@@ -1593,7 +1628,7 @@ mod tests {
                 app.run("channel.target", json!({"channel": "red"})).unwrap();
             }
             app.ui.tool = Tool::Remove;
-            app.ui.tool_options.remove_after_each_stroke = false;
+            app.ui.tool_options.remove_lama.after_each_stroke = false;
             remove_pending_add(&mut app, &[[12.0, 10.0, 1.0], [16.0, 12.0, 1.0]]);
             assert_eq!(app.remove_pending.len(), 1);
             assert!(remove_pending_live(&mut app));
@@ -1624,7 +1659,7 @@ mod tests {
         let mut app = app();
         app.run("layer.new.layer", json!({"name": "Original"})).unwrap();
         app.ui.tool = Tool::Remove;
-        app.ui.tool_options.remove_after_each_stroke = false;
+        app.ui.tool_options.remove_lama.after_each_stroke = false;
         remove_pending_add(&mut app, &[[12.0, 10.0, 1.0], [16.0, 12.0, 1.0]]);
         app.run("layer.new.layer", json!({"name": "Other"})).unwrap();
         remove_pending_add(&mut app, &[[40.0, 10.0, 1.0], [44.0, 12.0, 1.0]]);
@@ -1637,7 +1672,7 @@ mod tests {
     fn remove_strokes_waiting_are_dropped_when_the_tool_changes() {
         let mut app = app();
         app.ui.tool = Tool::Remove;
-        app.ui.tool_options.remove_after_each_stroke = false;
+        app.ui.tool_options.remove_lama.after_each_stroke = false;
         remove_pending_add(&mut app, &[[10.0, 10.0, 1.0], [20.0, 10.0, 1.0]]);
         assert_eq!(app.remove_pending.len(), 1);
         assert!(remove_pending_live(&mut app));
@@ -1651,7 +1686,7 @@ mod tests {
         let mut app = app();
         app.run("paint.pencil", json!({"points": [[0, 30], [100, 30]], "size": 200, "color": "#808080"})).unwrap();
         app.ui.tool = Tool::Remove;
-        app.ui.tool_options.remove_new_layer = true;
+        app.ui.tool_options.remove_lama.new_layer = true;
         let layers = app.session.active().unwrap().doc.walk().len();
         let m = egui::Modifiers::NONE;
         tool_event(&mut app, ToolEvent::Down { x: 30.0, y: 18.0, pressure: 1.0 }, m);
@@ -1778,25 +1813,57 @@ mod tests {
         assert!(app.ui.clone_source.is_none());
     }
 
+    /// AI Remove always uses Nano Banana with Nano Banana's own settings, whatever model and Mode
+    /// the strokes use (user request). (Its params only: running it would call Google.)
     #[test]
-    fn remove_selection_removes_what_is_selected_with_the_options_bar_settings() {
+    fn ai_remove_always_uses_nano_banana_and_its_settings() {
         let mut app = app();
-        app.run("paint.pencil", json!({"points": [[50, 30]], "size": 10, "color": "#202020"})).unwrap();
         app.ui.tool = Tool::Remove;
-        app.ui.tool_options.remove_generative = "off".into();
         assert!(!remove_selection(&mut app), "nothing is selected");
-        app.run("select.rect", json!({"x": 40, "y": 20, "width": 20, "height": 20})).unwrap();
-        assert!(remove_selection(&mut app));
-        assert!(!app.ui.status_error, "{}", app.ui.status);
-        let (id, p) = app.session.journal.last().unwrap();
-        assert_eq!((id.as_str(), &p["selection"], &p["generative"]), ("paint.remove", &json!(true), &json!("off")));
-        assert!(active(&app).surface().unwrap().rgba(50, 30)[0] > 0.9, "the dark dot is gone");
+        let o = &mut app.ui.tool_options;
+        (o.remove_generative, o.remove_model) = ("off".into(), "lama".into());
+        o.remove_lama.new_layer = false;
+        o.remove_nano.new_layer = true;
+        o.remove_nano.prompt = "grass".into();
+        o.remove_diffusion.prompt = "sky".into();
+        o.remove_area = "page".into();
+        let p = ai_remove_params(&app);
+        assert_eq!((&p["model"], &p["generative"], &p["selection"]), (&json!("nanoBanana"), &json!("on"), &json!(true)));
+        assert_eq!((&p["newLayer"], &p["prompt"], &p["area"]), (&json!(true), &json!("grass"), &json!("page")), "{p}");
+        // The strokes keep the options bar's model and its settings.
+        let s = remove_params(&app.ui.tool_options);
+        assert_eq!((&s["model"], &s["generative"], &s["newLayer"]), (&json!("lama"), &json!("off"), &json!(false)));
+        assert!(s.get("prompt").is_none());
+    }
+
+    /// Each model keeps its own prompt, Create a new layer and Remove after each stroke: switching
+    /// models switches them (user request).
+    #[test]
+    fn each_remove_model_keeps_its_own_settings() {
+        let mut o = crate::state::ToolOptions {
+            remove_diffusion: crate::state::RemoveModelOptions { prompt: "a wall".into(), new_layer: true, after_each_stroke: false },
+            remove_model: "diffusion".into(),
+            ..Default::default()
+        };
+        let p = remove_params(&o);
+        assert_eq!((&p["prompt"], &p["newLayer"]), (&json!("a wall"), &json!(true)));
+        assert!(!remove_options(&o, remove_model(&o)).after_each_stroke);
+        o.remove_model = "lama".into();
+        let p = remove_params(&o);
+        assert_eq!(&p["newLayer"], &json!(false));
+        assert!(remove_options(&o, remove_model(&o)).after_each_stroke);
+        o.remove_model = "nanoBanana".into();
+        assert!(remove_params(&o).get("prompt").is_none(), "Nano Banana's prompt is its own");
+        // Older preferences (one shared set) load with each model's defaults.
+        let old: crate::state::ToolOptions = serde_json::from_value(json!({"remove_new_layer": true, "remove_prompt": "x"})).unwrap();
+        assert_eq!(old.remove_lama, crate::state::RemoveModelOptions::default());
     }
 
     #[test]
     fn nano_banana_is_a_model_with_a_prompt() {
         assert!(generative_models().iter().any(|(k, _)| k == "nanoBanana"));
-        let mut o = crate::state::ToolOptions { remove_model: "nanoBanana".into(), remove_prompt: " a window ".into(), ..Default::default() };
+        let mut o = crate::state::ToolOptions { remove_model: "nanoBanana".into(), ..Default::default() };
+        o.remove_nano.prompt = " a window ".into();
         let p = remove_params(&o);
         assert_eq!((&p["model"], &p["prompt"], &p["mark"]), (&json!("nanoBanana"), &json!("a window"), &json!("paint")));
         assert_eq!((&p["area"], &p["creative"]), (&json!("near"), &json!(false)), "close up, only the area removed");

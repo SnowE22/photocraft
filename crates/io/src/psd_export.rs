@@ -50,6 +50,10 @@ pub struct PsdExportOptions {
     /// The path of the document's own file: linked smart objects are resolved against it
     /// ([`crate::doc_path::resolve`]) before they are read and embedded.
     pub document_path: Option<std::path::PathBuf>,
+    /// Read and embed the files linked smart objects name. On by default; automation turns it
+    /// off, since a stored path is document data rather than a granted file: such a layer is
+    /// then written as pixels, with a warning.
+    pub read_linked_files: bool,
 }
 
 impl Default for PsdExportOptions {
@@ -61,6 +65,7 @@ impl Default for PsdExportOptions {
             merged_compression: Compression::Rle,
             maximize_compatibility: true,
             document_path: None,
+            read_linked_files: true,
         }
     }
 }
@@ -71,6 +76,8 @@ struct Ex {
     dpi: f32,
     /// The document's own file, which linked smart objects are resolved against.
     document: Option<std::path::PathBuf>,
+    /// Whether linked files may be read and embedded ([`PsdExportOptions::read_linked_files`]).
+    read_linked_files: bool,
     /// Character/paragraph styles written into every type layer's engine data.
     text_styles: photocraft_doc::TextStyles,
     mask_fmt: PixelFormat,
@@ -621,14 +628,19 @@ impl Ex {
                     // It parses here, but Photoshop requires four-byte alignment, so repair
                     // that legacy record on re-save rather than preserving the broken bytes.
                     let legacy_phfl = k == b"phfl" && d.starts_with(&[0, 2]) && d.len() % 4 != 0;
-                    !legacy_phfl && adjust_map::ADJUSTMENT_KEYS.contains(&k) && adjust_map::parse(k, d, cged.as_deref(), channels) == *a
+                    // Older PhotoCraft builds wrote `grdm` 2 bytes short of four-byte alignment,
+                    // which makes Photoshop refuse the file (#8070): regenerate it too.
+                    let legacy_grdm = k == b"grdm" && adjust_map::is_unpadded_photocraft_gradient_map(d);
+                    !legacy_phfl && !legacy_grdm && adjust_map::ADJUSTMENT_KEYS.contains(&k) && adjust_map::parse(k, d, cged.as_deref(), channels) == *a
                 });
                 // A Gradient Map whose stops are unchanged keeps the file's own block (stops in
                 // the document's CMYK/Lab/Gray space, smoothness, method) with Reverse and Dither
                 // updated in place.
                 let keep = keep
                     || (matches!(a, photocraft_doc::Adjustment::GradientMap { .. })
-                        && raw.iter_mut().any(|(k, d)| k == b"grdm" && adjust_map::retarget_gradient_map(d, a, channels)));
+                        && raw.iter_mut().any(|(k, d)| {
+                            k == b"grdm" && !adjust_map::is_unpadded_photocraft_gradient_map(d) && adjust_map::retarget_gradient_map(d, a, channels)
+                        }));
                 // An adjustment type no mapper knows (#6575) is its block: kept verbatim, and
                 // never written a second time beside a stale copy.
                 let own = match a {
@@ -736,7 +748,22 @@ impl Ex {
             let id = self.layer_ids.get(&l.id).copied().unwrap_or(0);
             crate::comps_map::set_cmls(&mut raw, crate::comps_map::write_cmls(comps, last.as_ref(), l, id));
         }
+        self.layer_xmp_block(l, &mut raw);
         regenerated.into_iter().chain(raw).map(|(k, d)| TaggedBlock::new(k, d)).collect()
+    }
+
+    /// Writes the layer's XMP packet into its `shmd` block (created when it has none). Import
+    /// takes the packet out of `shmd`, so a layer without one keeps the block as it was.
+    fn layer_xmp_block(&mut self, l: &Layer, raw: &mut Vec<([u8; 4], Vec<u8>)>) {
+        let Some(xmp) = l.xmp.as_deref() else { return };
+        let pos = raw.iter().position(|(k, _)| k == b"shmd");
+        match photocraft_psd::metadata::put_layer_xmp(pos.map(|i| raw[i].1.as_slice()), xmp) {
+            Ok(data) => match pos {
+                Some(i) => raw[i].1 = data,
+                None => raw.push((*b"shmd", data)),
+            },
+            Err(e) => self.warnings.push(format!("layer \"{}\": its XMP metadata was not saved (its metadata block can't be read: {e})", l.name)),
+        }
     }
 
     /// Keeps, regenerates or removes the `vmsk`/`vsms` block of a non-shape layer.
@@ -967,6 +994,9 @@ impl Ex {
             SmartSource::Linked { path } => {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
+                    if !self.read_linked_files {
+                        return Err(format!("the linked file {path} is not read for this export"));
+                    }
                     let file = crate::doc_path::resolve(path, self.document.as_deref()).map_err(|e| format!("the linked file {path} is not opened: {e}"))?;
                     let bytes = std::fs::read(file).map_err(|e| format!("the linked file {path} can't be read: {e}"))?;
                     let name = path.rsplit(['/', '\\']).next().unwrap_or(path).to_string();
@@ -1039,7 +1069,7 @@ impl Ex {
             let doc = photocraft_format::load_from_bytes(bytes).map_err(|e| format!("its contents can't be read: {e}"))?;
             let (file, warnings) = document_to_psd_nested(
                 &doc,
-                &PsdExportOptions { force_psb: true, document_path: self.document.clone(), ..Default::default() },
+                &PsdExportOptions { force_psb: true, document_path: self.document.clone(), read_linked_files: self.read_linked_files, ..Default::default() },
                 self.smart.depth + 1,
                 &Interrupt::NONE,
                 None,
@@ -1671,13 +1701,14 @@ fn document_to_psd_nested(
         return file;
     }
     let fmt = doc.pixel_format();
-    // A Duotone keeps the inks it was imported with (their Color Mode Data is undocumented and
-    // kept verbatim) over its grey plate; Photoshop has no 32-bit Duotone.
-    let duotone_inks = doc
+    // A Duotone is written over its grey plate with its inks: the block it was imported with,
+    // verbatim, while the inks are unedited, else one made from them (`duotone_map`). Photoshop
+    // has only 8-bit Duotone: it refuses to open a 16-bit one.
+    let duotone_inks: Option<Vec<u8>> = doc
         .duotone
         .as_ref()
-        .and_then(|d| d.psd_raw.as_ref())
-        .filter(|_| doc.mode == ColorMode::Duotone && fmt.mode == ColorMode::Grayscale && fmt.sample != SampleType::F32);
+        .filter(|d| !d.inks.is_empty() && doc.mode == ColorMode::Duotone && fmt.mode == ColorMode::Grayscale && fmt.sample == SampleType::U8)
+        .map(|d| d.psd_raw.clone().unwrap_or_else(|| crate::duotone_map::write(d)));
     let sample = fmt.sample;
     let cc = fmt.mode.color_channels();
     let big = doc.size.width > 30_000 || doc.size.height > 30_000;
@@ -1687,6 +1718,7 @@ fn document_to_psd_nested(
         fmt,
         dpi: doc.resolution_dpi,
         document: opts.document_path.clone(),
+        read_linked_files: opts.read_linked_files,
         text_styles: doc.text_styles.clone(),
         text_index: Default::default(),
         mask_fmt: PixelFormat::new(ColorMode::Grayscale, sample, false),
@@ -1791,8 +1823,9 @@ fn document_to_psd_nested(
 
     // Without Maximize Compatibility the merged image is a white placeholder and the composite
     // isn't rendered at all. A document without layer records keeps the real image: its pixels
-    // live nowhere else.
-    let real_merged = opts.maximize_compatibility || ex.records.is_empty();
+    // live nowhere else. So does a Duotone: it opens flattened from that image (its layer records
+    // are not read back).
+    let real_merged = opts.maximize_compatibility || ex.records.is_empty() || duotone_inks.is_some();
     let (mut planes, has_alpha) = if real_merged {
         // Merged composite, rendered and encoded in bands (no full-size float composite). Matting
         // against white only changes pixels with alpha < 1; if some are slightly translucent but
@@ -1981,7 +2014,7 @@ fn document_to_psd_nested(
     // 32-bit files carry Photoshop's HDR toning records as Color Mode Data; Photoshop will not
     // open a 32-bit file without them (#291).
     let color_mode_data = match duotone_inks {
-        Some(raw) => raw.to_vec(),
+        Some(raw) => raw,
         None => photocraft_psd::hdr::color_mode_data_for_depth(header.depth),
     };
     let file = PsdFile {

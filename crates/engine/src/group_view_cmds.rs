@@ -163,6 +163,9 @@ mod tests {
         s.execute("layer.new.layer", json!({"name": "deep"})).unwrap();
         let inner = s.execute("layer.groupLayers", json!({"name": "inner"})).unwrap()["layer"].as_u64().unwrap();
         let outer = s.execute("layer.groupLayers", json!({"layer": inner, "name": "outer"})).unwrap()["layer"].as_u64().unwrap();
+        // Group Layers creates collapsed groups; the tests start from both open.
+        assert!(!expanded(&s, inner) && !expanded(&s, outer));
+        s.execute(ID, json!({"all": true, "expanded": true})).unwrap();
         (s, inner, outer)
     }
 
@@ -220,6 +223,8 @@ mod tests {
         let d = group(&mut s, json!({"name": "D"}));
         let all = [a2, a1, a, b1, b, outer, d];
         let open = |s: &Session| all.iter().map(|id| expanded(s, *id)).collect::<Vec<_>>();
+        // Group Layers makes collapsed groups (#5571): open them all to start with.
+        s.execute(ID, json!({"all": true, "expanded": true})).unwrap();
         assert!(open(&s).iter().all(|o| *o), "{:?}", open(&s));
         // ⌘: A and B (beside each other in Outer) close; a1, b1, Outer and D stay open.
         s.execute(ID, json!({"layer": a, "expanded": false, "scope": "siblings"})).unwrap();

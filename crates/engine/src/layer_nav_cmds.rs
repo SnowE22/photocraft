@@ -120,6 +120,7 @@ mod tests {
         s.execute("layer.select", json!({"layer": c.0, "mode": "add"})).unwrap();
         s.execute("layer.groupLayers", json!({})).unwrap();
         let group = s.active().unwrap().doc.layers.iter().find(|l| l.is_group()).unwrap().id;
+        s.execute("layer.setExpanded", json!({"layer": group.0, "expanded": true})).unwrap();
         (s, [bg, a, group, b, c, d])
     }
 

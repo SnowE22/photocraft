@@ -9,7 +9,8 @@
 //! They are assigned per menu level from the labels as shown (so translated), unique within
 //! the level: Photoshop's letters for the top menus where the label has them (F E I L Y S T V
 //! W H), else the first unused letter, word starts first. Only ASCII letters and digits are keys
-//! the keyboard reports as such, so a label without one (Japanese, Chinese…) has no mnemonic.
+//! the keyboard reports as such, so a label without one (Japanese, Chinese…) shows its English
+//! label's letter after it, as Windows menus do in those languages: "文件(F)" ([`localized`]).
 //!
 //! The state is view state in egui memory, like [`crate::menu_nav::Nav`]. On macOS the native
 //! menu bar replaces the in-window one and this never runs.
@@ -123,6 +124,49 @@ pub fn assign(labels: &[&str], preferred: &[Option<char>]) -> Vec<Option<char>> 
         out.push(pick);
     }
     out
+}
+
+/// The labels to show and their mnemonics for translated `labels` whose English originals are
+/// `english` (same order). A label with an ASCII letter or digit keeps its text and is assigned
+/// as [`assign`] does. One without (Chinese, Japanese, Korean…) can't be typed on its own, so it
+/// shows its English label's letter after it in parentheses and takes that letter, as Windows menus
+/// do in those languages ("文件(F)", #5863). Mnemonics stay unique within the group, and a shown
+/// "(F)" is always the row's key.
+pub fn localized(labels: &[String], english: &[&str], preferred: &[Option<char>]) -> (Vec<String>, Vec<Option<char>>) {
+    let typed = |l: &str| l.chars().any(|c| c.is_ascii_alphanumeric());
+    // The key goes before a trailing ellipsis, as Windows writes it: "新建(N)…".
+    let with_key = |l: &str, k: char| match l.strip_suffix('…').map(|b| (b, "…")).or_else(|| l.strip_suffix("...").map(|b| (b, "..."))) {
+        Some((base, tail)) => format!("{base}({k}){tail}"),
+        None => format!("{l}({k})"),
+    };
+    let english_keys = assign(english, preferred);
+    let mut shown = Vec::with_capacity(labels.len());
+    let mut pref = Vec::with_capacity(labels.len());
+    for (i, label) in labels.iter().enumerate() {
+        match english_keys.get(i).copied().flatten().filter(|_| !typed(label)) {
+            Some(k) => {
+                shown.push(with_key(label, k));
+                pref.push(Some(k));
+            }
+            None => {
+                shown.push(label.clone());
+                pref.push(preferred.get(i).copied().flatten());
+            }
+        }
+    }
+    // The suffixed labels take their keys first: a label with letters of its own must not take
+    // the key a suffix shows ("Camera Raw 滤镜…" before "转换为智能滤镜(C)" leaves C to the latter).
+    let suffixed = |i: &usize| shown.get(*i) != labels.get(*i);
+    let order: Vec<usize> = (0..shown.len()).filter(suffixed).chain((0..shown.len()).filter(|i| !suffixed(i))).collect();
+    let ordered: Vec<&str> = order.iter().map(|&i| shown.get(i).map_or("", String::as_str)).collect();
+    let ordered_pref: Vec<Option<char>> = order.iter().map(|&i| pref.get(i).copied().flatten()).collect();
+    let mut keys = vec![None; shown.len()];
+    for (&i, key) in order.iter().zip(assign(&ordered, &ordered_pref)) {
+        if let Some(slot) = keys.get_mut(i) {
+            *slot = key;
+        }
+    }
+    (shown, keys)
 }
 
 /// `prefix + label` as menu text with the mnemonic's first occurrence in `label` underlined

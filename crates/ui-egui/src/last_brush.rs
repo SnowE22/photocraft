@@ -16,7 +16,11 @@ pub fn persist(app: &mut PhotocraftApp, ctx: &egui::Context) {
         return;
     }
     photocraft_engine::brush_cmds::remember_brush(&mut app.session);
-    if app.prefs_rt.tool_brushes_saved_rev != app.prefs_rt.tool_brushes_rev {
+    // The owner moves once its brush is saved too (`paint_mouse::saved_brush_owner`).
+    let owner = crate::paint_mouse::saved_brush_owner(app);
+    let saved = app.session.prefs().tool_brushes.get("active").and_then(serde_json::Value::as_str).and_then(crate::state::Tool::from_name);
+    let owner_moved = saved.unwrap_or(crate::state::Tool::Brush) != owner;
+    if app.prefs_rt.tool_brushes_saved_rev != app.prefs_rt.tool_brushes_rev || owner_moved {
         app.prefs_rt.tool_brushes_saved_rev = app.prefs_rt.tool_brushes_rev;
         let now = crate::paint_mouse::tool_brushes_json(app);
         if app.session.prefs().tool_brushes != now {

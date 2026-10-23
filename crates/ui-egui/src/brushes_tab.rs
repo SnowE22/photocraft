@@ -118,6 +118,8 @@ pub enum Action {
     },
     /// Delete presets and folders (with their presets) in one command.
     DeleteItems(Vec<BrushItem>),
+    /// View only: pin this group at the top of the panel, or unpin (`None`).
+    Pin(Option<String>),
 }
 
 /// How a preset list is laid out: the Brushes panel's tiles, or the Brush Preset picker's cards.
@@ -302,6 +304,10 @@ fn view_actions(st: &mut BrushesPanelState, acts: Vec<Action>, visible: &[BrushI
                 st.selected.clear();
                 None
             }
+            Action::Pin(group) => {
+                st.pinned = group;
+                None
+            }
             a => Some(a),
         })
         .collect()
@@ -352,7 +358,7 @@ pub fn apply(app: &mut PhotocraftApp, acts: Vec<Action>) {
                     run_or_status(app, "tools.setBrush", json!({ "preset": name }));
                 }
             }
-            Action::ToggleGroup(_) | Action::BeginRename(_) | Action::Click { .. } | Action::Deselect => {}
+            Action::ToggleGroup(_) | Action::BeginRename(_) | Action::Click { .. } | Action::Deselect | Action::Pin(_) => {}
             Action::MoveItems { items, into, before, after, create } => {
                 let mut p = json!({ "items": items.iter().map(BrushItem::param).collect::<Vec<_>>(), "into": into });
                 if let Some(b) = before {
@@ -376,6 +382,11 @@ pub fn apply(app: &mut PhotocraftApp, acts: Vec<Action>) {
                             p["folder"] = json!(r.folder);
                         }
                         run_or_status(app, "brush.presets.renameGroup", p);
+                        // A pinned group stays pinned under its new name.
+                        let pinned = &mut app.ui.brushes_panel.pinned;
+                        if r.folder.is_empty() && pinned.as_deref() == Some(r.name.as_str()) {
+                            *pinned = Some(text);
+                        }
                     } else {
                         run_or_status(app, "brush.presets.rename", json!({ "name": r.name, "newName": text }));
                     }
@@ -465,6 +476,8 @@ struct Draw<'a> {
     selected: &'a [BrushItem],
     /// The items in the order drawn, for Shift ranges.
     visible: RefCell<Vec<BrushItem>>,
+    /// The group pinned at the top of the panel (not the picker's cards).
+    pinned: Option<&'a str>,
 }
 
 impl Draw<'_> {
@@ -988,6 +1001,16 @@ fn folder_row(ui: &mut egui::Ui, d: &Draw, f: &FolderNode, open: bool, acts: &mu
             acts.push(Action::BeginRename(renaming_folder(&f.path)));
             ui.close();
         }
+        // A top-level group can be pinned above the list (the panel only).
+        if let [group] = f.path.as_slice()
+            && !d.layout.cards
+        {
+            let pinned = d.pinned == Some(group.as_str());
+            if ui.button(if pinned { tl!("Unpin from Top") } else { tl!("Pin to Top") }).clicked() {
+                acts.push(Action::Pin((!pinned).then(|| group.clone())));
+                ui.close();
+            }
+        }
         if several {
             if ui.button(tl!("Delete Brushes")).clicked() {
                 acts.push(Action::DeleteItems(d.selected.to_vec()));
@@ -1070,7 +1093,9 @@ fn draw_nodes(ui: &mut egui::Ui, d: &Draw, nodes: &[Node], parent: &[String], ac
             Node::Preset(p) => run.push(p),
             Node::Folder(f) => {
                 flush(ui, &mut run, acts);
-                let open = d.filtering || !d.collapsed.contains(&folder_view_key(&f.path));
+                // A search opens the groups with matches; their nested folders can still be closed
+                // (#7257).
+                let open = (d.filtering && f.path.len() <= 1) || !d.collapsed.contains(&folder_view_key(&f.path));
                 folder_row(ui, d, f, open, acts);
                 if open {
                     draw_nodes(ui, d, &f.children, &f.path, acts);
@@ -1150,7 +1175,11 @@ pub fn preset_list(ui: &mut egui::Ui, presets: &[BrushPreset], current: Option<&
     rename_bar(ui, st, &mut acts);
     let filter = st.filter.trim().to_lowercase();
     let items: Vec<&BrushPreset> = presets.iter().filter(|p| filter.is_empty() || p.name.to_lowercase().contains(&filter)).collect();
-    let tree = folder_tree(&items);
+    let mut tree = folder_tree(&items);
+    // The pinned group comes out of the scrolling list and is drawn above it.
+    let pinned = st.pinned.clone().filter(|_| !layout.cards);
+    let pinned_at = pinned.as_deref().and_then(|g| tree.iter().position(|n| matches!(n, Node::Folder(f) if f.path.len() == 1 && f.path[0] == g)));
+    let pinned_node: Vec<Node> = pinned_at.map(|i| tree.remove(i)).into_iter().collect();
     let d = Draw {
         collapsed: &st.collapsed,
         filtering: !filter.is_empty(),
@@ -1161,11 +1190,26 @@ pub fn preset_list(ui: &mut egui::Ui, presets: &[BrushPreset], current: Option<&
         sel: Sel::new(&st.selected),
         selected: &st.selected,
         visible: RefCell::new(Vec::new()),
+        pinned: pinned.as_deref(),
     };
     let t = Tokens::get(ui.ctx());
     let well = (!layout.cards).then(|| list_colors(&t).well);
     egui::Frame::new().fill(well.unwrap_or(Color32::TRANSPARENT)).show(ui, |ui| {
-        egui::ScrollArea::vertical().id_salt(layout.id).max_height(layout.max_height).auto_shrink([false, well.is_none()]).show(ui, |ui| {
+        // The pinned group, under the search field: at most about half the list's height (it
+        // scrolls on its own beyond that), with the rest of the list scrolling underneath.
+        let mut list_h = layout.max_height;
+        if !pinned_node.is_empty() {
+            let top = ui.cursor().top();
+            egui::ScrollArea::vertical().id_salt((layout.id, "pinned")).max_height(layout.max_height * 0.5).auto_shrink([false, true]).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                draw_nodes(ui, &d, &pinned_node, &[], &mut acts);
+            });
+            let line = ui.cursor().top();
+            ui.painter().hline(ui.max_rect().x_range(), line, Stroke::new(2.0, t.separator));
+            ui.add_space(2.0);
+            list_h = (layout.max_height - (ui.cursor().top() - top)).max(FOLDER_ROW_H * 2.0);
+        }
+        egui::ScrollArea::vertical().id_salt(layout.id).max_height(list_h).auto_shrink([false, well.is_none()]).show(ui, |ui| {
             // A preset, group or folder dragged to the list's top or bottom edge (or past it)
             // scrolls the list, as the Layers panel's rows do, so it can be dropped on rows out of
             // view (#5741).

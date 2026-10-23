@@ -248,6 +248,9 @@ pub struct LayerM {
     /// A reference layer for the Fill tool (missing in older files = not one).
     #[serde(default, skip_serializing_if = "is_false")]
     pub reference: bool,
+    /// The layer's own XMP packet (missing in older files = none).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub xmp: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

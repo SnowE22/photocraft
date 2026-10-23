@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use photocraft_color::{ColorMode, PixelFormat, SampleType, read_sample, write_sample};
+use photocraft_color::{ColorMode, PixelFormat, SampleType, read_sample, read_samples, write_sample};
 use photocraft_geom::{Rect, TILE_SIZE, TileCoord};
 
 /// A checked surface allocation could not be represented or reserved.
@@ -138,17 +138,37 @@ impl Tile {
             return None;
         }
         let ts = TILE_SIZE as usize;
+        // A row of `dp`, compared block by block: an untouched row (most rows of a soft brush
+        // stroke's tiles) costs a few slice compares instead of one per pixel. A pixel differs
+        // where any of its bytes does, so the first and last differing bytes give the first and
+        // last differing pixels.
+        let blank = dp.repeat(ts);
         let (mut x0, mut y0, mut x1, mut y1) = (usize::MAX, usize::MAX, 0usize, 0usize);
         for (y, row) in self.data.chunks_exact(ts * bpp).enumerate() {
-            let Some(first) = row.chunks_exact(bpp).position(|px| px != dp) else { continue };
-            let last = ts - 1 - row.chunks_exact(bpp).rev().position(|px| px != dp).unwrap_or(0);
-            x0 = x0.min(first);
-            x1 = x1.max(last + 1);
+            let Some(first) = first_difference(row, &blank) else { continue };
+            let Some(last) = last_difference(row, &blank) else { continue };
+            x0 = x0.min(first / bpp);
+            x1 = x1.max(last / bpp + 1);
             y0 = y0.min(y);
             y1 = y + 1;
         }
         (x0 != usize::MAX).then_some((x0 as u16, y0 as u16, x1 as u16, y1 as u16))
     }
+}
+
+/// Bytes compared at once while looking for a difference in a tile row.
+const DIFF_BLOCK: usize = 64;
+
+/// Index of the first byte where `a` and `b` (the same length) differ.
+fn first_difference(a: &[u8], b: &[u8]) -> Option<usize> {
+    let (k, (x, y)) = a.chunks(DIFF_BLOCK).zip(b.chunks(DIFF_BLOCK)).enumerate().find(|(_, (x, y))| x != y)?;
+    x.iter().zip(y).position(|(p, q)| p != q).map(|i| k * DIFF_BLOCK + i)
+}
+
+/// Index of the last byte where `a` and `b` (the same length) differ.
+fn last_difference(a: &[u8], b: &[u8]) -> Option<usize> {
+    let (k, (x, y)) = a.chunks(DIFF_BLOCK).zip(b.chunks(DIFF_BLOCK)).enumerate().rfind(|(_, (x, y))| x != y)?;
+    x.iter().zip(y).rposition(|(p, q)| p != q).map(|i| k * DIFF_BLOCK + i)
 }
 
 #[derive(Clone, Debug)]
@@ -352,10 +372,20 @@ impl Surface {
         if !self.tiles.contains_key(&c) {
             let tile = Arc::new(Tile::try_filled(&self.format, &self.default_pixel)?);
             self.tiles.insert(c, tile);
-        } else if self.tiles.get(&c).is_some_and(|t| Arc::strong_count(t) > 1) {
-            let original = self.tiles.get(&c).ok_or(AllocationError::SizeOverflow)?;
-            let tile = Arc::new(original.try_clone()?);
-            self.tiles.insert(c, tile);
+        } else if self.tiles.get_mut(&c).is_some_and(|t| Arc::get_mut(t).is_none()) {
+            let original = self.tiles.remove(&c).ok_or(AllocationError::SizeOverflow)?;
+            let tile = match Arc::try_unwrap(original) {
+                // Weak cache references must not force a pixel-buffer copy.
+                Ok(tile) => tile,
+                Err(original) => match original.try_clone() {
+                    Ok(tile) => tile,
+                    Err(error) => {
+                        self.tiles.insert(c, original);
+                        return Err(error);
+                    }
+                },
+            };
+            self.tiles.insert(c, Arc::new(tile));
         }
         self.tiles.get_mut(&c).and_then(Arc::get_mut).ok_or(AllocationError::SizeOverflow)
     }
@@ -477,30 +507,37 @@ impl Surface {
 
     /// Channel `c` at `(x0 + i·step, y)` for `i in 0..out.len()`, looking each tile up once per run
     /// (much faster than per-sample [`Surface::sample_channel`] for strided scans).
+    /// Steps below 1 read consecutive pixels; positions beyond `i32::MAX` read the default pixel.
     pub fn sample_row_strided(&self, y: i32, x0: i32, step: i32, c: usize, out: &mut [f32]) {
-        let step = step.max(1);
+        let step = i64::from(step.max(1));
         let dp = read_sample(&self.default_pixel, self.format.sample, c);
         let n = self.format.channels();
         let ty = y.div_euclid(TILE_SIZE);
         let ly = y.rem_euclid(TILE_SIZE) as usize;
         let mut i = 0;
+        let mut x = i64::from(x0);
         while i < out.len() {
-            let x = x0 + i as i32 * step;
-            let tx = x.div_euclid(TILE_SIZE);
+            if x > i64::from(i32::MAX) {
+                out[i..].fill(dp);
+                break;
+            }
+            let tx = x.div_euclid(i64::from(TILE_SIZE));
             // Samples that fall in this tile.
-            let tile_end = (tx + 1) * TILE_SIZE;
+            let tile_end = (tx + 1) * i64::from(TILE_SIZE);
             let count = (((tile_end - x) + step - 1) / step).max(1) as usize;
-            let end = (i + count).min(out.len());
-            match self.tiles.get(&TileCoord { tx, ty }) {
+            let count = count.min(out.len() - i);
+            let end = i + count;
+            match self.tiles.get(&TileCoord { tx: tx as i32, ty }) {
                 None => out[i..end].fill(dp),
                 Some(t) => {
                     for (k, o) in out[i..end].iter_mut().enumerate() {
-                        let lx = (x + k as i32 * step - tx * TILE_SIZE) as usize;
+                        let lx = (x + k as i64 * step - tx * i64::from(TILE_SIZE)) as usize;
                         *o = read_sample(&t.data, self.format.sample, (ly * TILE_SIZE as usize + lx) * n + c);
                     }
                 }
             }
             i = end;
+            x += count as i64 * step;
         }
     }
 
@@ -534,9 +571,7 @@ impl Surface {
                 match tile {
                     Some(t) => {
                         let base = (((y - tc.ty * TILE_SIZE) as usize) * TILE_SIZE as usize + (tr.x0 - tc.tx * TILE_SIZE) as usize) * n;
-                        for (i, d) in dst.iter_mut().enumerate() {
-                            *d = read_sample(&t.data, self.format.sample, base + i);
-                        }
+                        read_samples(&t.data, self.format.sample, base, dst);
                     }
                     None if n == 1 => dst.fill(dp[0]),
                     None => {
@@ -560,8 +595,8 @@ impl Surface {
         let n = fmt.channels();
         let mut stack = [0.0; 8];
         let mut heap = Vec::new();
-        let px = self.default_samples(&mut stack, &mut heap);
-        let dp = to_rgba(&fmt, px);
+        let dp = to_rgba(&fmt, self.default_samples(&mut stack, &mut heap));
+        let mut row = Vec::new();
         for tc in r.tiles() {
             let tr = tc.rect().intersect(&r);
             let tile = self.tiles.get(&tc);
@@ -605,11 +640,17 @@ impl Surface {
                         }
                     }
                     _ => {
-                        for (i, d) in dst.iter_mut().enumerate() {
-                            for (c, v) in px.iter_mut().enumerate() {
-                                *v = read_sample(&t.data, fmt.sample, base + i * n + c);
-                            }
-                            *d = to_rgba(&fmt, px);
+                        // The row's samples in one pass, then its colour model resolved once:
+                        // RGB and grey take their channels as `to_rgba` does, other models go
+                        // through it.
+                        row.resize(dst.len() * n, 0.0);
+                        read_samples(&t.data, fmt.sample, base, &mut row);
+                        let a = |s: &[f32], i: usize| if fmt.alpha { s[i] } else { 1.0 };
+                        let pixels = dst.iter_mut().zip(row.chunks_exact(n));
+                        match fmt.mode {
+                            ColorMode::Rgb => pixels.for_each(|(d, s)| *d = [s[0], s[1], s[2], a(s, 3)]),
+                            ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone => pixels.for_each(|(d, s)| *d = [s[0], s[0], s[0], a(s, 1)]),
+                            _ => pixels.for_each(|(d, s)| *d = to_rgba(&fmt, s)),
                         }
                     }
                 }
@@ -1516,6 +1557,23 @@ mod tests {
     }
 
     #[test]
+    fn fallible_tile_edits_move_weakly_cached_pixels_and_copy_shared_pixels() {
+        for fmt in [PixelFormat::RGBA8, PixelFormat::RGBA16, PixelFormat::RGBA32F] {
+            let mut surface = Surface::new(fmt);
+            let coord = TileCoord::new(0, 0);
+            let pixels = surface.try_tile_mut(coord).unwrap().bytes().as_ptr();
+            let weak = Arc::downgrade(surface.tile(coord).unwrap());
+            let tile = surface.try_tile_mut(coord).unwrap();
+            assert_eq!(tile.bytes().as_ptr(), pixels);
+            assert!(weak.upgrade().is_none());
+            let snapshot = surface.clone();
+            surface.try_write_region(Rect::new(0, 0, 1, 1), &[1.0; 4]).unwrap();
+            assert_eq!(snapshot.pixel(0, 0), vec![0.0; 4]);
+            assert_eq!(surface.pixel(0, 0), vec![1.0; 4]);
+        }
+    }
+
+    #[test]
     fn fill_rect_shares_covered_tiles_and_edits_stay_local() {
         // A 300000² background used to materialize ~360 GB of tiles (#705).
         let mut s = Surface::new(PixelFormat::RGBA8);
@@ -1646,6 +1704,31 @@ mod tests {
     }
 
     #[test]
+    fn rgba_reads_match_individual_pixels_bitwise_in_every_model_and_depth() {
+        // Across tile edges and a missing tile; float samples include -0, out-of-range and NaN.
+        let rect = Rect::new(-3, -1, 300, 2);
+        for mode in [ColorMode::Rgb, ColorMode::Grayscale, ColorMode::Lab, ColorMode::Cmyk] {
+            for depth in SampleType::ALL {
+                for alpha in [false, true] {
+                    let fmt = PixelFormat::new(mode, depth, alpha);
+                    let mut s = Surface::with_default(fmt, &vec![0.25; fmt.channels()]);
+                    let values = [-0.0, 0.1, 0.5, 1.0, 1.5, -0.25, f32::NAN, 0.75];
+                    for (i, x) in (-2..260).enumerate() {
+                        let px: Vec<f32> = (0..fmt.channels()).map(|c| values[(i + c * 3) % values.len()]).collect();
+                        s.write_pixel(x, 0, &px);
+                    }
+                    let mut out = vec![[0.0; 4]; (rect.width() * rect.height()) as usize];
+                    s.read_rgba_into(rect, &mut out);
+                    for (i, actual) in out.iter().enumerate() {
+                        let expected = s.rgba(rect.x0 + (i % rect.width() as usize) as i32, rect.y0 + (i / rect.width() as usize) as i32);
+                        assert_eq!(actual.map(f32::to_bits), expected.map(f32::to_bits), "{fmt:?}, pixel={i}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn tile_content_bounds_scans_against_the_given_pixel() {
         let mut s = Surface::new(PixelFormat::GRAY8);
         s.write_pixel(3, 4, &[1.0]);
@@ -1673,6 +1756,42 @@ mod tests {
             let mut pruned = t.clone();
             pruned.prune();
             assert_eq!(pruned.tile_count(), t.tile_count(), "no tile of only the default pixel is kept");
+        }
+    }
+
+    #[test]
+    fn tile_content_bounds_match_a_per_pixel_scan() {
+        // One differing byte at each position of a pixel, at and around the compare-block
+        // boundaries, in every pixel size; and a pixel that differs from `dp` in every byte.
+        fn per_pixel(t: &Tile, dp: &[u8]) -> Option<(u16, u16, u16, u16)> {
+            let (bpp, ts) = (dp.len(), TILE_SIZE as usize);
+            let mut b: Option<(usize, usize, usize, usize)> = None;
+            for (i, px) in t.bytes().chunks_exact(bpp).enumerate() {
+                if px != dp {
+                    let (x, y) = (i % ts, i / ts);
+                    let (x0, y0, x1, y1) = b.unwrap_or((x, y, x, y));
+                    b = Some((x0.min(x), y0.min(y), x1.max(x), y1.max(y)));
+                }
+            }
+            b.map(|(x0, y0, x1, y1)| (x0 as u16, y0 as u16, x1 as u16 + 1, y1 as u16 + 1))
+        }
+        for bpp in [1, 2, 3, 4, 6, 8, 16] {
+            let dp: Vec<u8> = (0..bpp).map(|i| (i * 37 + 5) as u8).collect();
+            let row = TILE_SIZE as usize * bpp;
+            for spots in [vec![], vec![0], vec![row - 1], vec![63, 64], vec![row * 7 + 127, row * 7 + 128, row * 200 + 5], vec![row * 255 + row / 2]] {
+                for byte in 0..bpp {
+                    let mut data = dp.repeat(TILE_SIZE as usize * TILE_SIZE as usize);
+                    for &s in &spots {
+                        data[s - s % bpp + byte] ^= 0x5a;
+                    }
+                    let t = Tile { data: data.into_boxed_slice() };
+                    assert_eq!(t.content_bounds(&dp), per_pixel(&t, &dp), "bpp {bpp}, spots {spots:?}, byte {byte}");
+                }
+            }
+            let mut data = dp.repeat(TILE_SIZE as usize * TILE_SIZE as usize);
+            data[row * 3 + 9 * bpp..row * 3 + 10 * bpp].iter_mut().for_each(|b| *b = !*b);
+            let t = Tile { data: data.into_boxed_slice() };
+            assert_eq!(t.content_bounds(&dp), Some((9, 3, 10, 4)), "bpp {bpp}");
         }
     }
 
@@ -1832,6 +1951,40 @@ mod tests {
             let got = snapshot.pixel(x, y);
             for (g, e) in got.iter().zip(&expect) {
                 prop_assert!((g - e).abs() <= 1.0 / 255.0);
+            }
+        }
+    }
+
+    #[test]
+    fn strided_row_sampling_handles_extreme_coordinates_and_steps() {
+        for sample in SampleType::ALL {
+            let mut s = Surface::with_default(PixelFormat::new(ColorMode::Grayscale, sample, false), &[0.25]);
+            for (x, value) in [(i32::MIN, 0.1), (-1, 0.3), (0, 0.4), (i32::MAX - 1, 0.6), (i32::MAX, 0.9)] {
+                s.write_pixel(x, 0, &[value]);
+            }
+            for y in [0, 256] {
+                for (x0, step, len) in [(i32::MAX, 1, 1), (i32::MIN, i32::MAX, 3), (0, i32::MAX, 2), (i32::MAX - 1, 1, 2), (i32::MAX, i32::MAX, 0)] {
+                    let mut out = vec![0.0; len];
+                    s.sample_row_strided(y, x0, step, 0, &mut out);
+                    for (i, &got) in out.iter().enumerate() {
+                        let x = i32::try_from(i64::from(x0) + i as i64 * i64::from(step)).unwrap();
+                        assert_eq!(got, s.sample_channel(x, y, 0), "{sample:?} y={y} x0={x0} step={step} i={i}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn strided_row_sampling_uses_default_past_coordinate_range() {
+        for sample in SampleType::ALL {
+            let mut s = Surface::with_default(PixelFormat::new(ColorMode::Grayscale, sample, false), &[0.25]);
+            s.write_pixel(i32::MAX, 0, &[0.75]);
+            s.write_pixel(i32::MIN, 0, &[1.0]);
+            for step in [1, i32::MAX] {
+                let mut out = [0.0; 4];
+                s.sample_row_strided(0, i32::MAX, step, 0, &mut out);
+                assert_eq!(out, [s.sample_channel(i32::MAX, 0, 0), s.default_pixel()[0], s.default_pixel()[0], s.default_pixel()[0]]);
             }
         }
     }
