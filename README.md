@@ -39,6 +39,87 @@
   <a href="https://getartcraft.com/apps">All Crafting Apps</a>
 </p>
 
+## About this fork
+
+This is a personal fork of [storytold/photocraft](https://github.com/storytold/photocraft), currently
+based on **PhotoCraft 0.14.0** (branch `photoshop-parity-0.14`). It adds features and fixes aimed at
+making PhotoCraft work the way Photoshop does, mostly found in day-to-day use on Windows. It is
+not affiliated with or reviewed by the PhotoCraft maintainers. Everything below this section is
+the upstream README.
+
+### Additions
+
+- **Remove tool with AI models.** A Generative AI mode with three models: LaMa, running locally
+  (ONNX Runtime, DirectML on Windows); Stable Diffusion XL inpainting, also local; and Google's
+  Nano Banana 2.1, online, using your own paid Google API key (kept in the system's credential
+  store). Each model keeps its own settings. **AI Remove** removes the selection with Nano Banana.
+  The model files aren't included.
+- **Generative Fill** on the local SDXL inpainting model.
+- **Grain adjustment layer** (Photoshop 2026's): Amount, Size and Roughness, on the CPU and the
+  GPU, saved in `.pcraft` and PSD.
+- **Icons for each adjustment type** in the Layers, Properties and Adjustments panels.
+- **Fill tool**, like Clip Studio Paint's: drag across areas to fill them, Close Gap, reference
+  layers, layer blocks and sub tools.
+- **Second layer mask** per layer, and **Lock Selection**.
+- **Actions panel like Photoshop's**:
+  - sets, New Action…, and Photoshop's recording rules with Allow Tool Recording;
+  - Insert Menu Item, Insert Stop and Insert Conditional;
+  - Record Again, Playback Options, Button Mode, and an action on any key;
+  - recorded steps name layers, not internal ids, so actions work on other documents;
+  - Color Range steps record the sampled colours, not where they were clicked;
+  - a whole Photoshop Actions palette (`.psp`, `.atn`) imports at once.
+- **Topaz Gigapixel AI** in File › Automate, with one-click presets and two-preset runs.
+- **Built-in timelapse recorder** with its own panel.
+- **Brushes panel like Photoshop's**:
+  - groups and folders, multi-select, and drag between groups;
+  - a tile size slider;
+  - a group can be pinned above the list.
+  - Each painting tool remembers its own brush.
+- **Screen eyedropper** in the Color Picker, and Pick From in the options bar.
+
+### Changes and fixes
+
+- **Speed.**
+  - Opening, first display and saving of big files.
+  - Smooth panning at high refresh rates.
+  - Large selections and their marching ants.
+  - Channels, Curves after mask strokes, Fill tool clicks, and Color Range's Fuzziness slider.
+- **Brushes** measured against Photoshop 2026: Dual Brush, Texture, Wet Edges, spacing and
+  scatter. Brush size keys wait while a stroke is painted.
+- **Adjustment layers** preview live on the GPU, with background histograms.
+- **Layers panel.**
+  - Photoshop's row sizes, folder icons for groups and Layer Bounds thumbnails.
+  - Group colours, and ⌘/Ctrl-click to pick a layer on the canvas.
+  - A layer row double-click counts with Windows' timing.
+- **Window and panels.**
+  - A status bar in the document window.
+  - The Tools panel docks between panel columns.
+  - F10 opens the menu bar.
+  - The Color field fills its panel.
+- **Behaviour that now matches Photoshop.**
+  - A new layer goes inside an open, selected group.
+  - Making a mask from the selection deselects.
+  - Paste with a mask only targeted makes a new layer; Copy keeps masks.
+  - Show Only in an action acts on the current layer.
+  - Color Range remembers its Selection Preview.
+  - The Color Picker picks on the press.
+  - An adjustment layer made on a clipped layer is clipped.
+  - Solid Color on an empty layer takes its place.
+  - C on a rotated view resets the rotation.
+- **GPU driver loss** saves unsaved work to crash recovery and restarts PhotoCraft.
+
+### Branches
+
+| Branch | Based on |
+|---|---|
+| `photoshop-parity-0.14` | PhotoCraft 0.14.0 (current) |
+| `photoshop-parity-0.12` | PhotoCraft 0.12.0 |
+| `photoshop-parity-0.11` | PhotoCraft 0.11.1 |
+| `photoshop-parity-0.10` | PhotoCraft 0.10.0 |
+| `photoshop-parity` | PhotoCraft 0.9.0 |
+
+---
+
 <br>
 
 <p align="center">
