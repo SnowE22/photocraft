@@ -281,3 +281,52 @@ fn a_mismatched_request_is_an_error_not_a_panic() {
     let req = request(win, &px, &hole, 3, None);
     assert!(matches!(fill_via(&req, &mut |_| Vec::new(), "", Mark::Paint, &Interrupt::NONE, &mut |_, _| Ok(String::new())), Err(MlError::BadInput(_))));
 }
+
+#[test]
+fn an_answer_that_covers_its_frame_is_put_back_where_it_was() {
+    let (fw, fh) = (150usize, 100usize);
+    let rgb: Vec<f32> = (0..fw * fh)
+        .flat_map(|i| {
+            let (x, y) = ((i % fw) as f32, (i / fw) as f32);
+            let v = 0.5 + 0.45 * (x * 0.6 + y * 0.11).sin();
+            [v, v, v]
+        })
+        .collect();
+    let hole: Vec<bool> = (0..fw * fh).map(|i| (60..90).contains(&(i % fw)) && (40..60).contains(&(i / fw))).collect();
+    let c = Crop {
+        rect: Rect::new(0, 0, 150, 100),
+        frame: Rect::new(0, 0, 150, 100),
+        ratio: "3:2",
+        send: (150, 100),
+        rgb: rgb.clone(),
+        hole: hole.clone(),
+        marker: 0,
+    };
+    // As the model does it: the frame scaled evenly by 1.7 to cover a 252 × 170 answer (255 wide),
+    // the overhang cut (1 px at the left, 2 at the right).
+    let big = resize(&rgb, fw, fh, 255, 170);
+    let answer: Vec<f32> = (0..170).flat_map(|y| big[(y * 255 + 1) * 3..(y * 255 + 253) * 3].to_vec()).collect();
+    let err = |out: &[f32]| -> f32 {
+        let (sum, n) = out.chunks(3).zip(rgb.chunks(3)).zip(&hole).filter(|(_, h)| !**h).fold((0.0, 0), |(s, n), ((a, b), _)| (s + (a[0] - b[0]).abs(), n + 1));
+        sum / n as f32
+    };
+    let (fitted, placed) = c.fitted_placed(&answer, 252, 170);
+    let stretched = resize(&answer, 252, 170, fw, fh);
+    assert!(err(&fitted) < 0.03 && err(&fitted) < err(&stretched) / 3.0, "placed {placed:?}: {} vs stretched {}", err(&fitted), err(&stretched));
+}
+
+#[test]
+fn the_colour_match_ignores_a_ring_the_model_redrew() {
+    // The original ring has lines (dark on white); the answer erased them: all white.
+    let o: Vec<f64> = (0..400).map(|i| if i % 4 == 0 { 0.1 } else { 1.0 }).collect();
+    let a = vec![0.98; 400];
+    let (ma, gain, shift) = ring_fit(&o, &a);
+    assert!((ma + (0.98 - ma) * gain + shift - 1.0).abs() < 0.03, "white stays white: {ma} {gain} {shift}");
+    // An answer that follows the original, lighter and softer, is brought back to it.
+    let soft: Vec<f64> = o.iter().map(|v| 0.6 + 0.35 * v).collect();
+    let (ma, gain, shift) = ring_fit(&o, &soft);
+    assert!(gain > 1.5, "{gain}");
+    let back = |v: f64| f64::from(ma) + (v - f64::from(ma)) * f64::from(gain) + f64::from(shift);
+    assert!((back(0.6 + 0.35 * 0.1) - back(0.6 + 0.35)).abs() > 0.5, "the contrast comes back, up to the gain cap");
+    assert_eq!(ring_fit(&[], &[]), (0.0, 1.0, 0.0));
+}

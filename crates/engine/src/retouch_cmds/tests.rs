@@ -2543,3 +2543,29 @@ fn nano_banana_without_a_key_says_so_or_uses_lama() {
     let r = s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "model": "nanoBanana"})).unwrap();
     assert!(r["note"].as_str().is_some_and(|n| n.contains("Google API key")), "Auto says why it didn't use Nano Banana: {r}");
 }
+
+#[test]
+fn nano_banana_keeps_everything_it_drew_on_a_layer_masked_to_the_hole() {
+    let s = square_session(8, "rgb");
+    let before = rgba(&s, 10, 10);
+    let id = s.active().unwrap().active_layer;
+    let canvas = Rect::new(0, 0, 96, 64);
+    let win = Rect::new(30, 15, 66, 45);
+    // The model's picture of the whole page: flat 0.25 grey (RGB, no alpha: the Background).
+    let picture = Region { rect: canvas, ch: 3, data: vec![0.25; 96 * 64 * 3] };
+    let hole: Vec<bool> = (0..36 * 30).map(|k| (10..26).contains(&(k % 36)) && (9..21).contains(&(k / 36))).collect();
+    let mut doc = (*s.active().unwrap().doc).clone();
+    let (damage, nid) = remove::generated_layer(&mut doc, id, &[picture], &hole, win).unwrap();
+    assert_eq!(damage, canvas);
+    let l = doc.layer(nid).unwrap();
+    assert!(l.name.starts_with("Nano Banana"), "{}", l.name);
+    let px = l.surface().unwrap().rgba(5, 5);
+    assert!((px[0] - 0.25).abs() < 0.01 && px[3] == 1.0, "the whole picture is on the layer: {px:?}");
+    let mask = l.mask.as_ref().unwrap();
+    assert_eq!((mask.value(46, 30), mask.value(10, 10), mask.value(31, 16)), (1.0, 0.0, 0.0), "the mask shows only the hole");
+    // Above the target: the composite changes only in the hole.
+    assert_eq!(doc.layers.iter().position(|l| l.id == nid), Some(doc.layers.len() - 1));
+    let flat = photocraft_compose::flatten(&doc);
+    let at = |x: usize, y: usize| flat.px[y * 96 + x];
+    assert!((at(10, 10)[0] - before[0]).abs() < 0.01 && (at(46, 30)[0] - 0.25).abs() < 0.02, "{:?} {:?}", at(10, 10), at(46, 30));
+}

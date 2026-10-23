@@ -52,9 +52,23 @@ fn main() {
     let sent = format!("{out}.sent.png");
     let t = std::time::Instant::now();
     match photocraft_ml::gemini::eval_fill(&req, &mut read, rest.first().map_or("", String::as_str), &Interrupt::NONE, &sent) {
-        Ok(filled) => {
+        Ok(pieces) => {
             println!("filled in {:.1} s", t.elapsed().as_secs_f32());
+            // The page with the hole filled, and with every piece's whole picture (`.full.png`).
+            let (mut filled, mut full) = (rgb.clone(), rgb.clone());
+            for piece in &pieces {
+                let pw = piece.rect.width() as usize;
+                for (k, h) in piece.hole.iter().enumerate() {
+                    let (x, y) = (piece.rect.x0 as usize + k % pw, piece.rect.y0 as usize + k / pw);
+                    let px = &piece.rgb[k * 3..k * 3 + 3];
+                    full[(y * w + x) * 3..(y * w + x) * 3 + 3].copy_from_slice(px);
+                    if *h {
+                        filled[(y * w + x) * 3..(y * w + x) * 3 + 3].copy_from_slice(px);
+                    }
+                }
+            }
             save(out, &filled, w as u32, h as u32);
+            save(&format!("{out}.full.png"), &full, w as u32, h as u32);
         }
         Err(e) => println!("error after {:.1} s: {e}", t.elapsed().as_secs_f32()),
     }

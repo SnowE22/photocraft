@@ -561,12 +561,13 @@ impl Crop {
         resize(&out, fw, fh, sw as usize, sh as usize)
     }
 
-    /// The answer (`aw` × `ah`, interleaved sRGB) for the crop's pixels: scaled to the frame,
-    /// cut to the crop, and its colours shifted to match the original in a ring around the hole.
-    pub(crate) fn fitted(&self, answer: &[f32], aw: usize, ah: usize) -> Vec<f32> {
+    /// The answer (`aw` × `ah`, interleaved sRGB) for the crop's pixels: placed over the frame,
+    /// cut to the crop, and its tone matched to the original in a ring around the hole; and where
+    /// it was found to lie.
+    pub(crate) fn fitted_placed(&self, answer: &[f32], aw: usize, ah: usize) -> (Vec<f32>, Placement) {
         let (cw, ch) = (self.rect.width() as usize, self.rect.height() as usize);
-        let (fw, fh) = (self.frame.width() as usize, self.frame.height() as usize);
-        let framed = resize(answer, aw, ah, fw, fh);
+        let fw = self.frame.width() as usize;
+        let (framed, placed) = self.framed_answer(answer, aw, ah);
         let (ox, oy) = ((self.rect.x0 - self.frame.x0) as usize, (self.rect.y0 - self.frame.y0) as usize);
         let mut out = Vec::with_capacity(cw * ch * 3);
         for y in 0..ch {
@@ -578,37 +579,202 @@ impl Crop {
         }
         // The ring: just outside the hole, where the answer should equal the original.
         let near = dilate(&self.hole, cw, ch, RING);
-        // Per channel over the ring: sums and sums of squares of the original and the answer.
-        let (mut o1, mut o2, mut a1, mut a2, mut n) = ([0.0f64; 3], [0.0f64; 3], [0.0f64; 3], [0.0f64; 3], 0u64);
-        for (k, (&h, &r)) in self.hole.iter().zip(&near).enumerate() {
-            if r && !h {
-                for c in 0..3 {
-                    let o = f64::from(self.rgb.get(k * 3 + c).copied().unwrap_or(0.0));
-                    let a = f64::from(out.get(k * 3 + c).copied().unwrap_or(0.0));
-                    (o1[c], o2[c], a1[c], a2[c]) = (o1[c] + o, o2[c] + o * o, a1[c] + a, a2[c] + a * a);
-                }
-                n += 1;
-            }
-        }
-        if n > 0 {
-            // The answer's level and contrast matched to the original's around the hole: it comes
-            // back a little shifted in tone and softer (its fine lines greyer), the same inside.
-            let n = n as f64;
+        // The ring's pixels, original and answer, per channel.
+        let ring: Vec<usize> = self.hole.iter().zip(&near).enumerate().filter(|(_, (h, r))| **r && !**h).map(|(k, _)| k).collect();
+        if !ring.is_empty() {
             let fit = [0, 1, 2].map(|c| {
-                let (mo, ma) = (o1[c] / n, a1[c] / n);
-                let (so, sa) = ((o2[c] / n - mo * mo).max(0.0).sqrt(), (a2[c] / n - ma * ma).max(0.0).sqrt());
-                let gain = if sa > 1e-3 && so > 1e-3 { (so / sa).clamp(MIN_GAIN, MAX_GAIN) } else { 1.0 };
-                let shift = (mo - ma).clamp(-f64::from(MAX_SHIFT), f64::from(MAX_SHIFT));
-                (ma as f32, gain as f32, (ma + shift) as f32)
+                let at = |v: &[f32], k: usize| f64::from(v.get(k * 3 + c).copied().unwrap_or(0.0));
+                let (o, a): (Vec<f64>, Vec<f64>) = ring.iter().map(|&k| (at(&self.rgb, k), at(&out, k))).unzip();
+                ring_fit(&o, &a)
             });
             for px in out.as_chunks_mut::<3>().0 {
-                for (v, (ma, gain, to)) in px.iter_mut().zip(fit) {
-                    *v = (to + (*v - ma) * gain).clamp(0.0, 1.0);
+                for (v, (ma, gain, shift)) in px.iter_mut().zip(fit) {
+                    *v = (ma + (*v - ma) * gain + shift).clamp(0.0, 1.0);
+                }
+            }
+        }
+        (out, placed)
+    }
+
+    /// The answer over the frame (interleaved sRGB, the frame's size). The model keeps the
+    /// picture's proportions: it scales it evenly to cover its output and cuts what overhangs (a
+    /// 750 × 500 frame came back 1264 × 848: scaled 1.696, 4 px cut from each side), so stretching
+    /// the answer to the frame put it up to 2–3 px off at the sides. The answer is scaled back
+    /// evenly, then placed where it matches the frame's own pixels best ([`Self::align`]).
+    fn framed_answer(&self, answer: &[f32], aw: usize, ah: usize) -> (Vec<f32>, Placement) {
+        let (fw, fh) = (self.frame.width() as usize, self.frame.height() as usize);
+        if aw == 0 || ah == 0 || fw == 0 || fh == 0 {
+            return (vec![0.0; fw * fh * 3], Placement::IDENTITY);
+        }
+        let cover = (aw as f64 / fw as f64).max(ah as f64 / fh as f64);
+        let (rw, rh) = (((aw as f64 / cover).round() as usize).max(1), ((ah as f64 / cover).round() as usize).max(1));
+        let small = resize(answer, aw, ah, rw, rh);
+        let placed = self.align(&small, rw, rh);
+        (place(&small, rw, rh, fw, fh, placed), placed)
+    }
+
+    /// Where the answer (scaled to about the frame's size, `rw` × `rh`) lies over the frame:
+    /// the scale and shift (within [`ALIGN_SCALE`] and [`ALIGN_SHIFT`] px) at which it best
+    /// matches the crop's own pixels away from the hole, both blurred so the model's redrawn
+    /// texture counts less than where things are, and their tone taken out.
+    fn align(&self, small: &[f32], rw: usize, rh: usize) -> Placement {
+        let (cw, ch) = (self.rect.width() as usize, self.rect.height() as usize);
+        let (fw, fh) = (self.frame.width() as usize, self.frame.height() as usize);
+        let grey = |rgb: &[f32]| -> Vec<f32> { rgb.chunks(3).map(|p| p.iter().sum::<f32>() / 3.0).collect() };
+        // Lightly blurred, less a wide blur: where things are, not the tone (the answer comes back
+        // a little lighter or darker, which on a gradient would read as a shift).
+        let detail = |g: Vec<f32>, w: usize, h: usize| -> Vec<f32> {
+            let (fine, wide) = (blur(&g, w, h, 2), blur(&g, w, h, 10));
+            fine.iter().zip(&wide).map(|(a, b)| a - b).collect()
+        };
+        let theirs = detail(grey(small), rw, rh);
+        let ours = detail(grey(&self.rgb), cw, ch);
+        let far = dilate(&self.hole, cw, ch, RING);
+        let (ox, oy) = ((self.rect.x0 - self.frame.x0) as f64, (self.rect.y0 - self.frame.y0) as f64);
+        // Every few pixels of the crop away from the hole: frame coordinates and value.
+        let step = ((cw * ch) as f64 / 40_000.0).sqrt().ceil().max(1.0) as usize;
+        let samples: Vec<(f64, f64, f32)> = (0..ch)
+            .step_by(step)
+            .flat_map(|y| (0..cw).step_by(step).map(move |x| (x, y)))
+            .filter(|&(x, y)| !far.get(y * cw + x).copied().unwrap_or(true))
+            .map(|(x, y)| (ox + x as f64, oy + y as f64, ours.get(y * cw + x).copied().unwrap_or(0.0)))
+            .collect();
+        if samples.len() < 64 {
+            return Placement::IDENTITY;
+        }
+        let error = |p: Placement| -> f64 {
+            samples
+                .iter()
+                .map(|&(x, y, v)| {
+                    let (u, w) = p.map(x, y, fw, fh, rw, rh);
+                    let d = f64::from(v - bilinear(&theirs, rw, rh, u, w));
+                    d * d
+                })
+                .sum()
+        };
+        let mut best = (error(Placement::IDENTITY), Placement::IDENTITY);
+        let search = |best: &mut (f64, Placement), scales: &[f64], shifts: &[f64], around: Placement| {
+            for &ds in scales {
+                for &dx in shifts {
+                    for &dy in shifts {
+                        let p = Placement { scale: around.scale + ds, dx: around.dx + dx, dy: around.dy + dy };
+                        let e = error(p);
+                        if e < best.0 {
+                            *best = (e, p);
+                        }
+                    }
+                }
+            }
+        };
+        let coarse_scales: Vec<f64> = (-3..=3).map(|k| f64::from(k) * ALIGN_SCALE / 3.0).collect();
+        let coarse_shifts: Vec<f64> = (-ALIGN_SHIFT..=ALIGN_SHIFT).map(f64::from).collect();
+        search(&mut best, &coarse_scales, &coarse_shifts, Placement::IDENTITY);
+        let fine_scales: Vec<f64> = (-4..=4).map(|k| f64::from(k) * ALIGN_SCALE / 12.0).collect();
+        let fine_shifts: Vec<f64> = (-4..=4).map(|k| f64::from(k) * 0.25).collect();
+        let around = best.1;
+        search(&mut best, &fine_scales, &fine_shifts, around);
+        best.1
+    }
+}
+
+/// Where an answer lies over its frame: frame pixel `(x, y)` is answer pixel
+/// `((x + ½ − fw/2) · scale + rw/2 + dx − ½, …)` of the answer scaled to cover the frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub scale: f64,
+    pub dx: f64,
+    pub dy: f64,
+}
+
+impl Placement {
+    /// Centred, at the scale that covers the frame.
+    pub const IDENTITY: Placement = Placement { scale: 1.0, dx: 0.0, dy: 0.0 };
+
+    fn map(self, x: f64, y: f64, fw: usize, fh: usize, rw: usize, rh: usize) -> (f64, f64) {
+        ((x + 0.5 - fw as f64 / 2.0) * self.scale + rw as f64 / 2.0 + self.dx - 0.5, (y + 0.5 - fh as f64 / 2.0) * self.scale + rh as f64 / 2.0 + self.dy - 0.5)
+    }
+}
+
+/// How far the answer's scale is searched either side of covering the frame.
+const ALIGN_SCALE: f64 = 0.015;
+/// How far its shift is searched, in frame pixels.
+const ALIGN_SHIFT: i32 = 6;
+
+/// How the answer's values (`a`) are matched to the original's (`o`) in the ring around the hole:
+/// its mean, the gain about it, and the shift after. The answer comes back a little off in tone
+/// and softer (its fine lines greyer). The shift is the median difference, and the contrast is
+/// matched only where the answer follows the original there (correlation over 0.6): where the
+/// model also redrew the ring (it erased a whole eye around the lashes asked for), matching its
+/// averages darkened a white fill to grey.
+pub(crate) fn ring_fit(o: &[f64], a: &[f64]) -> (f32, f32, f32) {
+    let n = o.len().min(a.len());
+    if n == 0 {
+        return (0.0, 1.0, 0.0);
+    }
+    let nf = n as f64;
+    let (mo, ma) = (o.iter().take(n).sum::<f64>() / nf, a.iter().take(n).sum::<f64>() / nf);
+    let (mut so, mut sa, mut cov) = (0.0, 0.0, 0.0);
+    for (x, y) in o.iter().zip(a).take(n) {
+        so += (x - mo) * (x - mo);
+        sa += (y - ma) * (y - ma);
+        cov += (x - mo) * (y - ma);
+    }
+    let follows = so > 1e-6 && sa > 1e-6 && cov / (so * sa).sqrt() > 0.6;
+    let gain = if follows { (so / sa).sqrt().clamp(MIN_GAIN, MAX_GAIN) } else { 1.0 };
+    let mut d: Vec<f64> = o.iter().zip(a).take(n).map(|(x, y)| x - y).collect();
+    d.sort_by(f64::total_cmp);
+    let shift = d.get(n / 2).copied().unwrap_or(0.0).clamp(-f64::from(MAX_SHIFT), f64::from(MAX_SHIFT));
+    (ma as f32, gain as f32, shift as f32)
+}
+
+/// One channel `v` (`w` × `h`) at `(u, w)`, bilinear, the edge repeated beyond it.
+fn bilinear(v: &[f32], w: usize, h: usize, x: f64, y: f64) -> f32 {
+    if w == 0 || h == 0 {
+        return 0.0;
+    }
+    let (x, y) = (x.clamp(0.0, (w - 1) as f64), y.clamp(0.0, (h - 1) as f64));
+    let (x0, y0) = (x.floor() as usize, y.floor() as usize);
+    let (x1, y1) = ((x0 + 1).min(w - 1), (y0 + 1).min(h - 1));
+    let (fx, fy) = ((x - x0 as f64) as f32, (y - y0 as f64) as f32);
+    let at = |x: usize, y: usize| v.get(y * w + x).copied().unwrap_or(0.0);
+    let top = at(x0, y0) * (1.0 - fx) + at(x1, y0) * fx;
+    let bottom = at(x0, y1) * (1.0 - fx) + at(x1, y1) * fx;
+    top * (1.0 - fy) + bottom * fy
+}
+
+/// Interleaved RGB `small` (`rw` × `rh`) placed over a `fw` × `fh` frame by `p`.
+fn place(small: &[f32], rw: usize, rh: usize, fw: usize, fh: usize, p: Placement) -> Vec<f32> {
+    let planes: Vec<Vec<f32>> = (0..3).map(|c| small.iter().skip(c).step_by(3).copied().collect()).collect();
+    let mut out = Vec::with_capacity(fw * fh * 3);
+    for y in 0..fh {
+        for x in 0..fw {
+            let (u, v) = p.map(x as f64, y as f64, fw, fh, rw, rh);
+            out.extend(planes.iter().map(|plane| bilinear(plane, rw, rh, u, v)));
+        }
+    }
+    out
+}
+
+/// A box blur of radius `r` (`w` × `h`, one channel), by prefix sums along each axis.
+fn blur(v: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
+    let pass = |src: &[f32], n: usize, m: usize, at: &dyn Fn(usize, usize) -> usize| -> Vec<f32> {
+        let mut out = vec![0.0f32; src.len()];
+        let mut prefix = vec![0.0f64; m + 1];
+        for line in 0..n {
+            for i in 0..m {
+                prefix[i + 1] = prefix[i] + f64::from(src.get(at(line, i)).copied().unwrap_or(0.0));
+            }
+            for i in 0..m {
+                let (a, b) = (i.saturating_sub(r), (i + r + 1).min(m));
+                if let Some(o) = out.get_mut(at(line, i)) {
+                    *o = ((prefix[b] - prefix[a]) / (b - a) as f64) as f32;
                 }
             }
         }
         out
-    }
+    };
+    let rows = pass(v, h, w, &|y, x| y * w + x);
+    pass(&rows, w, h, &|x, y| y * w + x)
 }
 
 /// The request's JSON body for images (PNG, base64) of ratio `ratio` sent `send` large.
@@ -707,14 +873,14 @@ pub fn fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, 
 /// `<sent>.answer`: for the evaluation example (`examples/nano_banana_eval.rs`).
 #[cfg(not(target_arch = "wasm32"))]
 #[doc(hidden)]
-pub fn eval_fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, ctl: &Interrupt, sent: &str) -> Result<Vec<f32>, MlError> {
+pub fn eval_fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, ctl: &Interrupt, sent: &str) -> Result<Vec<Piece>, MlError> {
     use base64::Engine as _;
     let Some(key) = key() else {
         return Err(availability().err().unwrap_or(MlError::Unsupported));
     };
     // `PHOTOCRAFT_EVAL_MARK=mask` sends the picture and a mask instead of painting the hole.
     let mark = if std::env::var("PHOTOCRAFT_EVAL_MARK").is_ok_and(|m| m == "mask") { Mark::Mask } else { Mark::Paint };
-    fill_via(req, read, extra, mark, ctl, &mut |body, ctl| {
+    pieces_via(req, read, extra, mark, ctl, &mut |body, ctl| {
         let v: Value = serde_json::from_str(body).unwrap_or(Value::Null);
         if let Some(Ok(png)) = v.pointer("/input/1/data").and_then(Value::as_str).map(|d| base64::engine::general_purpose::STANDARD.decode(d)) {
             let _ = std::fs::write(sent, png);
@@ -744,7 +910,36 @@ pub fn eval_fill(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &
     })
 }
 
-/// [`fill`] through `send`.
+/// One area the model drew: the crop on the canvas, the model's picture of all of it (interleaved
+/// sRGB, aligned and colour-matched to the page) and which of its pixels are the hole.
+#[derive(Clone, Debug)]
+pub struct Piece {
+    pub rect: Rect,
+    pub rgb: Vec<f32>,
+    pub hole: Vec<bool>,
+}
+
+/// The model's whole picture of each area it drew for `req`, not only the hole (the Remove tool
+/// keeps it on a layer masked to the hole, so more of it can be shown).
+pub fn generate(req: &Request, read: &mut dyn FnMut(Rect) -> Vec<f32>, extra: &str, mark: Mark, ctl: &Interrupt) -> Result<Vec<Piece>, MlError> {
+    let Some(key) = key() else {
+        return Err(availability().err().unwrap_or(MlError::Unsupported));
+    };
+    pieces_via(req, read, extra, mark, ctl, &mut |body, ctl| post(&key, body, ctl))
+}
+
+/// A piece's pixels as the request's samples (`req.ch` per pixel: its colours, linear light in a
+/// 32-bit document, opaque alpha).
+pub fn samples(req: &Request, piece: &Piece) -> Vec<f32> {
+    let n = piece.rect.width() as usize * piece.rect.height() as usize;
+    let mut out = vec![0.0f32; n * req.ch];
+    for k in 0..n {
+        put(req, &mut out, k, [0, 1, 2].map(|c| piece.rgb.get(k * 3 + c).copied().unwrap_or(0.0)));
+    }
+    out
+}
+
+/// [`fill`] through `send`: the window with the hole taken from the pieces.
 pub(crate) fn fill_via(
     req: &Request,
     read: &mut dyn FnMut(Rect) -> Vec<f32>,
@@ -753,6 +948,31 @@ pub(crate) fn fill_via(
     ctl: &Interrupt,
     send: &mut Transport<'_>,
 ) -> Result<Vec<f32>, MlError> {
+    let pieces = pieces_via(req, read, extra, mark, ctl, send)?;
+    let mut out = req.pixels.to_vec();
+    for piece in &pieces {
+        let cw = piece.rect.width() as usize;
+        for (k, h) in piece.hole.iter().enumerate() {
+            if !*h {
+                continue;
+            }
+            let (x, y) = (piece.rect.x0 + (k % cw) as i32, piece.rect.y0 + (k / cw) as i32);
+            let Some(j) = window_index(req.window, x, y) else { continue };
+            put(req, &mut out, j, [0, 1, 2].map(|i| piece.rgb.get(k * 3 + i).copied().unwrap_or(0.0)));
+        }
+    }
+    Ok(out)
+}
+
+/// The pieces of [`generate`] through `send`.
+pub(crate) fn pieces_via(
+    req: &Request,
+    read: &mut dyn FnMut(Rect) -> Vec<f32>,
+    extra: &str,
+    mark: Mark,
+    ctl: &Interrupt,
+    send: &mut Transport<'_>,
+) -> Result<Vec<Piece>, MlError> {
     let (w, h) = (req.window.width() as usize, req.window.height() as usize);
     if req.hole.len() != w * h || req.pixels.len() != w * h * req.ch {
         return Err(MlError::BadInput("the hole or pixels don't match the window".into()));
@@ -766,11 +986,8 @@ pub(crate) fn fill_via(
     {
         parts = vec![all];
     }
-    if parts.is_empty() {
-        return Ok(req.pixels.to_vec());
-    }
-    let mut out = req.pixels.to_vec();
-    let count = parts.len() as f32;
+    let mut pieces = Vec::with_capacity(parts.len());
+    let count = parts.len().max(1) as f32;
     for (g, part) in parts.iter().enumerate() {
         ctl.check()?;
         let c = crop(req, *part, read)?;
@@ -799,27 +1016,21 @@ pub(crate) fn fill_via(
             }
         });
         let (rgb, aw, ah) = answered?;
+        let elapsed = started.elapsed().as_secs_f32();
+        ctl.check()?;
+        let (fitted, placed) = c.fitted_placed(&rgb, aw, ah);
         log::info!(
-            "[ml] {NAME}: sent {sw} x {sh} ({}, {}, {shown}), answered {aw} x {ah} in {:.1} s",
+            "[ml] {NAME}: sent {sw} x {sh} ({}, {}, {shown}), answered {aw} x {ah} in {elapsed:.1} s, placed at scale {:.4}, shift {:.2}, {:.2}",
             c.ratio,
             image_size(sw, sh),
-            started.elapsed().as_secs_f32()
+            placed.scale,
+            placed.dx,
+            placed.dy
         );
-        ctl.check()?;
-        let fitted = c.fitted(&rgb, aw, ah);
-        let cw = c.rect.width() as usize;
-        for (k, h) in c.hole.iter().enumerate() {
-            if !*h {
-                continue;
-            }
-            let (x, y) = (c.rect.x0 + (k % cw) as i32, c.rect.y0 + (k / cw) as i32);
-            let Some(j) = window_index(req.window, x, y) else { continue };
-            let rgb = [0, 1, 2].map(|i| fitted.get(k * 3 + i).copied().unwrap_or(0.0));
-            put(req, &mut out, j, rgb);
-        }
+        pieces.push(Piece { rect: c.rect, rgb: fitted, hole: c.hole });
         ctl.progress(progress(1.0));
     }
-    Ok(out)
+    Ok(pieces)
 }
 
 /// Send `body` to Google with `key` on a thread, waiting for the answer while checking `ctl`
