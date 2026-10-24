@@ -40,6 +40,7 @@ pub use pattern::Pattern;
 pub use photocraft_color::{BlendMode, Color, ColorMode, PixelFormat, SampleType};
 pub use photocraft_geom::{Affine, Rect, Size};
 pub use photocraft_raster::Surface;
+pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneSpec};
 use serde::{Deserialize, Serialize};
 pub use slices::{Slice, SliceKind, SliceOrigin, Slices};
 pub use text_styles::TextStyles;
@@ -578,6 +579,27 @@ pub struct FillCache {
     pub surface: Surface,
 }
 
+/// A live procedural screentone.
+///
+/// `spec` is the editable pattern, `origin` is the lattice anchor in document coordinates (not
+/// relative to the canvas or a render tile, so resizing the document never slides the tone), and
+/// `surface` is the rendered cache the compositor reads. Editing commands replace the cache and
+/// the spec together; a plain pixel edit is refused by [`Layer::surface_mut`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScreentoneLayer {
+    pub spec: ScreentoneSpec,
+    /// Document-space anchor of the lattice origin.
+    pub origin: (f32, f32),
+    /// Rendered appearance in document coordinates.
+    pub surface: Surface,
+}
+
+impl ScreentoneLayer {
+    pub fn new(spec: ScreentoneSpec, origin: (f32, f32), surface: Surface) -> Self {
+        Self { spec, origin, surface }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum LayerContent {
     Raster(Surface),
@@ -587,6 +609,7 @@ pub enum LayerContent {
     Text(TextLayer),
     Shape(ShapeLayer),
     Smart(SmartObject),
+    Screentone(ScreentoneLayer),
 }
 
 impl LayerContent {
@@ -599,7 +622,13 @@ impl LayerContent {
             LayerContent::Text(_) => "Type",
             LayerContent::Shape(_) => "Shape",
             LayerContent::Smart(_) => "Smart Object",
+            LayerContent::Screentone(_) => "Screentone",
         }
+    }
+
+    /// Whether the content is rendered from parameters rather than direct pixels.
+    pub fn is_procedural(&self) -> bool {
+        matches!(self, LayerContent::Screentone(_))
     }
 
     /// English indefinite article for this layer kind ("an" for Adjustment, "a" for all others).
@@ -728,14 +757,21 @@ impl Layer {
             LayerContent::Text(t) => t.cache.as_ref(),
             LayerContent::Shape(s) => s.cache.as_ref(),
             LayerContent::Smart(s) => s.cache.as_ref(),
+            LayerContent::Screentone(s) => Some(&s.surface),
             _ => None,
         }
     }
     pub fn surface_mut(&mut self) -> Option<&mut Surface> {
         match &mut self.content {
             LayerContent::Raster(s) => Some(s),
+            // A screentone's pixels are a cache of `spec`; direct edits would desynchronise it.
+            LayerContent::Screentone(_) => None,
             _ => None,
         }
+    }
+    /// Whether the layer is a live screentone (its pixels are rendered from `spec`).
+    pub fn is_screentone(&self) -> bool {
+        matches!(self.content, LayerContent::Screentone(_))
     }
     /// Deep copy with fresh ids (for Duplicate Layer).
     pub fn duplicate(&self) -> Layer {

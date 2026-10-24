@@ -4711,6 +4711,7 @@ dependencies = [
  "photocraft-color",
  "photocraft-geom",
  "photocraft-raster",
+ "photocraft-tone",
  "rayon",
  "rustfft",
  "serde",
@@ -4814,6 +4815,7 @@ dependencies = [
  "photocraft-color",
  "photocraft-geom",
  "photocraft-raster",
+ "photocraft-tone",
  "serde",
  "serde_json",
 ]
@@ -5049,6 +5051,13 @@ dependencies = [
  "photocraft-raster",
  "rayon",
  "skrifa",
+]
+
+[[package]]
+name = "photocraft-tone"
+version = "0.13.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

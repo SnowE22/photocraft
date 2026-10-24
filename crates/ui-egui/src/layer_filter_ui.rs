@@ -109,7 +109,7 @@ pub fn apply(ui: &mut UiState, f: Filter) {
 /// The kind filter's name for `l`'s content ("" for groups, which no kind matches).
 fn kind(l: &Layer) -> &'static str {
     match &l.content {
-        LayerContent::Raster(_) => "pixel",
+        LayerContent::Raster(_) | LayerContent::Screentone(_) => "pixel",
         LayerContent::Adjustment(_) | LayerContent::Fill(_) => "adjustment",
         LayerContent::Text(_) => "type",
         LayerContent::Shape(_) => "shape",

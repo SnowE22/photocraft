@@ -741,6 +741,10 @@ fn shift_layer(l: &mut Layer, dx: i32, dy: i32) {
             }
         }
         LayerContent::Smart(sm) => shift_smart(sm, dx, dy),
+        LayerContent::Screentone(s) => {
+            s.surface = mv(&s.surface);
+            s.origin = (s.origin.0 + dx as f32, s.origin.1 + dy as f32);
+        }
         LayerContent::Group(g) => g.children.iter_mut().for_each(|c| shift_layer(c, dx, dy)),
         LayerContent::Adjustment(_) | LayerContent::Fill(_) => {}
     }

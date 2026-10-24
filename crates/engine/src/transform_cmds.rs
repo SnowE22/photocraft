@@ -423,6 +423,9 @@ fn apply_transform(
     // The masks (and so a fill's frame) move, but a fill layer's cached render isn't warped:
     // drop it, the fill re-renders from its model (as `transform_layer_geometry` does).
     l.fill_cache = None;
+    // A warped screentone keeps its pixels but not its parameters: the kind is replaced after the
+    // match, once the mutable borrow of the content is over.
+    let mut baked_screentone = None;
     match &mut l.content {
         LayerContent::Group(g) => {
             for c in g.children.iter_mut() {
@@ -457,6 +460,24 @@ fn apply_transform(
                 m.surface = warp_gray(&m.surface, h, interp)?;
             }
         }
+        // A transform the tone's parameters cannot describe: bake the rendered sheet exactly like
+        // a pixel layer, so the transformed pixels stay what the user saw.
+        LayerContent::Screentone(s) => {
+            let surf = &mut s.surface;
+            baked_screentone = Some(match doc_sel {
+                Some(sel) => {
+                    let (lifted, mut rest) = split_selected(surf, sel)?;
+                    let moved = warp_surface_with(&lifted, lifted.content_bounds(), h, interp, ctl)?.ok_or(EngineError::Cancelled)?;
+                    composite_over(&mut rest, &moved);
+                    rest.prune();
+                    rest
+                }
+                None => {
+                    let src = surf.content_bounds();
+                    warp_surface_with(surf, src, h, interp, ctl)?.ok_or(EngineError::Cancelled)?
+                }
+            });
+        }
         _ => {
             if let Some(surf) = l.surface_mut() {
                 *surf = match doc_sel {
@@ -476,6 +497,11 @@ fn apply_transform(
                 };
             }
         }
+    }
+    // The warped sheet is now plain pixels: keeping the tone's spec and document origin would let
+    // them drift from the pixels a later restyle or re-render starts from.
+    if let Some(surface) = baked_screentone {
+        l.content = LayerContent::Raster(surface);
     }
     if let Some(m) = l.mask.as_mut()
         && m.linked

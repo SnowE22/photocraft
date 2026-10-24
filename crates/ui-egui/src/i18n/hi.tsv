@@ -131,6 +131,8 @@
 	Smart Objects	स्मार्ट ऑब्जेक्ट्स
 	Convert to Smart Object	स्मार्ट ऑब्जेक्ट में बदलें
 	Layer Mask	लेयर मास्क
+	Apply Layer Mask	लेयर मास्क लागू करें
+	Delete Layer Mask	लेयर मास्क हटाएँ
 	Hide All	सभी छिपाएँ
 	Reveal Selection	चयन दिखाएँ
 	Hide Selection	चयन छिपाएँ
@@ -138,6 +140,8 @@
 	Apply	लागू करें
 	Enable	सक्षम करें
 	Disable	अक्षम करें
+	Rasterize Layers	लेयर्स रास्टराइज़ करें
+	Screentone	स्क्रीनटोन
 	Merge Down	नीचे मर्ज करें
 	Merge Visible	दृश्यमान मर्ज करें
 	Flatten Image	इमेज फ़्लैट करें

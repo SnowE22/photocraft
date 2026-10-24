@@ -644,6 +644,7 @@ pub(crate) fn kind_of(s: &Session, id: LayerId) -> Option<&'static str> {
         LayerContent::Shape(_) => "shape",
         LayerContent::Fill(_) => "fill",
         LayerContent::Smart(_) => "smart",
+        LayerContent::Screentone(_) => "screentone",
         _ => return None,
     })
 }
@@ -668,6 +669,24 @@ fn rasterize_content(s: &mut Session, id: LayerId, only: Option<&str>, key: &str
         }
         "shape" => {
             s.execute("layer.rasterize.shape", json!({"layer": id.0, "coalesce": key}))?;
+        }
+        "screentone" => {
+            // Rasterizing bakes the live parameters into their rendered pixels. The layer mask
+            // is a separate document object and stays attached, exactly as it does for Smart
+            // Objects and fill content.
+            s.coalesce_request = Some(key.to_string());
+            let r = s.edit("Rasterize Screentone", |doc, _| {
+                let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
+                let LayerContent::Screentone(s) = &mut l.content else {
+                    return Err(EngineError::Other(format!("layer {} is not a screentone layer", id.0)));
+                };
+                let format = s.surface.format();
+                let surface = std::mem::replace(&mut s.surface, photocraft_raster::Surface::new(format));
+                l.content = LayerContent::Raster(surface);
+                Ok(())
+            });
+            s.coalesce_request = None;
+            r?;
         }
         "smart" => {
             s.coalesce_request = Some(key.to_string());

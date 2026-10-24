@@ -95,6 +95,18 @@ fn layout_gives_the_name_what_the_indicators_leave() {
 }
 
 #[test]
+fn a_live_screentone_shows_its_st_badge() {
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    let id = s.execute("layer.screentone", json!({"patternType": "dots", "name": "Tone"})).unwrap()["layer"].as_u64().unwrap();
+    let h = harness(s, 1.0, "promedium", 290.0);
+    let row = recorded(&h.ctx).into_iter().find(|r| r.layer == id).expect("the screentone row is drawn");
+    let badge = row.indicators.iter().find(|(k, _)| *k == Indicator::Screentone).expect("[ST] badge").1;
+    assert!((badge.width() - super::SCREENTONE_W).abs() < 0.01, "{badge:?}");
+    assert!(row.name.is_some_and(|n| n.right() <= badge.left()), "the name stays clear of the badge");
+}
+
+#[test]
 fn long_names_never_run_under_the_indicators() {
     for ppp in [1.0, 1.5, 2.0] {
         for width in [250.0, 290.0, 520.0] {

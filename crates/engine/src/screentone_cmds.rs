@@ -18,7 +18,7 @@
 
 use photocraft_algo::{self as algo, DotShape, FilterParams, PatternType, ScreentoneGradientType, ScreentoneSpec};
 use photocraft_color::PixelFormat;
-use photocraft_doc::{Layer, LayerContent, LayerMask, Pattern, Rect};
+use photocraft_doc::{Layer, LayerContent, LayerMask, Pattern, Rect, ScreentoneLayer};
 use photocraft_raster::Surface;
 use serde_json::{Value, json};
 
@@ -274,10 +274,9 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     let mut spec = spec(p);
     // A generated sheet has no source luminance to modulate by: always procedural.
     spec.use_source_luminance = false;
-    let params = FilterParams::Screentone { spec };
 
     if let Some(id) = p.get("layer").and_then(Value::as_u64) {
-        return restyle_layer(s, photocraft_doc::LayerId(id), params);
+        return restyle_layer(s, photocraft_doc::LayerId(id), FilterParams::Screentone { spec });
     }
 
     let st = s.active().ok_or(EngineError::NoDocument)?;
@@ -288,11 +287,14 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     if bounds.is_empty() {
         return Err(EngineError::Other("the document is empty".into()));
     }
-    let area = algo::output_area(&params, bounds, bounds, sel_bounds);
+    // The spec's originX/originY is a phase inside the render frame; a live layer stores the
+    // equivalent document-space anchor so its lattice stays put when the frame changes.
+    let origin = algo::screentone::origin_doc(&spec, bounds);
+    let mut rendered = Surface::new(st.doc.pixel_format());
+    let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, &spec, origin);
     if area.is_empty() {
         return Err(EngineError::Other("nothing to render: the target area is empty".into()));
     }
-    let rendered = algo::apply(&Surface::new(st.doc.pixel_format()), &params, area, bounds, None);
 
     let name = requested_name(p);
     // An active selection keeps shaping the sheet for good: the layer carries it as its mask
@@ -307,9 +309,12 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
         mask.surface.prune();
         mask
     });
+    let content = ScreentoneLayer::new(spec, origin, rendered);
     let id = s.edit("Screentone", |doc, active| {
-        let mut l = Layer::new(doc.next_layer_name(&name), LayerContent::Raster(rendered));
+        let mut l = Layer::new(doc.next_layer_name(&name), LayerContent::Screentone(content));
         l.mask = mask;
+        // Manga tones darken the artwork below them; the panel and gizmo expect Multiply.
+        l.blend = photocraft_color::BlendMode::Multiply;
         let id = doc.insert_above(*active, l);
         *active = Some(id);
         Ok(id)
@@ -392,18 +397,27 @@ fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: Filte
     let Some(surface) = layer.surface() else {
         return Err(EngineError::Other(format!("layer {} is not a pixel layer", id.0)));
     };
-    let format = surface.format();
-    let area = algo::output_area(&params, bounds, bounds, None);
+    let origin = algo::screentone::origin_doc(spec, bounds);
+    let mut rendered = Surface::new(surface.format());
+    let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, spec, origin);
     if area.is_empty() {
         return Err(EngineError::Other("nothing to render: the layer's area is empty".into()));
     }
-    // Render a standalone sheet, then swap it for the layer's content in one edit.
-    let rendered = algo::apply(&Surface::new(format), &params, area, bounds, None);
+    let spec = spec.clone();
+    // Render a standalone sheet, then swap it for the layer's content in one edit. Live
+    // screentone layers keep their parameters; older raster sheets stay raster (the legacy
+    // in-place restyle the gizmo used before screentone content existed).
     s.edit("Screentone", |doc, _| {
         let layer = doc
             .layer_mut(id)
             .ok_or_else(|| EngineError::Other("the layer to restyle is gone".into()))?;
-        layer.content = LayerContent::Raster(rendered);
+        if let LayerContent::Screentone(previous) = &mut layer.content {
+            previous.spec = spec;
+            previous.origin = origin;
+            previous.surface = rendered;
+        } else {
+            layer.content = LayerContent::Raster(rendered);
+        }
         Ok(())
     })?;
     Ok(json!({
@@ -514,12 +528,15 @@ mod tests {
             let id = r["layer"].as_u64().unwrap();
             assert!(r["bounds"].is_array(), "{r}");
             assert!(read_layer(&s, id).as_chunks::<4>().0.iter().any(|p| p[3] > 0.0), "layer@{depth} drew nothing");
-            // The filter edits the active layer in place, as one history step.
+            // The filter edits a pixel layer in place, as one history step. A live screentone is
+            // procedural, so the filter needs a fresh raster target.
+            s.execute("layer.new.layer", json!({})).unwrap();
             let count = s.active().unwrap().history.entries().len();
             s.execute(FILTER, json!({"patternType": "lines", "useSourceLuminance": false})).unwrap_or_else(|e| panic!("filter@{depth}: {e}"));
             assert_eq!(s.active().unwrap().history.entries().len(), count + 1);
-            s.execute("edit.undo", json!({})).unwrap();
-            s.execute("edit.undo", json!({})).unwrap();
+            for _ in 0..3 {
+                s.execute("edit.undo", json!({})).unwrap();
+            }
         }
     }
 
@@ -696,6 +713,12 @@ mod tests {
         assert!(layer.mask.is_some(), "the mask survives a restyle");
         assert_eq!(state.history.entries().len(), count + 1, "one restyle = one history step");
         assert_ne!(read_layer(&s, id), before, "the content changes with the new pattern");
+        // Restyling a live sheet keeps it procedural: the spec and its document anchor update
+        // together, so the cache never becomes a detached raster.
+        let expected = ScreentoneSpec { use_source_luminance: false, ..spec(&json!({"patternType": "dots", "spacingX": 12, "spacingY": 12})) };
+        let LayerContent::Screentone(st) = &layer.content else { panic!("restyled content is {}", layer.content.kind_name()) };
+        assert_eq!(st.spec, expected);
+        assert_eq!(st.origin, algo::screentone::origin_doc(&expected, Rect::new(0, 0, 40, 72)));
 
         s.execute("edit.undo", json!({})).unwrap();
         assert_eq!(read_layer(&s, id), before, "undo restores the previous sheet");
@@ -728,7 +751,6 @@ mod tests {
     #[test]
     fn restyle_fails_cleanly_for_unknown_or_non_pixel_layers() {
         let mut s = session(8);
-        let count = s.active().unwrap().history.entries().len();
         let e = s.execute(LAYER, json!({"layer": 9999, "patternType": "dots"})).unwrap_err();
         assert!(matches!(e, EngineError::Other(ref m) if m.contains("no layer 9999")), "{e}");
         // A group is not a pixel layer to restyle.
@@ -738,5 +760,111 @@ mod tests {
         let e = s.execute(LAYER, json!({"layer": gid, "patternType": "dots"})).unwrap_err();
         assert!(matches!(e, EngineError::Other(ref m) if m.contains("not a pixel layer")), "{e}");
         assert_eq!(s.active().unwrap().history.entries().len(), count, "no history for refused restyles");
+    }
+
+    #[test]
+    fn a_generated_sheet_is_live_screentone_content_with_a_document_origin() {
+        let mut s = session(8);
+        s.execute("select.rect", json!({"x": 8, "y": 6, "width": 64, "height": 48})).unwrap();
+        let r = s.execute(
+            LAYER,
+            json!({"patternType": "dots", "spacingX": 12, "spacingY": 12, "originX": 3.0, "originY": -2.0, "rotCanvas": 30.0}),
+        )
+        .unwrap();
+        let id = photocraft_doc::LayerId(r["layer"].as_u64().unwrap());
+        let layer = s.active().unwrap().doc.layer(id).unwrap();
+        let LayerContent::Screentone(st) = &layer.content else { panic!("generated content is {}", layer.content.kind_name()) };
+        assert!(layer.is_screentone());
+        assert_eq!(layer.blend, photocraft_color::BlendMode::Multiply, "manga tones darken what is below");
+        assert!(!st.spec.use_source_luminance, "a generated sheet has no source to shade by");
+        assert_eq!(st.origin, algo::screentone::origin_doc(&st.spec, Rect::new(8, 6, 72, 54)));
+        assert!(layer.clone().surface_mut().is_none(), "a plain pixel edit must not detach the cache from the spec");
+    }
+
+    #[test]
+    fn rasterize_bakes_a_live_screentone_and_keeps_its_mask() {
+        let mut s = session(8);
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 40, "height": 72})).unwrap();
+        let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10, "name": "Tone"})).unwrap();
+        let id = photocraft_doc::LayerId(r["layer"].as_u64().unwrap());
+        let layer = s.active().unwrap().doc.layer(id).unwrap();
+        let (name, mask, pixels) = (layer.name.clone(), layer.mask.clone(), read_layer(&s, id.0));
+        assert!(layer.is_screentone());
+        let count = s.active().unwrap().history.entries().len();
+
+        s.execute("layer.rasterize.layer", json!({"layer": id.0})).unwrap();
+
+        let state = s.active().unwrap();
+        let layer = state.doc.layer(id).unwrap();
+        assert!(matches!(layer.content, LayerContent::Raster(_)), "the live content became pixels");
+        assert!(!layer.is_screentone());
+        assert_eq!(layer.name, name);
+        assert_eq!(layer.mask, mask, "rasterizing does not touch the layer mask");
+        assert_eq!(read_layer(&s, id.0), pixels, "the baked pixels are the rendered cache");
+        assert_eq!(state.history.entries().len(), count + 1, "one rasterize = one history step");
+    }
+
+    #[test]
+    fn apply_mask_bakes_a_live_screentone_in_one_step() {
+        let mut s = session(8);
+        let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10})).unwrap();
+        let id = photocraft_doc::LayerId(r["layer"].as_u64().unwrap());
+        let before = read_layer(&s, id.0);
+        let alpha = |x: i32, y: i32| ((y * 96 + x) * 4 + 3) as usize;
+        s.execute("select.rect", json!({"x": 20, "y": 20, "width": 30, "height": 20})).unwrap();
+        s.execute("layer.layerMask.hideSelection", json!({})).unwrap();
+        let count = s.active().unwrap().history.entries().len();
+
+        s.execute("layer.layerMask.apply", json!({})).unwrap();
+
+        let state = s.active().unwrap();
+        let layer = state.doc.layer(id).unwrap();
+        assert!(matches!(layer.content, LayerContent::Raster(_)), "applying to a live tone bakes it");
+        assert!(layer.mask.is_none(), "Apply consumes the mask");
+        assert_eq!(state.history.entries().len(), count + 1, "rasterize + multiply = one history step");
+        let after = read_layer(&s, id.0);
+        let hidden = (20..40).flat_map(|y| (20..50).map(move |x| (x, y))).map(|(x, y)| alpha(x, y)).find(|&i| before[i] > 0.0).expect("the tone covers the selection");
+        assert_eq!(after[hidden], 0.0, "the hidden selection's alpha is baked away");
+        let shown = (40..72).flat_map(|y| (50..96).map(move |x| (x, y))).map(|(x, y)| alpha(x, y)).find(|&i| before[i] > 0.0).expect("the tone covers the canvas");
+        assert_eq!(after[shown], before[shown], "revealed pixels keep their alpha");
+    }
+
+    #[test]
+    fn a_transform_bakes_a_live_screentone_to_pixels() {
+        let mut s = session(8);
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 40, "height": 72})).unwrap();
+        let r = s.execute(LAYER, json!({"patternType": "checker", "spacingX": 10, "spacingY": 10})).unwrap();
+        let id = photocraft_doc::LayerId(r["layer"].as_u64().unwrap());
+        let layer = s.active().unwrap().doc.layer(id).unwrap();
+        let (masked, before) = (layer.mask.as_ref().map(|m| (m.enabled, m.linked)), layer.surface().unwrap().content_bounds());
+        assert!(layer.is_screentone());
+        let count = s.active().unwrap().history.entries().len();
+
+        s.execute("edit.transform", json!({"layer": id.0, "matrix": [1, 0, 0, 1, 5, 3], "interpolation": "nearest"})).unwrap();
+
+        let state = s.active().unwrap();
+        let layer = state.doc.layer(id).unwrap();
+        assert!(matches!(layer.content, LayerContent::Raster(_)), "a transform the tone's parameters cannot describe bakes it");
+        assert!(!layer.is_screentone());
+        assert_eq!(layer.mask.as_ref().map(|m| (m.enabled, m.linked)), masked, "transforming keeps the layer mask (a linked one moves with it)");
+        let moved = layer.surface().unwrap().content_bounds();
+        assert_eq!(moved, Rect::new(before.x0 + 5, before.y0 + 3, before.x1 + 5, before.y1 + 3), "the warped pixels moved");
+        assert_eq!(state.history.entries().len(), count + 1, "one transform = one history step");
+    }
+
+    #[test]
+    fn a_colour_mode_conversion_bakes_a_live_screentone() {
+        let mut s = session(8);
+        let r = s.execute(LAYER, json!({"patternType": "dots"})).unwrap();
+        let id = photocraft_doc::LayerId(r["layer"].as_u64().unwrap());
+        let before = read_layer(&s, id.0);
+        assert!(before.as_chunks::<4>().0.iter().any(|p| p[3] > 0.0), "the tone drew pixels");
+
+        s.execute("image.mode.cmyk", json!({})).unwrap();
+
+        let layer = s.active().unwrap().doc.layer(id).unwrap();
+        assert!(matches!(layer.content, LayerContent::Raster(_)), "the tone bakes when its colours' space changes");
+        assert_eq!(layer.surface().unwrap().format().mode, photocraft_color::ColorMode::Cmyk);
+        assert!(layer.surface().unwrap().content_bounds().width() > 0, "the baked pixels are still there");
     }
 }

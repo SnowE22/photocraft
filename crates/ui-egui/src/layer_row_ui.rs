@@ -24,6 +24,8 @@ const GAP: f32 = 4.0;
 const ICON_W: f32 = 14.0;
 /// Width of the effects triangle beside the fx badge.
 const TRIANGLE_W: f32 = 10.0;
+/// Width of the live-screentone `[ST]` badge.
+const SCREENTONE_W: f32 = 24.0;
 /// The blend-mode label is shown only while the name keeps at least this much room.
 pub const MIN_NAME_W: f32 = 64.0;
 
@@ -36,6 +38,7 @@ pub enum Indicator {
     FxTriangle,
     Fx,
     SmartFilters,
+    Screentone,
     Link,
     Blend,
 }
@@ -90,6 +93,9 @@ pub fn reserved_width(l: &Layer) -> f32 {
     }
     if l.locks.any() {
         w += ICON_W + GAP;
+    }
+    if matches!(l.content, LayerContent::Screentone(_)) {
+        w += SCREENTONE_W + GAP;
     }
     let smart = crate::smart_ui::has_filters(l);
     if !l.effects.items.is_empty() || smart {
@@ -158,6 +164,7 @@ pub fn indicators(
     let show_blend = l.blend != BlendMode::Normal && l.blend != BlendMode::PassThrough;
     let fx_galley = has_fx.then(|| painter.layout_no_wrap("fx".into(), fx_font, t.text_dim));
     let blend_galley = show_blend.then(|| painter.layout_no_wrap(tl!(l.blend.label()).into(), blend_font, t.text_faint));
+    let st_galley = matches!(l.content, LayerContent::Screentone(_)).then(|| painter.layout_no_wrap("[ST]".into(), theme::semibold(9.0), t.text_dim));
     let mut items = Vec::new();
     let unsupported = unsupported_key(l);
     if unsupported.is_some() {
@@ -165,6 +172,9 @@ pub fn indicators(
     }
     if locked {
         items.push((Indicator::Lock, ICON_W));
+    }
+    if st_galley.is_some() {
+        items.push((Indicator::Screentone, SCREENTONE_W));
     }
     if has_fx || has_smart {
         items.push((Indicator::FxTriangle, TRIANGLE_W));
@@ -193,6 +203,12 @@ pub fn indicators(
                 ui.interact(r, ui.id().with(("row-unsupported", l.id.0)), Sense::hover()).on_hover_text(tip);
             }
             Indicator::Lock => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "lock", 12.0, t.text_faint),
+            Indicator::Screentone => {
+                if let Some(g) = st_galley.clone() {
+                    painter.galley(pos2(r.center().x - g.size().x / 2.0, cy - g.size().y / 2.0), g, t.text_dim);
+                }
+                ui.interact(r, ui.id().with(("screentone-badge", l.id.0)), Sense::hover()).on_hover_text(tl!("Screentone"));
+            }
             Indicator::Link => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "link-2", 12.0, t.text_faint),
             Indicator::Fx => {
                 if let Some(g) = fx_galley.clone() {

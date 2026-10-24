@@ -16,6 +16,7 @@ craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "5c874d51eeb
 # internal
 photocraft-geom = { path = "crates/geom" }
 photocraft-color = { path = "crates/color" }
+photocraft-tone = { path = "crates/tone" }
 photocraft-cms = { path = "crates/cms" }
 photocraft-raster = { path = "crates/raster" }
 photocraft-doc = { path = "crates/doc" }

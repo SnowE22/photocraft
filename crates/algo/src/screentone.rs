@@ -12,186 +12,12 @@
 //! * Depth-agnostic, selection-aware and tile-invariant.
 
 use photocraft_geom::Rect;
-use serde::{Deserialize, Serialize};
+use photocraft_raster::Surface;
+pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneSpec};
 
 use crate::Ctx;
-use crate::Halo;
 use crate::fxutil::{luma, rgba, set_rgba, xy};
 use crate::image::Image;
-
-/// 12 pattern types supported by the GenTonik screentone engine.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum PatternType {
-    #[default]
-    Dots,
-    Lines,
-    Crosshatch,
-    Noise,
-    GaussianNoise,
-    Stipple,
-    Hexgrid,
-    Checker,
-    Concentric,
-    Stars,
-    Hearts,
-    Triangles,
-}
-
-/// Geometric dot shapes for raster dots and satellites.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum DotShape {
-    #[default]
-    Circle,
-    Square,
-    Diamond,
-    Hexagon,
-}
-
-/// Gradient mapping type.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum ScreentoneGradientType {
-    #[default]
-    None,
-    Linear,
-    Radial,
-}
-
-/// Parameters for procedural screentone generation.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct ScreentoneSpec {
-    // ---- Pattern ----
-    pub pattern_type: PatternType,
-    pub dot_shape: DotShape,
-    pub dot_size: f32,
-    pub spacing_x: f32,
-    pub spacing_y: f32,
-    pub density: f32,
-    pub angle: f32,
-    pub line_width: f32,
-    pub cross_angle: f32,
-    /// Phase offset of the lattice in the tone's own rotated frame: where cell `0, 0`
-    /// anchors (the origin the on-canvas gizmo's handle drags). `0, 0` anchors the lattice
-    /// at the render bounds' center and matches every pre-origin document.
-    pub origin_x: f32,
-    pub origin_y: f32,
-
-    // ---- Satellites ----
-    pub satellite_enabled: bool,
-    pub satellite_size: f32,
-    pub satellite_distance: f32,
-    pub satellite_count: u32,
-    pub satellite_angle: f32,
-    pub satellite_dot_shape: DotShape,
-    pub satellite_stretch: f32,
-
-    // ---- Distortion & Geometry ----
-    pub aspect_x: f32,
-    pub aspect_y: f32,
-    pub row_offset: f32,
-    pub merge_factor: f32,
-    pub jitter_pos: f32,
-    pub jitter_size: f32,
-    pub roundness: f32,
-
-    // ---- Gradient Mapping ----
-    pub grad_type: ScreentoneGradientType,
-    pub grad_angle: f32,
-    pub grad_reverse: bool,
-    pub grad_midpoint: f32,
-    pub grad_size_start: f32,
-    pub grad_size_end: f32,
-    pub grad_stretch_start: f32,
-    pub grad_stretch_end: f32,
-    pub grad_color_trans: bool,
-
-    // ---- Colors ----
-    /// Straight sRGB RGBA for foreground (pattern/ink).
-    pub foreground: [f32; 4],
-    /// Straight sRGB RGBA for background.
-    pub background: [f32; 4],
-
-    // ---- Rotations ----
-    pub rot_canvas: f32,
-    pub rot_pattern: f32,
-
-    // ---- Manga Shading & Antialiasing ----
-    /// Modulate dot size by underlying layer darkness (halftone manga shading mode).
-    pub use_source_luminance: bool,
-    /// Edge smoothness: 1.0 = smooth antialiased, 0.0 = pure 1-bit manga threshold.
-    pub smoothness: f32,
-    /// Seed for noise and stipple patterns.
-    pub seed: u32,
-}
-
-impl Default for ScreentoneSpec {
-    fn default() -> Self {
-        Self {
-            pattern_type: PatternType::Dots,
-            dot_shape: DotShape::Circle,
-            dot_size: 6.0,
-            spacing_x: 16.0,
-            spacing_y: 16.0,
-            density: 0.5,
-            angle: 0.0,
-            line_width: 1.5,
-            cross_angle: 45.0,
-            origin_x: 0.0,
-            origin_y: 0.0,
-
-            satellite_enabled: false,
-            satellite_size: 4.0,
-            satellite_distance: 18.0,
-            satellite_count: 4,
-            satellite_angle: 0.0,
-            satellite_dot_shape: DotShape::Circle,
-            satellite_stretch: 0.0,
-
-            aspect_x: 1.0,
-            aspect_y: 1.0,
-            row_offset: 0.0,
-            merge_factor: 0.0,
-            jitter_pos: 0.0,
-            jitter_size: 0.0,
-            roundness: 0.0,
-
-            grad_type: ScreentoneGradientType::None,
-            grad_angle: 90.0,
-            grad_reverse: false,
-            grad_midpoint: 0.5,
-            grad_size_start: 1.0,
-            grad_size_end: 0.0,
-            grad_stretch_start: 1.0,
-            grad_stretch_end: 1.0,
-            grad_color_trans: false,
-
-            foreground: [0.0, 0.0, 0.0, 1.0],
-            background: [1.0, 1.0, 1.0, 0.0],
-
-            rot_canvas: 0.0,
-            rot_pattern: 0.0,
-
-            use_source_luminance: true,
-            smoothness: 1.0,
-            seed: 42,
-        }
-    }
-}
-
-impl ScreentoneSpec {
-    /// Pixels read outside an output tile.
-    pub fn halo(&self) -> Halo {
-        if self.use_source_luminance {
-            let max_spacing = self.spacing_x.max(self.spacing_y).clamp(1.0, 256.0);
-            Halo::Radius((max_spacing * 0.5).ceil() as i32 + 2)
-        } else {
-            Halo::Radius(0)
-        }
-    }
-}
 
 /// Built-in preset descriptor for manga screentone styles.
 #[derive(Clone, Debug, PartialEq)]
@@ -467,6 +293,52 @@ pub fn built_in_presets() -> Vec<ScreentonePreset> {
             },
         },
     ]
+}
+
+/// The document-space point the lattice anchors to for `spec` over `bounds`.
+///
+/// The renderer phases its lattice from the centre of `bounds`; adding the spec's rotated phase
+/// gives the same anchor in document coordinates. A stored screentone layer keeps this point, so
+/// growing the canvas or rendering only the visible tile does not slide the pattern.
+pub fn origin_doc(spec: &ScreentoneSpec, bounds: Rect) -> (f32, f32) {
+    let cx = bounds.x0 as f32 + bounds.width().max(1) as f32 * 0.5;
+    let cy = bounds.y0 as f32 + bounds.height().max(1) as f32 * 0.5;
+    let (sin, cos) = spec.rot_canvas.to_radians().sin_cos();
+    (cx + spec.origin_x * cos - spec.origin_y * sin, cy + spec.origin_x * sin + spec.origin_y * cos)
+}
+
+/// A copy of `spec` whose lattice phase is the document-space `origin` over `bounds`.
+///
+/// This is the inverse of [`origin_doc`]. `use_source_luminance` is always off: a generated
+/// sheet has no source layer to shade by.
+pub fn sheet_spec(spec: &ScreentoneSpec, bounds: Rect, origin: (f32, f32)) -> ScreentoneSpec {
+    let cx = bounds.x0 as f32 + bounds.width().max(1) as f32 * 0.5;
+    let cy = bounds.y0 as f32 + bounds.height().max(1) as f32 * 0.5;
+    let (dx, dy) = (origin.0 - cx, origin.1 - cy);
+    let (sin, cos) = spec.rot_canvas.to_radians().sin_cos();
+    ScreentoneSpec {
+        origin_x: dx * cos + dy * sin,
+        origin_y: -dx * sin + dy * cos,
+        use_source_luminance: false,
+        ..spec.clone()
+    }
+}
+
+/// Render a procedural sheet into `surface`, anchored at the document-space `origin`.
+///
+/// The whole `bounds` frame is rendered (a layer mask shapes the visible area), and the function
+/// returns the document-space area written. The origin is stored relative to the document, so
+/// callers can render preview tiles or a later, larger frame without moving the lattice.
+pub fn render_screentone_to_surface(surface: &mut Surface, bounds: Rect, spec: &ScreentoneSpec, origin: (f32, f32)) -> Rect {
+    let params = crate::FilterParams::Screentone { spec: sheet_spec(spec, bounds, origin) };
+    let area = crate::output_area(&params, bounds, bounds, None);
+    if area.is_empty() {
+        return area;
+    }
+    let rendered = crate::apply(&Surface::new(surface.format()), &params, area, bounds, None);
+    let px = rendered.read_region(area);
+    surface.write_region(area, &px);
+    area
 }
 
 // ────────────────────────────────────────────────────────────
@@ -1333,5 +1205,31 @@ mod tests {
         // An untouched origin renders exactly as before the field existed.
         let unchanged = screentone(&img, bounds, &ctx, &base);
         assert_eq!(unchanged, plain);
+    }
+
+    #[test]
+    fn document_origin_round_trips_across_render_frames() {
+        let spec = ScreentoneSpec {
+            pattern_type: PatternType::Dots,
+            dot_size: 5.0,
+            spacing_x: 16.0,
+            spacing_y: 16.0,
+            rot_canvas: 27.0,
+            origin_x: 5.0,
+            origin_y: -3.0,
+            use_source_luminance: false,
+            ..Default::default()
+        };
+        let sheet = Rect::new(8, 6, 72, 54);
+        let origin = origin_doc(&spec, sheet);
+        // Rendering the same document anchor over a different frame recovers that same anchor:
+        // the frame's centre is removed before the tone's rotation is undone.
+        let wider = Rect::new(0, 0, 160, 120);
+        let rerendered = sheet_spec(&spec, wider, origin);
+        let back = origin_doc(&rerendered, wider);
+        assert!((back.0 - origin.0).abs() < 0.001, "{back:?} vs {origin:?}");
+        assert!((back.1 - origin.1).abs() < 0.001, "{back:?} vs {origin:?}");
+        // The phase itself is frame-relative, so the two specs differ while anchoring the same point.
+        assert_ne!((rerendered.origin_x, rerendered.origin_y), (spec.origin_x, spec.origin_y));
     }
 }

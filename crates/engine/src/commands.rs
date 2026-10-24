@@ -1745,6 +1745,10 @@ pub(crate) fn translate_layer(doc: &Document, l: &mut Layer, dx: i32, dy: i32) {
             }
         }
         LayerContent::Smart(sm) => crate::smart_cmds::shift_smart(sm, dx, dy),
+        LayerContent::Screentone(s) => {
+            s.surface = translate_surface(&s.surface, dx, dy);
+            s.origin = (s.origin.0 + dx as f32, s.origin.1 + dy as f32);
+        }
         _ => {}
     }
 }

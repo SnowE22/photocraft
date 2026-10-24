@@ -304,6 +304,13 @@ pub enum ContentM {
         #[serde(default)]
         feather: f32,
     },
+    Screentone {
+        spec: photocraft_doc::ScreentoneSpec,
+        /// Document-space lattice anchor.
+        origin: (f32, f32),
+        /// Rendered cache in document coordinates.
+        surface: SurfaceM,
+    },
     Smart {
         /// Shared source identity; older bundles did not record it.
         #[serde(default)]

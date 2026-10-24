@@ -711,7 +711,7 @@ impl FilterParams {
 fn halo_ext(p: &FilterParams) -> Halo {
     let r = |v: f32| Halo::Radius(v.max(0.0).ceil() as i32 + 1);
     match p {
-        FilterParams::Screentone { spec } => spec.halo(),
+        FilterParams::Screentone { spec } => Halo::Radius(spec.halo_radius()),
         FilterParams::ColorHalftone { max_radius, .. } => r(max_radius * 3.0),
         FilterParams::Crystallize { cell_size, .. } => r(cell_size.max(1.0) * 3.0),
         FilterParams::Pointillize { cell_size, .. } => r(cell_size.max(1.0) * 2.0),

@@ -46,8 +46,11 @@ fn has_raster(s: &Session) -> Enabled {
 }
 
 fn has_raster_with_mask(s: &Session) -> Enabled {
-    has_raster(s)?;
-    if active_layer(s)?.mask.is_some() { Ok(()) } else { Err("the layer has no layer mask".into()) }
+    let l = active_layer(s)?;
+    if !matches!(l.content, LayerContent::Raster(_) | LayerContent::Screentone(_)) {
+        return Err(format!("active layer is {} {} layer, not a pixel layer", l.content.article(), l.content.kind_name()));
+    }
+    if l.mask.is_some() { Ok(()) } else { Err("the layer has no layer mask".into()) }
 }
 
 fn has_selection_layer(s: &Session) -> Enabled {
@@ -143,11 +146,23 @@ fn apply_mask(s: &mut Session, p: &Value) -> Result<Value> {
                 None
             }
         };
-        let mask = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?.mask.take().ok_or_else(|| other("the layer has no layer mask"))?;
-        let surf = crate::commands::paint_surface(doc, id, &Value::Null)?;
+        crate::commands::check_pixels_unlocked(doc, id)?;
+        let layer = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
+        // A live screentone has no editable pixel surface. Applying a mask bakes its rendered
+        // cache into pixels first, so the command is a one-step "rasterize, then multiply".
+        let format = layer
+            .surface()
+            .map(|s| s.format())
+            .ok_or_else(|| other("the layer has no pixels to apply a mask to"))?;
+        let mask = layer.mask.take().ok_or_else(|| other("the layer has no layer mask"))?;
+        let mut surf = match &mut layer.content {
+            LayerContent::Raster(s) => std::mem::replace(s, Surface::new(format)),
+            LayerContent::Screentone(s) => std::mem::replace(&mut s.surface, Surface::new(format)),
+            _ => return Err(other("not a pixel layer")),
+        };
         let r = surf.content_bounds();
         if !r.is_empty() {
-            let mut px = read_rgba(surf, r);
+            let mut px = read_rgba(&surf, r);
             let mut m = Vec::new();
             if let Some(ref softened) = feathered {
                 softened.read_region_into(r, &mut m);
@@ -157,9 +172,11 @@ fn apply_mask(s: &mut Session, p: &Value) -> Result<Value> {
             for (q, k) in px.iter_mut().zip(&m) {
                 q[3] *= k;
             }
-            write_rgba(surf, r, &px);
+            write_rgba(&mut surf, r, &px);
             surf.prune();
         }
+        layer.content = LayerContent::Raster(surf);
+        layer.fill_cache = None;
         Ok(Value::Null)
     })
 }

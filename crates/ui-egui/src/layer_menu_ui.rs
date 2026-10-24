@@ -83,6 +83,7 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
                 v.push(Some(("Rasterize Layer", "layer.rasterize.smartObject")));
             }
             LayerContent::Fill(_) => v.push(Some(("Rasterize Layer", "layer.rasterize.fillContent"))),
+            LayerContent::Screentone(_) => v.push(Some(("Rasterize Layer", "layer.rasterize.layer"))),
             _ => v.push(Some(("Rasterize Layer", "layer.rasterize.layer"))),
         }
     }

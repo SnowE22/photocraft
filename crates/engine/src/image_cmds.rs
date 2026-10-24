@@ -56,8 +56,31 @@ pub(crate) fn for_each_surface(layers: &mut [Layer], masks: bool, f: &mut dyn Fn
                     f(&mut mask.surface, true);
                 }
             }
+            LayerContent::Screentone(s) => f(&mut s.surface, false),
             LayerContent::Group(g) => for_each_surface(&mut g.children, masks, f),
             _ => {}
+        }
+    }
+}
+
+/// Bakes live procedural content to pixels before an operation that cannot keep its parameters
+/// (resampling, canvas turns). The rendered cache becomes raster content; the layer mask and all
+/// other layer properties stay attached.
+pub(crate) fn bake_procedural_layers(layers: &mut [Layer]) {
+    for l in layers {
+        let baked = match &mut l.content {
+            LayerContent::Screentone(s) => {
+                let format = s.surface.format();
+                Some(std::mem::replace(&mut s.surface, Surface::new(format)))
+            }
+            LayerContent::Group(g) => {
+                bake_procedural_layers(&mut g.children);
+                None
+            }
+            _ => None,
+        };
+        if let Some(surface) = baked {
+            l.content = LayerContent::Raster(surface);
         }
     }
 }
@@ -295,6 +318,9 @@ pub(crate) fn resample_doc(doc: &mut Document, nw: u32, nh: u32, filter: Resampl
     if (sx - 1.0).abs() < 1e-12 && (sy - 1.0).abs() < 1e-12 {
         return;
     }
+    // Resampling changes the pixel geometry the tone's parameters describe; bake the rendered
+    // sheet so the cached appearance and the document stay in step.
+    bake_procedural_layers(&mut doc.layers);
     // Content that reaches the canvas edge keeps it: a Background stays opaque to the border.
     let canvas = Rect::from_xywh(0, 0, ow, oh);
     for_each_surface(&mut doc.layers, true, &mut |surf, is_mask| {
@@ -866,6 +892,12 @@ pub(crate) fn change_depth(doc: &mut Document, depth: SampleType) {
     let crosses = (current == SampleType::F32) != (depth == SampleType::F32) && matches!(doc.mode, ColorMode::Rgb | ColorMode::Grayscale);
     let to_linear = depth == SampleType::F32;
     let transfer = photocraft_compose::adjust::Transfer::for_document(doc.mode, if to_linear { current } else { depth });
+    // The tone's colours are premultiplied by no transfer curve of their own: once the cached
+    // pixels cross the 32-bit boundary, keep the encoded pixels rather than a spec that would
+    // re-render them differently.
+    if crosses {
+        crate::image_cmds::bake_procedural_layers(&mut doc.layers);
+    }
     if crosses && !to_linear {
         for_each_surface(&mut doc.layers, false, &mut |surf, _| surf.map_color(|v| transfer.encode(v).clamp(0.0, 1.0)));
     }

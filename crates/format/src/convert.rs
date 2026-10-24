@@ -155,6 +155,7 @@ fn layer_m(l: &Layer, sink: &mut dyn Sink) -> LayerM {
             density: s.density,
             feather: s.feather,
         },
+        LayerContent::Screentone(s) => ContentM::Screentone { spec: s.spec.clone(), origin: s.origin, surface: surface_m(&s.surface, sink) },
         LayerContent::Smart(s) => ContentM::Smart {
             contents_id: Some(s.contents_id.0),
             source: match &s.source {
@@ -479,6 +480,9 @@ impl Loader<'_> {
                 density: *density,
                 feather: *feather,
             }),
+            ContentM::Screentone { spec, origin, surface } => {
+                LayerContent::Screentone(photocraft_doc::ScreentoneLayer { spec: spec.clone(), origin: *origin, surface: self.surface(surface)? })
+            }
             ContentM::Smart { contents_id, source, transform, smart_filters, cache, psd_raw, filters_enabled, filter_mask, warp, stack_mode, perspective } => {
                 LayerContent::Smart(SmartObject {
                     contents_id: self.contents_id(*contents_id, source),

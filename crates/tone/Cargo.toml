@@ -1,0 +1,13 @@
+[package]
+name = "photocraft-tone"
+description = "Screentone parameters shared by the document model, renderer, engine and UI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { workspace = true }
