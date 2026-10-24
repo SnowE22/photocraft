@@ -53,6 +53,8 @@ pub(crate) struct Gizmo {
     /// one document (`target_doc`, so another document fronts it stale).
     target: Option<LayerId>,
     target_doc: Option<DocId>,
+    /// Last active screentone layer whose `spec` was synced into `ScreentoneUi`.
+    synced_layer: Option<(DocId, LayerId)>,
     /// The running drag, with the spec as it stood at the press (Escape restores it).
     drag: Option<Drag>,
     /// The preview texture cache (the `ClonePreviewCache` pattern: a keyed CPU surface).
@@ -200,6 +202,7 @@ pub(crate) fn pointer(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifi
         ToolEvent::Up { x, y } => {
             let Some(drag) = app.screentone_gizmo.drag.clone() else { return false };
             app.screentone_gizmo.drag = None;
+            app.screentone_gizmo.preview = None;
             apply_drag(app, &drag, [x, y], mods.shift);
             commit_drag(app, &drag);
             true
@@ -263,14 +266,48 @@ fn commit_drag(app: &mut PhotocraftApp, drag: &Drag) {
     if let Some(map) = p.as_object_mut() {
         map.insert("layer".into(), json!(target.0));
     }
-    crate::preset_panels::run(app, photocraft_engine::screentone_cmds::LAYER, p);
+    let result = crate::preset_panels::run(app, photocraft_engine::screentone_cmds::LAYER, p);
+    bind_layer_result(app, photocraft_engine::screentone_cmds::LAYER, &result);
+}
+
+/// Synchronizes `ScreentoneUi.spec` and the gizmo's target binding when the user selects an
+/// existing `LayerContent::Screentone` layer in the Layers panel.
+pub(crate) fn sync_active_layer(app: &mut PhotocraftApp) {
+    if app.screentone_gizmo.drag.is_some() {
+        return;
+    }
+    let active_tone = app.session.active().and_then(|st| {
+        let id = st.active_layer?;
+        let photocraft_doc::LayerContent::Screentone(tone) = &st.doc.layer(id)?.content else {
+            return None;
+        };
+        Some((st.doc.id, id, tone.spec.clone()))
+    });
+    match active_tone {
+        Some((doc_id, id, spec)) => {
+            if app.screentone_gizmo.synced_layer != Some((doc_id, id)) {
+                app.ui.screentone_ui.spec = spec;
+                app.screentone_gizmo.target = Some(id);
+                app.screentone_gizmo.target_doc = Some(doc_id);
+                app.screentone_gizmo.synced_layer = Some((doc_id, id));
+            }
+        }
+        None => {
+            app.screentone_gizmo.synced_layer = None;
+        }
+    }
 }
 
 /// The gizmo's restyle target while it still names an existing live screentone layer in the
-/// active document (prefers the panel's bound layer when still active, or the active layer if
-/// the user selected another screentone layer in the Layers panel).
+/// active document (prefers the active layer when it is a live screentone, or the panel's
+/// bound layer in the same document).
 fn target_layer(app: &PhotocraftApp) -> Option<LayerId> {
     let st = app.session.active()?;
+    if let Some(id) = st.active_layer
+        && st.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone)
+    {
+        return Some(id);
+    }
     let gizmo = &app.screentone_gizmo;
     if let Some(id) = gizmo.target
         && gizmo.target_doc == Some(st.doc.id)
@@ -278,7 +315,7 @@ fn target_layer(app: &PhotocraftApp) -> Option<LayerId> {
     {
         return Some(id);
     }
-    st.active_layer.filter(|&id| st.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone))
+    None
 }
 
 /// The panel hands the gizmo the layer a New Layer run produced: that sheet becomes the
@@ -294,9 +331,11 @@ pub(crate) fn bind_layer_result(app: &mut PhotocraftApp, command: &str, result: 
     if !st.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone) {
         return;
     }
+    let doc_id = st.doc.id;
     let gizmo = &mut app.screentone_gizmo;
     gizmo.target = Some(id);
-    gizmo.target_doc = Some(st.doc.id);
+    gizmo.target_doc = Some(doc_id);
+    gizmo.synced_layer = Some((doc_id, id));
 }
 
 /// Escape (hooked in `canvas_view`, where the egui context is at hand) cancels the running
@@ -312,20 +351,40 @@ pub(crate) fn escape(app: &mut PhotocraftApp, ctx: &egui::Context) {
 /// input events). A no-op without a running drag.
 pub(crate) fn cancel_drag(app: &mut PhotocraftApp) {
     let Some(drag) = app.screentone_gizmo.drag.take() else { return };
+    app.screentone_gizmo.preview = None;
     app.ui.screentone_ui.spec = drag.spec;
+}
+
+/// While a gizmo handle drag is in flight (`drag.is_some()`), hides the target screentone layer
+/// in the canvas composite so the live `preview` mesh replaces it cleanly without double
+/// Multiply blending.
+pub(crate) fn display_doc(app: &PhotocraftApp, idx: usize) -> Option<(std::sync::Arc<photocraft_doc::Document>, u64)> {
+    if app.session.active_index() != Some(idx) {
+        return None;
+    }
+    app.screentone_gizmo.drag.as_ref()?;
+    let target = target_layer(app)?;
+    let st = app.session.documents().get(idx)?;
+    let shown = crate::distort_ui::without_layer(&st.doc, target);
+    let key = (1 << 49) ^ st.revision.wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ target.0;
+    Some((shown, key))
 }
 
 /// Refreshes the live preview each canvas frame (the `&mut` site in `canvas_view`, ahead of
 /// `draw_drag_preview`), so the mesh the later draw pass projects holds this frame's texture.
-/// The render is the engine's own path — a procedural sheet with the pending spec over the
-/// engine's sheet bounds — coverage-gated by the mask (a restyle target's) or the selection
-/// (a fresh sheet's). The whole cache drops where the region would exceed [`PREVIEW_CAP`].
+/// The preview texture is built **only** during an active handle drag (`drag.is_some()`); when
+/// idle, the document's own `LayerContent::Screentone` layer renders through `photocraft-compose`
+/// without any duplicate overlay mesh.
 pub(crate) fn refresh_preview(app: &mut PhotocraftApp, ctx: &egui::Context, xf: &ViewXform, output: Option<u32>) {
-    if !showing(app) {
+    sync_active_layer(app);
+    if !showing(app) || app.screentone_gizmo.drag.is_none() {
         app.screentone_gizmo.preview = None;
         return;
     }
-    let Some(b) = sheet_bounds(app) else { return };
+    let Some(b) = sheet_bounds(app) else {
+        app.screentone_gizmo.preview = None;
+        return;
+    };
     let Some(region) = preview_rect(xf, b) else {
         app.screentone_gizmo.preview = None;
         return;
@@ -334,10 +393,12 @@ pub(crate) fn refresh_preview(app: &mut PhotocraftApp, ctx: &egui::Context, xf: 
     // The display the preview transforms its colors for (None: the plain sRGB pipeline).
     let (display, display_key) = crate::canvas::canvas_display(app, &st.doc, output);
     let target = target_layer(app);
-    let coverage = match target {
-        Some(id) => st.doc.layer(id).and_then(|l| l.mask.as_ref()).map(|m| m.surface.clone()),
-        None => st.doc.selection.clone(),
-    };
+    let coverage = target
+        .and_then(|id| st.doc.layer(id))
+        .and_then(|l| l.mask.as_ref())
+        .filter(|m| m.enabled)
+        .map(|m| m.surface.clone())
+        .or_else(|| st.doc.selection.clone());
     let spec = app.ui.screentone_ui.spec.clone();
     // The engine restyles in the layer's own surface format; the sheet the panel made (and a
     // fresh creation) would render in the document's, so the preview prefers the layer's.
@@ -387,18 +448,28 @@ fn spec_with(mut spec: ScreentoneSpec) -> ScreentoneSpec {
 
 /// One tone render for `region` over the engine's `bounds`, by the engine's own path
 /// (`FilterParams::Screentone` procedural), coverage-multiplied by a gating surface when one
-/// arrives (a mask's, or a selection's): every channel scales with the coverage, matching
-/// the premultiplied composite the canvas draws.
+/// arrives (a mask's, or a selection's): every channel scales with the coverage, and pixels
+/// outside `bounds` or where coverage is zero have strictly 0.0 alpha.
 fn render_preview(fmt: photocraft_color::PixelFormat, region: Rect, bounds: Rect, params: &FilterParams, coverage: Option<(&Surface, Rect)>) -> Buffer {
     let mut buf = Buffer::transparent(region);
+    let clip = region.intersect(&bounds);
+    if clip.is_empty() {
+        return buf;
+    }
     let rendered = photocraft_algo::apply(&Surface::new(fmt), params, region, bounds, None);
     let channels = rendered.format().channels();
     let flat = rendered.read_region(region);
     let cover: Option<(usize, Vec<f32>)> = coverage.map(|(c, r)| (c.format().channels(), c.read_region(r)));
+    let w = region.width() as usize;
     buf.px = flat
         .chunks_exact(channels)
         .enumerate()
         .map(|(i, v)| {
+            let x = region.x0 + (i % w) as i32;
+            let y = region.y0 + (i / w) as i32;
+            if !bounds.contains(x, y) {
+                return [0.0; 4];
+            }
             let sample = |k: usize| v.get(k).copied().unwrap_or(1.0).clamp(0.0, 1.0);
             let mut px = [
                 sample(0),
@@ -408,6 +479,9 @@ fn render_preview(fmt: photocraft_color::PixelFormat, region: Rect, bounds: Rect
             ];
             if let Some((mch, mflat)) = cover.as_ref() {
                 let cov = mflat.get(i * mch).copied().unwrap_or(0.0).clamp(0.0, 1.0);
+                if cov <= 1e-6 {
+                    return [0.0; 4];
+                }
                 px[0] *= cov;
                 px[1] *= cov;
                 px[2] *= cov;
@@ -445,14 +519,17 @@ fn preview_rect(xf: &ViewXform, sheet: Rect) -> Option<Rect> {
     (r.width() as usize * r.height() as usize <= PREVIEW_CAP).then_some(r)
 }
 
-/// The gizmo overlay: the preview mesh (a fresh texture from this frame's refresh) under the
-/// handle wireframe — the origin's crosshair and the two arms with end rings (hooked in
-/// `draw_tool_state`, whose painter draws after the document's own overlays).
+/// The gizmo overlay: when idle (`drag.is_none()`), draws **only** the handle wireframe (the
+/// origin crosshair and the two arms with end rings), leaving pixel rendering to the layer's own
+/// `photocraft-compose` composite. Only during an active handle drag (`drag.is_some()`) is the
+/// temporary preview mesh drawn under the handles.
 pub(crate) fn draw(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform) {
     if !showing(app) {
         return;
     }
-    if let Some(cache) = &app.screentone_gizmo.preview {
+    if app.screentone_gizmo.drag.is_some()
+        && let Some(cache) = &app.screentone_gizmo.preview
+    {
         let mut mesh = egui::Mesh::with_texture(cache.texture.id());
         let r = cache.rect;
         let vertex = |x: f64, y: f64| egui::epaint::Vertex {
@@ -724,12 +801,21 @@ mod tests {
     fn the_preview_matches_the_sheet_bounds() {
         let (mut app, ctx) = app(8);
         // A fresh unmasked sheet covers the whole canvas (the engine's sheet-bounds rule:
-        // no mask, no selection), and the preview's region is that frame.
+        // no mask, no selection). While idle (`drag.is_none()`), no duplicate preview texture is
+        // built; starting a handle drag builds the preview over the sheet's bounds, and releasing
+        // clears it again.
         generate(&mut app, json!({"patternType": "dots", "spacingX": 8, "spacingY": 8, "angle": 0}));
         refresh_preview(&mut app, &ctx, &xf(), None);
-        let cache = app.screentone_gizmo.preview.as_ref().expect("the preview rendered");
+        assert!(app.screentone_gizmo.preview.is_none(), "no duplicate preview mesh while idle");
+
+        crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 48.0, y: 36.0, pressure: 1.0 }, egui::Modifiers::default());
+        refresh_preview(&mut app, &ctx, &xf(), None);
+        let cache = app.screentone_gizmo.preview.as_ref().expect("the preview rendered during drag");
         assert_eq!(cache.rect, Rect::new(0, 0, 96, 72), "the region is the sheet's bounds");
         assert!(cache.texture.size()[0] > 0 && cache.texture.size()[1] > 0, "the texture has content");
+
+        crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 48.0, y: 36.0 }, egui::Modifiers::default());
+        assert!(app.screentone_gizmo.preview.is_none(), "releasing the drag clears the preview mesh");
     }
 
     #[test]
@@ -737,7 +823,14 @@ mod tests {
         let (mut app, ctx) = app(8);
         app.run("select.rect", json!({"x": 32, "y": 16, "width": 40, "height": 40})).unwrap();
         generate(&mut app, json!({"patternType": "dots", "spacingX": 8, "spacingY": 8}));
+        // Interior selection mask restricts `sheet_bounds` and the live drag preview strictly to
+        // the selection rect (32..72, 16..56), never leaking across the whole 96×72 canvas.
+        assert_eq!(sheet_bounds(&app), Some(Rect::new(32, 16, 72, 56)));
+        crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 52.0, y: 36.0, pressure: 1.0 }, egui::Modifiers::default());
         refresh_preview(&mut app, &ctx, &xf(), None);
+        assert_eq!(app.screentone_gizmo.preview.as_ref().unwrap().rect, Rect::new(32, 16, 72, 56));
+        crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 52.0, y: 36.0 }, egui::Modifiers::default());
+
         let (region, fmt) = {
             let st = app.session.active().unwrap();
             (st.doc.bounds(), st.doc.pixel_format())
@@ -797,16 +890,55 @@ mod tests {
         refresh_preview(&mut app, &ctx, &xf(), None);
         assert!(app.screentone_gizmo.preview.is_none(), "no overlay preview on a Smart Object");
 
-        // Creating a live Screentone layer makes it active and reveals the gizmo.
-        let tone_id = generate(&mut app, json!({"patternType": "dots", "spacingX": 8, "spacingY": 8}));
-        assert!(showing(&app), "active Screentone layer activates the gizmo");
+        // Creating a live Screentone layer makes it active and reveals the gizmo handles,
+        // without projecting a duplicate preview mesh while idle.
+        let tone_id = generate(&mut app, json!({"patternType": "dots", "spacingX": 8, "spacingY": 8, "angle": 0}));
+        assert!(showing(&app), "active Screentone layer activates the gizmo handles");
         refresh_preview(&mut app, &ctx, &xf(), None);
-        assert!(app.screentone_gizmo.preview.is_some(), "preview renders for active Screentone layer");
+        assert!(app.screentone_gizmo.preview.is_none(), "idle Screentone layer uses the compositor without a duplicate preview mesh");
+        assert!(display_doc(&app, 0).is_none(), "compositor shows the real Screentone layer while idle");
+
+        // During an active handle drag, the preview mesh activates and `display_doc` hides the
+        // underlying layer to prevent double Multiply rendering.
+        crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 48.0, y: 36.0, pressure: 1.0 }, egui::Modifiers::default());
+        refresh_preview(&mut app, &ctx, &xf(), None);
+        assert!(app.screentone_gizmo.preview.is_some(), "preview mesh renders during active drag");
+        let (hidden_doc, _) = display_doc(&app, 0).expect("display_doc hides original layer during drag");
+        assert!(!hidden_doc.layer(LayerId(tone_id)).unwrap().visible, "target layer is hidden in composite during drag");
+        crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 48.0, y: 36.0 }, egui::Modifiers::default());
+        assert!(app.screentone_gizmo.preview.is_none(), "preview clears on drag release");
 
         // Rasterizing the screentone layer turns it into a plain pixel layer and hides the gizmo.
         app.run("layer.rasterize.layer", json!({"layer": tone_id})).unwrap();
         assert!(!showing(&app), "rasterized layer no longer shows the gizmo");
         refresh_preview(&mut app, &ctx, &xf(), None);
-        assert!(app.screentone_gizmo.preview.is_none(), "preview clears once rasterized");
+        assert!(app.screentone_gizmo.preview.is_none(), "preview remains None once rasterized");
+    }
+
+    #[test]
+    fn switching_active_screentone_layer_syncs_panel_spec() {
+        let (mut app, _ctx) = app(8);
+        let id1 = generate(&mut app, json!({"patternType": "dots", "dotSize": 5.0, "spacingX": 10.0, "spacingY": 10.0, "angle": 15.0}));
+        let id2 = generate(&mut app, json!({"patternType": "lines", "dotSize": 9.0, "spacingX": 20.0, "spacingY": 20.0, "angle": 60.0}));
+        assert_eq!(app.session.active().unwrap().active_layer, Some(LayerId(id2)));
+
+        // Select the first screentone layer in the Layers panel and sync.
+        app.session.select_layer(LayerId(id1)).unwrap();
+        sync_active_layer(&mut app);
+        assert_eq!(app.ui.screentone_ui.spec.dot_size, 5.0);
+        assert_eq!(app.ui.screentone_ui.spec.spacing_x, 10.0);
+        assert_eq!(app.ui.screentone_ui.spec.angle, 15.0);
+        assert_eq!(target_layer(&app), Some(LayerId(id1)));
+
+        // Editing the panel spec updates the active screentone layer in place.
+        app.ui.screentone_ui.spec.dot_size = 11.0;
+        app.ui.screentone_ui.spec.spacing_x = 18.0;
+        assert!(crate::screentone_panel::sync_spec_to_active_layer(&mut app));
+        let st = app.session.active().unwrap();
+        let photocraft_doc::LayerContent::Screentone(tone1) = &st.doc.layer(LayerId(id1)).unwrap().content else {
+            panic!("expected Screentone layer");
+        };
+        assert_eq!(tone1.spec.dot_size, 11.0);
+        assert_eq!(tone1.spec.spacing_x, 18.0);
     }
 }

@@ -97,8 +97,35 @@ pub(crate) fn params(st: &ScreentoneUi) -> Value {
     p
 }
 
+/// Restyles the active `LayerContent::Screentone` layer in place when the panel's spec changes,
+/// coalescing consecutive panel edits on that layer into one history step.
+pub(crate) fn sync_spec_to_active_layer(app: &mut PhotocraftApp) -> bool {
+    let Some((doc_id, layer_id, layer_spec)) = app.session.active().and_then(|st| {
+        let id = st.active_layer?;
+        let photocraft_doc::LayerContent::Screentone(tone) = &st.doc.layer(id)?.content else {
+            return None;
+        };
+        Some((st.doc.id, id, tone.spec.clone()))
+    }) else {
+        return false;
+    };
+    if app.ui.screentone_ui.spec == layer_spec {
+        return false;
+    }
+    let mut p = params(&app.ui.screentone_ui);
+    if let Some(map) = p.as_object_mut() {
+        map.insert("layer".into(), json!(layer_id.0));
+        map.insert("coalesce".into(), json!(format!("screentone-panel:{}:{}", doc_id.0, layer_id.0)));
+    }
+    let result = crate::preset_panels::run(app, photocraft_engine::screentone_cmds::LAYER, p);
+    crate::screentone_gizmo::bind_layer_result(app, photocraft_engine::screentone_cmds::LAYER, &result);
+    true
+}
+
 /// Draws the tab body: the dock's own scrolling wraps it in both the native and shared docks.
 pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    crate::screentone_gizmo::sync_active_layer(app);
+    let spec_before = app.ui.screentone_ui.spec.clone();
     let t = Tokens::get(ui.ctx());
     let label = crate::filter_dialog::label;
     let mut st = std::mem::take(&mut app.ui.screentone_ui);
@@ -333,6 +360,7 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if ui.button(tl!("Save as Pattern")).clicked() {
         action = Some(photocraft_engine::screentone_cmds::PATTERN);
     }
+    let spec_changed = st.spec != spec_before;
     app.ui.screentone_ui = st;
     if let Some(command) = action {
         let params = params(&app.ui.screentone_ui);
@@ -340,6 +368,8 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         // A New Layer run's result binds the gizmo to the generated sheet: the drags restyle
         // that layer in place (see `screentone_gizmo`).
         crate::screentone_gizmo::bind_layer_result(app, command, &result);
+    } else if spec_changed {
+        sync_spec_to_active_layer(app);
     }
 }
 

@@ -1349,6 +1349,10 @@ pub(crate) fn display_doc(app: &mut PhotocraftApp, idx: usize) -> (std::sync::Ar
     if let Some(shown) = crate::distort_ui::display_doc(app, idx) {
         return shown;
     }
+    // Screentone gizmo drag hides the target layer while the live drag mesh replaces it.
+    if let Some(shown) = crate::screentone_gizmo::display_doc(app, idx) {
+        return shown;
+    }
     // Image › Adjustments dialog: a temporary adjustment layer clipped to the target.
     if let Some(shown) = crate::adjust_preview::display_doc(app, idx) {
         return shown;

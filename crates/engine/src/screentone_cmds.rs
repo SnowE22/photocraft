@@ -459,9 +459,8 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
 /// The reference bounds a sheet renders over — the lattice anchor sits at their center
 /// ([`ScreentoneSpec`]'s origin is a phase against that center), so creation and restyle must
 /// share this rule or the pattern would slide between a gizmo drag's preview and its committed
-/// render: a restyled layer covers the region its mask reveals (the mask's stored pixels mark
-/// what it hides; the revealed area is the canvas boxed around that cover), a not-yet-created
-/// sheet covers the active selection's frame, and the whole canvas covers the rest.
+/// render: a restyled layer covers the region its mask reveals, a not-yet-created sheet covers
+/// the active selection's frame, and the whole canvas covers the rest.
 pub fn sheet_bounds(s: &Session, target: Option<u64>) -> Rect {
     let Some(st) = s.active() else {
         return Rect::EMPTY;
@@ -471,14 +470,7 @@ pub fn sheet_bounds(s: &Session, target: Option<u64>) -> Rect {
         && let Some(layer) = st.doc.layer(photocraft_doc::LayerId(id))
         && let Some(mask) = layer.mask.as_ref()
     {
-        // A mask's default pixel (1.0) reveals everything, so `content_bounds` reports the
-        // *hidden* cover; the visible area is the canvas left of / above / beyond that cover,
-        // boxed — the mask itself does the exact shaping at composite time.
-        let hidden = mask.surface.content_bounds();
-        if hidden.is_empty() {
-            return canvas;
-        }
-        return visible_within(canvas, hidden).unwrap_or(canvas);
+        return revealed_bounds(mask, canvas).unwrap_or(canvas);
     }
     if let Some(sel) = st.doc.selection.as_ref().map(Surface::content_bounds).filter(|b| !b.is_empty()) {
         return sel.intersect(&canvas);
@@ -486,27 +478,30 @@ pub fn sheet_bounds(s: &Session, target: Option<u64>) -> Rect {
     canvas
 }
 
-/// The bounding box of the canvas a cover leaves visible: the cover cuts the canvas on every
-/// axis with an open strip. A cover with strips on both sides of an axis keeps the whole axis
-/// (both strips' bbox spans the canvas); nothing visible at all collapses to the full canvas,
-/// where the mask keeps whatever thin reveal remains.
-fn visible_within(canvas: Rect, hidden: Rect) -> Option<Rect> {
-    let mut r = canvas;
-    if hidden.x0 > canvas.x0 && hidden.x1 < canvas.x1 {
-        // strips on both sides — the axis's bbox already spans the canvas
-    } else if hidden.x0 > canvas.x0 {
-        r.x1 = hidden.x0;
-    } else if hidden.x1 < canvas.x1 {
-        r.x0 = hidden.x1;
+/// The tight bounding box of pixels within `canvas` where `mask` reveals (`px > 0.0`).
+/// Works identically for edge-touching masks and interior selection masks.
+fn revealed_bounds(mask: &LayerMask, canvas: Rect) -> Option<Rect> {
+    if !mask.enabled || canvas.is_empty() {
+        return Some(canvas);
     }
-    if hidden.y0 > canvas.y0 && hidden.y1 < canvas.y1 {
-        // strips on both sides — the axis's bbox already spans the canvas
-    } else if hidden.y0 > canvas.y0 {
-        r.y1 = hidden.y0;
-    } else if hidden.y1 < canvas.y1 {
-        r.y0 = hidden.y1;
+    if mask.surface.content_bounds().is_empty() {
+        return (mask.surface.default_pixel().first().copied().unwrap_or(1.0) > 0.0).then_some(canvas);
     }
-    (r != Rect::EMPTY).then_some(r)
+    let ch = mask.surface.channels().max(1);
+    let buf = mask.surface.read_region(canvas);
+    let w = canvas.width() as usize;
+    let (mut x0, mut y0, mut x1, mut y1) = (canvas.x1, canvas.y1, canvas.x0, canvas.y0);
+    for (i, px) in buf.chunks_exact(ch).enumerate() {
+        if px[0] > 0.0 {
+            let x = canvas.x0 + (i % w) as i32;
+            let y = canvas.y0 + (i / w) as i32;
+            x0 = x0.min(x);
+            y0 = y0.min(y);
+            x1 = x1.max(x + 1);
+            y1 = y1.max(y + 1);
+        }
+    }
+    (x1 > x0 && y1 > y0).then(|| Rect::new(x0, y0, x1, y1))
 }
 
 /// The gizmo's restyle commit: re-render the sheet with the pending spec and replace the pixel
