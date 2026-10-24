@@ -85,18 +85,26 @@ struct PreviewCache {
     texture: egui::TextureHandle,
 }
 
-/// The gizmo lives while the Screentones panel shows — or a drag runs, which can only begin
-/// where the panel shows anyway (a drag keeping its grip while the panel closes).
+/// The gizmo and its canvas preview live only while a drag runs or the Screentones panel shows
+/// with an active procedural screentone layer (`LayerContent::Screentone`). Switching to the
+/// panel tab over a raster layer, smart object or empty layer stack never projects an overlay.
 pub(crate) fn showing(app: &PhotocraftApp) -> bool {
-    app.screentone_gizmo.drag.is_some()
-        || (crate::screentone_panel::showing(app) && app.session.active().is_some())
+    if app.screentone_gizmo.drag.is_some() {
+        return true;
+    }
+    crate::screentone_panel::showing(app)
+        && app
+            .session
+            .active()
+            .and_then(|st| st.active_layer.and_then(|id| st.doc.layer(id)))
+            .is_some_and(photocraft_doc::Layer::is_screentone)
 }
 
 /// The reference bounds the sheet renders over, exactly as the engine computes them
 /// (`screentone_cmds::sheet_bounds`): their center is the lattice's anchor, so the gizmo's
 /// geometry reads them through the engine instead of deriving them twice.
 fn sheet_bounds(app: &PhotocraftApp) -> Option<Rect> {
-    let b = photocraft_engine::screentone_cmds::sheet_bounds(&app.session, app.screentone_gizmo.target.map(|l| l.0));
+    let b = photocraft_engine::screentone_cmds::sheet_bounds(&app.session, target_layer(app).map(|l| l.0));
     (!b.is_empty()).then_some(b)
 }
 
@@ -258,13 +266,19 @@ fn commit_drag(app: &mut PhotocraftApp, drag: &Drag) {
     crate::preset_panels::run(app, photocraft_engine::screentone_cmds::LAYER, p);
 }
 
-/// The gizmo's restyle target while it still names an existing layer in the active document
-/// (the panel's binding, stale once the layer is deleted or the document switches).
+/// The gizmo's restyle target while it still names an existing live screentone layer in the
+/// active document (prefers the panel's bound layer when still active, or the active layer if
+/// the user selected another screentone layer in the Layers panel).
 fn target_layer(app: &PhotocraftApp) -> Option<LayerId> {
     let st = app.session.active()?;
     let gizmo = &app.screentone_gizmo;
-    let id = gizmo.target?;
-    (gizmo.target_doc == Some(st.doc.id) && st.doc.layer(id).is_some()).then_some(id)
+    if let Some(id) = gizmo.target
+        && gizmo.target_doc == Some(st.doc.id)
+        && st.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone)
+    {
+        return Some(id);
+    }
+    st.active_layer.filter(|&id| st.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone))
 }
 
 /// The panel hands the gizmo the layer a New Layer run produced: that sheet becomes the
@@ -277,7 +291,7 @@ pub(crate) fn bind_layer_result(app: &mut PhotocraftApp, command: &str, result: 
     let Some(id) = result.as_ref().and_then(|v| v.get("layer")).and_then(Value::as_u64) else { return };
     let Some(st) = app.session.active() else { return };
     let id = LayerId(id);
-    if st.doc.layer(id).is_none() {
+    if !st.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone) {
         return;
     }
     let gizmo = &mut app.screentone_gizmo;
@@ -596,6 +610,8 @@ mod tests {
     #[test]
     fn shift_snaps_the_angle_and_locks_the_origin_axis() {
         let (mut app, _ctx) = app(8);
+        let id = generate(&mut app, json!({"patternType": "dots", "spacingX": 12, "spacingY": 12, "angle": 0}));
+        assert_eq!(app.screentone_gizmo.target, Some(LayerId(id)));
         // The origin's axis lock: from the anchor, only the dominant document axis survives.
         drag(&mut app, [48.0, 36.0], [74.0, 20.0], true);
         let spec = &app.ui.screentone_ui.spec;
@@ -605,8 +621,6 @@ mod tests {
         // lands on the −30° step. The pending spec carries the origin's phase (26 on the
         // local x from the axis lock above); the arm end sits at that anchor + 12 along the
         // angle axis.
-        let id = generate(&mut app, json!({"patternType": "dots", "spacingX": 12, "spacingY": 12, "angle": 0, "originX": 26, "originY": 0}));
-        assert_eq!(app.screentone_gizmo.target, Some(LayerId(id)));
         drag(&mut app, [86.0, 36.0], [96.0, 20.0], true);
         let snapped = app.ui.screentone_ui.spec.angle;
         assert!((snapped + 30.0).abs() < 1e-3, "the throw landed on the −30° step: {snapped}");
@@ -657,17 +671,22 @@ mod tests {
         let (mut app, _ctx) = app(8);
         generate(&mut app, json!({"patternType": "dots", "spacingX": 8, "spacingY": 8}));
         assert!(target_layer(&app).is_some(), "the fresh sheet binds");
+        app.ui.screentone_ui.spec.angle = 15.0;
+        // Start an origin drag on the bound screentone layer, then switch documents before release.
+        crate::canvas::tool_event(&mut app, ToolEvent::Down { x: 48.0, y: 36.0, pressure: 1.0 }, egui::Modifiers::default());
+        assert!(app.screentone_gizmo.drag.is_some(), "origin drag started");
         app.run("file.new", json!({"width": 64, "height": 48, "depth": 8})).unwrap();
         app.sync_views();
         app.ui.panels.color = true;
         app.ui.dock_tabs.color = crate::screentone_panel::COLOR_TAB;
         assert!(target_layer(&app).is_none(), "another document drops the stale binding");
-        // A drag with a stale target commits nothing.
-        app.ui.screentone_ui.spec.angle = 15.0;
+        // Finishing the drag with a stale target commits nothing, and hides the gizmo on release.
         let count = history(&app);
-        drag(&mut app, [32.0, 24.0], [40.0, 24.0], false);
+        crate::canvas::tool_event(&mut app, ToolEvent::Move { x: 56.0, y: 36.0, pressure: 1.0 }, egui::Modifiers::default());
+        crate::canvas::tool_event(&mut app, ToolEvent::Up { x: 56.0, y: 36.0 }, egui::Modifiers::default());
         assert_eq!(app.ui.screentone_ui.spec.angle, 15.0, "an origin drag leaves the angle alone");
         assert_eq!(history(&app), count, "a stale target commits nothing");
+        assert!(!showing(&app), "without a screentone layer on the new document, the gizmo hides");
     }
 
     #[test]
@@ -760,5 +779,34 @@ mod tests {
             aspect: 1.0,
         };
         assert_eq!(preview_rect(&big, sheet), None, "the hypersheet region is skipped");
+    }
+
+    #[test]
+    fn test_gizmo_showing_only_when_screentone_layer_active() {
+        let (mut app, ctx) = app(8);
+        // Simply opening the Screentones tab on a raster layer must NOT show the gizmo or preview.
+        assert!(!showing(&app), "raster Background must not activate the gizmo");
+        refresh_preview(&mut app, &ctx, &xf(), None);
+        assert!(app.screentone_gizmo.preview.is_none(), "no overlay preview on a raster layer");
+
+        // Converting a pixel layer to a Smart Object (even with a screentone Smart Filter) keeps
+        // the gizmo hidden: smart objects are not procedural screentone layers.
+        app.run("layer.smartObjects.convertToSmartObject", json!({})).unwrap();
+        app.run(photocraft_engine::screentone_cmds::FILTER, json!({"patternType": "dots", "useSourceLuminance": true})).unwrap();
+        assert!(!showing(&app), "Smart Object with screentone smart filter must not activate the gizmo");
+        refresh_preview(&mut app, &ctx, &xf(), None);
+        assert!(app.screentone_gizmo.preview.is_none(), "no overlay preview on a Smart Object");
+
+        // Creating a live Screentone layer makes it active and reveals the gizmo.
+        let tone_id = generate(&mut app, json!({"patternType": "dots", "spacingX": 8, "spacingY": 8}));
+        assert!(showing(&app), "active Screentone layer activates the gizmo");
+        refresh_preview(&mut app, &ctx, &xf(), None);
+        assert!(app.screentone_gizmo.preview.is_some(), "preview renders for active Screentone layer");
+
+        // Rasterizing the screentone layer turns it into a plain pixel layer and hides the gizmo.
+        app.run("layer.rasterize.layer", json!({"layer": tone_id})).unwrap();
+        assert!(!showing(&app), "rasterized layer no longer shows the gizmo");
+        refresh_preview(&mut app, &ctx, &xf(), None);
+        assert!(app.screentone_gizmo.preview.is_none(), "preview clears once rasterized");
     }
 }

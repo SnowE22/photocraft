@@ -309,8 +309,9 @@ pub fn origin_doc(spec: &ScreentoneSpec, bounds: Rect) -> (f32, f32) {
 
 /// A copy of `spec` whose lattice phase is the document-space `origin` over `bounds`.
 ///
-/// This is the inverse of [`origin_doc`]. `use_source_luminance` is always off: a generated
-/// sheet has no source layer to shade by.
+/// This is the inverse of [`origin_doc`]. `use_source_luminance` is preserved so callers
+/// passing a source surface can shade by it; [`render_screentone_to_surface`] turns it off
+/// automatically when the target surface carries no source pixels.
 pub fn sheet_spec(spec: &ScreentoneSpec, bounds: Rect, origin: (f32, f32)) -> ScreentoneSpec {
     let cx = bounds.x0 as f32 + bounds.width().max(1) as f32 * 0.5;
     let cy = bounds.y0 as f32 + bounds.height().max(1) as f32 * 0.5;
@@ -319,7 +320,6 @@ pub fn sheet_spec(spec: &ScreentoneSpec, bounds: Rect, origin: (f32, f32)) -> Sc
     ScreentoneSpec {
         origin_x: dx * cos + dy * sin,
         origin_y: -dx * sin + dy * cos,
-        use_source_luminance: false,
         ..spec.clone()
     }
 }
@@ -327,17 +327,26 @@ pub fn sheet_spec(spec: &ScreentoneSpec, bounds: Rect, origin: (f32, f32)) -> Sc
 /// Render a procedural sheet into `surface`, anchored at the document-space `origin`.
 ///
 /// The whole `bounds` frame is rendered (a layer mask shapes the visible area), and the function
-/// returns the document-space area written. The origin is stored relative to the document, so
-/// callers can render preview tiles or a later, larger frame without moving the lattice.
+/// returns the document-space area written. When `spec.use_source_luminance` is `true` and
+/// `surface` already holds source pixels, the generated dots are modulated by that source's
+/// darkness before `surface` is replaced with the rendered sheet; an empty `surface` renders a
+/// uniform procedural sheet.
 pub fn render_screentone_to_surface(surface: &mut Surface, bounds: Rect, spec: &ScreentoneSpec, origin: (f32, f32)) -> Rect {
-    let params = crate::FilterParams::Screentone { spec: sheet_spec(spec, bounds, origin) };
-    let area = crate::output_area(&params, bounds, bounds, None);
+    let mut s = sheet_spec(spec, bounds, origin);
+    if surface.content_bounds().is_empty() {
+        s.use_source_luminance = false;
+    }
+    let params = crate::FilterParams::Screentone { spec: s };
+    let content = surface.content_bounds().union(&bounds);
+    let area = crate::output_area(&params, content, bounds, None).intersect(&bounds);
     if area.is_empty() {
         return area;
     }
-    let rendered = crate::apply(&Surface::new(surface.format()), &params, area, bounds, None);
+    let rendered = crate::apply_in(surface, &params, area, bounds, None, content);
+    *surface = Surface::new(surface.format());
     let px = rendered.read_region(area);
     surface.write_region(area, &px);
+    surface.prune();
     area
 }
 
@@ -632,7 +641,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
     let fg = spec.foreground;
     let bg = spec.background;
 
-    // Fast-path helper to read ink (1.0 - luminance) from source image
+    // Fast-path helper to read ink (1.0 - luminance, weighted by alpha) from source image
     let sample_ink = |doc_x: f32, doc_y: f32| -> f32 {
         if src.rect.is_empty() {
             return 0.5;
@@ -641,7 +650,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
         let iy = (doc_y.floor() as i32).clamp(src.rect.y0, src.rect.y1.saturating_sub(1));
         if src.rect.contains(ix, iy) {
             let px = src.px(ix, iy);
-            (1.0 - luma(ctx, px)).clamp(0.0, 1.0)
+            let a = if ctx.alpha { px.last().copied().unwrap_or(1.0).clamp(0.0, 1.0) } else { 1.0 };
+            ((1.0 - luma(ctx, px)) * a).clamp(0.0, 1.0)
         } else {
             0.5
         }
@@ -950,15 +960,27 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
 
         // Blend pattern output:
         let out_color = if bg[3] <= 0.001 {
-            // Transparent background: blend pattern foreground over underlying layer
-            let base_c = rgba(ctx, px);
-            let alpha = cov * cur_fg[3];
-            [
-                lerp(base_c[0], cur_fg[0], alpha),
-                lerp(base_c[1], cur_fg[1], alpha),
-                lerp(base_c[2], cur_fg[2], alpha),
-                base_c[3].max(alpha),
-            ]
+            if ctx.alpha {
+                // Transparent background on an alpha surface: emit only the screentone ink so
+                // halftone sheets and smart filters do not leave the unmodulated source behind
+                // between the dots.
+                let alpha = cov * cur_fg[3];
+                if alpha <= 1e-6 {
+                    [0.0, 0.0, 0.0, 0.0]
+                } else {
+                    [cur_fg[0], cur_fg[1], cur_fg[2], alpha]
+                }
+            } else {
+                // Opaque surface without an alpha channel: blend pattern foreground over base.
+                let base_c = rgba(ctx, px);
+                let alpha = cov * cur_fg[3];
+                [
+                    lerp(base_c[0], cur_fg[0], alpha),
+                    lerp(base_c[1], cur_fg[1], alpha),
+                    lerp(base_c[2], cur_fg[2], alpha),
+                    base_c[3].max(alpha),
+                ]
+            }
         } else {
             // Opaque or specified background: blend between background and foreground
             [

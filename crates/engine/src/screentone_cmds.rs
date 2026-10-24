@@ -263,6 +263,121 @@ fn requested_name(p: &Value) -> String {
         .unwrap_or_else(|| "Screentone".to_string())
 }
 
+/// Whether `surf` holds non-white, non-transparent ink inside `rect` that can modulate halftone
+/// dot sizes (`(1.0 - luma) * alpha > 1e-3`).
+fn has_source_ink(surf: &Surface, rect: Rect) -> bool {
+    let cb = surf.content_bounds().intersect(&rect);
+    if cb.is_empty() {
+        return false;
+    }
+    let fmt = surf.format();
+    let ch = fmt.channels();
+    let color_ch = fmt.mode.color_channels();
+    if ch == 0 || color_ch == 0 {
+        return false;
+    }
+    let has_alpha = fmt.alpha;
+    let buf = surf.read_region(cb);
+    buf.chunks_exact(ch).any(|px| {
+        let a = if has_alpha { px[ch - 1].clamp(0.0, 1.0) } else { 1.0 };
+        if a <= 1e-3 {
+            return false;
+        }
+        let luma = match fmt.mode {
+            photocraft_color::ColorMode::Grayscale | photocraft_color::ColorMode::Bitmap => px[0],
+            photocraft_color::ColorMode::Cmyk if color_ch >= 4 => {
+                let k = px[3];
+                let r = (1.0 - px[0]) * (1.0 - k);
+                let g = (1.0 - px[1]) * (1.0 - k);
+                let b = (1.0 - px[2]) * (1.0 - k);
+                0.2126 * r + 0.7152 * g + 0.0722 * b
+            }
+            photocraft_color::ColorMode::Lab => px[0],
+            _ if color_ch >= 3 => 0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2],
+            _ => px[0],
+        }
+        .clamp(0.0, 1.0);
+        (1.0 - luma) * a > 1e-3
+    })
+}
+
+/// Samples the underlying tonal source inside `rect` when `useSourceLuminance` is active:
+///
+/// 1. If `active` is a non-screentone pixel layer that already has tonal ink in `rect`, its own
+///    surface region is sampled directly (with transparent pixels treated as 0 ink by `algo`).
+/// 2. Otherwise (empty layer, group, or restyling an existing screentone layer `exclude`), all
+///    visible non-screentone pixel layers (excluding `exclude`) are composited over white paper so
+///    transparent layers above white paper or multiple sketch/shading layers combine naturally.
+/// 3. If the resulting source has no tonal ink at all (e.g. a blank white canvas), returns `None`
+///    so the caller falls back to a uniform procedural sheet (`use_source_luminance = false`).
+fn sample_source_surface(
+    doc: &photocraft_doc::Document,
+    active: Option<photocraft_doc::LayerId>,
+    exclude: Option<photocraft_doc::LayerId>,
+    rect: Rect,
+    fmt: PixelFormat,
+) -> Option<Surface> {
+    if rect.is_empty() {
+        return None;
+    }
+    if let Some(id) = active
+        && Some(id) != exclude
+        && let Some(layer) = doc.layer(id)
+        && !layer.is_screentone()
+        && let Some(surf) = layer.surface()
+        && has_source_ink(surf, rect)
+    {
+        let mut out = Surface::new(surf.format());
+        let r = surf.content_bounds().intersect(&rect);
+        let px = surf.read_region(r);
+        out.write_region(r, &px);
+        return Some(out);
+    }
+
+    let mut flat = doc.clone();
+    for l in &mut flat.layers {
+        if Some(l.id) == exclude || l.is_screentone() {
+            l.visible = false;
+        }
+    }
+    let comp = photocraft_compose::render(&flat, rect).over_background([1.0, 1.0, 1.0]);
+    let mut out = Surface::new(fmt);
+    let ch = fmt.channels();
+    let color_ch = fmt.mode.color_channels();
+    let has_alpha = fmt.alpha;
+    let mut buf = vec![0.0f32; (rect.width() as usize) * (rect.height() as usize) * ch];
+    for (dst, rgba) in buf.chunks_exact_mut(ch).zip(comp.px.iter()) {
+        let [r, g, b, _] = *rgba;
+        match fmt.mode {
+            photocraft_color::ColorMode::Grayscale | photocraft_color::ColorMode::Bitmap => {
+                dst[0] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            }
+            photocraft_color::ColorMode::Cmyk if color_ch >= 4 => {
+                let k = (1.0f32 - r.max(g).max(b)).clamp(0.0, 1.0);
+                if k < 1.0 - 1e-6 {
+                    dst[0] = (1.0 - r - k) / (1.0 - k);
+                    dst[1] = (1.0 - g - k) / (1.0 - k);
+                    dst[2] = (1.0 - b - k) / (1.0 - k);
+                }
+                dst[3] = k;
+            }
+            _ if color_ch >= 3 => {
+                dst[0] = r;
+                dst[1] = g;
+                dst[2] = b;
+            }
+            _ => {
+                dst[0] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            }
+        }
+        if has_alpha {
+            dst[ch - 1] = 1.0;
+        }
+    }
+    out.write_region(rect, &buf);
+    has_source_ink(&out, rect).then_some(out)
+}
+
 /// Renders a procedural screentone sheet onto a new pixel layer above the active one.
 ///
 /// With a `layer` id the same command **restyles** that existing pixel layer instead: the sheet
@@ -272,10 +387,16 @@ fn requested_name(p: &Value) -> String {
 fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     validate_params(LAYER, p)?;
     let mut spec = spec(p);
-    // A generated sheet has no source luminance to modulate by: always procedural.
-    spec.use_source_luminance = false;
 
     if let Some(id) = p.get("layer").and_then(Value::as_u64) {
+        if p.get("useSourceLuminance").is_none()
+            && p.get("preset").is_none()
+            && let Some(st) = s.active()
+            && let Some(layer) = st.doc.layer(photocraft_doc::LayerId(id))
+            && let LayerContent::Screentone(prev) = &layer.content
+        {
+            spec.use_source_luminance = prev.spec.use_source_luminance;
+        }
         return restyle_layer(s, photocraft_doc::LayerId(id), FilterParams::Screentone { spec });
     }
 
@@ -290,7 +411,17 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     // The spec's originX/originY is a phase inside the render frame; a live layer stores the
     // equivalent document-space anchor so its lattice stays put when the frame changes.
     let origin = algo::screentone::origin_doc(&spec, bounds);
-    let mut rendered = Surface::new(st.doc.pixel_format());
+    let sample_rect = bounds.inflate(spec.halo_radius()).intersect(&doc_bounds);
+    let mut rendered = if spec.use_source_luminance {
+        if let Some(src) = sample_source_surface(&st.doc, st.active_layer, None, sample_rect, st.doc.pixel_format()) {
+            src
+        } else {
+            spec.use_source_luminance = false;
+            Surface::new(st.doc.pixel_format())
+        }
+    } else {
+        Surface::new(st.doc.pixel_format())
+    };
     let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, &spec, origin);
     if area.is_empty() {
         return Err(EngineError::Other("nothing to render: the target area is empty".into()));
@@ -380,14 +511,12 @@ fn visible_within(canvas: Rect, hidden: Rect) -> Option<Rect> {
 
 /// The gizmo's restyle commit: re-render the sheet with the pending spec and replace the pixel
 /// layer's content in place. The layer id, name and mask survive — only the pixels change — and
-/// the swap is a single journalled edit, so a drag undoes as exactly one step. The render stays
-/// procedural (a fresh sheet, `useSourceLuminance` off) and covers [`sheet_bounds`] with the
-/// target; the mask is never re-derived from the selection.
+/// the swap is a single journalled edit, so a drag undoes as exactly one step. Covers
+/// [`sheet_bounds`] with the target; the mask is never re-derived from the selection.
 fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: FilterParams) -> Result<Value> {
     let FilterParams::Screentone { spec } = &mut params else {
         return Err(EngineError::Other("restyle expects screentone parameters".into()));
     };
-    spec.use_source_luminance = false;
 
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let bounds = sheet_bounds(s, Some(id.0));
@@ -398,7 +527,17 @@ fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: Filte
         return Err(EngineError::Other(format!("layer {} is not a pixel layer", id.0)));
     };
     let origin = algo::screentone::origin_doc(spec, bounds);
-    let mut rendered = Surface::new(surface.format());
+    let sample_rect = bounds.inflate(spec.halo_radius()).intersect(&st.doc.bounds());
+    let mut rendered = if spec.use_source_luminance {
+        if let Some(src) = sample_source_surface(&st.doc, None, Some(id), sample_rect, surface.format()) {
+            src
+        } else {
+            spec.use_source_luminance = false;
+            Surface::new(surface.format())
+        }
+    } else {
+        Surface::new(surface.format())
+    };
     let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, spec, origin);
     if area.is_empty() {
         return Err(EngineError::Other("nothing to render: the layer's area is empty".into()));
@@ -866,5 +1005,133 @@ mod tests {
         assert!(matches!(layer.content, LayerContent::Raster(_)), "the tone bakes when its colours' space changes");
         assert_eq!(layer.surface().unwrap().format().mode, photocraft_color::ColorMode::Cmyk);
         assert!(layer.surface().unwrap().content_bounds().width() > 0, "the baked pixels are still there");
+    }
+
+    #[test]
+    fn test_create_layer_with_source_luminance_captures_underlying_tones() {
+        let mut s = session(8);
+        // Paint dark ink on the left half (x: 0..48) and leave the right half (x: 48..96) blank/white.
+        let active_id = s.active().unwrap().active_layer.unwrap();
+        s.edit("Paint Gradient", |doc, _| {
+            let surf = doc.layer_mut(active_id).unwrap().surface_mut().unwrap();
+            let dark_rect = Rect::new(0, 0, 48, 72);
+            let dark_px = vec![0.15f32, 0.15, 0.15, 1.0].repeat((48 * 72) as usize);
+            surf.write_region(dark_rect, &dark_px);
+            Ok(())
+        })
+        .unwrap();
+
+        let r = s
+            .execute(
+                LAYER,
+                json!({
+                    "patternType": "dots",
+                    "dotSize": 6.0,
+                    "spacingX": 10.0,
+                    "spacingY": 10.0,
+                    "useSourceLuminance": true
+                }),
+            )
+            .unwrap();
+        let id = photocraft_doc::LayerId(r["layer"].as_u64().unwrap());
+        let layer = s.active().unwrap().doc.layer(id).unwrap();
+        let LayerContent::Screentone(st) = &layer.content else {
+            panic!("expected Screentone layer, got {}", layer.content.kind_name());
+        };
+        assert!(st.spec.use_source_luminance, "source luminance remains enabled when underlying artwork has tonal ink");
+
+        let px = read_layer(&s, id.0);
+        let mut left_ink = 0.0f32;
+        let mut right_ink = 0.0f32;
+        for y in 0..72usize {
+            for x in 0..96usize {
+                let a = px[(y * 96 + x) * 4 + 3];
+                if x < 44 {
+                    left_ink += a;
+                } else if x >= 52 {
+                    right_ink += a;
+                }
+            }
+        }
+        assert!(left_ink > 100.0, "dark region produces dense halftone dots (got {left_ink})");
+        assert!(
+            right_ink < left_ink * 0.05,
+            "white/transparent region produces no halftone dots (left={left_ink}, right={right_ink})"
+        );
+    }
+
+    #[test]
+    fn test_gizmo_showing_only_when_screentone_layer_active() {
+        let mut s = session(8);
+        let active_raster = s.active().unwrap().active_layer.unwrap();
+        assert!(
+            !s.active().unwrap().doc.layer(active_raster).unwrap().is_screentone(),
+            "a regular raster layer is not a live screentone"
+        );
+
+        let r = s.execute(LAYER, json!({"patternType": "dots"})).unwrap();
+        let tone_id = photocraft_doc::LayerId(r["layer"].as_u64().unwrap());
+        assert_eq!(s.active().unwrap().active_layer, Some(tone_id));
+        assert!(
+            s.active().unwrap().doc.layer(tone_id).unwrap().is_screentone(),
+            "newly generated screentone layer is active and is_screentone() == true"
+        );
+    }
+
+    #[test]
+    fn test_smart_filter_screentone_on_smart_object_preserves_smart_type() {
+        let mut s = session(8);
+        let active_id = s.active().unwrap().active_layer.unwrap();
+        s.edit("Paint Midtone", |doc, _| {
+            let surf = doc.layer_mut(active_id).unwrap().surface_mut().unwrap();
+            let rect = Rect::new(0, 0, 48, 72);
+            let px = vec![0.3f32, 0.3, 0.3, 1.0].repeat((48 * 72) as usize);
+            surf.write_region(rect, &px);
+            Ok(())
+        })
+        .unwrap();
+
+        s.execute("layer.smartObjects.convertToSmartObject", json!({})).unwrap();
+        let smart_id = s.active().unwrap().active_layer.unwrap();
+        assert!(matches!(
+            s.active().unwrap().doc.layer(smart_id).unwrap().content,
+            LayerContent::Smart(_)
+        ));
+
+        s.execute(
+            FILTER,
+            json!({
+                "patternType": "dots",
+                "dotSize": 6.0,
+                "spacingX": 10.0,
+                "spacingY": 10.0,
+                "useSourceLuminance": true
+            }),
+        )
+        .unwrap();
+
+        let layer = s.active().unwrap().doc.layer(smart_id).unwrap();
+        assert!(!layer.is_screentone(), "smart object must not become a procedural screentone layer");
+        let LayerContent::Smart(so) = &layer.content else {
+            panic!("expected LayerContent::Smart, got {}", layer.content.kind_name());
+        };
+        assert_eq!(so.smart_filters.len(), 1, "screentone filter attached as non-destructive SmartFilter");
+        assert_eq!(so.smart_filters[0].command, FILTER);
+
+        let px = read_layer(&s, smart_id.0);
+        let mut left_alpha = 0.0f32;
+        let mut right_alpha = 0.0f32;
+        for y in 0..72usize {
+            for x in 0..96usize {
+                let a = px[(y * 96 + x) * 4 + 3];
+                if x < 44 {
+                    left_alpha += a;
+                } else if x >= 52 {
+                    right_alpha += a;
+                }
+            }
+        }
+        assert!(left_alpha > 50.0, "smart filter modulated halftone dots over the painted left half");
+        assert_eq!(right_alpha, 0.0, "transparent right half stays clear");
     }
 }
