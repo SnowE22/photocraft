@@ -101,6 +101,13 @@ pub fn entries(l: &Layer, multi: bool, has_selection: bool) -> Vec<Entry> {
         v.push(Some((tl!(mask_toggle_label(mask.enabled)), "layer.layerMask.enabled")));
         v.push(Some((tl!("Apply Layer Mask"), "layer.layerMask.apply")));
         v.push(Some((tl!("Delete Layer Mask"), "layer.layerMask.delete")));
+        if l.second_mask.is_none() {
+            v.push(Some((tl!("Add Second Layer Mask"), photocraft_engine::second_mask_cmds::ADD)));
+        } else if let Some(m2) = &l.second_mask {
+            let m2_label = if m2.enabled { tl!("Disable Second Mask") } else { tl!("Enable Second Mask") };
+            v.push(Some((m2_label, photocraft_engine::second_mask_cmds::ENABLED)));
+            v.push(Some((tl!("Delete Second Mask"), photocraft_engine::second_mask_cmds::DELETE)));
+        }
     } else {
         v.push(Some((tl!("Add Layer Mask"), add_mask_command(has_selection, false))));
     }

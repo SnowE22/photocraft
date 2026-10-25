@@ -742,6 +742,11 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
     // Normalized ink density in [0.0, 1.0] between `white_threshold` (clean paper = 0.0) and
     // `black_threshold` (deep shadow = 1.0).
     let sample_ink = |doc_x: f32, doc_y: f32| -> f32 {
+        if spec.preserve_lines && is_preserved_line(doc_x.round() as i32, doc_y.round() as i32) {
+            // Line-art contours are preserved directly as crisp, solid ink;
+            // suppress halftone dots under preserved lines to eliminate dot bleed ("pimples")
+            return 0.0;
+        }
         let luma_adj = sample_luma_adj(doc_x, doc_y);
         if luma_adj >= white_thresh {
             0.0
@@ -1488,6 +1493,8 @@ mod tests {
         let with_lines = screentone(&img, bounds, &ctx, &ScreentoneSpec { preserve_lines: true, ..base_spec.clone() });
         let line_ink_on: f32 = (0..32usize).map(|y| with_lines[(y * 64 + 32) * 4 + 3]).sum();
         assert!((line_ink_on - 32.0).abs() < 1e-4, "with preserve_lines, every pixel of the vertical line at x=32 is 1.0 solid ink");
+        let bleed_ink: f32 = (0..32usize).map(|y| with_lines[(y * 64 + 30) * 4 + 3] + with_lines[(y * 64 + 34) * 4 + 3]).sum();
+        assert_eq!(bleed_ink, 0.0, "zero dot bleeding or pimples adjacent to preserved line");
 
         // Increasing `line_thickness` to 2.5 dilates the preserved line into x=31 and x=33 as well.
         let thick_lines = screentone(&img, bounds, &ctx, &ScreentoneSpec { preserve_lines: true, line_thickness: 2.5, ..base_spec.clone() });

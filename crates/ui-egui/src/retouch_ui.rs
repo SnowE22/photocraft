@@ -247,7 +247,13 @@ fn generative_models() -> Vec<(String, &'static str)> {
 /// AI Remove's `paint.remove` params: what is selected, always with Nano Banana and its own
 /// settings, whatever model the strokes use (user request).
 fn ai_remove_params(app: &PhotocraftApp) -> Value {
-    let mut p = model_params(&app.ui.tool_options, "nanoBanana", "on");
+    let model = match app.ui.tool_options.remove_model.as_str() {
+        "nanoBanana" if photocraft_engine::generative::nano_banana::key_source().is_some() => "nanoBanana",
+        "diffusion" => "diffusion",
+        _ => "lama",
+    };
+    let generative = if model == "nanoBanana" { "on" } else { "auto" };
+    let mut p = model_params(&app.ui.tool_options, model, generative);
     p["selection"] = json!(true);
     p["target"] = crate::canvas::paint_target(app);
     p
