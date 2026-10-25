@@ -47,6 +47,7 @@ impl Default for ScreentoneUi {
                 dot_size: 4.5,
                 spacing_x: 8.0,
                 spacing_y: 8.0,
+                angle: 45.0,
                 density: 0.75,
                 background: [1.0, 1.0, 1.0, 1.0],
                 preserve_lines: true,
@@ -263,12 +264,16 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         crate::widgets::value_field(ui, &mut st.spec.spacing_y, 1.0..=2000.0, "px", 76.0);
         ui.end_row();
 
-        row(ui, &label("density"));
-        crate::widgets::value_field(ui, &mut st.spec.density, 0.0..=1.0, "", 76.0);
+        row(ui, tl!("Row Offset:"));
+        crate::widgets::value_field(ui, &mut st.spec.row_offset, -1.0..=1.0, "", 76.0);
         ui.end_row();
 
         row(ui, &label("angle"));
         crate::widgets::value_field(ui, &mut st.spec.angle, -180.0..=180.0, "°", 76.0);
+        ui.end_row();
+
+        row(ui, &label("density"));
+        crate::widgets::value_field(ui, &mut st.spec.density, 0.0..=1.0, "", 76.0);
         ui.end_row();
 
         row(ui, &label("lineWidth"));
@@ -333,7 +338,7 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
             if st.spec.preserve_lines {
                 row(ui, tl!("Line Threshold:"));
-                crate::widgets::value_field(ui, &mut st.spec.line_threshold, 0.0..=1.0, "", 76.0);
+                crate::widgets::value_field(ui, &mut st.spec.line_threshold, 0.05..=0.65, "", 76.0);
                 ui.end_row();
 
                 row(ui, tl!("Line Thickness:"));
@@ -341,10 +346,6 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 ui.end_row();
             }
         }
-
-        row(ui, tl!("Name:"));
-        ui.add(egui::TextEdit::singleline(&mut st.name).desired_width(176.0));
-        ui.end_row();
     });
 
     ui.add_space(4.0);
@@ -405,10 +406,6 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
                 row(ui, tl!("Aspect Y:"));
                 crate::widgets::value_field(ui, &mut st.spec.aspect_y, 0.1..=10.0, "", 76.0);
-                ui.end_row();
-
-                row(ui, tl!("Row Offset:"));
-                crate::widgets::value_field(ui, &mut st.spec.row_offset, -1.0..=1.0, "", 76.0);
                 ui.end_row();
 
                 row(ui, tl!("Merge:"));
@@ -486,9 +483,16 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         }
     });
     ui.add_space(2.0);
-    if ui.button(tl!("Save as Pattern")).clicked() {
-        action = Some(photocraft_engine::screentone_cmds::PATTERN);
-    }
+    ui.horizontal(|ui| {
+        if ui.button(tl!("Save as Pattern")).clicked() {
+            action = Some(photocraft_engine::screentone_cmds::PATTERN);
+        }
+        ui.add(
+            egui::TextEdit::singleline(&mut st.name)
+                .hint_text(tl!("Pattern Name"))
+                .desired_width(116.0),
+        );
+    });
     app.ui.screentone_ui = st;
     if freeze_clicked {
         freeze_active_layer(app);

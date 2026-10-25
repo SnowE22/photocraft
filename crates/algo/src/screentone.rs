@@ -638,6 +638,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
 
     let rot_canvas_rad = spec.rot_canvas.to_radians();
     let (sin_canvas, cos_canvas) = rot_canvas_rad.sin_cos();
+    let rot_angle_rad = spec.angle.to_radians();
+    let (sin_ang, cos_ang) = rot_angle_rad.sin_cos();
     let rot_pattern_rad = spec.rot_pattern.to_radians();
     let rot_sat_rad = spec.satellite_angle.to_radians();
     let (sin_sat, cos_sat) = rot_sat_rad.sin_cos();
@@ -689,7 +691,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
     };
 
     // Whether integer coordinate `(ix, iy)` is a sharp dark ink line edge (Halftone Studio GT /
-    // Vayce line-art detector, including 1px symmetric ink strokes where `l_l == l_r`).
+    // Vayce line-art detector, using raw unadjusted luminance and 2px local contrast so 1..4px
+    // strokes stay solid without hollow centers while flat shadows stay halftoned).
     let is_line_edge_at = |ix: i32, iy: i32| -> bool {
         let l_c = raw_paper_luma(ix, iy);
         if l_c >= 0.72 {
@@ -699,9 +702,20 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
         let l_r = raw_paper_luma(ix + 1, iy);
         let l_u = raw_paper_luma(ix, iy - 1);
         let l_d = raw_paper_luma(ix, iy + 1);
+        let nb_max = l_l
+            .max(l_r)
+            .max(l_u)
+            .max(l_d)
+            .max(raw_paper_luma(ix - 2, iy))
+            .max(raw_paper_luma(ix + 2, iy))
+            .max(raw_paper_luma(ix, iy - 2))
+            .max(raw_paper_luma(ix, iy + 2));
+        let local_dip = (nb_max - l_c).max(0.0);
         let contrast_nb = (l_l - l_c).max(l_r - l_c).max(l_u - l_c).max(l_d - l_c).max(0.0);
         let edge_mag = (l_r - l_l).hypot(l_d - l_u).max(contrast_nb);
-        (edge_mag > 0.12 && l_c <= line_thresh.max(0.55)) || (edge_mag > 0.06 && l_c <= line_thresh)
+        let thresh = line_thresh.clamp(0.02, 0.72);
+        (l_c <= thresh && (edge_mag > 0.05 || local_dip > 0.06 || l_c <= thresh * 0.75))
+            || (l_c < 0.65 && edge_mag > (0.22 - thresh * 0.35).max(0.06) && local_dip > 0.08)
     };
 
     // Dilates preserved line-art edges by `line_thickness` radius (0.5..=5.0 px).
@@ -780,13 +794,30 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
         // the unshifted coordinates, so the origin only slides the pattern, never its shading.
         let (local_x, local_y) = (local_x - spec.origin_x, local_y - spec.origin_y);
 
+        // Rotate the lattice by `spec.angle` (Grid Rotation) around the phase-shifted origin so
+        // Dots, Hexgrid, Checker, Stipple, Stars, Hearts, Triangles, Lines and Crosshatch all
+        // rotate smoothly at any angle (e.g. classic 45° Polka Dot).
+        let (grid_x, grid_y) = if spec.angle == 0.0 {
+            (local_x, local_y)
+        } else {
+            (local_x * cos_ang + local_y * sin_ang, -local_x * sin_ang + local_y * cos_ang)
+        };
+        let grid_to_doc = |gx: f32, gy: f32| -> (f32, f32) {
+            let (lx, ly) = if spec.angle == 0.0 {
+                (gx, gy)
+            } else {
+                (gx * cos_ang - gy * sin_ang, gx * sin_ang + gy * cos_ang)
+            };
+            let ux = lx + spec.origin_x;
+            let uy = ly + spec.origin_y;
+            (cx + ux * cos_canvas - uy * sin_canvas, cy + ux * sin_canvas + uy * cos_canvas)
+        };
+
         let mut cov = 0.0f32;
 
         match spec.pattern_type {
             PatternType::Lines => {
-                let angle_rad = spec.angle.to_radians();
-                let (sin_l, cos_l) = angle_rad.sin_cos();
-                let ly = -local_x * sin_l + local_y * cos_l;
+                let ly = grid_y;
                 let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                 let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
                 if ink > 1e-5 && width > 1e-4 {
@@ -796,11 +827,9 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                 }
             }
             PatternType::Crosshatch => {
-                let a1_rad = spec.angle.to_radians();
                 let a2_rad = (spec.angle + spec.cross_angle).to_radians();
-                let (sin1, cos1) = a1_rad.sin_cos();
                 let (sin2, cos2) = a2_rad.sin_cos();
-                let ly1 = -local_x * sin1 + local_y * cos1;
+                let ly1 = grid_y;
                 let ly2 = -local_x * sin2 + local_y * cos2;
                 let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                 let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
@@ -814,7 +843,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                 }
             }
             PatternType::Concentric => {
-                let r = local_x.hypot(local_y);
+                let r = grid_x.hypot(grid_y);
                 let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                 let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
                 if ink > 1e-5 && width > 1e-4 {
@@ -824,35 +853,34 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                 }
             }
             PatternType::Checker => {
-                let ix = (local_x / spacing_x).floor() as i32;
-                let iy = (local_y / spacing_y).floor() as i32;
+                let ix = (grid_x / spacing_x).floor() as i32;
+                let iy = (grid_y / spacing_y).floor() as i32;
                 if ((ix.wrapping_add(iy)) & 1) == 0 {
                     let cell_cx = (ix as f32 + 0.5) * spacing_x;
                     let cell_cy = (iy as f32 + 0.5) * spacing_y;
                     let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                     let size = (spacing_x * 0.45 * mod_size * spec.density * ink).max(0.0);
                     if ink > 1e-5 && size > 1e-4 {
-                        let dist = eval_shape_sdf(local_x - cell_cx, local_y - cell_cy, DotShape::Square, size, xf);
+                        let dist = eval_shape_sdf(grid_x - cell_cx, grid_y - cell_cy, DotShape::Square, size, xf);
                         cov = coverage_from_sdf(dist, spec.smoothness);
                     }
                 }
             }
             PatternType::Hexgrid => {
                 let hy = spacing_y * 0.8660254;
-                let cy_idx = (local_y / hy).round() as i32;
+                let cy_idx = (grid_y / hy).round() as i32;
                 for dy in -1..=1 {
                     let iy = cy_idx + dy;
                     let cell_y = iy as f32 * hy;
                     let row_shift = if (iy & 1) != 0 { spacing_x * 0.5 } else { 0.0 };
-                    let cx_idx = ((local_x - row_shift) / spacing_x).round() as i32;
+                    let cx_idx = ((grid_x - row_shift) / spacing_x).round() as i32;
                     for dx in -1..=1 {
                         let ix = cx_idx + dx;
                         let cell_x = ix as f32 * spacing_x + row_shift;
                         let ink = if use_shading {
-                            // The cell's lattice coordinate is phase-shifted by the origin;
-                            // sample the canvas at the dot's true position (undo the shift).
-                            let doc_dot_x = cx + (cell_x + spec.origin_x) * cos_canvas - (cell_y + spec.origin_y) * sin_canvas;
-                            let doc_dot_y = cy + (cell_x + spec.origin_x) * sin_canvas + (cell_y + spec.origin_y) * cos_canvas;
+                            // The cell's lattice coordinate is rotated and phase-shifted;
+                            // sample the canvas at the dot's true document position.
+                            let (doc_dot_x, doc_dot_y) = grid_to_doc(cell_x, cell_y);
                             sample_ink(doc_dot_x, doc_dot_y)
                         } else {
                             1.0
@@ -861,7 +889,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             continue;
                         }
                         let size = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
-                        let dist = eval_shape_sdf(local_x - cell_x, local_y - cell_y, DotShape::Hexagon, size, xf);
+                        let dist = eval_shape_sdf(grid_x - cell_x, grid_y - cell_y, DotShape::Hexagon, size, xf);
                         let cell_cov = coverage_from_sdf(dist, spec.smoothness);
                         cov = cov.max(cell_cov);
                     }
@@ -869,8 +897,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
             }
             PatternType::Noise => {
                 let seed = spec.seed;
-                let cx_idx = (local_x / spacing_x).floor() as i32;
-                let cy_idx = (local_y / spacing_y).floor() as i32;
+                let cx_idx = (grid_x / spacing_x).floor() as i32;
+                let cy_idx = (grid_y / spacing_y).floor() as i32;
                 for dy in -1..=1 {
                     for dx in -1..=1 {
                         let ix = cx_idx + dx;
@@ -890,15 +918,15 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             continue;
                         }
                         let sz = (spec.dot_size * (1.0 + (h2 - 0.5) * spec.jitter_size * 0.02) * mod_size * ink).max(0.0);
-                        let dist = (local_x - dot_cx).hypot(local_y - dot_cy) - sz;
+                        let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
                         cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                     }
                 }
             }
             PatternType::GaussianNoise => {
                 let seed = spec.seed.wrapping_add(137);
-                let cx_idx = (local_x / spacing_x).floor() as i32;
-                let cy_idx = (local_y / spacing_y).floor() as i32;
+                let cx_idx = (grid_x / spacing_x).floor() as i32;
+                let cy_idx = (grid_y / spacing_y).floor() as i32;
                 for dy in -1..=1 {
                     for dx in -1..=1 {
                         let ix = cx_idx + dx;
@@ -915,15 +943,15 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             continue;
                         }
                         let sz = (spec.dot_size * (0.6 + h1 * 0.8) * mod_size * ink).max(0.0);
-                        let dist = (local_x - dot_cx).hypot(local_y - dot_cy) - sz;
+                        let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
                         cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                     }
                 }
             }
             PatternType::Stipple => {
                 let seed = spec.seed.wrapping_add(999);
-                let cx_idx = (local_x / spacing_x).floor() as i32;
-                let cy_idx = (local_y / spacing_y).floor() as i32;
+                let cx_idx = (grid_x / spacing_x).floor() as i32;
+                let cy_idx = (grid_y / spacing_y).floor() as i32;
                 for dy in -1..=1 {
                     for dx in -1..=1 {
                         let ix = cx_idx + dx;
@@ -944,14 +972,14 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             continue;
                         }
                         let sz = (spec.dot_size * (0.5 + h_sz * 0.5) * mod_size).max(0.0);
-                        let dist = eval_shape_sdf(local_x - dot_cx, local_y - dot_cy, spec.dot_shape, sz, xf);
+                        let dist = eval_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.dot_shape, sz, xf);
                         cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                     }
                 }
             }
             PatternType::Stars | PatternType::Hearts | PatternType::Triangles => {
-                let cx_idx = (local_x / spacing_x).floor() as i32;
-                let cy_idx = (local_y / spacing_y).floor() as i32;
+                let cx_idx = (grid_x / spacing_x).floor() as i32;
+                let cy_idx = (grid_y / spacing_y).floor() as i32;
                 for dy in -1..=1 {
                     for dx in -1..=1 {
                         let ix = cx_idx + dx;
@@ -970,21 +998,21 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             continue;
                         }
                         let sz = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
-                        let dist = eval_special_shape_sdf(local_x - dot_cx, local_y - dot_cy, spec.pattern_type, sz, xf);
+                        let dist = eval_special_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.pattern_type, sz, xf);
                         cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                     }
                 }
             }
             PatternType::Dots => {
                 // Default Dots + Satellite system
-                let cy_idx = (local_y / spacing_y).floor() as i32;
+                let cy_idx = (grid_y / spacing_y).floor() as i32;
                 for dy in -1..=1 {
                     let iy = cy_idx + dy;
                     let mut row_shift = 0.0f32;
                     if (iy & 1) != 0 {
                         row_shift = spacing_x * spec.row_offset;
                     }
-                    let cx_idx = ((local_x - row_shift) / spacing_x).floor() as i32;
+                    let cx_idx = ((grid_x - row_shift) / spacing_x).floor() as i32;
                     for dx in -1..=1 {
                         let ix = cx_idx + dx;
                         let mut dot_cx = ix as f32 * spacing_x + row_shift;
@@ -996,10 +1024,9 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         }
 
                         let ink = if use_shading {
-                            // The dot's lattice coordinate is phase-shifted by the origin;
-                            // sample the canvas at the dot's true position (undo the shift).
-                            let doc_dot_x = cx + (dot_cx + spec.origin_x) * cos_canvas - (dot_cy + spec.origin_y) * sin_canvas;
-                            let doc_dot_y = cy + (dot_cx + spec.origin_x) * sin_canvas + (dot_cy + spec.origin_y) * cos_canvas;
+                            // The dot's lattice coordinate is rotated and phase-shifted;
+                            // sample the canvas at the dot's true document position.
+                            let (doc_dot_x, doc_dot_y) = grid_to_doc(dot_cx, dot_cy);
                             sample_ink(doc_dot_x, doc_dot_y)
                         } else {
                             1.0
@@ -1020,7 +1047,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         }
 
                         // Main dot
-                        let dist_main = eval_shape_sdf(local_x - dot_cx, local_y - dot_cy, spec.dot_shape, final_size, xf);
+                        let dist_main = eval_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.dot_shape, final_size, xf);
                         cov = cov.max(coverage_from_sdf(dist_main, spec.smoothness));
 
                         // Satellites
@@ -1038,8 +1065,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                                 let sat_x = dot_cx + rsx;
                                 let sat_y = dot_cy + rsy;
 
-                                let mut spx = local_x - sat_x;
-                                let mut spy = local_y - sat_y;
+                                let mut spx = grid_x - sat_x;
+                                let mut spy = grid_y - sat_y;
 
                                 if spec.satellite_stretch > 0.0 && (rsx != 0.0 || rsy != 0.0) {
                                     let stretch_dir = (-rsy).atan2(-rsx);
@@ -1469,5 +1496,25 @@ mod tests {
         let thick_lines = screentone(&img, bounds, &ctx, &ScreentoneSpec { preserve_lines: true, line_thickness: 2.5, ..base_spec.clone() });
         let neighbor_ink: f32 = (0..32usize).map(|y| thick_lines[(y * 64 + 31) * 4 + 3] + thick_lines[(y * 64 + 33) * 4 + 3]).sum();
         assert!((neighbor_ink - 64.0).abs() < 1e-4, "line_thickness=2.5 dilates the preserved line to adjacent columns");
+    }
+
+    #[test]
+    fn test_grid_rotation_rotates_dot_lattice() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let img = make_test_image(64, 64, 0.5);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: false };
+        let spec_0 = ScreentoneSpec {
+            pattern_type: PatternType::Dots,
+            dot_size: 4.0,
+            spacing_x: 16.0,
+            spacing_y: 16.0,
+            angle: 0.0,
+            use_source_luminance: false,
+            ..Default::default()
+        };
+        let spec_45 = ScreentoneSpec { angle: 45.0, ..spec_0.clone() };
+        let px_0 = screentone(&img, bounds, &ctx, &spec_0);
+        let px_45 = screentone(&img, bounds, &ctx, &spec_45);
+        assert_ne!(px_0, px_45, "changing angle to 45° must rotate the dot grid");
     }
 }
