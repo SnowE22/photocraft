@@ -488,6 +488,9 @@ pub struct Panels {
     /// floating window rather than a modal so the canvas stays usable while a gradient is edited.
     #[serde(default)]
     pub gradient_editor: bool,
+    /// Window > Canvas Capsule: floating contextual bar on the canvas.
+    #[serde(default = "yes")]
+    pub canvas_capsule: bool,
 }
 
 impl Default for Panels {
@@ -511,6 +514,7 @@ impl Default for Panels {
             rail: true,
             menu_bar: true,
             gradient_editor: false,
+            canvas_capsule: true,
         }
     }
 }
@@ -1414,6 +1418,9 @@ pub struct UiState {
     /// The Screentones panel (GenTonik screentone generator, see `screentone_panel`).
     #[serde(default)]
     pub screentone_ui: crate::screentone_panel::ScreentoneUi,
+    /// The Canvas Capsule (CraftBar, see `canvas_capsule`).
+    #[serde(default)]
+    pub canvas_capsule: crate::canvas_capsule::CanvasCapsuleState,
     /// Character/Paragraph Styles, Glyphs and Check Spelling (see `type_panels_ui`).
     #[serde(default)]
     pub type_panels: crate::type_panels_ui::TypePanelsUi,
@@ -1569,6 +1576,7 @@ impl Default for UiState {
             layer_comp_selected: None,
             presets_ui: Default::default(),
             screentone_ui: Default::default(),
+            canvas_capsule: Default::default(),
             type_panels: Default::default(),
             analysis: Default::default(),
             timeline: Default::default(),

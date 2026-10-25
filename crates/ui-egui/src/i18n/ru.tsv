@@ -4648,3 +4648,11 @@ shape	Appearance	Оформление
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+	Black Threshold	Порог черного
+	Line Thickness	Толщина линий
+	Line Threshold	Порог линий
+	Preserve Lines	Сохранять линии
+	Shading	Затенение
+	Sheet	Лист
+	Tone Gamma	Гамма тона
+	White Threshold	Порог белого

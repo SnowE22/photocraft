@@ -4404,3 +4404,11 @@ navigator	Zoom	Zoom
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+	Black Threshold	Umbral de negro
+	Line Thickness	Grosor de línea
+	Line Threshold	Umbral de línea
+	Preserve Lines	Conservar líneas
+	Shading	Sombreado
+	Sheet	Hoja
+	Tone Gamma	Gamma de tonos
+	White Threshold	Umbral de blanco

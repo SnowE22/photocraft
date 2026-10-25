@@ -3652,3 +3652,11 @@ curves	Smooth	매끄럽게
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+	Black Threshold	검은색 임계값
+	Line Thickness	선 두께
+	Line Threshold	선 임계값
+	Preserve Lines	선 유지
+	Shading	음영
+	Sheet	시트
+	Tone Gamma	톤 감ма
+	White Threshold	흰색 임계값
