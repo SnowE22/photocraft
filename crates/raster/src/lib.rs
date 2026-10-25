@@ -88,6 +88,47 @@ impl Tile {
         &mut self.data
     }
 
+    /// Write the part `tr` of interleaved normalised floats `data` (one pixel per pixel of `src`,
+    /// in rows) into this tile, the tile at `tc` of a `format` surface. `tr` must lie inside both
+    /// `src` and the tile. For writing tiles taken out of a surface ([`Surface::take_tiles`]) in
+    /// parallel; [`Surface::write_region`] writes through it.
+    pub fn write_region(&mut self, format: &PixelFormat, tc: TileCoord, tr: Rect, data: &[f32], src: Rect) {
+        self.write_samples(format.channels(), format.sample, tc, tr, data, src);
+    }
+
+    /// [`Tile::write_region`] for `n` channels of `sample`.
+    fn write_samples(&mut self, n: usize, sample: SampleType, tc: TileCoord, tr: Rect, data: &[f32], src: Rect) {
+        let w = src.width() as usize;
+        // Convert contiguous channel samples a row at a time. Dispatching on depth here
+        // removes the per-pixel channel loop and lets the compiler vectorise conversion.
+        let span = tr.width() as usize * n;
+        for y in tr.y0..tr.y1 {
+            let o = (((y - src.y0) as usize) * w + (tr.x0 - src.x0) as usize) * n;
+            let base = (((y - tc.ty * TILE_SIZE) as usize) * TILE_SIZE as usize + (tr.x0 - tc.tx * TILE_SIZE) as usize) * n;
+            let bytes = sample.bytes();
+            // Rows outside `data` or the tile (a caller's mistake) are skipped, not a panic.
+            let (Some(src), Some(dst)) = (data.get(o..o + span), self.data.get_mut(base * bytes..(base + span) * bytes)) else { continue };
+            match sample {
+                SampleType::U8 => {
+                    for (d, v) in dst.iter_mut().zip(src) {
+                        *d = (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+                    }
+                }
+                SampleType::U16 => {
+                    for (d, v) in dst.as_chunks_mut::<2>().0.iter_mut().zip(src) {
+                        let q = (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16;
+                        d.copy_from_slice(&q.to_ne_bytes());
+                    }
+                }
+                SampleType::F32 => {
+                    for (d, v) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src) {
+                        d.copy_from_slice(&v.to_ne_bytes());
+                    }
+                }
+            }
+        }
+    }
+
     /// Tile-local half-open bounds `(x0, y0, x1, y1)` of the pixels that differ from the encoded
     /// pixel `dp` (one pixel of the tile's format), or `None` when every pixel equals it (or `dp`
     /// is empty).
@@ -147,46 +188,64 @@ fn sample_buffer<'a>(channels: usize, stack: &'a mut [f32], heap: &'a mut Vec<f3
     }
 }
 
-/// Tiles of one pixel value met while moving a surface ([`Surface::translated`]): each scanned
-/// once, and one tile kept per value so the targets share it.
+/// Tiles of one pixel value among those a move reads ([`Surface::translated`]): each scanned once
+/// before the move, and one tile kept per value so the targets share it.
 #[derive(Default)]
 struct UniformTiles {
-    /// Per source tile (by address): the index of its value's tile in `canonical`, or `None`.
-    of: std::collections::HashMap<usize, Option<usize>>,
+    /// Per uniform source tile (by address): the index of its value's tile in `canonical`.
+    of: std::collections::HashMap<usize, usize>,
     canonical: Vec<Arc<Tile>>,
 }
 
 impl UniformTiles {
+    /// The uniform tiles among `tiles` (`bpp` bytes a pixel), each distinct one scanned once, on up
+    /// to `threads` threads.
+    fn find(tiles: &[&Arc<Tile>], bpp: usize, threads: usize) -> Self {
+        let mut seen = std::collections::HashSet::new();
+        let tiles: Vec<&Arc<Tile>> = tiles.iter().copied().filter(|t| seen.insert(Arc::as_ptr(t).addr())).collect();
+        let tiles = tiles.as_slice();
+        let uniform = |t: &Arc<Tile>| {
+            let mut px = t.data.chunks_exact(bpp.max(1));
+            px.next().is_some_and(|p0| px.all(|p| p == p0))
+        };
+        let scan = |part: &[&Arc<Tile>]| part.iter().map(|t| uniform(t)).collect::<Vec<bool>>();
+        let flags: Vec<bool> = if threads <= 1 {
+            scan(tiles)
+        } else {
+            let parts: Vec<&[&Arc<Tile>]> = tiles.chunks(tiles.len().div_ceil(threads).max(1)).collect();
+            std::thread::scope(|sc| {
+                let handles: Vec<_> = parts.iter().map(|&part| (part, sc.spawn(move || scan(part)))).collect();
+                handles.into_iter().flat_map(|(part, h)| h.join().unwrap_or_else(|_| scan(part))).collect()
+            })
+        };
+        let mut u = Self::default();
+        for (t, _) in tiles.iter().zip(flags).filter(|(_, f)| *f) {
+            let p0 = t.data.get(..bpp);
+            let k = match u.canonical.iter().position(|c| c.data.get(..bpp) == p0) {
+                Some(k) => k,
+                None => {
+                    u.canonical.push(Arc::clone(t));
+                    u.canonical.len() - 1
+                }
+            };
+            u.of.insert(Arc::as_ptr(t).addr(), k);
+        }
+        u
+    }
+
     /// The tile to share for a target reading window `r` of `s`, when every tile under it holds
     /// one and the same pixel value (`r` must lie on existing tiles).
     fn window(&self, s: &Surface, r: Rect) -> Option<Arc<Tile>> {
         let mut found = None;
         for c in r.tiles() {
             let t = s.tiles.get(&c)?;
-            let k = (*self.of.get(&(Arc::as_ptr(t) as usize))?)?;
+            let k = *self.of.get(&Arc::as_ptr(t).addr())?;
             if found.is_some_and(|f| f != k) {
                 return None;
             }
             found = Some(k);
         }
         self.canonical.get(found?).cloned()
-    }
-
-    fn value_of(&mut self, t: &Arc<Tile>, bpp: usize) -> Option<usize> {
-        let key = Arc::as_ptr(t) as usize;
-        if let Some(k) = self.of.get(&key) {
-            return *k;
-        }
-        let mut px = t.data.chunks_exact(bpp);
-        let k = px.next().filter(|p0| px.all(|p| p == *p0)).map(|p0| match self.canonical.iter().position(|c| c.data.get(..bpp) == Some(p0)) {
-            Some(k) => k,
-            None => {
-                self.canonical.push(t.clone());
-                self.canonical.len() - 1
-            }
-        });
-        self.of.insert(key, k);
-        k
     }
 }
 
@@ -197,51 +256,23 @@ impl PartialEq for Surface {
 }
 
 /// Converts the `data` span covering one tile into that tile's bytes.
-fn write_tile(t: &mut Tile, tc: TileCoord, r: Rect, data: &[f32], w: usize, n: usize, sample: SampleType) {
-    let tr = tc.rect().intersect(&r);
-    // Convert contiguous channel samples a row at a time. Dispatching on depth here removes the
-    // per-pixel channel loop and lets the compiler vectorise conversion.
-    let span = tr.width() as usize * n;
-    for y in tr.y0..tr.y1 {
-        let o = (((y - r.y0) as usize) * w + (tr.x0 - r.x0) as usize) * n;
-        let base = (((y - tc.ty * TILE_SIZE) as usize) * TILE_SIZE as usize + (tr.x0 - tc.tx * TILE_SIZE) as usize) * n;
-        let src = &data[o..o + span];
-        let bytes = sample.bytes();
-        let dst = &mut t.data[base * bytes..(base + span) * bytes];
-        match sample {
-            SampleType::U8 => {
-                for (d, v) in dst.iter_mut().zip(src) {
-                    *d = (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-                }
-            }
-            SampleType::U16 => {
-                for (d, v) in dst.as_chunks_mut::<2>().0.iter_mut().zip(src) {
-                    let q = (v.clamp(0.0, 1.0) * 65535.0 + 0.5) as u16;
-                    d.copy_from_slice(&q.to_ne_bytes());
-                }
-            }
-            SampleType::F32 => {
-                for (d, v) in dst.as_chunks_mut::<4>().0.iter_mut().zip(src) {
-                    d.copy_from_slice(&v.to_ne_bytes());
-                }
-            }
-        }
-    }
+fn write_tile(t: &mut Tile, tc: TileCoord, r: Rect, data: &[f32], n: usize, sample: SampleType) {
+    t.write_samples(n, sample, tc, tc.rect().intersect(&r), data, r);
 }
 
 /// Converts the tiles of a region write. A tile holds no state another tile reads, so the tiles
 /// are converted on all cores; each writes only its own bytes, in the same arithmetic.
 #[cfg(not(target_arch = "wasm32"))]
-fn convert_tiles(tiles: &mut [(TileCoord, Arc<Tile>)], r: Rect, data: &[f32], w: usize, n: usize, sample: SampleType) {
+fn convert_tiles(tiles: &mut [(TileCoord, Arc<Tile>)], r: Rect, data: &[f32], n: usize, sample: SampleType) {
     use rayon::prelude::*;
-    tiles.par_iter_mut().for_each(|(tc, t)| write_tile(Arc::make_mut(t), *tc, r, data, w, n, sample));
+    tiles.par_iter_mut().for_each(|(tc, t)| write_tile(Arc::make_mut(t), *tc, r, data, n, sample));
 }
 
 /// Serial counterpart, for the web build (there are no threads to spread tiles over).
 #[cfg(target_arch = "wasm32")]
-fn convert_tiles(tiles: &mut [(TileCoord, Arc<Tile>)], r: Rect, data: &[f32], w: usize, n: usize, sample: SampleType) {
+fn convert_tiles(tiles: &mut [(TileCoord, Arc<Tile>)], r: Rect, data: &[f32], n: usize, sample: SampleType) {
     for (tc, t) in tiles.iter_mut() {
-        write_tile(Arc::make_mut(t), *tc, r, data, w, n, sample);
+        write_tile(Arc::make_mut(t), *tc, r, data, n, sample);
     }
 }
 
@@ -693,7 +724,7 @@ impl Surface {
         assert_eq!(data.len(), w * r.height() as usize * n, "region data length mismatch");
         let sample = self.format.sample;
         for tc in r.tiles() {
-            write_tile(self.tile_mut(tc), tc, r, data, w, n, sample);
+            write_tile(self.tile_mut(tc), tc, r, data, n, sample);
         }
     }
 
@@ -711,7 +742,7 @@ impl Surface {
         // exactly the same bytes. `take_tiles` gives the missing tiles as one shared
         // default-filled tile, copied per tile by `Arc::make_mut` in `convert_tiles`.
         let mut tiles = self.take_tiles(r);
-        convert_tiles(&mut tiles, r, data, w, n, sample);
+        convert_tiles(&mut tiles, r, data, n, sample);
         self.put_tiles(tiles);
     }
 
@@ -869,14 +900,11 @@ impl Surface {
         }
         let bpp = self.format.bytes_per_pixel();
         let moved = content.translate(dx, dy);
-        let targets: std::collections::BTreeSet<TileCoord> = sources().flat_map(|(c, _)| c.rect().translate(dx, dy).intersect(&moved).tiles()).collect();
-        let mut uniform = UniformTiles::default();
-        for (_, t) in sources() {
-            uniform.value_of(t, bpp);
-        }
-        // The fill row: one tile row of the default pixel, so the regions a shift vacates
-        // fill with bulk copies (empty when the default is zero — the tile starts zeroed).
-
+        let targets: Vec<TileCoord> = sources()
+            .flat_map(|(c, _)| c.rect().translate(dx, dy).intersect(&moved).tiles())
+            .collect::<std::collections::BTreeSet<TileCoord>>()
+            .into_iter()
+            .collect();
         // One row of the default pixel, so the regions a shift vacates fill with bulk copies.
         let fill_row: Vec<u8> = if self.default_pixel.iter().any(|&b| b != 0) {
             let mut row = Vec::with_capacity(TILE_SIZE as usize * bpp);
@@ -890,7 +918,11 @@ impl Surface {
 
         // One tile row of the default pixel, to compare a finished tile with a row at a time.
         let default_row = self.default_pixel.repeat(TILE_SIZE.unsigned_abs() as usize);
-        let build_target = |dc: TileCoord| -> Option<(TileCoord, Arc<Tile>)> {
+        // A big layer (a Move drag shifts it every frame) shifts on every core.
+        let threads = if cfg!(target_arch = "wasm32") { 1 } else { std::thread::available_parallelism().map_or(1, |n| n.get()).min(targets.len() / 16).clamp(1, 32) };
+        let uniform = UniformTiles::find(&sources().map(|(_, t)| t).collect::<Vec<_>>(), bpp, threads);
+        // One target tile: shared, copied, or `None` when it holds only the default pixel.
+        let make = |dc: TileCoord| -> Option<Arc<Tile>> {
             let dr = dc.rect();
             let sr = dr.translate(dx.saturating_neg(), dy.saturating_neg());
             // Every pixel of the target comes from a source tile (none from the default pixel).
@@ -902,7 +934,7 @@ impl Surface {
                 && sr.tiles().all(|sc| self.tiles.contains_key(&sc));
             if covered && let Some(shared) = uniform.window(self, sr) {
                 // A tile of only the default pixel is left out, as `prune` would.
-                return (shared.data.get(..bpp) != Some(&*self.default_pixel)).then_some((dc, shared));
+                return (shared.data.get(..bpp) != Some(&*self.default_pixel)).then_some(shared);
             }
 
             let mut tile = Tile { data: vec![0u8; (TILE_SIZE * TILE_SIZE) as usize * bpp].into_boxed_slice() };
@@ -984,17 +1016,20 @@ impl Surface {
             }
             // A target that got only default pixels isn't stored, as `prune` would drop it. Checked
             // after the copy, a row at a time: a tile with content stops at its first such row.
-            tile.data.chunks(default_row.len()).any(|row| row != default_row).then(|| (dc, Arc::new(tile)))
+            tile.data.chunks(default_row.len()).any(|row| row != default_row).then(|| Arc::new(tile))
         };
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            use rayon::prelude::*;
-            out.tiles = targets.into_par_iter().filter_map(build_target).collect();
+        let run = |part: &[TileCoord]| -> Vec<(TileCoord, Arc<Tile>)> { part.iter().filter_map(|&dc| make(dc).map(|t| (dc, t))).collect() };
+        if threads <= 1 {
+            out.tiles = run(&targets).into_iter().collect();
+            return out;
         }
-        #[cfg(target_arch = "wasm32")]
-        {
-            out.tiles = targets.into_iter().filter_map(build_target).collect();
-        }
+        let parts: Vec<&[TileCoord]> = targets.chunks(targets.len().div_ceil(threads)).collect();
+        let made: Vec<Vec<(TileCoord, Arc<Tile>)>> = std::thread::scope(|sc| {
+            let handles: Vec<_> = parts.iter().map(|&part| (part, sc.spawn(move || run(part)))).collect();
+            // A worker that could not finish has its part done here.
+            handles.into_iter().map(|(part, h)| h.join().unwrap_or_else(|_| run(part))).collect()
+        });
+        out.tiles = made.into_iter().flatten().collect();
         out
     }
 
@@ -1703,6 +1738,25 @@ mod tests {
         assert_eq!(t.content_bounds(&[255]).map(|b| (b.0, b.1)), Some((0, 0)));
         // A malformed pixel is no content, not a panic.
         assert_eq!(t.content_bounds(&[]), None);
+    }
+
+    #[test]
+    fn a_big_surface_shifted_on_many_threads_is_the_same_copy() {
+        // Over 16 target tiles a thread: the shift runs on several threads.
+        let fmt = PixelFormat::RGBA8;
+        let mut s = Surface::new(fmt);
+        let r = Rect::new(-100, 30, 3100, 2900);
+        let v: Vec<f32> = (0..r.width() as usize * r.height() as usize * 4).map(|i| ((i * 7919) % 251) as f32 / 250.0).collect();
+        s.write_region(r, &v);
+        s.fill_rect(Rect::new(600, 600, 1700, 1700), &[0.2, 0.4, 0.6, 1.0]);
+        for (dx, dy) in [(37, -21), (-300, 513), (1, 1)] {
+            let t = s.translated(dx, dy, s.content_bounds());
+            let moved = r.translate(dx, dy).inflate(2);
+            assert_eq!(t.to_interleaved(moved), s.to_interleaved(moved.translate(-dx, -dy)), "by ({dx}, {dy})");
+            let mut pruned = t.clone();
+            pruned.prune();
+            assert_eq!(pruned.tile_count(), t.tile_count(), "no tile of only the default pixel is kept");
+        }
     }
 
     #[test]

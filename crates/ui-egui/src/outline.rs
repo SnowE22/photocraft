@@ -14,15 +14,17 @@ pub type Segment = ([i32; 2], [i32; 2]);
 /// Include grid alignment and the two padding cells in the budget; ordinary traces keep their step.
 pub(crate) fn bounded_step(bounds: Rect, mut step: u32) -> u32 {
     step = step.max(1);
-    let cells = |step: u32| {
-        let s = i64::from(step);
-        let axis = |lo: i32, hi: i32| ((i64::from(hi) + s - 1).div_euclid(s) - i64::from(lo).div_euclid(s) + 2).max(0) as u64;
-        axis(bounds.x0, bounds.x1).saturating_mul(axis(bounds.y0, bounds.y1))
-    };
-    while cells(step) > 1_048_576 {
+    while cells(bounds, step) > 1_048_576 {
         step = step.saturating_mul(2);
     }
     step
+}
+
+/// The grid cells a trace of `bounds` at `step` samples, padding and grid alignment included.
+pub(crate) fn cells(bounds: Rect, step: u32) -> u64 {
+    let s = i64::from(step.max(1));
+    let axis = |lo: i32, hi: i32| ((i64::from(hi) + s - 1).div_euclid(s) - i64::from(lo).div_euclid(s) + 2).max(0) as u64;
+    axis(bounds.x0, bounds.x1).saturating_mul(axis(bounds.y0, bounds.y1))
 }
 
 /// Extract the boundary of `mask` (> 0.5 = selected) as merged horizontal and vertical segments.

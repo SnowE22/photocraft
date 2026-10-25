@@ -48,6 +48,7 @@ pub mod exr_parts;
 mod flat;
 mod gradient_bake;
 pub mod guides_map;
+mod second_mask_psd;
 pub use gradient_bake::{Method as GradientMethod, bake as bake_gradient};
 mod duotone_map;
 mod kra;
@@ -480,9 +481,8 @@ pub(crate) fn with_span<R>(ctl: &photocraft_raster::Interrupt, lo: f32, hi: f32,
     f(&photocraft_raster::Interrupt::new(&cancelled, &progress))
 }
 
-/// Where a .pcraft save's progress stands once its thumbnail, then its 1024 px composite preview,
-/// are rendered (the bundle itself is written after them).
-const PCRAFT_THUMBNAIL_DONE: f32 = 0.15;
+/// Where a .pcraft save's progress stands once its thumbnail and 1024 px composite preview are
+/// rendered (the bundle itself is written after them).
 const PCRAFT_PREVIEWS_DONE: f32 = 0.4;
 /// The share of a PSD/PSB export spent converting the document (layers, then the composite)
 /// before its bytes are assembled: about 2.7 s of 3.0 s for a 24 MP, 5-layer RGB/8 document.
@@ -512,10 +512,11 @@ fn export_stages(doc: &Document, name_or_ext: &str, opts: &ExportOptions, ctl: &
     }
     if ext == photocraft_format::EXTENSION {
         let doc = named_for_file(doc, name_or_ext);
-        let thumbnail = Some(photocraft_compose::thumbnail(doc.as_ref(), 256));
-        ctl.check().map_err(|_| IoError::Cancelled)?;
-        ctl.progress(PCRAFT_THUMBNAIL_DONE);
-        let composite = Some(photocraft_compose::thumbnail(doc.as_ref(), 1024));
+        // The thumbnail and the preview from one render of the composite.
+        let mut previews = photocraft_compose::thumbnail_buffers(doc.as_ref(), &[256, 1024], &mut |f| ctl.progress(PCRAFT_PREVIEWS_DONE * f))
+            .into_iter()
+            .map(|b| b.to_rgba8());
+        let (thumbnail, composite) = (previews.next(), previews.next());
         ctl.check().map_err(|_| IoError::Cancelled)?;
         ctl.progress(PCRAFT_PREVIEWS_DONE);
         let previews = photocraft_format::SaveOptions { thumbnail, composite };
@@ -533,7 +534,9 @@ fn export_stages(doc: &Document, name_or_ext: &str, opts: &ExportOptions, ctl: &
             read_linked_files: opts.read_linked_files,
             ..Default::default()
         };
-        let (mut file, mut warnings) = with_span(ctl, 0.0, PSD_MODEL_DONE, |ctl| psd_export::document_to_psd_interruptible(doc, &o, ctl));
+        // The thumbnail is reduced from the merged composite as the export renders it.
+        let mut preview = if opts.image_previews { photocraft_compose::thumbnail_reducer(doc, psd_thumbnail::MAX_SIDE) } else { None };
+        let (mut file, mut warnings) = with_span(ctl, 0.0, PSD_MODEL_DONE, |ctl| psd_export::document_to_psd_with_preview(doc, &o, ctl, preview.as_mut()));
         // A cancelled conversion stops early with an incomplete model: never write it.
         ctl.check().map_err(|_| IoError::Cancelled)?;
         if !doc.metadata.text.is_empty() {
@@ -541,7 +544,7 @@ fn export_stages(doc: &Document, name_or_ext: &str, opts: &ExportOptions, ctl: &
         }
         warnings.extend(tiff_layers::strip_foreign_order_blocks(&mut file));
         if opts.image_previews {
-            match psd_thumbnail::resource(doc) {
+            match psd_thumbnail::resource(doc, preview.and_then(photocraft_compose::Reducer::finish)) {
                 // Beside the other resources Photoshop writes ahead of the version info.
                 Ok(r) => {
                     let at = file.resources.iter().position(|r| r.id == photocraft_psd::resources::ids::VERSION_INFO).unwrap_or(file.resources.len());

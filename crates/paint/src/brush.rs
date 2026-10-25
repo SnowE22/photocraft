@@ -132,6 +132,19 @@ impl TipShape {
             TipShape::Stored(r) => Some((r.width, r.height)),
         }
     }
+
+    /// The tip's shorter side as a share of its size (Size is the longer side), its height
+    /// squashed by `roundness`. Photoshop's Spacing is a percentage of this side (measured
+    /// 2026-10-17): a 158 × 475 tip at 150 px and 200 % lays dabs 100 px apart, not 300, and a
+    /// round tip at 25 % roundness spaces by its flat height. 1 for an unsquashed round tip.
+    pub fn short_side(&self, roundness: f32) -> f32 {
+        let r = if roundness.is_finite() { roundness.clamp(0.01, 1.0) } else { 1.0 };
+        let (w, h) = match self.bitmap_size() {
+            Some((w, h)) if w > 0 && h > 0 => (w as f32, h as f32),
+            _ => (1.0, 1.0),
+        };
+        (w.min(h * r) / w.max(h)).clamp(0.001, 1.0)
+    }
 }
 
 /// Shape Dynamics.
@@ -672,14 +685,9 @@ impl BrushSettings {
     /// proportion on the way back up (#4809); rendering bounds the diameter itself
     /// ([`Self::bounded_for_render`]).
     pub fn resize_with_dual_brush(&mut self, new_size: f32) {
-        if self.dual_brush.enabled && self.size.is_finite() && self.size > 0.0 && new_size.is_finite() && new_size > 0.0 {
-            let scaled = self.dual_brush.size * (new_size / self.size);
-            // NaN fails the comparison; infinity is capped.
-            if scaled > 0.0 {
-                self.dual_brush.size = scaled.min(MAX_BRUSH_SIZE);
-            }
-        }
+        let old = self.size;
         self.size = new_size;
+        self.scale_dual_with_size(old);
     }
 
     /// Copy the settings with the primary and dual diameters and Scatter amounts constrained for
@@ -700,6 +708,25 @@ impl BrushSettings {
         brush.scattering.scatter.jitter = safe_scatter(brush.scattering.scatter.jitter);
         brush.dual_brush.scatter = safe_scatter(brush.dual_brush.scatter);
         brush
+    }
+
+    /// After the diameter changed from `old` to `self.size`: scale an enabled Dual Brush tip by as much.
+    /// Photoshop keeps the dual tip in proportion to the brush (its Size field follows `[` / `]`),
+    /// so a resized preset keeps its pattern; Texture is in document pixels and stays.
+    pub fn scale_dual_with_size(&mut self, old: f32) {
+        let k = self.size / old;
+        if !(old > 0.0 && k.is_finite() && k > 0.0) || k == 1.0 {
+            return;
+        }
+        if !self.dual_brush.enabled {
+            return;
+        }
+        let d = self.dual_brush.size * k;
+        // No floor: a brush shrunk to 1 px and grown back gets its dual tip back. A bad dual
+        // size (NaN fails the comparison, zero or negative) is left alone; infinity is capped.
+        if d > 0.0 {
+            self.dual_brush.size = d.min(MAX_BRUSH_SIZE);
+        }
     }
 
     /// This brush (a preset) picked while `current` is the tool's brush: Smoothing is a tool
@@ -778,7 +805,15 @@ pub struct BrushPreset {
     /// dialog's boxes.
     #[serde(default, skip_serializing_if = "PresetCaptures::is_default")]
     pub captures: PresetCaptures,
+    /// The tool the preset was saved with, when it includes that tool's settings (Photoshop's
+    /// Eraser, Smudge or Mixer Brush presets): picking it switches to that tool. One of
+    /// [`PRESET_TOOLS`]; `None` for a preset of any painting tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool: Option<String>,
 }
+
+/// The tools a preset can belong to ([`BrushPreset::tool`]).
+pub const PRESET_TOOLS: [&str; 5] = ["brush", "pencil", "eraser", "smudge", "mixerBrush"];
 
 /// The New Brush Preset dialog's boxes, kept with the preset. The default is a preset made
 /// without the dialog (a built-in, an import, an older save): picking it brings its size and tool
@@ -814,7 +849,12 @@ impl BrushPreset {
     pub fn picked_over(&self, current: &BrushSettings) -> BrushSettings {
         let mut b = self.brush.clone().picked_over(current);
         if !self.captures.size {
-            b.resize_with_dual_brush(current.size);
+            let preset_size = b.size;
+            b.size = current.size;
+            // The preset's dual tip at the tool's size (a locked one is the tool's already).
+            if !current.locks.dual_brush {
+                b.scale_dual_with_size(preset_size);
+            }
         }
         if !self.captures.tool_settings {
             b.mode = current.mode;

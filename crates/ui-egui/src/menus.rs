@@ -41,6 +41,8 @@ pub(crate) fn panel_alias(id: &str) -> Option<&'static str> {
         "brushSettings" => "window.toggle.brushSettings",
         "brushes" => "window.toggle.brushes",
         "canvasCapsule" => "window.toggle.canvasCapsule",
+        "timelapse" => "window.toggle.timelapse",
+
         _ => return None,
     })
 }
@@ -150,6 +152,14 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
     }
     // Filter › Plug-ins (installed WebAssembly plug-ins, Install Plug-in…).
     if let Some(r) = crate::plugin_ui::menu(app, id, &params) {
+        return r;
+    }
+    // File › Automate › Topaz Gigapixel Presets.
+    if let Some(r) = crate::gigapixel_ui::menu(app, id) {
+        return r;
+    }
+    // File › Timelapse items that need the Timelapse panel or a folder first.
+    if let Some(r) = crate::timelapse_ui::menu(app, id, &params) {
         return r;
     }
     if id == "window.panel.brushSettings" {
@@ -433,12 +443,12 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
             }
             Ok(Value::Null)
         }
-        // Only interactive creation opens the Color Picker; it creates the layer on OK,
-        // so Cancel leaves neither an orphan layer nor an undo/redo history entry.
+        // Only interactive creation opens the Color Picker. As in Photoshop the layer is made at
+        // once and the picker changes it live; Cancel takes it away again (solid_fill_ui).
         // Explicit parameters continue straight to the engine.
         "layer.newFillLayer.solidColor" if params.as_object().is_none_or(|o| o.is_empty()) => {
-            let dialog = crate::solid_fill_ui::open_new(app).ok_or("no document is open")?;
-            Ok(json!({"dialog": dialog}))
+            let (dialog, layer) = crate::solid_fill_ui::open_new(app).ok_or("no document is open")?;
+            Ok(json!({"dialog": dialog, "layer": layer.0}))
         }
         // Solid Color fills and solid-colour shapes use the Color Picker, Pattern fills the Pattern
         // Fill dialog; other adjustment / fill / shape controls use Properties.
@@ -450,8 +460,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 return Ok(json!({"dialog": dialog}));
             }
             let r = app.run(id, params)?;
-            app.ui.panels.properties = true;
-            app.ui.dock_tabs.properties = 0;
+            // Properties shows the layer's own settings (not its mask's), expanded if it was
+            // collapsed to an icon: double-clicking an adjustment thumbnail opens it (Photoshop).
+            app.ui.properties_layer = r.get("layer").and_then(Value::as_u64);
+            crate::panels::show_properties(app);
             Ok(r)
         }
         // Edit › Stroke…: open its full options dialog when called from menus/context
@@ -659,8 +671,11 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 "options" => &mut p.options_bar,
                 "brushSettings" => &mut p.brush_settings,
                 "brushes" => &mut p.brushes,
+                "timelapse" => &mut p.timelapse,
                 "dock" => &mut p.dock,
                 "canvasCapsule" => &mut p.canvas_capsule,
+                "rail" => &mut p.rail_closed,
+
                 _ => return Err(format!("unknown panel in {t}")),
             };
             *slot = !*slot;
@@ -721,6 +736,9 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
         return e;
     }
     if let Some(e) = crate::plugin_ui::is_enabled(app, id) {
+        return e;
+    }
+    if let Some(e) = crate::gigapixel_ui::is_enabled(app, id) {
         return e;
     }
     if let Some(e) = crate::transform_tool::is_enabled(app, id) {
@@ -870,11 +888,14 @@ pub(crate) fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
         "window.toggle.navigator" => p.navigator,
         "window.toggle.toolbar" => p.toolbar,
         "window.toggle.dock" => p.dock,
+        "window.toggle.rail" => p.rail && !p.rail_closed,
         "window.togglePanels" => p.toolbar || p.options_bar || p.dock,
         "window.toggle.options" => p.options_bar,
         "window.toggle.brushSettings" => p.brush_settings,
         "window.toggle.brushes" => p.brushes,
         "window.toggle.canvasCapsule" => p.canvas_capsule,
+        "window.toggle.timelapse" => p.timelapse,
+
         _ => return None,
     })
 }
@@ -1007,6 +1028,7 @@ pub fn menu_items(app: &PhotocraftApp) -> Vec<MenuItem> {
         }
     }
     crate::plugin_ui::insert_menu_items(app, &mut items);
+    crate::gigapixel_ui::insert_menu_items(app, &mut items);
     if let Some(mask) = app.session.active().and_then(|s| s.active_layer.and_then(|id| s.doc.layer(id))).and_then(|l| l.mask.as_ref())
         && let Some(item) = items.iter_mut().find(|i| i.id == "layer.layerMask.enabled")
     {
@@ -1646,6 +1668,9 @@ pub fn apply_workspace(app: &mut PhotocraftApp) {
     p.history = history;
     p.properties = props;
     p.character = app.ui.workspace == "Graphic and Web";
+    // A closed icon rail comes back with the workspace, and the Tools panel docks on the left.
+    p.rail_closed = false;
+    p.toolbar_place = crate::state::ToolbarPlace::Start;
     // Timeline is a floating panel, not a dock group. Showing it does not create or edit
     // a document timeline; changing away from Motion closes it just like its Close button.
     app.ui.timeline.open = app.ui.workspace == "Motion";

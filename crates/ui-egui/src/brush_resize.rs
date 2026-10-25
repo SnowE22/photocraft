@@ -255,7 +255,14 @@ mod tests {
             assert_eq!(history(&app), h0, "{tool:?}");
             let new: Vec<&str> = app.session.journal[j0..].iter().map(|(id, _)| id.as_str()).collect();
             assert_eq!(new, ["tools.setBrush"], "{tool:?}");
-            assert_eq!(app.session.journal.last().unwrap().1["brush"], json!({"size": 80.0f32, "hardness": 0.6f32}));
+            // An enabled Dual Brush tip follows the size and the journal names it, so a replay is
+            // exact; a disabled one keeps its size.
+            let b = &app.session.tools.brush;
+            let mut want = json!({"size": 80.0f32, "hardness": 0.6f32});
+            if b.dual_brush.enabled {
+                want["dualBrush"] = json!({"size": b.dual_brush.size});
+            }
+            assert_eq!(app.session.journal.last().unwrap().1["brush"], want);
         }
     }
 

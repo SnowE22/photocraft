@@ -74,7 +74,7 @@ pub(crate) fn paint_surface<'a>(doc: &'a mut Document, id: LayerId, p: &Value) -
     }
     let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
     if is_mask_target(p) {
-        l.mask.as_mut().map(|m| &mut m.surface).ok_or_else(|| EngineError::Other("layer has no mask".into()))
+        l.pixel_mask_mut(is_second_mask_target(p)).map(|m| &mut m.surface).ok_or_else(|| EngineError::Other("layer has no mask".into()))
     } else {
         l.surface_mut().ok_or_else(|| EngineError::Other("not a pixel layer".into()))
     }
@@ -100,7 +100,13 @@ pub(crate) fn check_pixels_unlocked(doc: &Document, id: LayerId) -> Result<()> {
 }
 
 pub(crate) fn is_mask_target(p: &Value) -> bool {
-    p.get("target").and_then(Value::as_str) == Some("mask")
+    matches!(p.get("target").and_then(Value::as_str), Some("mask" | "secondMask"))
+}
+
+/// The params target the layer's second pixel mask (`"target":"secondMask"`): a mask target
+/// ([`is_mask_target`]) whose surface is `Layer::second_mask`.
+pub(crate) fn is_second_mask_target(p: &Value) -> bool {
+    p.get("target").and_then(Value::as_str) == Some("secondMask")
 }
 
 fn can_undo(s: &Session) -> std::result::Result<(), String> {
@@ -417,9 +423,10 @@ pub(crate) fn layer_panel_option(s: &Session, key: &str, fallback: bool) -> bool
 /// Mask a fill or adjustment layer being created, as Photoshop does: the path selected in the
 /// Paths panel (`"path"`: `"work"`, a saved path's name or a path object) becomes its vector
 /// mask, which makes a Solid Color fill a shape (#1419); without one, the selection becomes its
-/// layer mask ([`selection_mask`]); without either, a white mask reveals the whole layer (#1768).
+/// layer mask ([`selection_mask`]) and, as in Photoshop, the selection is dropped (it is in the
+/// mask now; Undo brings it back); without either, a white mask reveals the whole layer (#1768).
 /// A path that isn't there is an error.
-pub(crate) fn mask_new_layer(doc: &Document, l: &mut Layer, p: &Value, cmd: &str, default_mask: bool) -> Result<()> {
+pub(crate) fn mask_new_layer(doc: &mut Document, l: &mut Layer, p: &Value, cmd: &str, default_mask: bool) -> Result<()> {
     let path = match p.get("path") {
         None | Some(Value::Null) => None,
         Some(Value::String(n)) if crate::vector_cmds::is_work(Some(n)) => Some(doc.work_path.clone().ok_or_else(|| bad(cmd, "no work path"))?),
@@ -432,6 +439,7 @@ pub(crate) fn mask_new_layer(doc: &Document, l: &mut Layer, p: &Value, cmd: &str
         Some(path) => l.vector_mask = Some(photocraft_doc::VectorMask::new(path)),
         None => {
             l.mask = selection_mask(doc)?.or_else(|| default_mask.then(LayerMask::reveal_all)).map(|mask| mask_at_depth(mask, doc.depth)).transpose()?;
+            doc.selection = None;
         }
     }
     Ok(())
@@ -447,12 +455,31 @@ fn new_adjustment(s: &mut Session, adj: Adjustment, p: &Value, cmd: &str) -> Res
     let name = adj.label().to_string();
     let id = s.edit(&label, |doc, active| {
         let mut l = Layer::new(doc.next_layer_name(&name), LayerContent::Adjustment(adj));
+        // Made on a clipped layer, the adjustment joins its clipping group (user request), not
+        // the layers below it all.
+        l.clipped = joins_clipping_group(doc, *active);
         mask_new_layer(doc, &mut l, p, cmd, true)?;
-        let id = doc.insert_above(*active, l);
+        let id = doc.insert_new(*active, l);
         *active = Some(id);
         Ok(id)
     })?;
     Ok(json!({ "layer": id.0 }))
+}
+
+/// A layer made above `active` joins its clipping group: `active` is clipped, and the new layer
+/// goes above it rather than inside it (an open group takes it in).
+fn joins_clipping_group(doc: &Document, active: Option<LayerId>) -> bool {
+    active.and_then(|a| doc.layer(a)).is_some_and(|a| a.clipped && !matches!(&a.content, LayerContent::Group(g) if g.expanded))
+}
+
+/// The active layer a new Solid Color fill takes the place of (user request): an empty pixel
+/// layer, not the Background, with nothing of its own (no mask, vector mask or effects).
+fn empty_layer_to_replace(doc: &Document, active: Option<LayerId>) -> Option<LayerId> {
+    let id = active?;
+    let l = doc.layer(id)?;
+    let LayerContent::Raster(surf) = &l.content else { return None };
+    let bare = l.mask.is_none() && l.vector_mask.is_none() && l.effects.items.is_empty() && !doc.is_background(id);
+    (bare && surf.content_bounds().is_empty()).then_some(id)
 }
 
 /// Apply `adj` in place to the targeted layer mask, the targeted alpha channel or Quick Mask, or else the active layer's pixels, as one history step named `label`.
@@ -463,7 +490,7 @@ fn destructive_adjust(s: &mut Session, label: &str, adj: Adjustment, p: &Value) 
         return s.edit(label, |doc, _| {
             let sel = doc.selection.clone();
             let l = doc.layer_mut(id).ok_or(EngineError::NoLayer(id))?;
-            let mask = l.mask.as_mut().ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
+            let mask = l.pixel_mask_mut(is_second_mask_target(p)).ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
             pixels::adjust_mask(&mut mask.surface, &adj, sel.as_ref());
             Ok(Value::Null)
         });
@@ -731,7 +758,7 @@ fn build() -> Vec<CommandSpec> {
         cmd!("layer.new.group", "Group…", ["Layer", "New"], None, r##"{"name":str?}"##, has_doc, |s, p| {
             let id = s.edit("New Group", |doc, active| {
                 let name = p.get("name").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| doc.next_layer_name("Group"));
-                let id = doc.insert_above(*active, Layer::group(name, vec![]));
+                let id = doc.insert_new(*active, Layer::group(name, vec![]));
                 *active = Some(id);
                 Ok(id)
             })?;
@@ -743,7 +770,7 @@ fn build() -> Vec<CommandSpec> {
             "Group Layers",
             ["Layer"],
             Some("Cmd+G"),
-            r##"{"layer":id?,"name":str?} (no layer: every selected layer)"##,
+            r##"{"layer":id?,"name":str?,"closed":bool=false (the group starts closed in the Layers panel)} (no layer: every selected layer)"##,
             has_layer,
             crate::layer_multi_cmds::group_layers
         ),
@@ -827,7 +854,7 @@ fn build() -> Vec<CommandSpec> {
             "Layer Properties",
             [],
             None,
-            r##"{"layer":id?,"layers":[id,…]? (the same change to each, one step: the Layers panel's controls with several layers selected),"name":str? (one layer only),"visible":bool?,"opacity":0..1?,"fill":0..1?,"blend":"Multiply|…"?,"clipped":bool?,"locked":bool?,"locks":{"transparency","pixels","position","artboard","all":bool}?,"channels":[bool,…]? (Advanced Blending: which colour channels blend, R G B / C M Y K / L a b)}"##,
+            r##"{"layer":id?,"layers":[id,…]? (the same change to each, one step: the Layers panel's controls with several layers selected),"name":str? (one layer only),"visible":bool?,"opacity":0..1?,"fill":0..1?,"blend":"Multiply|…"?,"clipped":bool?,"locked":bool?,"locks":{"transparency","pixels","position","artboard","all","selection":bool}?,"channels":[bool,…]? (Advanced Blending: which colour channels blend, R G B / C M Y K / L a b)}"##,
             has_layer,
             |s, p| {
                 // Several layers at once (the Layers panel with several selected, as in Photoshop),
@@ -1060,7 +1087,16 @@ fn build() -> Vec<CommandSpec> {
                     let fill = Fill::Solid(Color::rgba(c[0], c[1], c[2], c[3])).in_mode(doc.mode);
                     let mut l = Layer::new(doc.next_layer_name("Color Fill"), LayerContent::Fill(fill));
                     mask_new_layer(doc, &mut l, p, "layer.newFillLayer.solidColor", default_mask)?;
-                    let id = doc.insert_above(*active, l);
+                    // On an empty layer the fill takes its place, clipping and all.
+                    let id = match empty_layer_to_replace(doc, *active) {
+                        Some(empty) => {
+                            l.clipped = doc.layer(empty).is_some_and(|e| e.clipped);
+                            let id = doc.insert_above(Some(empty), l);
+                            doc.remove(empty);
+                            id
+                        }
+                        None => doc.insert_new(*active, l),
+                    };
                     *active = Some(id);
                     Ok(id)
                 })?;
@@ -1092,7 +1128,7 @@ fn build() -> Vec<CommandSpec> {
                     .in_mode(doc.mode);
                     let mut l = Layer::new(doc.next_layer_name("Gradient Fill"), LayerContent::Fill(fill));
                     mask_new_layer(doc, &mut l, p, "layer.newFillLayer.gradient", default_mask)?;
-                    let id = doc.insert_above(*active, l);
+                    let id = doc.insert_new(*active, l);
                     *active = Some(id);
                     Ok(id)
                 })?;
@@ -1135,7 +1171,7 @@ fn build() -> Vec<CommandSpec> {
             "Reorder Layer",
             [],
             None,
-            r##"{"layer":id?| "layers":[id,…]?, "target":id,"position":"above|below|into"="above","copy":bool=false} (layers: one undoable move, document order preserved; copy: place duplicates there and leave the layers, as ⌥-dragging a Layers panel row)"##,
+            r##"{"layer":id?| "layers":[id,…]?, "target":id,"position":"above|below|into"="above","copy":bool=false} (layers: one undoable move, document order preserved; copy: place duplicates there and leave the layers, as ⌥-dragging a Layers panel row) | {"layer":id|name?,"index":n} (Photoshop's layer index, what an action's Move records: the position from the bottom from 0, a group's end counting as one; past the top is the top)"##,
             has_layer,
             crate::layer_multi_cmds::move_to
         ),
@@ -1409,6 +1445,8 @@ fn build() -> Vec<CommandSpec> {
             "Color Lookup…",
             r##"{"lut":"none|warm|cool|tealOrange|bleachBypass|fadedFilm|dayForNight|monoContrast|crossProcess"="none","file":text,"interpolation":"trilinear|tetrahedral"="trilinear","dither":bool=false,"data":json} (file: .cube/.3dl/.look path; data: file text + "fileName")"##,
         ),
+        // Photoshop 2026: film grain, the same every render (it depends on the pixel position).
+        ("grain", "Grain…", r##"{"amount":0..100=0,"size":0..100=34,"roughness":0..100=50}"##),
     ];
     for &(kind, label, params) in ADJ {
         let layer_id: &'static str = Box::leak(format!("layer.newAdjustmentLayer.{kind}").into_boxed_str());
@@ -1431,6 +1469,10 @@ fn build() -> Vec<CommandSpec> {
             },
             journal: true,
         });
+        // Grain is an adjustment layer only in Photoshop (no Image › Adjustments entry).
+        if kind == "grain" {
+            continue;
+        }
         v.push(CommandSpec {
             id: image_id,
             label,
@@ -1507,10 +1549,12 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::color_cmds::specs());
     v.extend(crate::brush_cmds::specs());
     v.extend(crate::brush_preset_cmds::specs());
+    v.extend(crate::brush_preset_items_cmds::specs());
     v.extend(crate::eraser_cmds::specs());
     v.extend(crate::preset_import_cmds::specs());
     v.extend(crate::atn_cmds::specs());
     v.extend(crate::actions_edit_cmds::specs());
+    v.extend(crate::actions_set_cmds::specs());
     v.extend(crate::swatch_cmds::specs());
     v.extend(crate::retouch_cmds::specs());
     v.extend(crate::redeye_cmds::specs());
@@ -1520,9 +1564,14 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::magnetic_cmds::specs());
     v.extend(crate::select_extra_cmds::specs());
     v.extend(crate::paint_cmds::specs());
+    v.extend(crate::fill_tool_cmds::specs());
+    v.extend(crate::mask_transfer_cmds::specs());
     v.extend(crate::extra_cmds::specs());
     v.extend(crate::background_cmds::specs());
     v.extend(crate::file_cmds::specs());
+    v.extend(crate::gigapixel_cmds::specs());
+    v.extend(crate::gigapixel_cmds::presets::specs());
+    v.extend(crate::timelapse_cmds::specs());
     v.extend(crate::exr_cmds::specs());
     v.extend(crate::type_extra_cmds::specs());
     v.extend(crate::type_styles_cmds::specs());
@@ -1588,6 +1637,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::fx_visibility_cmds::specs());
     v.extend(crate::mask_view_cmds::specs());
     v.extend(crate::layer_mask_props_cmds::specs());
+    v.extend(crate::second_mask_cmds::specs());
     v.extend(crate::actions_cmds::specs());
     // The dispatch guard's unit test needs a command that panics on purpose (REL-3).
     #[cfg(test)]
@@ -1636,6 +1686,7 @@ pub fn adjustment_kind(a: &Adjustment) -> &'static str {
         Adjustment::GradientMap { .. } => "gradientMap",
         Adjustment::SelectiveColor { .. } => "selectiveColor",
         Adjustment::ColorLookup { .. } => "colorLookup",
+        Adjustment::Grain { .. } => "grain",
         Adjustment::Unsupported { .. } => "unsupported",
         _ => "invert",
     }
@@ -1713,9 +1764,7 @@ pub(crate) fn translate_layer(doc: &Document, l: &mut Layer, dx: i32, dy: i32) {
     if let Some(r) = &mut l.effects.reference {
         *r = (r.0 + f64::from(dx), r.1 + f64::from(dy));
     }
-    if let Some(m) = &mut l.mask
-        && m.linked
-    {
+    for m in l.pixel_masks_mut().filter(|m| m.linked) {
         m.surface = translate_surface(&m.surface, dx, dy);
     }
     match &mut l.content {

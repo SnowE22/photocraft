@@ -329,12 +329,19 @@ pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32
     if bx0 == usize::MAX {
         return None;
     }
+    Some(region_from_marks(&marks, w, h, area, (bx0, by0, bx1, by1), anti_alias))
+}
+
+/// The [`Region`] of `marks` (row-major over `area`, `w` × `h`; non-zero = in) whose marked
+/// pixels lie in the inclusive box `(bx0, by0, bx1, by1)`. With `anti_alias`, edge pixels blend
+/// with their 3×3 neighbourhood, adding one pixel of fringe.
+pub(crate) fn region_from_marks(marks: &[u8], w: usize, h: usize, area: Rect, (bx0, by0, bx1, by1): (usize, usize, usize, usize), anti_alias: bool) -> Region {
     // One pixel of fringe for anti-aliasing, clamped to the area.
     let pad = anti_alias as usize;
     let (x0, y0) = (bx0.saturating_sub(pad), by0.saturating_sub(pad));
     let (x1, y1) = ((bx1 + 1 + pad).min(w), (by1 + 1 + pad).min(h));
     let bw = x1 - x0;
-    let at = |x: usize, y: usize| marks[y * w + x];
+    let at = |x: usize, y: usize| marks.get(y * w + x).copied().unwrap_or(0);
     let mut mask = vec![0u8; bw * (y1 - y0)];
     let fill_row = |yy: usize, out: &mut [u8]| {
         let y = y0 + yy;
@@ -372,7 +379,7 @@ pub fn wand_region(img: &[[u8; 4]], area: Rect, seed: (i32, i32), tolerance: f32
     #[cfg(target_arch = "wasm32")]
     mask.chunks_mut(bw).enumerate().for_each(|(yy, row)| fill_row(yy, row));
     let bbox = Rect::new(area.x0 + x0 as i32, area.y0 + y0 as i32, area.x0 + x1 as i32, area.y0 + y1 as i32);
-    Some(Region { bbox, mask })
+    Region { bbox, mask }
 }
 
 /// Combines a [`Region`] with the current selection, touching only the region's box (outside it

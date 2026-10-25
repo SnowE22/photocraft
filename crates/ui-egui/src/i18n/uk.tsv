@@ -4023,6 +4023,360 @@ curves	Smooth	Згладити
 	Replace	Замінити
 	{name} was changed by another app after it was opened or saved here.	Файл {name} змінила інша програма після того, як його тут відкрили або зберегли.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Замініть його цим документом або скасуйте й скористайтеся Файл › Зберегти як, щоб зберегти обидва.
+
+	Panel Icons	Значки панелей
+	Move Tools panel	Перемістити панель інструментів
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Перетягніть, щоб перемістити панель інструментів; відпустіть біля краю полотна, щоб закріпити її
+	New Document…	Новий документ…
+	Open Document…	Відкрити документ…
+	Delete Brushes	Видалити пензлі
+	Thumbnail size	Розмір мініатюр
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Імпорт операцій Photoshop
+	No Photoshop Actions palette was found on this computer	Палітру операцій Photoshop на цьому комп'ютері не знайдено
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Відкрито в Topaz Gigapixel AI: експортуйте там зображення, щоб повернути його сюди
+	Stopped waiting for Topaz Gigapixel AI	Очікування Topaz Gigapixel AI зупинено
+	Topaz Gigapixel AI's image could not be applied: {error}	Не вдалося застосувати зображення з Topaz Gigapixel AI: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: збільшено в {scale}× до {w} × {h} пікс. (новий шар)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Очікування Topaz Gigapixel AI: експортуйте там збільшене зображення, щоб повернути його сюди.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Завантажено {n} операцію в наборах ({sets}) з {file}|Завантажено {n} операції в наборах ({sets}) з {file}|Завантажено {n} операцій у наборах ({sets}) з {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Генеративний ШІ увімк.
+	Generative AI Off	Генеративний ШІ вимк.
+	Loading the AI model…	Завантаження моделі ШІ…
+	AI model not installed	Модель ШІ не встановлено
+	AI model failed to load	Не вдалося завантажити модель ШІ
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Помістіть lama_fp32.onnx і ONNX Runtime (onnxruntime.dll, DirectML.dll) в одну з тек: {folders}. Доти режим «Авто» використовує звичайну заливку.
+	Model:	Модель:
+	LaMa (fast)	LaMa (швидко)
+	Diffusion (detailed)	Дифузія (детально)
+	Prompt (optional)	Підказка (необов'язково)
+	What should be there. Empty: the model's own guess.	Що там має бути. Порожньо: здогадка самої моделі.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Покладіть теку дифузійної моделі та ONNX Runtime в одну з: {folders}. Доти «Авто» використовує LaMa.
+	Generative Fill…	Генеративна заливка…
+	Center Canvas When Zoomed Out	Центрувати полотно під час зменшення
+	High (slower)	Висока (повільніше)
+	Quality:	Якість:
+	There is no such Topaz Gigapixel preset	Такого набору Topaz Gigapixel немає
+	Saved Topaz Gigapixel preset “{name}”	Набір Topaz Gigapixel «{name}» збережено
+	New Preset	Новий набір
+	Upscale:	Збільшення:
+	With these settings	З цими параметрами
+	With two presets	Двома наборами
+	Save two presets with their own settings first; then this one can run them together.	Спершу збережіть два набори з власними параметрами; потім цей набір зможе запускати їх разом.
+	First:	Спершу:
+	Then:	Потім:
+	Results:	Результати:
+	One after the other	Один за одним
+	Each on its own layer	Кожен на власному шарі
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Обидва набори збільшують зображення; кожен результат стає шаром для порівняння чи змішування.
+	The second preset upscales the first one's result.	Другий набір збільшує результат першого.
+	Topaz Gigapixel Presets	Набори Topaz Gigapixel
+	Manage Presets…	Керування наборами…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Збережений набір запускається з меню Файл › Автоматизація › Набори Topaz Gigapixel.
+	Auto lets Gigapixel choose.	«Авто» залишає вибір за Gigapixel.
+	Denoise:	Шумозаглушення:
+	Sharpen:	Різкість:
+	Fix Compression:	Виправити стиснення:
+	Face Recovery:	Відновлення облич:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Виберіть папку для записів таймлапсу
+	Saved {name} ({seconds} s timelapse)	{name} збережено (таймлапс {seconds} с)
+	Export Timelapse	Експорт таймлапсу
+	Export Timelapse…	Експорт таймлапсу…
+	Timelapse export cancelled	Експорт таймлапсу скасовано
+	Timelapse	Таймлапс
+	Auto record	Автозапис
+	Records whatever document you're on, unless you paused it yourself.	Записує документ, з яким ви працюєте, якщо ви не призупинили його самі.
+	Open a document to record a timelapse.	Відкрийте документ, щоб записати таймлапс.
+	Recording (idle)	Запис (простій)
+	Recording	Запис
+	Click to pause	Натисніть, щоб призупинити
+	Paused: click to resume	Призупинено: натисніть, щоб продовжити
+	Start recording	Почати запис
+	Pause Recording	Призупинити запис
+	Reference Layer	Опорний шар
+	Reference layer	Опорний шар
+	Recorded more since the last export	Після останнього експорту записано ще
+	Select a layer	Виберіть шар
+	Not recorded: you see it, the timelapse doesn't	Не записується: ви його бачите, таймлапс — ні
+	Recorded	Записується
+	{count} of {total} not recorded	{count} з {total} не записуються
+	Reference	Опорний
+	Adds {tag} to the layer's name	Додає {tag} до назви шару
+	Export again…	Експортувати знову…
+	Export video…	Експорт відео…
+	Play video	Відтворити відео
+	Show in folder	Показати в папці
+	Make:	Створити:
+	Advanced settings	Додаткові параметри
+	Show the finished drawing first	Спочатку показати готовий малюнок
+	Flash before the final image	Спалах перед підсумковим зображенням
+	Hold the final image	Затримати підсумкове зображення
+	Slow down at the end	Сповільнити в кінці
+	Remove flicker	Прибрати мерехтіння
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Пропускає кадри, що лише блимають: ненадовго прихований шар, одразу скасований мазок.
+	Work-time counter	Лічильник робочого часу
+	Bars:	Смуги:
+	Fills the edges when the canvas size changed during the recording.	Заповнює краї, якщо розмір полотна змінювався під час запису.
+	Folder:	Папка:
+	not chosen yet	ще не вибрано
+	Remove frames with undo	Вилучати кадри під час скасування
+	Reference tag:	Мітка опорного шару:
+	Work timer stops after:	Таймер зупиняється через:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Створює MP4. «Автоматично» шукає поруч із PhotoCraft, потім у PATH.
+	Choose the ffmpeg program on this computer	Виберіть програму ffmpeg на цьому комп'ютері
+	Opening files isn't available here	Відкриття файлів тут недоступне
+	MP4 video (ffmpeg)	Відео MP4 (ffmpeg)
+	JPEG frames	Кадри JPEG
+	Bottom right	Праворуч унизу
+	Bottom left	Ліворуч унизу
+	Top right	Праворуч угорі
+	Top left	Ліворуч угорі
+	5 seconds	5 секунд
+	10 seconds	10 секунд
+	15 seconds	15 секунд
+	20 seconds	20 секунд
+	30 seconds	30 секунд
+	1 minute	1 хвилина
+	2 minutes	2 хвилини
+	5 minutes	5 хвилин
+@plural	{n} frame|{n} frames	{n} кадр|{n} кадри|{n} кадрів
+	Library	Бібліотека
+	Refresh	Оновити
+	Recordings will be listed here once you've chosen a folder.	Записи з'являться тут, щойно ви виберете папку.
+	No recordings yet.	Записів поки немає.
+	Open folder	Відкрити папку
+	Delete frames	Видалити кадри
+	Delete folder	Видалити папку
+	Pause the recording first	Спершу призупиніть запис
+	REC	REC
+	EXPORTED	ЕКСПОРТОВАНО
+	NOT EXPORTED	НЕ ЕКСПОРТОВАНО
+	{time} work	{time} роботи
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Запис «{name}» ще не експортовано. Якщо видалити його кадри ({frames}), зробити з нього відео вже не вдасться. Цю дію не можна скасувати.
+	Delete the {frames} of “{name}”?	Видалити кадри запису «{name}» ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Після останнього експорту ви записали ще, і ця частина не потрапила у відео.
+	Your videos and the work time are kept. This can't be undone.	Ваші відео та час роботи збережуться. Цю дію не можна скасувати.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Видалити запис «{name}» разом із папкою? Він зникне з бібліотеки разом із часом роботи. Експортовані відео залишаться там, де ви їх зберегли. Цю дію не можна скасувати.
+	Frames deleted.	Кадри видалено.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Запис «{name}» видалено. У папці є інші файли, тому папку збережено.
+	Deleted “{name}”.	Запис «{name}» видалено.
+@plural	{n} recording|{n} recordings	{n} запис|{n} записи|{n} записів
+	Save Preset from Last Upscale…	Зберегти набір з останнього збільшення…
+	No upscale has come back from Topaz Gigapixel AI yet	З Topaz Gigapixel AI ще не повернулося жодного збільшення
+	Detail:	Деталізація:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: збільшено в {scale}× до {w} × {h} пікс. (новий шар). Збережіть ці параметри: Набори Topaz Gigapixel › Зберегти набір з останнього збільшення
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} збережено (відео {seconds}).
+	Export failed: {error}	Не вдалося експортувати: {error}
+	Export cancelled.	Експорт скасовано.
+	just now	щойно
+	{n} min ago	{n} хв тому
+	{n} h ago	{n} год тому
+	yesterday	учора
+	{n} days ago	{n} дн. тому
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Менші файли й найшвидший запис. Підходить для швидких ескізів і попереднього перегляду.
+	Sharper video for big screens. Uses about twice the disk space.	Чіткіше відео для великих екранів. Займає приблизно вдвічі більше місця на диску.
+	Full-HD video, good for social media. Recommended.	Відео Full HD, підходить для соцмереж. Рекомендовано.
+	idle	простій
+	Record	Запис
+	Paused	Призупинено
+	Click to resume recording	Натисніть, щоб продовжити запис
+	Open a document to record it.	Відкрийте документ, щоб записати його.
+	You'll be asked where to save recordings.	Вас запитають, куди зберігати записи.
+	Export again	Експортувати знову
+	Export video	Експорт відео
+	Show the export results	Показати результати експорту
+	Hide the export results	Сховати результати експорту
+	≈ {seconds} video from {frames}.	≈ {seconds} відео з {frames}.
+	Confirm	Підтвердити
+	Cancel export	Скасувати експорт
+	Frames	Кадри
+	Timer	Час
+	On disk	На диску
+	Hide the live preview	Сховати живий перегляд
+	Show the newest frame	Показати найновіший кадр
+	No frames yet — just start drawing	Кадрів поки немає — просто почніть малювати
+	No frames yet	Кадрів поки немає
+	No layer selected	Шар не вибрано
+	{n} layers selected	Вибрано шарів: {n}
+	Not recorded	Не записується
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Опорний шар працює як звичайний, але не потрапляє в таймлапс.
+	Back	Назад
+	Export settings	Параметри експорту
+	Make video with	Створювати відео за допомогою
+	Bars colour	Колір смуг
+	Bars fill the empty space when the canvas size changed during recording.	Смуги заповнюють порожнє місце, якщо розмір полотна змінювався під час запису.
+	Show finished drawing first	Спочатку готовий малюнок
+	Hold final image	Затримати підсумкове зображення
+	Show work-time counter	Показувати лічильник робочого часу
+	Record something in this document to see how long the video will be.	Запишіть щось у цьому документі, щоб побачити тривалість відео.
+	≈ {seconds} video	≈ {seconds} відео
+	{n} recorded frames	Записано кадрів: {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	«Авто» показує кожен кадр один раз (щонайменше 5 с, щонайбільше 1 хв).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Розмір полотна змінювався під час запису; ранні кадри вписуються в остаточний розмір.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Прибирання мерехтіння пропускає кадри, що лише блимають (ненадовго прихований шар, одразу скасований мазок), тому відео може стати трохи коротшим.
+	Recordings folder	Папка записів
+	Not chosen yet — see Settings	Ще не вибрано — див. «Налаштування»
+	recorded {when}	записано {when}
+	Recorded more since the last export.	Після останнього експорту записано ще.
+	Frames folder	Папка кадрів
+	Not chosen yet	Ще не вибрано
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Тут зберігаються записані кадри. Відео зберігається туди, куди ви вкажете під час експорту.
+	Choose folder…	Вибрати папку…
+	Change folder…	Змінити папку…
+	Recording quality	Якість запису
+	Undoing something removes those recorded frames.	Скасування дії вилучає записані кадри.
+	Reference layers	Опорні шари
+	Name tag	Мітка в назві
+	Layers with this in their name are left out of the timelapse.	Шари з цим у назві не потрапляють у таймлапс.
+	Work timer	Таймер роботи
+	Idle after	Простій після
+	The timer stops counting after this long without activity.	Таймер перестає рахувати після такого часу без дій.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (швидко)
+	Dark grey	Темно-сірий
+	0.5 s	0,5 с
+	1 s	1 с
+	1.5 s	1,5 с
+	2 s	2 с
+	3 s	3 с
+	4 s	4 с
+	5 s	5 с
+	8 s	8 с
+	10 s	10 с
+	1 min	1 хв
+	1.5 min	1,5 хв
+	2 min	2 хв
+	3 min	3 хв
+	5 min	5 хв
+	45 seconds	45 секунд
+	Run Two Presets…	Запустити два набори…
+	Run Two Topaz Gigapixel Presets	Запустити два набори Topaz Gigapixel
+	Run	Запустити
+	Set Shortcut…	Задати комбінацію клавіш…
+	Action Shortcut	Комбінація клавіш операції
+	No shortcut.	Без комбінації клавіш.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} також призначено для {commands}: натомість запускатиметься ця операція.
+	Press the keys that play “{action}”.	Натисніть клавіші, що запускають «{action}».
+	Shortcut:	Комбінація клавіш:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Підійде будь-яка клавіша, з Ctrl, Alt і Shift. Backspace видаляє комбінацію.
+	The action no longer exists.	Операція більше не існує.
+	Fill Tool	Інструмент «Заливка»
+	Nothing to fill there	Тут нічого заливати
+	No enclosed area to fill there	Тут немає замкненої області для заливки
+	Fill: click an area	Заливка: клацніть область
+	Enclose and Fill: draw round the areas to fill	Обвести й залити: обведіть області для заливки
+	Paint Unfilled Area: paint over the gaps a fill left	Зафарбувати пропуски: проведіть по пропусках заливки
+	Refer	Посилання
+	Editing Layer	Редагований шар
+	Selected Layers	Вибрані шари
+	Layers in Folder	Шари в теці
+	Reference Layers	Опорні шари
+	Exclude	Виключити
+	Editing layer	Редагований шар
+	Text layers	Текстові шари
+	Locked layers	Закріплені шари
+	Layers the fill doesn't read	Шари, які заливка не враховує
+	Close Gap	Закрити зазори
+	Treat gaps in the lines up to this wide as closed (0: off)	Вважати закритими зазори в лініях до цієї ширини (0: вимк.)
+	Area Scaling	Масштаб області
+	Grow the fill under the lines, or shrink it	Розширити заливку під лінії або звузити її
+	To Darkest Pixel	До найтемнішого пікселя
+	Follow Adjacent Pixels	Лише суміжні пікселі
+	Target	Ціль
+	White and Transparent	Білий і прозорий
+	Image Border	Край зображення
+	The canvas edge closes gaps as a line does	Край полотна закриває зазори, як лінія
+	Reference layer: the Fill tool reads it	Опорний шар: його враховує інструмент «Заливка»
+	Set as Reference Layer	Зробити опорним шаром
+	Clear Reference Layer	Скасувати опорний шар
+	Fill Tool Options	Параметри інструмента «Заливка»
+	Size Key Repeat	Повтор клавіш розміру
+	Holding [ or ] to resize the brush	Утримання [ або ] для зміни розміру пензля
+	Pause before repeating	Пауза перед повтором
+	Wait half a second before the size keeps changing, as typing does	Чекати пів секунди, перш ніж розмір продовжить змінюватися, як під час набору
+	Change every	Змінювати кожні
+	Sample on Alt	Зразок за Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	З інструментом малювання натискання Alt одразу бере колір під вказівником
+	Hold:	Утримання:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Скільки утримувати Alt, перш ніж він працюватиме як звичайна Піпетка: вказівник піпетки й клацання для зразка
+	Move Layer Mask	Перемістити шар-маску
+	Copy Layer Mask	Копіювати шар-маску
+	Move Vector Mask	Перемістити векторну маску
+	Copy Vector Mask	Копіювати векторну маску
+	Save as:	Зберегти як:
+	Save Preset	Зберегти набір
+	Keep these two presets as one, listed with the others	Зберегти ці два набори як один, у списку з іншими
+	Stop recording first	Спочатку зупиніть запис
+	Select a step first	Спочатку виберіть крок
+	This step has no dialog to record again	Цей крок не має діалогового вікна для повторного запису
+	Record Again…	Записати знову…
+	Insert Menu Item…	Вставити пункт меню…
+	Insert Conditional…	Вставити умову…
+	Set Options…	Параметри набору…
+	Action Options…	Параметри операції…
+	Playback Options…	Параметри відтворення…
+	Allow Tool Recording	Дозволити запис інструментів
+	Record brush and other painting strokes, and the brush settings they use	Записувати мазки пензлем та іншими інструментами малювання, а також налаштування пензля, які вони використовують
+	Clear All Actions	Видалити всі операції
+	Replace Actions…	Замінити операції…
+	Delete the set “{name}”?	Видалити набір «{name}»?
+	Delete the action “{name}”?	Видалити операцію «{name}»?
+	Delete the selection?	Видалити виділене?
+	Function Key:	Функціональна клавіша:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Операція має інше сполучення клавіш (Задати сполучення…); клавіша, вибрана тут, замінить його.
+	Accelerated	Прискорено
+	Step by Step	Покроково
+	Pause For:	Пауза:
+	seconds	с
+	None Selected	Нічого не вибрано
+	Menu Item:	Пункт меню:
+	Type part of a menu item's name, then pick it below.	Введіть частину назви пункту меню й виберіть його нижче.
+	If Current:	Якщо поточний:
+	Then Play Action:	Тоді виконати операцію:
+	Else Play Action:	Інакше виконати операцію:
+	Document Is Open	Документ відкрито
+	Document Is Landscape	Документ альбомний
+	Document Is Square	Документ квадратний
+	Document Is Portrait	Документ книжковий
+	Document Mode Is RGB	Режим документа — RGB
+	Document Mode Is CMYK	Режим документа — CMYK
+	Document Mode Is Grayscale	Режим документа — Відтінки сірого
+	Document Mode Is Lab	Режим документа — Lab
+	Document Mode Is Bitmap	Режим документа — Бітовий
+	Document Mode Is Indexed	Режим документа — Індексовані кольори
+	Document Mode Is Duotone	Режим документа — Дуплекс
+	Document Mode Is Multichannel	Режим документа — Багатоканальний
+	Document Is 8 Bits/Channel	Документ 8 біт/канал
+	Document Is 16 Bits/Channel	Документ 16 біт/канал
+	Document Is 32 Bits/Channel	Документ 32 біт/канал
+	Document Has Unsaved Changes	Документ має незбережені зміни
+	Document Has a Selection	Документ має виділення
+	Document Has Layers	Документ має шари
+	Document Has Alpha Channels	Документ має альфа-канали
+	Layer Is Background	Шар — тло
+	Layer Is a Pixel Layer	Шар — піксельний шар
+	Layer Is an Adjustment Layer	Шар — коригувальний шар
+	Layer Is a Shape Layer	Шар — шар фігури
+	Layer Is a Type Layer	Шар — текстовий шар
+	Layer Is a Smart Object	Шар — смарт-об’єкт
+	Layer Is a Group	Шар — група
+	Layer Is Locked	Шар заблоковано
+	Layer Is Visible	Шар видимий
+	Layer Has Pixel Mask	Шар має піксельну маску
+	Layer Has Vector Mask	Шар має векторну маску
+	Layer Has Effects	Шар має ефекти
+	Pick a menu item first	Спочатку виберіть пункт меню
+	Find	Знайти
+	Close gaps up to {px} px	Закривати розриви до {px} пікс.
+	Grow the selection under the lines, or shrink it	Розширити виділення під лінії або звузити його
 	Decrease Brush Size	Зменшити розмір пензля
 	Increase Brush Size	Збільшити розмір пензля
 	Decrease Brush Hardness	Зменшити жорсткість пензля
@@ -4061,6 +4415,25 @@ curves	Smooth	Згладити
 	In Front	Спереду
 	Behind	Ззаду
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Додати другу маску  (з виділення; {key} інвертує)
+	Convert to Vector Mask	Перетворити на векторну маску
+	Delete Second Mask	Видалити другу маску
+	Disable Second Mask	Вимкнути другу маску
+	Enable Second Mask	Увімкнути другу маску
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Заблокувати вибір: клацання по полотну проходять крізь нього (панель «Шари» все одно вибирає його)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Задати поточний шар
+	Editing layer blocks the fill	Редагований шар зупиняє заливку
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Фарба на шарі, який заливають, зупиняє заливку за будь-якого допуску, а заливка йде під неї: проведіть по зазору, щоб закрити його
+	Undo widens Close Gap	Скасування розширює «Закрити зазори»
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Кожне скасування заливки закриває під час наступного клацання більші зазори, доки ви не виберете інший інструмент
+	Close Gap widened to {px} px: click again to fill	«Закрити зазори» розширено до {px} пікс.: клацніть знову, щоб залити
+	Pick From	Вибирати від
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Наскільки непрозорим має бути шар під вказівником, щоб Ctrl-клацання та Автоматичний вибір вибрали його: слабші пікселі, як-от майже чорна маска, пропускаються (0: будь-який видимий піксель)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Задано «Накладання, якщо» або розширене накладання: клацніть, щоб відкрити Параметри накладання
 # DDS Options (#1327)
 	DDS Options	Параметри DDS
 	Compression	Стиснення
@@ -4094,6 +4467,38 @@ curves	Smooth	Згладити
 	Start Size:	Початковий розмір:
 	End Size:	Кінцевий розмір:
 	Save as Pattern	Зберегти як візерунок
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, платно)
+	Remove Selection	Видалити виділене
+	Remove what is selected ({key})	Видалити виділене ({key})
+	API Key…	Ключ API…
+	Change or remove the Google API key Nano Banana uses	Змінити або видалити ключ Google API, який використовує Nano Banana
+	Set API Key…	Задати ключ API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana потрібен ваш власний ключ Google API; доти «Авто» використовує LaMa
+	No API key	Немає ключа API
+	Nano Banana API Key	Ключ API для Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 працює на серверах Google і оплачується з вашого облікового запису Google: близько {small} за видалення, {large} за великі.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Область довкола того, що ви видаляєте, надсилається в Google із проханням не зберігати її.
+	Get a key at	Отримати ключ можна на
+	A key is saved in the system's credential store.	Ключ збережено у сховищі облікових даних системи.
+	Using the {var} environment variable.	Використовується змінна середовища {var}.
+	Google API key	Ключ Google API
+	Remove Saved Key	Видалити збережений ключ
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	У цій системі немає сховища облікових даних, яке може використати PhotoCraft: натомість задайте змінну середовища {var}.
+	Mask image	Зображення маски
+	Painted red	Зафарбовано червоним
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana отримує зображення як є та окрему маску області, що видаляється
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana отримує зображення з областю, що видаляється, зафарбованою червоним, як у прийомі з Photoshop
+	Close up	Зблизька
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana отримує область навколо того, що ви видаляєте, тож малює її приблизно в подвійній роздільності сторінки
+	Whole page	Уся сторінка
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana отримує всю сторінку: більше контексту, але м'якший результат
+	Creative	Творчий
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Показати все, що намалювала Nano Banana, зокрема зміни навколо області, яку ви видаляєте (маска шару згасає біля країв)
+	Grain…	Зерно…
+	Roughness:	Шорсткість:
+	Color field	Колірне поле
+	Color slider	Колірний повзунок
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Спочатку підтвердьте або скасуйте відкритий діалог кроку операції
 	Pro Medium Gray	Середньосіра «Профі»
@@ -4113,3 +4518,10 @@ curves	Smooth	Згладити
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Зразок: записані кольори
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	Видалення ШІ
+	Remove what is selected with Nano Banana ({key})	Видалити виділене за допомогою Nano Banana ({key})
+	Pin to Top	Закріпити вгорі
+	Unpin from Top	Відкріпити згори

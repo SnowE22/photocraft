@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-22 · **Change:** minor (G8: paragraph direction buttons in the Paragraph panel and options bar, TYPE-218-2 partial; G1: 32-bit Hue/Saturation and Colorize as Photoshop does them, Photoshop-oracle floor 190/258, #5781; G11: compound layer properties export as separate Photoshop Set events, rename last, #8304; G11: Batch and droplets take the result at the action's Save step, so actions ending in Save As and Close work; G11: `.atn` steps that switch to another open document import, play and save back, #7103; G14: the Nikon D4 white level follows the sample depth, so 12-bit D4 NEFs no longer open 2.6 stops dark, #5978; G14: a Nikon NEF's Adobe RGB preview is read as Adobe RGB (maker-note ColorSpace 0x001E), #5987; Apply Layer Comp action mapping, #7101; G10: JPEG Options dialog landed, FILE-215-19 partial (no Matte, progressive Scans or size preview); G10: Cineon write; G10: DPX read and write, #1049, Cineon and Amiga IFF read; Classical Object Finder improvement; learned segmentation remains open; G4: named, stateful section locks and visible keyboard focus in Brush Settings; G4: independent Brush Pose tilt-axis overrides, #3825 partial; G4: Transfer Mixer-only controls, #3825 partial; G9: Preferences › File Handling › Save in Background takes effect, #6207, 24 of 169 preferences do nothing; G7: Content-Aware Move previews every selection the command takes, coarse then exact, TOOL-213-4 done, #6680; G4: Pattern Stamp and Background Eraser draw live, TOOL-213-7; G9: Animated Zoom pref read: holding the Zoom tool zooms continuously, #6210, prefs that do nothing 25 of 166; G2: a cancelled 24 MP Gaussian Blur job stops in at most 44 ms, P25 under its 200 ms budget in local runs, baseline not re-run, #6205; G1: generated large-file fixtures, a 4.38 GB PSB opens on Windows through io, FILE-216-2 done, #5107; G9: fill and adjustment layers copy and paste whole, #2344; G1: smart filter masks show on PSD open, Photoshop-oracle floor 188/258; G10: DPX read and write, #1049, Cineon read; G1: CMYK Hue/Saturation and Color Balance keep the black ink; G1: CMYK Posterize on the stored values, psd-tools oracle floor 242/309; G1: CMYK adjustment layers composite on the document's inks, Photoshop-oracle floor 165/258; G1: CMYK Brightness/Contrast on the inks, CMYK Threshold's luma; G1: modern Brightness/Contrast's brightness curve matches Photoshop, Photoshop-oracle floor 151/258; G1: Lab documents composite on their stored L, a, b, Photoshop-oracle floor 152/258; G1: Levels on whole levels at every step, Photoshop-oracle floor 146/258, psd-tools 238/309; G1: 32-bit Brightness/Contrast legacy, Channel Mixer, Photo Filter and Black & White tint unclipped as in Photoshop, Photoshop-oracle floor 149/258; G1: mask feathers blur with their exact variance, psd-tools oracle floor 240/309; G1: Threshold splits on Photoshop's luminosity, psd-tools oracle floor 241/309; G1: pass-through clipping base with an adjustment renders isolated, psd-tools oracle floor 240/309; G1: 16-bit Posterize as Photoshop bins it, psd-tools oracle floor 241/309; G1: Gradient Map driven by the W3C luminosity, Photoshop-oracle floor 147/258; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-23 · **Change:** minor (PhotoCraft 0.14.0 merged into the Photoshop parity branch; this branch: G11: the Actions panel works like Photoshop's: sets with New Set, New Action… with Record, the check and dialog columns on sets and actions, Record from the selected step, Photoshop's recording rules with Allow Tool Recording, Insert Menu Item and Insert Conditional, Record Again, Playback Options, several steps deleted at once, the panel menu in Photoshop's order; G16: Topaz Gigapixel presets, one click or two presets combined; G15: the Remove tool's Generative AI mode, LaMa inpainting on a local ONNX Runtime (DirectML on Windows), PhotoCraft's first ML runtime; G11: Photoshop's whole Actions palette loads (Import Photoshop Actions), 96 % of a Photoshop 2026 user's 1,457 palette steps map; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed; 0.14.0: G8: paragraph direction buttons in the Paragraph panel and options bar, TYPE-218-2 partial; G1: 32-bit Hue/Saturation and Colorize as Photoshop does them, Photoshop-oracle floor 190/258, #5781; G11: compound layer properties export as separate Photoshop Set events, rename last, #8304; G11: Batch and droplets take the result at the action's Save step, so actions ending in Save As and Close work; G11: `.atn` steps that switch to another open document import, play and save back, #7103; G14: the Nikon D4 white level follows the sample depth, so 12-bit D4 NEFs no longer open 2.6 stops dark, #5978; G14: a Nikon NEF's Adobe RGB preview is read as Adobe RGB (maker-note ColorSpace 0x001E), #5987; Apply Layer Comp action mapping, #7101; G10: JPEG Options dialog landed, FILE-215-19 partial (no Matte, progressive Scans or size preview); G10: Cineon write; G10: DPX read and write, #1049, Cineon and Amiga IFF read; Classical Object Finder improvement; learned segmentation remains open; G4: named, stateful section locks and visible keyboard focus in Brush Settings; G4: independent Brush Pose tilt-axis overrides, #3825 partial; G4: Transfer Mixer-only controls, #3825 partial; G9: Preferences › File Handling › Save in Background takes effect, #6207, 24 of 169 preferences do nothing; G7: Content-Aware Move previews every selection the command takes, coarse then exact, TOOL-213-4 done, #6680; G4: Pattern Stamp and Background Eraser draw live, TOOL-213-7; G9: Animated Zoom pref read: holding the Zoom tool zooms continuously, #6210, prefs that do nothing 25 of 166; G2: a cancelled 24 MP Gaussian Blur job stops in at most 44 ms, P25 under its 200 ms budget in local runs, baseline not re-run, #6205; G1: generated large-file fixtures, a 4.38 GB PSB opens on Windows through io, FILE-216-2 done, #5107; G9: fill and adjustment layers copy and paste whole, #2344; G1: smart filter masks show on PSD open, Photoshop-oracle floor 188/258; G10: DPX read and write, #1049, Cineon read; G1: CMYK Hue/Saturation and Color Balance keep the black ink; G1: CMYK Posterize on the stored values, psd-tools oracle floor 242/309; G1: CMYK adjustment layers composite on the document's inks, Photoshop-oracle floor 165/258; G1: CMYK Brightness/Contrast on the inks, CMYK Threshold's luma; G1: modern Brightness/Contrast's brightness curve matches Photoshop, Photoshop-oracle floor 151/258; G1: Lab documents composite on their stored L, a, b, Photoshop-oracle floor 152/258; G1: Levels on whole levels at every step, Photoshop-oracle floor 146/258, psd-tools 238/309; G1: 32-bit Brightness/Contrast legacy, Channel Mixer, Photo Filter and Black & White tint unclipped as in Photoshop, Photoshop-oracle floor 149/258; G1: mask feathers blur with their exact variance, psd-tools oracle floor 240/309; G1: Threshold splits on Photoshop's luminosity, psd-tools oracle floor 241/309; G1: pass-through clipping base with an adjustment renders isolated, psd-tools oracle floor 240/309; G1: 16-bit Posterize as Photoshop bins it, psd-tools oracle floor 241/309; G1: Gradient Map driven by the W3C luminosity, Photoshop-oracle floor 147/258; G7: Field Blur's on-canvas pins, #3373; G4: Hue Jitter amount track, #3825 partial; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed; stale missing-tool rows corrected: Color Replacement, Red Eye and Add/Delete Anchor Point are live tools, so only Art History Brush is missing; no estimate changed) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -99,6 +99,35 @@ what an agent can't finish alone.
 - **Estimate:** 120–200 h.
 
 ### G11. Actions and scripting
+- **2026-10-20 evidence:** The Actions panel follows Photoshop's: every action sits in a set
+  (Default Actions for loose ones), the footer is Stop, Record, Play, Create new set, Create new
+  action, Delete (which asks first; Alt skips), and sets and actions carry the check and dialog
+  columns (red when partial). New Action… names the action, set, function key and colour and
+  starts recording on Record; Record with a step selected inserts after it. Recording leaves out
+  what Photoshop does (tool options, presets panels, preferences, the View menu) and records
+  painting strokes only with Allow Tool Recording; Insert Menu Item… adds a View step. Play runs
+  from the selected step (Ctrl+Play that step alone; a selected set plays all its actions);
+  Playback Options… paces Step by Step or Pause For; Record Again… (double-click a step) stores new
+  dialog values; opened steps list their values; Ctrl/Shift-click picks several steps to delete;
+  the action that played is selected. Panel menu in Photoshop's order (Duplicate, Clear All
+  Actions, Replace Actions…, Action/Set Options…). `actions.newSet`, `renameSet`, `deleteSet`,
+  `duplicate`, `clear`, `setStep`, `options` for agents. Still missing: Insert Path, Reset
+  Actions (no stock sets), playback dialogs for menu items without a PhotoCraft dialog.
+- **2026-10-18 evidence:** A Photoshop 2026 user's whole Actions palette (`Actions Palette.psp`,
+  nine sets, 1,457 steps) loads at once (Actions panel menu › Import Photoshop Actions, or Load
+  Actions… on the `.psp`): 1,392 steps (96 %) map, up from 74 %. The user's own sets keep only
+  their JavaScript steps (Scripts) and one mask copied from another layer as Photoshop steps.
+  New: string-id enumerations (`multiply`), HSB/Lab/CMYK colours, foreground/background colour,
+  Blend If, layer masks from the selection, masks/composite/vector masks as selections and
+  targets, Create/Release Clipping Mask, Ungroup Layers, named and dimmed adjustment layers,
+  Color Lookup with its embedded table, Curves loaded from a `.acv` (found by name among the
+  computer's Photoshop presets when recorded elsewhere), Color Range, the Camera Raw filter's
+  sharpening/noise/texture, Color Overlay, hiding one effect, the Magic Wand, Add To / Subtract
+  From / Intersect, work paths, vector mask from path, snapshots, Diffuse, Photocopy, Fit Image,
+  NTSC Colors, Auto-Align, and Move to a layer index (measured in Photoshop 2026: positions from
+  the bottom, a group's end counting as one; `layer.moveTo {"index"}`). Still kept: percent Canvas
+  Size, Magic Wand clicks in points, copied masks and vector masks, Duplicate selection to a
+  channel, Merge Layers (old event), Pixel Aspect Ratio, Link, ExtendScript.
 - **2026-10-21 evidence (#8304):** Save Actions expands compound layer-property edits into
   separate Photoshop Set events, with rename last so named layer references remain valid.
   Exported descriptors and native playback at RGB 8/16/32-bit have [regression coverage](../crates/engine/src/atn_cmds/layer_props_tests.rs);
@@ -175,15 +204,36 @@ what an agent can't finish alone.
 - **Estimate:** 120–200 h.
 
 ### G15. AI and generative features
-- **Missing:** Generative Fill and Expand, Generative Upscale, Neural Filters, Sky Replacement,
-  Super Zoom, ML Select Subject/Sky. There is no ML runtime (AUTO-219-7). Classical substitutes
-  exist (GrabCut/max-flow selection, Remove tool by non-local patch completion).
+- **2026-10-18 evidence:** the Remove tool has Photoshop's Mode (Auto / Generative AI On /
+  Generative AI Off, `paint.remove` `generative`). Its generative fill is LaMa (Apache-2.0) on
+  ONNX Runtime, loaded at run time from next to the executable (`crates/ml`, `photocraft-ml`):
+  on Windows on the GPU through DirectML, after rewriting LaMa's 5-D Fourier MatMuls in 4-D,
+  which DirectML needs; elsewhere on the CPU. Each part of the stroke is filled from a ≥ 512 px
+  square around it scaled to the model's 512 × 512, and only the stroke's pixels change. On an
+  RTX 5070: about 12 s to load (once, started when the tool is picked), 0.2 s per fill. A person
+  sitting in front of a round window comes out as sky, skyline and wall where the patch fill
+  smears wall over the window. The model and runtime are installed separately
+  (`packaging/models/README.md`); without them Auto uses the patch fill.
+- **Missing:** Generative Fill and Expand (prompted, a cloud or larger local model), Generative
+  Upscale, Neural Filters, Sky Replacement, Super Zoom, ML Select Subject/Sky, model management in
+  Preferences (AUTO-219-7, partial). Classical substitutes exist (GrabCut/max-flow selection,
+  the Remove tool's patch fill by non-local patch completion).
 - **Evidence:** Photoshop's `Required/UXP` ships the Neural Filters gallery and its `.kys` has
   a Neural Filters taskspace; users ask for local models (#2313, #1996, #2682).
 - **Progress (2026-10-17):** classical Object Finder no longer rejects a foreground solely for covering over 60% of the canvas (#6548); canvas-boundary coverage distinguishes it from the surrounding backdrop. This does not add semantic recognition or close #2788.
 - **Estimate:** 300–600 h. **Human:** owner decision #41 (model licences, local vs remote).
 
 ### G16. Plug-in compatibility
+- **2026-10-18 evidence:** File › Automate › Topaz Gigapixel AI… does what Topaz's Automate
+  plug-in does without hosting it: the flattened image opens in the installed Gigapixel app
+  (its external-editor mode), and when Gigapixel's "Export to External Editor" saves over the
+  TIFF (or exports next to it) the result comes back as "Topaz Gigapixel layer" over the
+  document resized to it (`gigapixel_cmds`, `gigapixel_ui`); with a model or scale the command
+  uses Gigapixel's command-line tool instead (actions, batch). Checked with Gigapixel Pro 8.4.4.
+- **2026-10-19 evidence:** File › Automate › Topaz Gigapixel Presets runs saved settings with one
+  click through the command-line tool, as a background job (Esc stops Gigapixel); a preset can
+  also run two presets, one after the other or each on its own layer
+  (`file.automate.topazGigapixel.presets.*`, `{"preset"}` / `{"presets","combine"}`).
 - **Missing:** hosting Photoshop .8BF filters (#2647), UXP panels, CEP. PhotoCraft has its own
   sandboxed WebAssembly plug-in ABI v1 (`docs/plugins.md`), but ABI v2 (panels, progress, other
   layers) is missing (AUTO-219-6).
@@ -394,6 +444,11 @@ what an agent can't finish alone.
 | 2026-10-13 | minor | G4: Hue Jitter amount-track appearance (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-13 | minor | G4: minimum inputs in Shape Dynamics and Transfer follow their Control (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
+| 2026-10-20 | minor | G11: Actions panel behaves like Photoshop's (sets, New Action/Set dialogs, recording rules and Allow Tool Recording, record from the selected step, Insert Menu Item/Conditional, Record Again, Playback Options, multi-step delete) |
+| 2026-10-19 | minor | G16: Topaz Gigapixel presets (one click, or two presets chained or side by side), no plug-in hosting needed |
+| 2026-10-18 | minor | G16: Topaz Gigapixel AI round trip in File › Automate (app or command-line tool), no plug-in hosting needed |
+| 2026-10-18 | minor | G15: the Remove tool's Generative AI mode (Auto / On / Off): LaMa on a local ONNX Runtime, DirectML on Windows, model installed separately; estimate unchanged |
+| 2026-10-18 | minor | G11: Photoshop's Actions palette loads whole; 96 % of a Photoshop 2026 user's 1,457 steps map (string ids, HSB colours, Blend If, masks, clipping, Color Range, Camera Raw, Curves files, Move to index, …) |
 | 2026-10-12 | minor | G11: `.atn` import maps 112 events (Select and Mask, Spatter, Ripple, Crystallize, Pattern Fill, mask targeting, Step Backward, points, Bitmap) |
 | 2026-10-12 | minor | G9: toolbar tool shortcut editing (#4086); the remaining workspace gaps stay open |
 | 2026-10-12 | minor | G1: #2465 (CS2 `PlLd`-only smart objects) marked fixed |

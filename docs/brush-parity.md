@@ -1,6 +1,6 @@
 # Brush and painting parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-16 · **Change:** minor (named, stateful Brush Settings locks and visible keyboard focus; independent Brush Pose tilt-axis overrides; Transfer Wetness/Mix tool applicability; dragged preset tip preview; Hue Jitter amount track; Brush Settings minimum fields follow their Control; checkbox-only rows and non-destructive Smoothing switch; shaped-tip cursor follows the view; Color Replacement is a live toolbar tool; no brush-feel estimate changed; 2026-10-11: Pattern Stamp and Background Eraser draw live, TOOL-213-7) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-23 · **Change:** minor (PhotoCraft 0.14.0 merged into the Photoshop parity branch; this branch: each tool's brush survives a restart; tool presets switch to their tool; Dual Brush, Texture, Wet Edges, spacing and scatter measured against Photoshop 2026 and matched; ABR import reads every Texture/Dual Brush mode spelling; no brush-feel estimate changed; 0.14.0: named, stateful Brush Settings locks and visible keyboard focus; independent Brush Pose tilt-axis overrides; Transfer Wetness/Mix tool applicability; dragged preset tip preview; Hue Jitter amount track; Brush Settings minimum fields follow their Control; checkbox-only rows and non-destructive Smoothing switch; shaped-tip cursor follows the view; Color Replacement is a live toolbar tool; no brush-feel estimate changed; 2026-10-11: Pattern Stamp and Background Eraser draw live, TOOL-213-7) · **Target:** Adobe Photoshop 2026
 
 Painting is where Photoshop users notice differences first, so it gets its own checklist: the
 brush engine (`crates/paint/src/brush.rs`), the Brush Settings UI
@@ -19,10 +19,15 @@ tablets against Photoshop side by side.
 | Section | Status | Evidence |
 |---|---|---|
 | Brush Tip Shape: size, angle, roundness, hardness, spacing, flip X/Y | done | `brush.rs` |
+| Spacing is a percentage of the tip's shorter side (a tall, wide or flattened tip spaces by its narrow side; Dual Brush tip too) | done | `TipShape::short_side`; `spacing_follows_the_tips_shorter_side`, measured 2026-10-17 |
 | Shape Dynamics (size/angle/roundness jitter, pen pressure/tilt/rotation/wheel controls, minimums, flip jitter, brush projection) | done | #174 |
 | Scattering (both axes, count, count jitter) | done | |
+| Both Axes scatters in a disc (random direction and distance), tip and Dual Brush tip | done | `disc_offset`; `both_axes_scatter_fills_a_disc`, measured 2026-10-17 |
 | Texture (pattern, scale, brightness, contrast, mode, depth, each tip) | done | |
 | Dual Brush | done | |
+| Dual Brush modes as Photoshop paints them (Hard Mix a ramp, Linear Height an inverted Overlay, Color Dodge/Burn at 248/255 of full depth); each dual dab at a random angle | done | `dual_combine`; `dual_modes_match_photoshop`, `dual_dabs_turn_at_random`, measured 2026-10-17 |
+| Stroke masks in Photoshop's order: Texture, then Dual Brush, then Wet Edges, then opacity | done | `BrushContext::stroke_mask`; `dual_brush_comes_before_wet_edges`, `texture_comes_before_the_dual_brush` |
+| Dual Brush tip keeps its proportion when the brush is resized (`[` / `]`, size slider, on-canvas resize, a stroke's `size`) | done | `BrushSettings::scale_dual_with_size`; `resizing_the_brush_scales_its_dual_tip` |
 | Color Dynamics (FG/BG, hue/sat/brightness jitter, purity, per tip) | done | |
 | Hue Jitter uses a standard percentage-amount track instead of a hue spectrum | done | #3825 (Hue Jitter appearance only); rendered track checked in all 14 themes; numeric and pointer edits retain percentage units and engine command routing. |
 | Transfer (opacity/flow/wetness/mix jitter and controls) | done | |
@@ -31,6 +36,7 @@ tablets against Photoshop side by side.
 | Brush Pose (tilt, rotation, pressure overrides) | done | |
 | Brush Pose: separate Override Tilt X/Y flags, preserved through ABR import, presets and commands | done | #3825 (axis overrides only); imported single-axis flags retain the other live stylus component; dab/pixel tests cover 8/16/32-bit RGBA; legacy combined inputs migrate and command deltas contain only the edited axis. |
 | Noise, Wet Edges, Build-up, Protect Texture | done | |
+| Wet Edges is Photoshop's curve on the stroke's coverage (half paint × 1.5, solid paint 150/255) | done | `wet_edges`; `wet_edges_curve_matches_photoshop`, measured 2026-10-17 |
 | Smoothing: amount, Pulled String, Stroke Catch-up, Catch-up on End, Adjust for Zoom | done | `brush.rs:428-438` |
 | Section locks | done | #174; `brush_panel_tests.rs` verifies section-specific accessible names and locked state for all 12 controls in 14 themes, plus visible themed focus, Tab blur, Space activation, minimal command patches and replay without selecting or enabling a section. |
 | Noise, Wet Edges, Build-up, Smoothing and Protect Texture: checkbox-only rows keep the selected controls open | done | `brush_panel_tests.rs`, #4283; Smoothing enable/disable preserves its amount and options, including imported ABR tool settings |
@@ -61,6 +67,7 @@ tablets against Photoshop side by side.
 | Brush preview and cursor crisp, not pixelated | partial | #1433 |
 | Cursor outline equals the painted footprint at every zoom | partial | #1761, #2364; shaped tips trace their outline (#3467), turned and flipped with a rotated or flipped view |
 | Latency: dab to screen within a frame | partial | budgets P13/P16/P33 over (scorecard); big-brush lag #2619, #1994; cursor lag #2566, #1343 |
+| Large brushes keep up with the pointer | done | dabs and the stroke composite run tile by tile on every core, only over each tip's footprint (`CoverageMap::apply_dabs`, `paint_rect`, row spans); a 500 px sampled tip at 3 % with a Dual Brush and texture: 4.0 ms a frame dab to screen (P62, RTX 5070 laptop), was ~19 ms before the canvas; a 1500 px tip at 1 %: ~8 ms of engine time a frame, was ~290 ms |
 | No hitch at mouse-up on a long stroke | not measurable | P32 needs a frame harness |
 | Live stroke for Brush and Eraser | done | |
 | Live stroke for every brush-based retouch tool | partial | TOOL-213-7: all live but the Mixer Brush (PR #3627); Spot Healing shows the area it heals and heals on release, as Photoshop does |
@@ -78,7 +85,7 @@ tablets against Photoshop side by side.
 | Clear painting mode in the Brush and Pencil Mode menus | done | `paint_mode_dropdown` in `panels.rs`, `"mode": "clear"`, #3439 |
 | Right-click opens the Brush Preset picker | done | [`context-menu-parity.md`](context-menu-parity.md); XP-Pen right-click not (#1980), macOS issue #2360 |
 | Precise / normal / full-size tip cursors, crosshair in the tip | partial | Caps Lock precise cursor not audited; round Pencil cursor requested (#2662, #1057) |
-| Brush choice kept per tool (Brush, Eraser, Blur each their own) | partial | #2542 |
+| Brush choice kept per tool (Brush, Eraser, Blur each their own), with the preset it was picked from, across restarts | done | #2542; `paint_mouse::sync_tool_brush`, `Preferences::tool_brushes`; `each_tool_keeps_its_own_brush`, `each_tool_gives_back_its_own_preset`, `every_tools_brush_survives_a_restart` |
 
 ## Symmetry
 
@@ -109,7 +116,15 @@ tablets against Photoshop side by side.
 | Behaviour | Status | Evidence |
 |---|---|---|
 | .abr import (v1/v2/v6) and export, persistent presets, folders | done | `psd/src/abr.rs` |
-| Brushes panel: drag a folder into a folder | missing | #2014 |
+| .abr presets keep Capture Brush Size in Preset, Include Tool Settings and the tool blend mode (picking one leaves the tool's size, opacity, flow and mode alone when Photoshop would) | done | `abr_map::captures`; `captured_size_and_tool_settings_follow_the_file` |
+| Presets saved with a tool's settings belong to that tool (Brush, Pencil, Eraser, Smudge, Mixer Brush): picking one from another painting tool switches to its tool, which takes it as its own brush | done | `abr_map::preset_tool`, `paint_mouse::switch_to_preset_tool`; `tool_presets_remember_their_tool`, `a_tool_preset_switches_to_its_tool` |
+| Erodible, Airbrush and Bristle tips | missing | imported as round tips (their `dtips*` / bristle keys are reported) |
+| Brushes panel: drag a folder into a folder | done | #2014; `brush.presets.moveItems` |
+| Brushes panel: loose brushes at the top level, drops between groups | done | `brush.presets.moveItems` (`into: []`, `before`/`after`) |
+| Brushes panel: Shift/Ctrl multi-select of brushes and groups, drag or delete the selection | done | `brushes_tab::click`, `brush.presets.deleteItems` |
+| Brushes panel: click selects a group, the chevron opens it, double-click renames | done | `brushes_tab::folder_row` |
+| Brushes panel: stroke tiles side by side, thumbnail-size slider, Brush Name/Stroke/Tip menu | done | `brushes_tab::tile`, footer slider, panel menu |
+| Brushes panel: Create a New Group from the selection | done | `brush.presets.moveItems {create}` |
 | Dragged brush preset preview | done | Cached, translucent tip thumbnail plus name in panel list/grid and the preset picker; `ui-egui/src/brushes_tab.rs`, real pointer-drag test in `brushes_tab_tests.rs` (#4225, partial) |
 | Tool presets (.tpl) | partial | Tool Presets panel exists; .tpl import not found |
 | Import 500 brushes without blocking the UI | not run | P24 |
@@ -118,6 +133,11 @@ tablets against Photoshop side by side.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-18 | minor | Each painting tool's brush and preset are remembered across restarts (`Preferences::tool_brushes`): before, the Brush started with whatever brush the app quit with, the Eraser's included (#2542) |
+| 2026-10-17 | minor | Tool presets: an `.abr` preset saved with the Eraser's (Smudge's, Mixer Brush's, …) settings remembers its tool, and picking it switches to that tool |
+| 2026-10-17 | minor | Brushes measured against Photoshop 2026 by scripting it (strokes of computed and real presets, compared pixel by pixel): Dual Brush modes (Hard Mix, Linear Height), Texture Hard Mix and Linear Burn, Color Dodge/Burn at 248/255 of the depth (Texture and Dual Brush), Wet Edges as a coverage curve, the mask order Texture → Dual Brush → Wet Edges → opacity, spacing by the tip's shorter side, Both Axes scatter in a disc, dual dabs at random angles. ABR import reads Photoshop CC's long mode ids and the older four-character codes (`colorBurn`, `hMix`, `lHgt`, …), which fell back to Multiply |
+| 2026-10-17 | minor | Large brushes: dabs and the stroke composite run tile by tile on every core over each tip's footprint only (bit-identical to the one-thread path), a dedicated loop for plain sampled tips; P62 measures one frame dab to screen (4.0 ms for a 500 px imported-style brush). The Dual Brush tip scales with the brush size, as in Photoshop. ABR import reads Capture Brush Size in Preset (`useBrushSize`), Include Tool Settings and the tool blend mode, so picking a downloaded brush keeps the tool's size and settings |
+| 2026-10-16 | minor | Brushes panel matches Photoshop's: brushes can sit outside groups and drop between groups, Shift/Ctrl multi-select (drag, delete, New Group), a click selects a group and its chevron opens it, stroke-and-name tiles fill each row with a thumbnail-size slider in the footer, Brush Name/Stroke/Tip in the panel menu, Photoshop's darker list well; new `brush.presets.moveItems` and `deleteItems` |
 | 2026-10-14 | minor | Brush Pose tilt overrides are independent end to end (#3825 partial); ABR flags, legacy JSON/commands, presets and three pixel depths covered; no readiness percentage or estimate changed |
 | 2026-10-13 | minor | Stale "missing tool" row corrected against main: Color Replacement (`paint.colorReplacement`) is a live toolbar tool; no brush-feel estimate changed |
 | 2026-10-11 | minor | Pattern Stamp and Background Eraser draw live (#3754); live retouch row now partial (Mixer Brush left) |

@@ -20,10 +20,11 @@ fn realistic() -> photocraft_engine::Session {
     let mut s = photocraft_engine::Session::new();
     s.execute("file.new", json!({"width": 240, "height": 160})).unwrap();
     s.execute("layer.new.layer", json!({"name": "in-group"})).unwrap();
-    s.execute("layer.groupLayers", json!({"name": "group"})).unwrap();
-    // Group Layers creates collapsed groups (#5571); the walk below expects it open.
-    s.execute("layer.setExpanded", json!({"all": true, "expanded": true})).unwrap();
+    let group = s.execute("layer.groupLayers", json!({"name": "group"})).unwrap()["layer"].as_u64().unwrap();
+    // Closed, the selected group takes the type layer above itself (open, it would go inside).
+    s.execute("layer.setExpanded", json!({"layer": group, "expanded": false})).unwrap();
     s.execute("type.create", json!({"x": 20, "y": 60, "text": "Hello"})).unwrap();
+    s.execute("layer.setExpanded", json!({"layer": group, "expanded": true})).unwrap();
     let paint = s.execute("layer.new.layer", json!({"name": "paint"})).unwrap()["layer"].as_u64().unwrap();
     s.execute("select.rect", json!({"x": 20, "y": 20, "width": 80, "height": 60})).unwrap();
     s.execute("edit.fill", json!({"color": "#3070c0"})).unwrap();
@@ -599,6 +600,9 @@ fn delete_with_several_layers_selected_deletes_them_even_with_the_mask_targeted(
     let s = &mut h.state_mut().session;
     let first = photocraft_doc::LayerId(s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap());
     let second = photocraft_doc::LayerId(s.execute("layer.newAdjustmentLayer.invert", json!({})).unwrap()["layer"].as_u64().unwrap());
+    // The first adjustment layer took the harness's selection as its mask and dropped it, as in
+    // Photoshop: Reselect brings it back.
+    s.execute("select.reselect", json!({})).unwrap();
     s.execute("layer.select", json!({"layer": first.0, "mode": "add"})).unwrap();
     let st = s.active().unwrap();
     assert_eq!(st.selected_layers().len(), 2);
@@ -715,6 +719,26 @@ fn named_action_function_key_replays_and_survives_preferences_roundtrip() {
     assert!(bindings(h.state()).iter().any(|(_, sc)| *sc == parse("F6").unwrap()));
 }
 
+/// Photoshop's Action Options keys with Control and Shift (user report: Ctrl+F2 and
+/// Ctrl+Shift+F2 actions): F6, Ctrl+F6 and Ctrl+Shift+F6 each play their own action.
+#[test]
+fn action_keys_with_control_and_shift_play_their_own_action() {
+    let mut h = harness();
+    for (name, layer, key) in [("plain", "plain layer", "F6"), ("ctrl", "ctrl layer", "Cmd+F6"), ("ctrl shift", "ctrl shift layer", "Cmd+Shift+F6")] {
+        h.state_mut().session.actions.list.push(photocraft_engine::actions_cmds::Action {
+            name: name.into(),
+            steps: vec![("layer.new.layer".into(), json!({"name": layer}))],
+            ..Default::default()
+        });
+        crate::actions::assign_shortcut(h.state_mut(), name, key).unwrap();
+    }
+    h.state_mut().ui.actions.selected = None;
+    for (key, layer) in [("Cmd+Shift+F6", "ctrl shift layer"), ("Cmd+F6", "ctrl layer"), ("F6", "plain layer")] {
+        press(&mut h, key);
+        assert_eq!(active_name(&h), layer, "{key}");
+    }
+}
+
 #[test]
 fn assigning_action_function_key_moves_it_and_reports_failed_steps() {
     let mut h = harness();
@@ -754,12 +778,15 @@ fn action_function_key_checks_automation_authorization() {
 }
 
 #[test]
-fn fit_shortcut_records_and_f6_fits_the_resized_canvas() {
+fn inserted_fit_step_and_f6_fit_the_resized_canvas() {
     let mut h = harness();
     h.state_mut().run("actions.record", json!({"name": "Resize and fit"})).unwrap();
     h.state_mut().run("image.canvasSize", json!({"width": 1800, "height": 1080})).unwrap();
+    // Photoshop doesn't record View commands; Insert Menu Item adds the step.
     press(&mut h, "Cmd+0");
     h.state_mut().run("actions.stop", json!({})).unwrap();
+    assert_eq!(h.state().session.actions.list[0].steps.len(), 1);
+    h.state_mut().run("actions.insert", json!({"action": 0, "id": "view.fitOnScreen"})).unwrap();
     assert_eq!(h.state().session.actions.list[0].steps.iter().map(|s| s.0.as_str()).collect::<Vec<_>>(), ["image.canvasSize", "view.fitOnScreen"]);
     let item = crate::menus::menu_items(h.state()).into_iter().find(|i| i.id == "view.fitOnScreen").unwrap();
     assert_eq!(item.shortcut.as_deref(), Some("Cmd+0"));

@@ -37,12 +37,27 @@ pub struct Clip {
 /// whole when it is a smart object (#2428), a type or shape layer, or a group (its whole subtree)
 /// (#2670), so Paste recreates it instead of its pixels. Fill and adjustment layers have no
 /// pixels of their own, so they are taken whole too rather than refused (#2344). Pixel layers
-/// still copy their pixels; several selected layers are [`multi_copy_ids`].
+/// still copy their pixels, unless they carry more than pixels ([`more_than_pixels`]); several
+/// selected layers are [`multi_copy_ids`].
 fn takes_whole(d: &crate::DocState, id: LayerId) -> bool {
     d.doc.selection.is_none()
         && d.selected_layers().len() <= 1
         && crate::layer_copy_cmds::layered(d.doc.mode)
-        && d.doc.layer(id).is_some_and(|l| !matches!(l.content, LayerContent::Raster(_)))
+        && d.doc.layer(id).is_some_and(|l| !matches!(l.content, LayerContent::Raster(_)) || (!d.doc.is_background(id) && more_than_pixels(l)))
+}
+
+/// A pixel layer with a mask, styles or its own blending: copied as pixels, the paste lost them
+/// (user report: the mask didn't come along), so Copy takes it whole.
+fn more_than_pixels(l: &Layer) -> bool {
+    l.mask.is_some()
+        || l.vector_mask.is_some()
+        || l.second_mask.is_some()
+        || l.effects.items.iter().any(photocraft_doc::Effect::enabled)
+        || l.blend != photocraft_doc::BlendMode::Normal
+        || l.opacity < 1.0
+        || l.fill_opacity < 1.0
+        || !l.blend_if.is_default()
+        || !l.advanced.is_default()
 }
 
 /// A scratch document in the source's colour, to hold copied layers.
@@ -278,7 +293,12 @@ fn copy(s: &mut Session, merged: bool) -> Result<Value> {
             copy_linked_sources(&d.doc, copies)?;
         }
         match (d.doc.layer(id).and_then(Layer::surface).filter(|_| several.is_empty()), &layers) {
-            (Some(surf), _) => Clip { layers, ..lift(surf, d.doc.selection.as_ref(), canvas)? },
+            (Some(surf), _) => {
+                let clip = lift(surf, d.doc.selection.as_ref(), canvas)?;
+                // A layer taken whole copies even with no pixels (a mask or styles alone).
+                let bounds = if clip.bounds.is_empty() && layers.is_some() { canvas } else { clip.bounds };
+                Clip { layers, bounds, ..clip }
+            }
             // A group or fill layer has no pixels of its own: the clipboard pixels are what it
             // shows. Adjustment layers show nothing by themselves, so their clip spans the canvas
             // they apply to: Paste places them as a full-canvas layer, and the UI still mirrors
@@ -308,11 +328,12 @@ fn copy(s: &mut Session, merged: bool) -> Result<Value> {
 /// grayscale clip, inside the selection or the whole canvas — an untouched mask copies at its
 /// default value, so a plain Reveal All / Hide All mask transfers too. Paste then writes into
 /// another layer's mask (targeted, #1035), in this or another document.
-fn copy_mask(s: &mut Session) -> Result<Value> {
+fn copy_mask(s: &mut Session, second: bool) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
     let id = d.active_layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
-    let mask = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?.mask.as_ref().ok_or_else(|| EngineError::Other("the active layer has no layer mask".into()))?;
+    let mask =
+        d.doc.layer(id).ok_or(EngineError::NoLayer(id))?.pixel_mask(second).ok_or_else(|| EngineError::Other("the active layer has no layer mask".into()))?;
     let sel = d.doc.selection.as_ref();
     let area = sel.map_or(canvas, |m| m.content_bounds().intersect(&canvas));
     if area.is_empty() {
@@ -397,7 +418,7 @@ fn paste(s: &mut Session, p: &Value, in_place: bool) -> Result<Value> {
     let id = s.edit("Paste", |doc, active| {
         let mut l = Layer::raster(doc.next_layer_name("Layer"), target);
         *crate::pixels_mut(&mut l)? = surf;
-        let id = doc.insert_above(*active, l);
+        let id = doc.insert_new(*active, l);
         *active = Some(id);
         doc.selection = None;
         Ok(id)
@@ -440,7 +461,7 @@ fn paste_layers(s: &mut Session, layers: &Document, dx: i32, dy: i32) -> Result<
         doc.patterns.extend(patterns);
         doc.metadata.psd_global_blocks.extend(linked);
         for l in copies.layers {
-            *active = Some(doc.insert_above(*active, l));
+            *active = Some(doc.insert_new(*active, l));
         }
         doc.selection = None;
         active.ok_or(EngineError::Other("nothing to paste".into()))
@@ -522,8 +543,11 @@ fn layer_via(s: &mut Session, cut: bool) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let id = active_id(s)?;
     let has_sel = d.doc.selection.is_some();
-    if !has_sel && !cut && crate::layer_multi_cmds::multi(s, &Value::Null) {
-        // No selection, several layers selected: copy every one of them (Photoshop, #2777).
+    // Several layers selected, or a group: there are no single layer's pixels to copy, so every
+    // selected layer (or the group, children and all) is duplicated whole, with or without a
+    // pixel selection, which stays (Photoshop, #2777; a user report for the selection case).
+    let on_group = d.doc.layer(id).is_some_and(Layer::is_group);
+    if !cut && (crate::layer_multi_cmds::multi(s, &Value::Null) || on_group) {
         return crate::layer_multi_cmds::duplicate_selected(s, true, "Layer Via Copy");
     }
     if !has_sel && !cut {
@@ -979,7 +1003,7 @@ pub fn specs() -> Vec<CommandSpec> {
             can_copy,
             |s, p| {
                 if crate::commands::is_mask_target(p) {
-                    return copy_mask(s);
+                    return copy_mask(s, crate::commands::is_second_mask_target(p));
                 }
                 match crate::channel_clip::copy(s)? {
                     Some(r) => Ok(r),
@@ -1094,6 +1118,38 @@ mod tests {
         })
         .unwrap();
         s
+    }
+
+    #[test]
+    fn a_pixel_layer_with_a_mask_copies_whole() {
+        // User report: Copy took the layer's pixels and left its mask behind.
+        let mut s = session();
+        let src = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+        s.execute("layer.setProps", json!({"opacity": 0.5})).unwrap();
+        s.execute("edit.copy", json!({})).unwrap();
+        assert!(s.clipboard.as_ref().unwrap().layers.is_some(), "taken whole");
+        let pasted = LayerId(s.execute("edit.paste", json!({})).unwrap()["layer"].as_u64().unwrap());
+        let doc = &s.active().unwrap().doc;
+        let l = doc.layer(pasted).unwrap();
+        assert_ne!(pasted, src);
+        assert!(l.mask.is_some(), "the mask came along");
+        assert_eq!(l.opacity, 0.5);
+        assert_eq!(l.surface().unwrap().rgba(20, 20), [1.0, 0.0, 0.0, 1.0]);
+        // With a selection, Copy still takes the selected pixels.
+        s.execute("select.rect", json!({"x": 10, "y": 10, "width": 5, "height": 5})).unwrap();
+        s.execute("edit.copy", json!({})).unwrap();
+        assert!(s.clipboard.as_ref().unwrap().layers.is_none());
+        // An empty layer with only a mask copies too.
+        s.execute("select.deselect", json!({})).unwrap();
+        s.execute("layer.new.layer", json!({})).unwrap();
+        s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+        s.execute("edit.copy", json!({})).unwrap();
+        assert!(s.clipboard.as_ref().unwrap().layers.as_ref().unwrap().layers[0].mask.is_some());
+        // A plain pixel layer, and the Background, still copy their pixels.
+        let mut plain = session();
+        plain.execute("edit.copy", json!({})).unwrap();
+        assert!(plain.clipboard.as_ref().unwrap().layers.is_none());
     }
 
     #[test]
@@ -1682,8 +1738,10 @@ mod tests {
     }
 
     /// #2777: with several layers selected and no pixel selection, Layer via Copy (Cmd+J) copies
-    /// every selected layer in one step, each copy above its original and the copies selected.
-    /// With a pixel selection it still copies the active layer's selected pixels only.
+    /// every selected layer in one step, the copies stacked above the topmost original in their
+    /// order (Photoshop) and selected.
+    /// With a pixel selection it duplicates them all too (there is no one layer's pixels to copy),
+    /// and the selection stays.
     #[test]
     fn layer_via_copy_duplicates_every_selected_layer() {
         let mut s = session();
@@ -1695,18 +1753,42 @@ mod tests {
         s.execute("layer.new.layerViaCopy", json!({})).unwrap();
         let st = s.active().unwrap();
         let ids: Vec<LayerId> = st.doc.layers.iter().map(|l| l.id).collect();
-        assert_eq!(ids.len(), 5, "background, a, a copy, b, b copy");
-        assert_eq!((ids[1], ids[3]), (a, b), "each copy sits above its original");
+        assert_eq!(ids.len(), 5, "background, a, b, a copy, b copy");
+        assert_eq!((ids[1], ids[2]), (a, b), "the copies go above the topmost original, together");
+        let names: Vec<&str> = st.doc.layers.iter().map(|l| l.name.as_str()).collect();
+        let (na, nb) = (st.doc.layer(a).unwrap().name.clone(), st.doc.layer(b).unwrap().name.clone());
+        assert_eq!((names[3], names[4]), (format!("{na} copy").as_str(), format!("{nb} copy").as_str()), "in their originals' order");
         let mut selected = st.selected_layers();
         selected.sort_by_key(|l| l.0);
-        assert_eq!(selected, vec![ids[2], ids[4]], "the copies become the selection");
+        assert_eq!(selected, vec![ids[3], ids[4]], "the copies become the selection");
         assert_eq!(st.history.past_len(), steps + 1, "one undo step");
         assert!(s.undo());
         s.execute("layer.select", json!({"layer": b.0})).unwrap();
         s.execute("layer.select", json!({"layer": a.0, "mode": "toggle"})).unwrap();
         s.execute("select.rect", json!({"x": 10, "y": 10, "width": 10, "height": 10})).unwrap();
         s.execute("layer.new.layerViaCopy", json!({})).unwrap();
-        assert_eq!(s.active().unwrap().doc.layers.len(), 4, "a pixel selection copies one layer's pixels");
+        let st = s.active().unwrap();
+        assert_eq!(st.doc.layers.len(), 5, "with a pixel selection both layers are duplicated");
+        assert!(st.doc.selection.is_some(), "and the selection stays");
+    }
+
+    /// A user report: with a selection active and a group selected, ⌘J duplicated nothing (a
+    /// group has no pixels of its own). It duplicates the group, its children too.
+    #[test]
+    fn layer_via_copy_of_a_group_with_a_selection_duplicates_the_group() {
+        let mut s = session();
+        let a = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.select", json!({"layer": a.0})).unwrap();
+        s.execute("layer.groupLayers", json!({})).unwrap();
+        let group = s.active().unwrap().active_layer.unwrap();
+        assert!(s.active().unwrap().doc.layer(group).unwrap().is_group());
+        let before = s.active().unwrap().doc.layers.len();
+        s.execute("select.rect", json!({"x": 10, "y": 10, "width": 10, "height": 10})).unwrap();
+        s.execute("layer.new.layerViaCopy", json!({})).unwrap();
+        let st = s.active().unwrap();
+        assert_eq!(st.doc.layers.len(), before * 2 - 1, "the group and its child copied (the background isn't)");
+        assert_eq!(st.doc.layers.iter().filter(|l| l.is_group()).count(), 2);
+        assert!(st.doc.selection.is_some(), "the selection stays");
     }
 
     fn active_content(s: &Session) -> LayerContent {

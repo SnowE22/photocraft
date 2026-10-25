@@ -22,12 +22,19 @@ pub const CHAIN_W: f32 = 12.0;
 pub const THUMB_LAYER: u8 = 0;
 pub const THUMB_MASK: u8 = 1;
 pub const THUMB_VECTOR: u8 = 2;
-pub const THUMB_SMART_MASK: u8 = 3;
+/// The Layers panel's own layer thumbnail: the layer's content bounds ([`PhotocraftApp::layer_bounds_thumb`]).
+pub const THUMB_LAYER_BOUNDS: u8 = 3;
+/// The second pixel mask (`Layer::second_mask`).
+pub const THUMB_SECOND: u8 = 4;
+/// A smart object's smart filter mask (the Smart Filters row).
+pub const THUMB_SMART_MASK: u8 = 5;
 
 /// Which of a layer's masks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MaskKind {
     Pixel,
+    /// PhotoCraft's second pixel mask (`Layer::second_mask`).
+    Second,
     Vector,
 }
 
@@ -36,12 +43,14 @@ impl MaskKind {
     fn command(self) -> &'static str {
         match self {
             MaskKind::Pixel => "layer.layerMask",
+            MaskKind::Second => "layer.secondMask",
             MaskKind::Vector => "layer.vectorMask",
         }
     }
     fn label(self) -> &'static str {
         match self {
             MaskKind::Pixel => "layer mask",
+            MaskKind::Second => "second mask",
             MaskKind::Vector => "vector mask",
         }
     }
@@ -49,9 +58,12 @@ impl MaskKind {
 
 /// `(kind, enabled, linked)` for each of `l`'s masks, in row order.
 pub fn masks(l: &Layer) -> Vec<(MaskKind, bool, bool)> {
-    let mut v = Vec::with_capacity(2);
+    let mut v = Vec::with_capacity(3);
     if let Some(m) = &l.mask {
         v.push((MaskKind::Pixel, m.enabled, m.linked));
+    }
+    if let Some(m) = &l.second_mask {
+        v.push((MaskKind::Second, m.enabled, m.linked));
     }
     if let Some(m) = &l.vector_mask {
         v.push((MaskKind::Vector, m.enabled, m.linked));
@@ -112,7 +124,7 @@ pub fn paint(
     for (kind, enabled, linked) in masks(l) {
         // The chain sits in the gap before the thumbnail, centred between the two.
         let chain = Rect::from_min_max(pos2(*x - 4.0, cy - ts / 2.0), pos2(*x - 4.0 + CHAIN_W, cy + ts / 2.0));
-        let resp = ui.interact(chain, ui.id().with(("mask-chain", l.id.0, kind == MaskKind::Vector)), Sense::click());
+        let resp = ui.interact(chain, ui.id().with(("mask-chain", l.id.0, kind as u8)), Sense::click());
         if linked {
             paint_chain(painter, chain.center(), if resp.hovered() { t.text } else { t.icon });
         } else if resp.hovered() {
@@ -134,14 +146,23 @@ pub fn paint(
         }
         out.chains.push((kind, chain));
         *x += CHAIN_W - 2.0;
-        let r = Rect::from_min_size(pos2(*x, cy - ts / 2.0), vec2(ts, ts));
+        let cell = Rect::from_min_size(pos2(*x, cy - ts / 2.0), vec2(ts, ts));
+        // The textures are letterboxed squares of the canvas. Photoshop's themes draw just the
+        // canvas-shaped part, left-aligned like the layer thumbnail; the others the whole square.
+        let (r, uv) = if t.pro {
+            let (fitted, uv) = crate::channels_panel::fit_thumb(cell, doc.size.width, doc.size.height);
+            (fitted.translate(vec2(cell.left() - fitted.left(), 0.0)), uv)
+        } else {
+            (cell, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)))
+        };
         if ui.is_rect_visible(r) {
             let tex = match kind {
                 MaskKind::Pixel => l.mask.as_ref().map(|m| app.mask_thumb(ctx, doc, l.id, m)),
+                MaskKind::Second => l.second_mask.as_ref().map(|m| app.mask_thumb_kind(ctx, doc, l.id, m, THUMB_SECOND)),
                 MaskKind::Vector => l.vector_mask.as_ref().map(|m| app.vector_mask_thumb(ctx, doc, l.id, m)),
             };
             if let Some(tex) = tex {
-                painter.image(tex, r, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
+                painter.image(tex, r, uv, Color32::WHITE);
             }
             if !enabled {
                 // Photoshop's red X over a disabled mask.
@@ -160,11 +181,11 @@ pub fn paint(
         painter.rect_stroke(
             r,
             if t.pro { 0.0 } else { 4.0 },
-            Stroke::new(1.0, if t.pro { Color32::from_gray(20) } else { t.field_border }),
+            Stroke::new(1.0, if t.pro { crate::panels::pro_thumb_border(&t) } else { t.field_border }),
             StrokeKind::Outside,
         );
         out.thumbs.push((kind, r));
-        *x += ts + 6.0 + 2.0;
+        *x += if t.pro { r.width() + 9.0 } else { ts + 6.0 + 2.0 };
     }
     let rects = (out.thumbs.clone(), out.chains.clone());
     ctx.data_mut(|d| d.get_temp_mut_or_default::<std::collections::HashMap<u64, Rects>>(rects_id()).insert(l.id.0, rects));
@@ -215,11 +236,23 @@ pub fn click_command(l: &Layer, kind: MaskKind, m: egui::Modifiers) -> Option<(S
     Some((format!("{}.enabled", kind.command()), json!({"layer": l.id.0, "enabled": !enabled})))
 }
 
+/// A plain click on a disabled mask's thumbnail turns the mask back on (it also selects the
+/// layer and targets the mask, as any click on the thumbnail does). `None` for an enabled mask or
+/// a click with modifiers (those have their own meanings, [`click_command`]).
+pub fn enable_on_click(l: &Layer, kind: MaskKind, m: egui::Modifiers) -> Option<(String, Value)> {
+    if m.any() {
+        return None;
+    }
+    let enabled = masks(l).into_iter().find(|(k, _, _)| *k == kind)?.1;
+    (!enabled).then(|| (format!("{}.enabled", kind.command()), json!({"layer": l.id.0, "enabled": true})))
+}
+
 /// The `select.loadSelection` params for a ⌘-click on mask thumbnail `kind` (⌘⇧ add, ⌘⌥
 /// subtract, ⌘⇧⌥ intersect).
 pub fn load_params(l: &Layer, kind: MaskKind, m: egui::Modifiers) -> Value {
     let channel = match kind {
         MaskKind::Pixel => "mask",
+        MaskKind::Second => "secondMask",
         MaskKind::Vector => "vectorMask",
     };
     json!({"channel": channel, "layer": l.id.0, "operation": crate::channels_panel::load_operation(m)})

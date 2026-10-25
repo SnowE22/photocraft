@@ -10,7 +10,8 @@
 use std::collections::BTreeSet;
 
 use photocraft_paint::{
-    BrushPreset, BrushSettings, Control, DualBrush, Dynamic, GrayTile, MaskMode, MixerSettings, Pattern, PatternStyle, Pose, ShapeDynamics, TipShape, Transfer,
+    BrushPreset, BrushSettings, Control, DualBrush, Dynamic, GrayTile, MaskMode, MixerSettings, Pattern, PatternStyle, Pose, PresetCaptures, ShapeDynamics,
+    TipShape, Transfer,
 };
 use photocraft_psd::abr::{self, AbrFile, AbrSample, LegacyTip};
 use photocraft_psd::descriptor::{Descriptor, Value};
@@ -86,7 +87,15 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 }
             };
             let name = if b.name.trim().is_empty() { default_name } else { b.name.trim().to_string() };
-            out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder: Vec::new(), captures: Default::default() });
+            out.presets.push(BrushPreset {
+                name,
+                brush,
+                builtin: false,
+                group: group.to_string(),
+                folder: Vec::new(),
+                captures: Default::default(),
+                tool: None,
+            });
         }
     } else if f.presets.is_empty() {
         // Tips without a settings section (early v6 files): one preset per tip.
@@ -101,6 +110,7 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 group: group.to_string(),
                 folder: Vec::new(),
                 captures: Default::default(),
+                tool: None,
             });
         }
     } else {
@@ -112,7 +122,15 @@ pub fn map_file_with(f: &AbrFile, group: &str, ctl: &photocraft_raster::Interrup
                 // named after the imported file.
                 Some(brush) => {
                     let folder = f.folders.get(i).cloned().unwrap_or_default();
-                    out.presets.push(BrushPreset { name, brush, builtin: false, group: group.to_string(), folder, captures: Default::default() });
+                    out.presets.push(BrushPreset {
+                        name,
+                        brush,
+                        builtin: false,
+                        group: group.to_string(),
+                        folder,
+                        captures: captures(d),
+                        tool: preset_tool(d),
+                    });
                 }
                 None => {
                     m.warnings.insert(format!("\"{name}\": its sampled tip is missing from the file; skipped"));
@@ -172,18 +190,21 @@ fn enum_value(d: &Descriptor, k: &str) -> Option<String> {
     }
 }
 
+/// A Texture or Dual Brush mode. Photoshop CC writes most of them as long string IDs
+/// (`colorBurn`, `overlay`), older files as four-character codes (`CBrn`, `Ovrl`, `hMix`,
+/// `lHgt`, `lbrn`, `hght`); both kinds turn up in one brush library.
 fn mask_mode(code: Option<String>) -> Option<MaskMode> {
     Some(match code?.as_str() {
-        "Mltp" => MaskMode::Multiply,
-        "Sbtr" => MaskMode::Subtract,
-        "Drkn" => MaskMode::Darken,
-        "Ovrl" => MaskMode::Overlay,
-        "CDdg" => MaskMode::ColorDodge,
-        "CBrn" => MaskMode::ColorBurn,
-        "linearBurn" => MaskMode::LinearBurn,
-        "hardMix" => MaskMode::HardMix,
-        "linearHeight" => MaskMode::LinearHeight,
-        "height" | "Hght" => MaskMode::Height,
+        "Mltp" | "multiply" => MaskMode::Multiply,
+        "Sbtr" | "subtract" => MaskMode::Subtract,
+        "Drkn" | "darken" => MaskMode::Darken,
+        "Ovrl" | "overlay" => MaskMode::Overlay,
+        "CDdg" | "colorDodge" => MaskMode::ColorDodge,
+        "CBrn" | "colorBurn" => MaskMode::ColorBurn,
+        "lbrn" | "linearBurn" => MaskMode::LinearBurn,
+        "hMix" | "hardMix" => MaskMode::HardMix,
+        "lHgt" | "linearHeight" => MaskMode::LinearHeight,
+        "hght" | "Hght" | "height" => MaskMode::Height,
         _ => return None,
     })
 }
@@ -249,7 +270,37 @@ const KNOWN: &[&str] = &[
     "brushPoseTiltY",
     "brushPoseAngle",
     "toolOptions",
+    "useBrushSize",
+    // The preset's unique id: nothing to map.
+    "zuid",
 ];
+
+/// What picking a preset brings besides its tip and sections, as Photoshop saved it: whether it
+/// sets its own size, and Include Tool Settings (a `toolOptions` object; without one, the tool
+/// keeps its mode, opacity, flow and pressure buttons).
+///
+/// `useBrushSize` means "use the brush size the tool already has": measured in Photoshop 2026
+/// (2026-10-18, `log/photoshop-compare/ps_pick.ps1`), a preset saved with `useBrushSize` true
+/// keeps the current size when picked, one with it false (most downloaded brushes) sets its own.
+/// A file without the key (older presets) sets its own size too.
+fn captures(d: &Descriptor) -> PresetCaptures {
+    PresetCaptures { size: boolean(d, "useBrushSize") != Some(true), tool_settings: obj(d, "toolOptions").is_some(), color: false }
+}
+
+/// The tool a preset saved with Include Tool Settings belongs to: the class of its `toolOptions`
+/// (Photoshop's Brush, Pencil, Eraser, Smudge and Mixer Brush tools). `None` without tool
+/// settings or for a tool PhotoCraft's presets don't switch to.
+fn preset_tool(d: &Descriptor) -> Option<String> {
+    let tool = match obj(d, "toolOptions")?.class_id.as_bytes() {
+        b"PbTl" => "brush",
+        b"PcTl" => "pencil",
+        b"ErTl" => "eraser",
+        b"SmTl" => "smudge",
+        b"MixB" => "mixerBrush",
+        _ => return None,
+    };
+    Some(tool.into())
+}
 
 struct Mapper<'a> {
     file: &'a AbrFile,
@@ -509,8 +560,13 @@ impl Mapper<'_> {
                 b.smoothing.adjust_for_zoom = v;
             }
             self.mixer_options(to, &mut b.mixer);
-            if mask_blend_is_set(to) {
-                self.warnings.insert("tool blend modes stored with presets are not applied".into());
+            // The tool's blend mode (Multiply, Dissolve…), applied with the tool settings.
+            match enum_value(to, "Md  ").and_then(|v| crate::effects_map::blend_from_id(v.as_bytes())) {
+                Some(mode) => b.mode = mode,
+                None if mask_blend_is_set(to) => {
+                    self.warnings.insert("a tool blend mode stored with a preset (Behind or Clear) has no brush equivalent; Normal stands in".into());
+                }
+                None => {}
             }
         }
         Some(b)

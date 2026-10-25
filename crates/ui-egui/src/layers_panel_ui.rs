@@ -362,6 +362,9 @@ mod tests {
         let mut session = photocraft_engine::Session::new();
         session.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
         let mut app = PhotocraftApp::new(session, crate::Services::default());
+        // PhotoCraft starts with Layer Bounds, Photoshop's default.
+        assert_eq!(thumbnail_contents(&app), LayerThumbnailContents::LayerBounds);
+        app.session.edit_prefs(|p| p.interface.clip_thumbnails_to_layer_bounds = false);
         assert_eq!(thumbnail_contents(&app), LayerThumbnailContents::EntireDocument);
         let mut options = app.ui.layers_panel_options.clone();
         options.thumbnail_contents = LayerThumbnailContents::LayerBounds;

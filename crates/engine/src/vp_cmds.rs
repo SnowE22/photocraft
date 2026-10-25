@@ -140,7 +140,7 @@ fn vanishing_point(s: &mut Session, p: &Value) -> Result<Value> {
     let target = s.edit("Vanishing Point", |doc: &mut Document, active| {
         let id = if new_layer {
             let l = Layer::raster(doc.next_layer_name("Vanishing Point"), doc.pixel_format());
-            let nid = doc.insert_above(*active, l);
+            let nid = doc.insert_new(*active, l);
             *active = Some(nid);
             nid
         } else {

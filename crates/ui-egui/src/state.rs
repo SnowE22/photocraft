@@ -159,6 +159,9 @@ pub enum Tool {
     MagicEraser,
     Gradient,
     PaintBucket,
+    /// Clip Studio Paint's Fill tool (`paint.fill`): fills from line art on other layers, closes
+    /// gaps and tucks under the lines; with Enclose and Fill and Paint Unfilled Area sub tools.
+    Fill,
     Type,
     VerticalType,
     /// Horizontal Type Mask: types a selection in the shape of the glyphs, no type layer.
@@ -206,7 +209,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 67] = [
+    pub const ALL: [Tool; 68] = [
         Tool::Move,
         Tool::Artboard,
         Tool::RectMarquee,
@@ -233,6 +236,7 @@ impl Tool {
         Tool::MagicEraser,
         Tool::Gradient,
         Tool::PaintBucket,
+        Tool::Fill,
         Tool::Type,
         Tool::VerticalType,
         Tool::HorizontalTypeMask,
@@ -307,6 +311,7 @@ impl Tool {
             Tool::Frame => "Frame Tool",
             Tool::Gradient => "Gradient Tool",
             Tool::PaintBucket => "Paint Bucket Tool",
+            Tool::Fill => "Fill Tool",
             Tool::Type => "Horizontal Type Tool",
             Tool::VerticalType => "Vertical Type Tool",
             Tool::HorizontalTypeMask => "Horizontal Type Mask Tool",
@@ -395,7 +400,7 @@ impl Tool {
             Tool::MagicWand => 'W',
             Tool::Crop | Tool::PerspectiveCrop | Tool::Slice | Tool::SliceSelect => 'C',
             Tool::Frame => 'K',
-            Tool::Gradient | Tool::PaintBucket => 'G',
+            Tool::Gradient | Tool::PaintBucket | Tool::Fill => 'G',
             Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => 'T',
             Tool::Hand => 'H',
             Tool::RotateView => 'R',
@@ -427,7 +432,7 @@ impl Tool {
             Tool::Lasso | Tool::PolygonLasso | Tool::MagneticLasso => "L",
             Tool::MagicWand => "W",
             Tool::Crop => "C",
-            Tool::Gradient | Tool::PaintBucket => "G",
+            Tool::Gradient | Tool::PaintBucket | Tool::Fill => "G",
             Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => "T",
             Tool::Hand => "✋",
             Tool::RotateView => "🧭",
@@ -444,6 +449,23 @@ impl Tool {
     }
 }
 
+/// Where the Tools panel is: docked at the start edge of the window (left; Photoshop's
+/// default), docked at the end edge (beside the panel dock), or floating with its top-left corner
+/// at `x`, `y` (screen points).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ToolbarPlace {
+    #[default]
+    Start,
+    End,
+    Floating {
+        x: f32,
+        y: f32,
+    },
+    /// In the customized panel dock, e.g. between two dock columns (the dock's `tools` panel).
+    Dock,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Panels {
     pub layers: bool,
@@ -457,15 +479,24 @@ pub struct Panels {
     /// Window › Brush Settings (F5): floating, like Photoshop's.
     #[serde(default)]
     pub brush_settings: bool,
-    /// Window › Brushes: dockable panel, like Photoshop's.
-    #[serde(default)]
-    pub brushes: bool,
     /// Window › Character / Paragraph: the Character | Paragraph dock group (#150).
     #[serde(default)]
     pub character: bool,
+    /// Window › Brushes: the Brushes panel, a dock panel of its own like Photoshop's (Brush
+    /// Settings stays a separate floating panel).
+    #[serde(default)]
+    pub brushes: bool,
+    /// Window › Timelapse: File › Timelapse's panel, a dock panel of its own (not in the
+    /// default workspace).
+    #[serde(default)]
+    pub timelapse: bool,
     /// The toolbar's header chevron: two columns even when one fits (#1197).
     #[serde(default)]
     pub toolbar_double: bool,
+    /// Where the Tools panel sits. Like Photoshop's, it can be dragged by its grip to float
+    /// anywhere, and docked again at either side of the canvas.
+    #[serde(default)]
+    pub toolbar_place: ToolbarPlace,
     /// The right-hand panel dock. ⇧Tab hides and shows it, as in Photoshop (#1313).
     #[serde(default = "yes")]
     pub dock: bool,
@@ -479,6 +510,11 @@ pub struct Panels {
     /// The right dock's icon rail. An app that embeds PhotoCraft's UI can hide it for a simpler view.
     #[serde(default = "yes")]
     pub rail: bool,
+    /// The user closed the icon rail (its right-click menu, `window.toggle.rail`). Unlike `rail`,
+    /// which the embedding host owns, this is part of the workspace: Reset Workspace brings the
+    /// rail back.
+    #[serde(default)]
+    pub rail_closed: bool,
     /// The title bar with the in-window menus. An app that embeds PhotoCraft's UI and draws its own
     /// bar can hide it; the caption buttons of a custom title bar go with it.
     #[serde(default = "yes")]
@@ -505,13 +541,16 @@ impl Default for Panels {
             options_bar: true,
             status_bar: true,
             brush_settings: false,
-            brushes: false,
             character: false,
+            brushes: false,
+            timelapse: false,
             toolbar_double: false,
+            toolbar_place: ToolbarPlace::Start,
             dock: true,
             hidden_by_tab: None,
             full_screen_chrome: false,
             rail: true,
+            rail_closed: false,
             menu_bar: true,
             gradient_editor: false,
             canvas_capsule: true,
@@ -635,11 +674,30 @@ pub struct ToolOptions {
     pub sample_all: SampleAllLayers,
     /// Object Selection › Object Finder: hovering highlights the object a click selects (#4087).
     pub object_finder: bool,
-    /// Remove tool: the fill goes to a new layer above the target (Photoshop's Create a new layer).
-    pub remove_new_layer: bool,
-    /// Remove tool: each stroke is filled when released (Photoshop's default). Off, the strokes
-    /// collect as a tint on the canvas and ↩ applies them together (Esc drops them).
-    pub remove_after_each_stroke: bool,
+    /// Remove tool: Photoshop's Mode, whether the local generative model fills the stroke
+    /// (`paint.remove` `generative`): auto | on | off.
+    pub remove_generative: String,
+    /// Remove tool: the generative model (`paint.remove` `model`): lama (fast) | diffusion
+    /// (Stable Diffusion inpainting: slower, draws what was most likely behind).
+    pub remove_model: String,
+    /// How Nano Banana is shown the area to remove (`paint.remove` `mark`): "paint" or "mask".
+    /// Renamed from `remove_mark` when the default became "paint", so a saved "mask" (the old
+    /// default) doesn't keep the weaker choice.
+    pub remove_nano_mark: String,
+    /// What Nano Banana is sent (`paint.remove` `area`): "near" (sharper) or "page".
+    pub remove_area: String,
+    /// Nano Banana's layer shows everything it drew, its changes around the area too
+    /// (`paint.remove` `creative`).
+    pub remove_creative: bool,
+    /// Remove tool with LaMa: standard | high (`paint.remove` `quality`: high runs the model at
+    /// 1024 instead of 512, sharper on large removals).
+    pub remove_quality: String,
+    /// Remove tool: each model's own prompt, Create a new layer and Remove after each stroke
+    /// (user request), LaMa's (also used with the Mode Off), Diffusion's and Nano Banana's.
+    pub remove_lama: RemoveModelOptions,
+    pub remove_diffusion: RemoveModelOptions,
+    /// Nano Banana's, which AI Remove always uses.
+    pub remove_nano: RemoveModelOptions,
     pub feather: f32,
     /// linear | radial | angle | reflected | diamond
     pub gradient_style: String,
@@ -654,6 +712,16 @@ pub struct ToolOptions {
     pub fill_opacity: f32,
     /// Paint Bucket fill source: false = Foreground colour, true = Pattern (Patterns panel selection).
     pub bucket_fill_pattern: bool,
+    /// The Fill tool's options (its opacity is `fill_opacity`, shared with the Paint Bucket).
+    #[serde(default)]
+    pub fill_tool: crate::fill_tool_ui::FillToolOptions,
+    /// The Magic Wand's Close Gap, Area Scaling and Refer (the Fill tool's, off by default).
+    #[serde(default)]
+    pub wand_fill: crate::fill_tool_ui::WandFill,
+    /// How holding a brush key ([ ] ⇧[ ⇧]) repeats: the pause before it starts and the time
+    /// between steps (the gear beside the brush picker's Size field).
+    #[serde(default)]
+    pub brush_key_repeat: crate::brush_key_repeat::KeyRepeat,
     /// Type tool: family, style name, size (pt), anti-aliasing and paragraph alignment.
     pub type_font: String,
     pub type_style: String,
@@ -741,6 +809,9 @@ pub struct ToolOptions {
     /// ⌘/Ctrl-click inverts it.
     #[serde(default = "yes")]
     pub move_auto_select: bool,
+    /// How opaque a layer must be under the pointer, %, for ⌘-click and Auto-Select to pick it
+    /// (0: any visible pixel); fainter pixels are clicked through.
+    pub move_pick_opacity: f32,
     #[serde(default = "default_move_target")]
     pub move_target: String,
     #[serde(default)]
@@ -843,6 +914,17 @@ pub struct ToolOptions {
     /// Eyedropper › Show Sampling Ring.
     #[serde(default = "yes")]
     pub eyedropper_ring: bool,
+    /// Eyedropper › Sample on Alt: pressing Alt with a painting tool picks the colour under the
+    /// pointer at once (`alt_pick`); Alt works as the usual temporary Eyedropper once held for
+    /// `eyedropper_alt_hold_ms`.
+    #[serde(default)]
+    pub eyedropper_alt_instant: bool,
+    #[serde(default = "default_alt_hold_ms")]
+    pub eyedropper_alt_hold_ms: f32,
+}
+
+fn default_alt_hold_ms() -> f32 {
+    250.0
 }
 
 fn yes() -> bool {
@@ -854,7 +936,7 @@ fn default_crop_resolution_unit() -> String {
 }
 
 fn default_move_target() -> String {
-    "group".into()
+    "layer".into()
 }
 
 fn default_curve_fit() -> f32 {
@@ -896,6 +978,25 @@ fn one_u32() -> u32 {
 
 fn default_eyedropper_sample() -> String {
     "all".into()
+}
+
+/// The Remove tool's settings each of its models keeps for itself.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct RemoveModelOptions {
+    /// What should be there (`paint.remove` `prompt`; Diffusion and Nano Banana).
+    pub prompt: String,
+    /// The fill goes to a new layer above the target (Photoshop's Create a new layer).
+    pub new_layer: bool,
+    /// Each stroke is filled when released (Photoshop's default). Off, the strokes collect as a
+    /// tint on the canvas and ↩ applies them together (Esc drops them).
+    pub after_each_stroke: bool,
+}
+
+impl Default for RemoveModelOptions {
+    fn default() -> Self {
+        Self { prompt: String::new(), new_layer: false, after_each_stroke: true }
+    }
 }
 
 /// Each tool's Sample All Layers (the Paint Bucket calls it All Layers). Photoshop keeps one per
@@ -953,8 +1054,15 @@ impl Default for ToolOptions {
             anti_alias: true,
             sample_all: SampleAllLayers::default(),
             object_finder: true,
-            remove_new_layer: false,
-            remove_after_each_stroke: true,
+            remove_generative: "auto".into(),
+            remove_model: "lama".into(),
+            remove_nano_mark: "paint".into(),
+            remove_area: "near".into(),
+            remove_creative: false,
+            remove_quality: "standard".into(),
+            remove_lama: RemoveModelOptions::default(),
+            remove_diffusion: RemoveModelOptions::default(),
+            remove_nano: RemoveModelOptions::default(),
             feather: 0.0,
             gradient_style: "linear".into(),
             gradient_reverse: false,
@@ -963,6 +1071,9 @@ impl Default for ToolOptions {
             gradient_blend_mode: photocraft_color::BlendMode::Normal,
             fill_opacity: 100.0,
             bucket_fill_pattern: false,
+            fill_tool: Default::default(),
+            wand_fill: Default::default(),
+            brush_key_repeat: Default::default(),
             type_font: "Inter".into(),
             type_style: "Regular".into(),
             type_size: 48.0,
@@ -1008,6 +1119,7 @@ impl Default for ToolOptions {
             marquee_height: 1.0,
             marquee_unit: default_marquee_unit(),
             move_auto_select: true,
+            move_pick_opacity: 0.0,
             move_target: default_move_target(),
             move_show_transform: false,
             crop_ratio: String::new(),
@@ -1048,6 +1160,8 @@ impl Default for ToolOptions {
             eyedropper_size: 1,
             eyedropper_sample: default_eyedropper_sample(),
             eyedropper_ring: true,
+            eyedropper_alt_instant: false,
+            eyedropper_alt_hold_ms: default_alt_hold_ms(),
         }
     }
 }
@@ -1246,8 +1360,24 @@ pub struct DockTabs {
     pub history: usize,
     /// Character | Paragraph.
     pub character: usize,
-    /// Brushes presets.
+    /// Brushes (a group of one).
     pub brushes: usize,
+    /// Timelapse (a group of one).
+    pub timelapse: usize,
+}
+
+/// Select › Color Range… choices kept between openings, as Photoshop keeps them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ColorRangeState {
+    /// Selection Preview: "none", "grayscale", "blackMatte", "whiteMatte" or "quickMask".
+    pub selection_preview: String,
+}
+
+impl Default for ColorRangeState {
+    fn default() -> Self {
+        Self { selection_preview: "none".into() }
+    }
 }
 
 /// Sliders under the Color panel's field: hue/saturation/brightness or red/green/blue (#7172).
@@ -1334,6 +1464,10 @@ pub struct UiState {
     /// Painting targets the active layer's mask instead of its pixels.
     #[serde(default)]
     pub mask_target: bool,
+    /// With `mask_target`: the targeted pixel mask is the layer's second mask (its thumbnail is
+    /// bracketed; painting sends `"target":"secondMask"`).
+    #[serde(default)]
+    pub second_mask_target: bool,
     /// The active layer's vector mask is targeted (its Layers thumbnail is bracketed): the path
     /// tools edit it (#196). Never set together with `mask_target`.
     #[serde(default)]
@@ -1371,6 +1505,10 @@ pub struct UiState {
     pub brush_tool: Tool,
     #[serde(default)]
     pub tool_brushes: Vec<(Tool, photocraft_engine::paint::BrushSettings)>,
+    /// The preset each tool's saved brush was last picked from, so switching back to the Eraser
+    /// gives back its own "Hard eraser" (highlighted, and what Update Brush overwrites).
+    #[serde(default)]
+    pub tool_presets: Vec<(Tool, String)>,
     /// Pen path under construction.
     #[serde(default)]
     pub pen: Option<crate::vector_ui::PenPath>,
@@ -1474,6 +1612,9 @@ pub struct UiState {
     /// Which chip the Color panel edits.
     #[serde(default)]
     pub color_panel: ColorPanelState,
+    /// Select › Color Range…'s Selection Preview, kept between openings.
+    #[serde(default)]
+    pub color_range: ColorRangeState,
     /// Brush Settings: selected section (0 = Brush Tip Shape) and tab (0 settings, 1 Brushes).
     #[serde(default)]
     pub brush_section: usize,
@@ -1557,6 +1698,7 @@ impl Default for UiState {
             symmetry_transform: None,
             layer_picker: None,
             mask_target: false,
+            second_mask_target: false,
             vector_mask_target: false,
             properties_layer: None,
             brush_picker: None,
@@ -1567,6 +1709,7 @@ impl Default for UiState {
             selected_guide: None,
             brush_tool: Tool::Brush,
             tool_brushes: Vec::new(),
+            tool_presets: Vec::new(),
             clone_source: None,
             clone_offset: None,
             pattern_stamp_phase: None,
@@ -1611,6 +1754,7 @@ impl Default for UiState {
             docking_collapsed: Vec::new(),
             docking_reveal: None,
             color_panel: Default::default(),
+            color_range: Default::default(),
             brush_section: 0,
             brush_tab: 0,
             brushes_panel: Default::default(),
@@ -1718,7 +1862,7 @@ mod tests {
         assert!(!Tool::RedEye.is_brushlike());
         assert_eq!(Tool::from_name("patternStamp"), Some(Tool::PatternStamp));
         assert_eq!(Tool::from_name("Pattern Stamp Tool"), Some(Tool::PatternStamp));
-        assert_eq!(Tool::ALL.len(), 67);
+        assert_eq!(Tool::ALL.len(), 68);
         assert_eq!(Tool::from_name("Vertical Type Mask Tool"), Some(Tool::VerticalTypeMask));
         assert_eq!(Tool::from_name("addAnchorPoint"), Some(Tool::AddAnchorPoint));
         assert_eq!(Tool::from_name("Delete Anchor Point Tool"), Some(Tool::DeleteAnchorPoint));

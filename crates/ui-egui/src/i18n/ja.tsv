@@ -4000,6 +4000,359 @@ curves	Smooth	スムーズ
 	Replace	置き換え
 	{name} was changed by another app after it was opened or saved here.	{name} は、ここで開くか保存した後に別のアプリで変更されました。
 	Replace it with this document, or cancel and use File › Save As to keep both.	この書類で置き換えるか、キャンセルしてファイル › 名前を付けて保存で両方を残してください。
+
+	Panel Icons	パネルアイコン
+	Move Tools panel	ツールパネルを移動
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	ドラッグしてツールパネルを移動。カンバスの端にドロップするとドッキングします
+	New Document…	新規ドキュメント…
+	Open Document…	ドキュメントを開く…
+	Delete Brushes	ブラシを削除
+	Thumbnail size	サムネールのサイズ
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop のアクションを読み込み
+	No Photoshop Actions palette was found on this computer	このコンピューターに Photoshop のアクションパレットが見つかりません
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Topaz Gigapixel AI で開きました：そこで画像を書き出すとここに戻ります
+	Stopped waiting for Topaz Gigapixel AI	Topaz Gigapixel AI の待機を停止しました
+	Topaz Gigapixel AI's image could not be applied: {error}	Topaz Gigapixel AI の画像を適用できませんでした：{error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI：{scale}× で {w} × {h} px に拡大しました（新規レイヤー）
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI を待っています：拡大した画像をそこで書き出すとここに戻ります。
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file} から {sets} 個のセットのアクション {n} 個を読み込みました
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	生成 AI オン
+	Generative AI Off	生成 AI オフ
+	Loading the AI model…	AI モデルを読み込み中…
+	AI model not installed	AI モデルが未インストール
+	AI model failed to load	AI モデルの読み込みに失敗しました
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx と ONNX Runtime（onnxruntime.dll、DirectML.dll）を次のいずれかのフォルダーに置いてください：{folders}。それまでは「自動」で従来の塗りつぶしを使います。
+	Model:	モデル:
+	LaMa (fast)	LaMa（高速）
+	Diffusion (detailed)	拡散（高精細）
+	Prompt (optional)	プロンプト（任意）
+	What should be there. Empty: the model's own guess.	そこにあるべきもの。空欄: モデル自身の推測。
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	拡散モデルのフォルダーと ONNX Runtime を次のいずれかに置いてください: {folders}。それまでは自動で LaMa を使います。
+	Generative Fill…	生成塗りつぶし…
+	Center Canvas When Zoomed Out	ズームアウト時にカンバスを中央に配置
+	High (slower)	高 (低速)
+	Quality:	画質:
+	There is no such Topaz Gigapixel preset	その Topaz Gigapixel プリセットはありません
+	Saved Topaz Gigapixel preset “{name}”	Topaz Gigapixel プリセット「{name}」を保存しました
+	New Preset	新規プリセット
+	Upscale:	アップスケール:
+	With these settings	この設定で
+	With two presets	2 つのプリセットで
+	Save two presets with their own settings first; then this one can run them together.	まず独自の設定を持つプリセットを 2 つ保存してください。このプリセットでそれらをまとめて実行できます。
+	First:	最初:
+	Then:	次に:
+	Results:	結果:
+	One after the other	順番に
+	Each on its own layer	それぞれ別のレイヤーに
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	両方のプリセットで画像をアップスケールし、それぞれの結果をレイヤーにします (比較や合成用)。
+	The second preset upscales the first one's result.	2 つ目のプリセットで 1 つ目の結果をアップスケールします。
+	Topaz Gigapixel Presets	Topaz Gigapixel プリセット
+	Manage Presets…	プリセットを管理…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	保存したプリセットは ファイル › 自動処理 › Topaz Gigapixel プリセット から実行します。
+	Auto lets Gigapixel choose.	自動にすると Gigapixel が決めます。
+	Denoise:	ノイズ除去:
+	Sharpen:	シャープ:
+	Fix Compression:	圧縮を修正:
+	Face Recovery:	顔の復元:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	タイムラプス録画の保存フォルダーを選択してください
+	Saved {name} ({seconds} s timelapse)	{name} を保存しました（{seconds} 秒のタイムラプス）
+	Export Timelapse	タイムラプスを書き出し
+	Export Timelapse…	タイムラプスを書き出し…
+	Timelapse export cancelled	タイムラプスの書き出しをキャンセルしました
+	Timelapse	タイムラプス
+	Auto record	自動録画
+	Records whatever document you're on, unless you paused it yourself.	作業中のドキュメントを録画します（自分で一時停止したものを除く）。
+	Open a document to record a timelapse.	タイムラプスを録画するにはドキュメントを開いてください。
+	Recording (idle)	録画中（待機）
+	Recording	録画中
+	Click to pause	クリックで一時停止
+	Paused: click to resume	一時停止中：クリックで再開
+	Start recording	録画を開始
+	Pause Recording	録画を一時停止
+	Reference Layer	参照レイヤー
+	Reference layer	参照レイヤー
+	Recorded more since the last export	前回の書き出し以降に追加で録画されています
+	Select a layer	レイヤーを選択してください
+	Not recorded: you see it, the timelapse doesn't	録画対象外：あなたには見えますが、タイムラプスには映りません
+	Recorded	録画対象
+	{count} of {total} not recorded	{total} 件中 {count} 件は録画対象外
+	Reference	参照
+	Adds {tag} to the layer's name	レイヤー名に {tag} を付けます
+	Export again…	もう一度書き出し…
+	Export video…	ビデオを書き出し…
+	Play video	ビデオを再生
+	Show in folder	フォルダーに表示
+	Make:	作成:
+	Advanced settings	詳細設定
+	Show the finished drawing first	最初に完成画を表示
+	Flash before the final image	最終画像の前にフラッシュ
+	Hold the final image	最終画像を表示し続ける
+	Slow down at the end	最後をスローにする
+	Remove flicker	ちらつきを除去
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	一瞬だけ現れるフレームを省きます（一時的に非表示にしたレイヤー、すぐ取り消したストロークなど）。
+	Work-time counter	作業時間カウンター
+	Bars:	余白の帯:
+	Fills the edges when the canvas size changed during the recording.	録画中にカンバスサイズが変わったとき、余白を塗りつぶします。
+	Folder:	フォルダー:
+	not chosen yet	未選択
+	Remove frames with undo	取り消すとフレームも削除
+	Reference tag:	参照タグ:
+	Work timer stops after:	作業タイマーの停止まで:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	MP4 を作成します。自動の場合は PhotoCraft と同じ場所、次に PATH を探します。
+	Choose the ffmpeg program on this computer	このコンピューター上の ffmpeg プログラムを選択してください
+	Opening files isn't available here	ここではファイルを開けません
+	MP4 video (ffmpeg)	MP4 ビデオ（ffmpeg）
+	JPEG frames	JPEG フレーム
+	Bottom right	右下
+	Bottom left	左下
+	Top right	右上
+	Top left	左上
+	5 seconds	5 秒
+	10 seconds	10 秒
+	15 seconds	15 秒
+	20 seconds	20 秒
+	30 seconds	30 秒
+	1 minute	1 分
+	2 minutes	2 分
+	5 minutes	5 分
+@plural	{n} frame|{n} frames	{n} フレーム
+	Library	ライブラリ
+	Refresh	更新
+	Recordings will be listed here once you've chosen a folder.	フォルダーを選ぶと、ここに録画が表示されます。
+	No recordings yet.	録画はまだありません。
+	Open folder	フォルダーを開く
+	Delete frames	フレームを削除
+	Delete folder	フォルダーを削除
+	Pause the recording first	先に録画を一時停止してください
+	REC	REC
+	EXPORTED	書き出し済み
+	NOT EXPORTED	未書き出し
+	{time} work	作業 {time}
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	「{name}」はまだ書き出されていません。フレーム（{frames}）を削除すると、ビデオを作れなくなります。この操作は取り消せません。
+	Delete the {frames} of “{name}”?	「{name}」のフレーム（{frames}）を削除しますか？
+	You've recorded more since the last export, and that part isn't in the video.	前回の書き出し以降にも録画しており、その部分はビデオに含まれていません。
+	Your videos and the work time are kept. This can't be undone.	ビデオと作業時間は残ります。この操作は取り消せません。
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	「{name}」とそのフォルダーを削除しますか？作業時間とともにライブラリから削除されます。書き出したビデオは保存した場所に残ります。この操作は取り消せません。
+	Frames deleted.	フレームを削除しました。
+	Deleted “{name}”. Its folder holds other files, so it was kept.	「{name}」を削除しました。フォルダーに他のファイルがあるため、フォルダーは残しました。
+	Deleted “{name}”.	「{name}」を削除しました。
+@plural	{n} recording|{n} recordings	{n} 件の録画
+	Save Preset from Last Upscale…	最後のアップスケールからプリセットを保存…
+	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI からアップスケール結果がまだ戻っていません
+	Detail:	ディテール:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：{scale}× で {w} × {h} px に拡大しました（新規レイヤー）。この設定は Topaz Gigapixel プリセット › 最後のアップスケールからプリセットを保存 で保持できます
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} を保存しました（{seconds} のビデオ）。
+	Export failed: {error}	書き出しに失敗しました：{error}
+	Export cancelled.	書き出しをキャンセルしました。
+	just now	たった今
+	{n} min ago	{n} 分前
+	{n} h ago	{n} 時間前
+	yesterday	昨日
+	{n} days ago	{n} 日前
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	ファイルが小さく、最も速く記録できます。手早いスケッチやプレビュー向けです。
+	Sharper video for big screens. Uses about twice the disk space.	大画面向けのより鮮明なビデオ。ディスク容量は約 2 倍になります。
+	Full-HD video, good for social media. Recommended.	フル HD ビデオ。SNS に適しています。推奨。
+	idle	待機
+	Record	録画
+	Paused	一時停止中
+	Click to resume recording	クリックで録画を再開
+	Open a document to record it.	録画するドキュメントを開いてください。
+	You'll be asked where to save recordings.	録画の保存先を尋ねます。
+	Export again	もう一度書き出し
+	Export video	ビデオを書き出し
+	Show the export results	書き出し結果を表示
+	Hide the export results	書き出し結果を隠す
+	≈ {seconds} video from {frames}.	≈ {frames}から {seconds} のビデオ。
+	Confirm	確定
+	Cancel export	書き出しをキャンセル
+	Frames	フレーム
+	Timer	時間
+	On disk	ディスク上
+	Hide the live preview	ライブプレビューを隠す
+	Show the newest frame	最新のフレームを表示
+	No frames yet — just start drawing	まだフレームがありません — 描き始めてください
+	No frames yet	まだフレームがありません
+	No layer selected	レイヤーが選択されていません
+	{n} layers selected	{n} 個のレイヤーを選択
+	Not recorded	録画対象外
+	A reference layer works like a normal layer, but won't show up in the timelapse.	参照レイヤーは通常のレイヤーと同じように使えますが、タイムラプスには映りません。
+	Back	戻る
+	Export settings	書き出し設定
+	Make video with	ビデオの作成方法
+	Bars colour	帯の色
+	Bars fill the empty space when the canvas size changed during recording.	録画中にカンバスサイズが変わったとき、帯が空きを埋めます。
+	Show finished drawing first	最初に完成画を表示
+	Hold final image	最終画像を表示し続ける
+	Show work-time counter	作業時間カウンターを表示
+	Record something in this document to see how long the video will be.	このドキュメントで何か録画すると、ビデオの長さが表示されます。
+	≈ {seconds} video	≈ {seconds} のビデオ
+	{n} recorded frames	録画フレーム {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	自動ではすべてのフレームを 1 回ずつ表示します（最短 5 秒、最長 1 分）。
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	録画中にカンバスサイズが変わりました。以前のフレームは最終サイズに収まるよう調整されます。
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	ちらつきの除去では一瞬だけ現れるフレーム（一時的に非表示にしたレイヤー、すぐ取り消したストロークなど）を省くため、ビデオが少し短くなることがあります。
+	Recordings folder	録画フォルダー
+	Not chosen yet — see Settings	未選択 — 設定を参照
+	recorded {when}	録画 {when}
+	Recorded more since the last export.	前回の書き出し以降に追加で録画されています。
+	Frames folder	フレームフォルダー
+	Not chosen yet	未選択
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	録画したフレームの保存場所です。ビデオは書き出し時に選んだ場所に保存されます。
+	Choose folder…	フォルダーを選択…
+	Change folder…	フォルダーを変更…
+	Recording quality	録画品質
+	Undoing something removes those recorded frames.	取り消すと、その分の録画フレームも削除されます。
+	Reference layers	参照レイヤー
+	Name tag	名前タグ
+	Layers with this in their name are left out of the timelapse.	名前にこれを含むレイヤーはタイムラプスに含まれません。
+	Work timer	作業タイマー
+	Idle after	待機までの時間
+	The timer stops counting after this long without activity.	操作がないままこの時間が経つと、タイマーは止まります。
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg（高速）
+	Dark grey	ダークグレー
+	0.5 s	0.5 秒
+	1 s	1 秒
+	1.5 s	1.5 秒
+	2 s	2 秒
+	3 s	3 秒
+	4 s	4 秒
+	5 s	5 秒
+	8 s	8 秒
+	10 s	10 秒
+	1 min	1 分
+	1.5 min	1.5 分
+	2 min	2 分
+	3 min	3 分
+	5 min	5 分
+	45 seconds	45 秒
+	Run Two Presets…	2 つのプリセットを実行…
+	Run Two Topaz Gigapixel Presets	2 つの Topaz Gigapixel プリセットを実行
+	Run	実行
+	Set Shortcut…	ショートカットを設定…
+	Action Shortcut	アクションのショートカット
+	No shortcut.	ショートカットなし。
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} は {commands} のショートカットでもあります。代わりにこのアクションを実行します。
+	Press the keys that play “{action}”.	「{action}」を実行するキーを押してください。
+	Shortcut:	ショートカット:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	どのキーでも使えます（Ctrl、Alt、Shift と組み合わせ可）。Backspace でショートカットを削除します。
+	The action no longer exists.	このアクションはもうありません。
+	Fill Tool	塗りつぶしツール
+	Nothing to fill there	そこには塗りつぶす場所がありません
+	No enclosed area to fill there	そこには囲まれた領域がありません
+	Fill: click an area	塗りつぶし：領域をクリック
+	Enclose and Fill: draw round the areas to fill	囲って塗る：塗りつぶす領域を囲みます
+	Paint Unfilled Area: paint over the gaps a fill left	塗り残し部分に塗る：塗り残しの上をなぞります
+	Refer	参照
+	Editing Layer	編集中のレイヤー
+	Selected Layers	選択したレイヤー
+	Layers in Folder	フォルダー内のレイヤー
+	Reference Layers	参照レイヤー
+	Exclude	除外
+	Editing layer	編集中のレイヤー
+	Text layers	テキストレイヤー
+	Locked layers	ロックされたレイヤー
+	Layers the fill doesn't read	塗りつぶしが参照しないレイヤー
+	Close Gap	隙間閉じ
+	Treat gaps in the lines up to this wide as closed (0: off)	この幅までの線の隙間を閉じているものとみなします（0：オフ）
+	Area Scaling	領域拡縮
+	Grow the fill under the lines, or shrink it	塗りつぶしを線の下まで広げる、または縮める
+	To Darkest Pixel	最も濃いピクセルまで
+	Follow Adjacent Pixels	隣接ピクセルをたどる
+	White and Transparent	白と透明
+	Image Border	画像の端
+	The canvas edge closes gaps as a line does	キャンバスの端を線と同じように扱って隙間を閉じます
+	Reference layer: the Fill tool reads it	参照レイヤー：塗りつぶしツールが参照します
+	Set as Reference Layer	参照レイヤーに設定
+	Clear Reference Layer	参照レイヤーを解除
+	Fill Tool Options	塗りつぶしツールのオプション
+	Size Key Repeat	サイズキーのリピート
+	Holding [ or ] to resize the brush	[ または ] を押し続けてブラシサイズを変更
+	Pause before repeating	リピート前に一時停止
+	Wait half a second before the size keeps changing, as typing does	入力時と同様に、サイズが変わり続ける前に 0.5 秒待ちます
+	Change every	変更間隔
+	Sample on Alt	Alt で採取
+	With a painting tool, pressing Alt picks the colour under the pointer at once	ペイントツールで Alt を押すと、ポインターの下の色をすぐに取得します
+	Hold:	長押し：
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	通常のスポイトとして機能する（スポイトカーソル、クリックで採取）までに Alt を押し続ける時間
+	Move Layer Mask	レイヤーマスクを移動
+	Copy Layer Mask	レイヤーマスクをコピー
+	Move Vector Mask	ベクトルマスクを移動
+	Copy Vector Mask	ベクトルマスクをコピー
+	Save as:	保存名：
+	Save Preset	プリセットを保存
+	Keep these two presets as one, listed with the others	この 2 つのプリセットを 1 つとして保存し、他と一緒に表示します
+	Stop recording first	先に記録を停止してください
+	Select a step first	先にステップを選択してください
+	This step has no dialog to record again	このステップには再記録するダイアログがありません
+	Record Again…	再記録…
+	Insert Menu Item…	メニュー項目を挿入…
+	Insert Conditional…	条件を挿入…
+	Set Options…	セットオプション…
+	Action Options…	アクションオプション…
+	Playback Options…	再生オプション…
+	Allow Tool Recording	ツールの記録を許可
+	Record brush and other painting strokes, and the brush settings they use	ブラシなどのペイントのストロークと、それが使うブラシ設定を記録します
+	Clear All Actions	すべてのアクションを消去
+	Replace Actions…	アクションを置き換え…
+	Delete the set “{name}”?	セット「{name}」を削除しますか？
+	Delete the action “{name}”?	アクション「{name}」を削除しますか？
+	Delete the selection?	選択範囲を削除しますか？
+	Function Key:	ファンクションキー：
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	このアクションには別のショートカットがあります（ショートカットを設定…）。ここでキーを選ぶと置き換わります。
+	Accelerated	高速
+	Step by Step	ステップごと
+	Pause For:	一時停止：
+	seconds	秒
+	None Selected	選択なし
+	Menu Item:	メニュー項目：
+	Type part of a menu item's name, then pick it below.	メニュー項目の名前の一部を入力し、下から選んでください。
+	If Current:	現在の状態が次の場合：
+	Then Play Action:	アクションを再生：
+	Else Play Action:	それ以外の場合に再生：
+	Document Is Open	ドキュメントが開いている
+	Document Is Landscape	ドキュメントが横長
+	Document Is Square	ドキュメントが正方形
+	Document Is Portrait	ドキュメントが縦長
+	Document Mode Is RGB	ドキュメントのモードが RGB
+	Document Mode Is CMYK	ドキュメントのモードが CMYK
+	Document Mode Is Grayscale	ドキュメントのモードがグレースケール
+	Document Mode Is Lab	ドキュメントのモードが Lab
+	Document Mode Is Bitmap	ドキュメントのモードがモノクロ 2 階調
+	Document Mode Is Indexed	ドキュメントのモードがインデックスカラー
+	Document Mode Is Duotone	ドキュメントのモードがダブルトーン
+	Document Mode Is Multichannel	ドキュメントのモードがマルチチャンネル
+	Document Is 8 Bits/Channel	ドキュメントが 8 bit/チャンネル
+	Document Is 16 Bits/Channel	ドキュメントが 16 bit/チャンネル
+	Document Is 32 Bits/Channel	ドキュメントが 32 bit/チャンネル
+	Document Has Unsaved Changes	ドキュメントに未保存の変更がある
+	Document Has a Selection	ドキュメントに選択範囲がある
+	Document Has Layers	ドキュメントにレイヤーがある
+	Document Has Alpha Channels	ドキュメントにアルファチャンネルがある
+	Layer Is Background	レイヤーが背景
+	Layer Is a Pixel Layer	レイヤーがピクセルレイヤー
+	Layer Is an Adjustment Layer	レイヤーが調整レイヤー
+	Layer Is a Shape Layer	レイヤーがシェイプレイヤー
+	Layer Is a Type Layer	レイヤーがテキストレイヤー
+	Layer Is a Smart Object	レイヤーがスマートオブジェクト
+	Layer Is a Group	レイヤーがグループ
+	Layer Is Locked	レイヤーがロックされている
+	Layer Is Visible	レイヤーが表示されている
+	Layer Has Pixel Mask	レイヤーにピクセルマスクがある
+	Layer Has Vector Mask	レイヤーにベクトルマスクがある
+	Layer Has Effects	レイヤーに効果がある
+	Pick a menu item first	先にメニュー項目を選んでください
+	Find	検索
+	Close gaps up to {px} px	{px} px までの隙間を閉じる
+	Grow the selection under the lines, or shrink it	選択範囲を線の下まで広げる、または縮める
 	Decrease Brush Size	ブラシサイズを小さく
 	Increase Brush Size	ブラシサイズを大きく
 	Decrease Brush Hardness	ブラシの硬さを下げる
@@ -4030,6 +4383,25 @@ curves	Smooth	スムーズ
 	In Front	前面
 	Behind	背面
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	2 つ目のマスクを追加  (選択範囲から、{key} で反転)
+	Convert to Vector Mask	ベクトルマスクに変換
+	Delete Second Mask	2 つ目のマスクを削除
+	Disable Second Mask	2 つ目のマスクを無効にする
+	Enable Second Mask	2 つ目のマスクを有効にする
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	選択をロック：カンバス上のクリックは通り抜けます (レイヤーパネルでは選択できます)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	現在のレイヤーを設定
+	Editing layer blocks the fill	編集中のレイヤーで塗りを止める
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	塗りつぶすレイヤー上の描画が許容値に関係なく塗りを止め、塗りはその背面に入ります：隙間の上に描くと閉じられます
+	Undo widens Close Gap	取り消しで隙間閉じを広げる
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	塗りを取り消すたびに次のクリックでより大きな隙間を閉じます (別のツールを選ぶまで)
+	Close Gap widened to {px} px: click again to fill	隙間閉じを {px} px に広げました：もう一度クリックして塗りつぶします
+	Pick From	選択する不透明度
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl+クリックと自動選択でレイヤーを選ぶのに必要な、ポインター下の不透明度です。ほぼ黒のマスクのような薄いピクセルは通り抜けます (0：見えるピクセルすべて)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	ブレンド条件または高度な合成が設定されています: クリックするとレイヤー効果の詳細設定を開きます
 # DDS Options (#1327)
 	DDS Options	DDS オプション
 	Compression	圧縮
@@ -4063,6 +4435,38 @@ curves	Smooth	スムーズ
 	Start Size:	開始サイズ:
 	End Size:	終了サイズ:
 	Save as Pattern	パターンとして保存
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1（Google、有料）
+	Remove Selection	選択範囲を削除
+	Remove what is selected ({key})	選択した部分を削除（{key}）
+	API Key…	API キー…
+	Change or remove the Google API key Nano Banana uses	Nano Banana が使う Google API キーを変更または削除
+	Set API Key…	API キーを設定…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana にはご自身の Google API キーが必要です。それまで自動は LaMa を使います
+	No API key	API キーなし
+	Nano Banana API Key	Nano Banana の API キー
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 は Google のサーバーで動作し、ご自身の Google アカウントに課金されます：削除 1 回あたり約 {small}、大きなものは {large}。
+	The area around what you remove is sent to Google, which is asked not to keep it.	削除する部分の周囲は Google に送られ、保存しないよう求められます。
+	Get a key at	キーの取得先：
+	A key is saved in the system's credential store.	キーはシステムの資格情報ストアに保存されています。
+	Using the {var} environment variable.	環境変数 {var} を使用しています。
+	Google API key	Google API キー
+	Remove Saved Key	保存したキーを削除
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	このシステムには PhotoCraft が使える資格情報ストアがありません。代わりに環境変数 {var} を設定してください。
+	Mask image	マスク画像
+	Painted red	赤で塗りつぶし
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana には画像をそのまま渡し、削除する範囲は別のマスクで示します
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana には削除する範囲を赤で塗った画像を渡します（Photoshop での手順と同じ）
+	Close up	近接
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana に削除する部分の周囲だけを送るため、ページの約 2 倍の解像度で描かれます
+	Whole page	ページ全体
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana にページ全体を送ります。手がかりは多いものの、仕上がりは柔らかくなります
+	Creative	クリエイティブ
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Nano Banana が描いたものをすべて表示し、削除する部分の周囲で変えた箇所も見せます (レイヤーマスクは端でフェードアウト)
+	Grain…	粒子…
+	Roughness:	粗さ:
+	Color field	カラーフィールド
+	Color slider	カラースライダー
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	先に開いているアクションのステップのダイアログを確定またはキャンセルしてください
 	Pro Medium Gray	プロ(中間グレー)
@@ -4096,3 +4500,10 @@ curves	Smooth	スムーズ
 	Sheet / Pattern	シート / パターン
 	Tone Gamma:	トーンガンマ:
 	White Cutoff:	白のカットオフ:
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	サンプル: 記録された色
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	AI 削除
+	Remove what is selected with Nano Banana ({key})	選択範囲を Nano Banana で削除 ({key})
+	Pin to Top	上部に固定
+	Unpin from Top	上部への固定を解除

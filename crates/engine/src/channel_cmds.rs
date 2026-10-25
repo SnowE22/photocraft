@@ -16,9 +16,11 @@ use photocraft_algo::selection::{self as sel, SelectionMode};
 use photocraft_color::{BlendMode, Color, ColorMode, PixelFormat, blend::blend_channel};
 use photocraft_doc::{AlphaChannel, ColorIndicates, Document, Layer, LayerContent, LayerId};
 use photocraft_geom::{Rect, TileCoord};
-use photocraft_raster::{Surface, from_rgba, to_rgba};
+use photocraft_raster::{Surface, from_rgba, from_rgba_into, to_rgba};
+use rayon::prelude::*;
 use serde::Serialize;
 use serde_json::{Value, json};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::commands::CommandSpec;
 use crate::{DocState, EngineError, Result, Session};
@@ -322,6 +324,8 @@ pub enum ChanRef {
     LayerMask,
     /// The layer's vector mask, rasterized (⌘-click its thumbnail, #196).
     VectorMask,
+    /// The layer's second pixel mask (`Layer::second_mask`).
+    SecondMask,
 }
 
 pub fn parse_ref(v: &Value, doc: &Document) -> Option<ChanRef> {
@@ -344,6 +348,7 @@ pub fn parse_ref(v: &Value, doc: &Document) -> Option<ChanRef> {
                 "transparency" => return Some(ChanRef::Transparency),
                 "mask" | "layermask" => return Some(ChanRef::LayerMask),
                 "vectormask" | "vector mask" => return Some(ChanRef::VectorMask),
+                "secondmask" | "second mask" => return Some(ChanRef::SecondMask),
                 _ => {}
             }
             if l == composite_name(mode).to_ascii_lowercase() {
@@ -399,10 +404,101 @@ fn native_pixels(doc: &Document, layer: Option<LayerId>) -> Result<(Vec<f32>, us
             Ok((raw.chunks_exact(sf.channels()).flat_map(|p| from_rgba(&fmt, to_rgba(&sf, p))).collect(), n))
         }
         None => {
-            let buf = photocraft_compose::render(doc, r);
-            Ok((buf.px.iter().flat_map(|p| from_rgba(&fmt, *p)).collect(), n))
+            // Converted in place, in parallel: a value list per pixel (`from_rgba`) cost most of
+            // a second on a 7 MP document.
+            let buf = merged(doc);
+            let mut out = vec![0.0f32; buf.px.len().saturating_mul(n)];
+            out.par_chunks_mut(n.max(1)).zip(buf.px.par_iter()).for_each(|(o, p)| {
+                from_rgba_into(&fmt, *p, o);
+            });
+            Ok((out, n))
         }
     }
+}
+
+/// The last merged image [`merged`] rendered, and the document it is of.
+static MERGED: Mutex<Option<(Document, Arc<photocraft_compose::Buffer>)>> = Mutex::new(None);
+
+/// Documents up to this many pixels keep their merged image for the next [`merged`] (16 bytes a
+/// pixel: 768 MiB at the cap).
+const MAX_KEPT_MERGED_PIXELS: u64 = 48 << 20;
+
+/// The merged image of `doc` over the canvas. Kept from the last call while the document differs
+/// only in its selection: ⌘-clicking channel after channel, or a channel and then Apply Image,
+/// renders once (user report: each ⌘-click on a 114-layer document re-rendered it, ~1 s).
+/// [`prepare_merged`] renders it ahead on another thread; a call meanwhile waits for that one.
+pub(crate) fn merged(doc: &Document) -> Arc<photocraft_compose::Buffer> {
+    let mut kept = MERGED.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some((d, buf)) = kept.as_ref()
+        && same_but_selection(d, doc)
+    {
+        return buf.clone();
+    }
+    // The old one goes before the new one is rendered: two full-size buffers at once is the peak
+    // this avoids.
+    *kept = None;
+    let buf = Arc::new(photocraft_compose::render(doc, doc.bounds()));
+    if doc.size.area() <= MAX_KEPT_MERGED_PIXELS {
+        *kept = Some((doc.clone(), buf.clone()));
+    }
+    buf
+}
+
+/// Render `doc`'s merged image now (on a background thread) so the next ⌘-click on a composite
+/// or colour channel, Apply Image or Calculations doesn't wait for it. Nothing happens when it is
+/// kept already or the document is too big to keep it.
+pub fn prepare_merged(doc: &Document) {
+    if doc.size.area() <= MAX_KEPT_MERGED_PIXELS {
+        merged(doc);
+    }
+}
+
+/// Whether the merged image of `doc` is kept (rendered and not changed since but in its
+/// selection).
+pub fn merged_is_ready(doc: &Document) -> bool {
+    // A render in progress holds the lock: not ready yet.
+    MERGED.try_lock().is_ok_and(|kept| kept.as_ref().is_some_and(|(d, _)| same_but_selection(d, doc)))
+}
+
+/// Drop the kept merged image of document `id` (it was closed).
+pub fn forget_merged(id: photocraft_doc::DocId) {
+    let mut kept = MERGED.lock().unwrap_or_else(PoisonError::into_inner);
+    if kept.as_ref().is_some_and(|(d, _)| d.id == id) {
+        *kept = None;
+    }
+}
+
+/// Whether `new` differs from `old` at most in its selection, so its merged image is the same.
+/// Tiles compare by pointer first, so this costs little.
+fn same_but_selection(old: &Document, new: &Document) -> bool {
+    if old.selection == new.selection {
+        return old == new;
+    }
+    let mut o = old.clone();
+    o.selection = new.selection.clone();
+    o == *new
+}
+
+/// Most channels a pixel has (CMYK and alpha).
+const MAX_CHANNELS: usize = 8;
+
+/// The merged image over the canvas, one value per pixel: `f` gets each pixel's native values
+/// (colour channels, then alpha when the document has it). In parallel, with no per-pixel
+/// allocation, and without the colour planes a [`native_pixels`] split makes.
+fn composite_values(doc: &Document, f: impl Fn(&mut [f32]) -> f32 + Sync + Send) -> Vec<f32> {
+    let fmt = doc.pixel_format();
+    let n = fmt.channels().min(MAX_CHANNELS);
+    let buf = merged(doc);
+    buf.px
+        .par_iter()
+        .map_init(
+            || [0.0f32; MAX_CHANNELS],
+            |tmp, p| {
+                from_rgba_into(&fmt, *p, tmp);
+                tmp.get_mut(..n).map_or(0.0, &f)
+            },
+        )
+        .collect()
 }
 
 /// `"layer"` param of a source: a layer id, a layer name (the topmost of that name, as a loaded
@@ -468,6 +564,12 @@ fn ref_planes(doc: &Document, layer: Option<LayerId>, active: Option<LayerId>, r
             let m = l.mask.as_ref().ok_or_else(|| EngineError::Other(format!("layer \"{}\" has no mask", l.name)))?;
             vec![read_plane(&m.surface, area)]
         }
+        ChanRef::SecondMask => {
+            let id = layer.or(active).ok_or_else(|| EngineError::Other("second mask needs a layer".into()))?;
+            let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
+            let m = l.second_mask.as_ref().ok_or_else(|| EngineError::Other(format!("layer \"{}\" has no second mask", l.name)))?;
+            vec![read_plane(&m.surface, area)]
+        }
         ChanRef::VectorMask => {
             let id = layer.or(active).ok_or_else(|| EngineError::Other("vector mask needs a layer".into()))?;
             let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
@@ -481,6 +583,27 @@ fn ref_planes(doc: &Document, layer: Option<LayerId>, active: Option<LayerId>, r
 
 /// One grayscale plane (composites reduce to luminosity, as in Calculations).
 fn gray_plane(doc: &Document, layer: Option<LayerId>, active: Option<LayerId>, r: ChanRef) -> Result<Vec<f32>> {
+    // The merged image or one of its colour channels (⌘-click on the Channels panel): straight
+    // from the composite in one parallel pass, with the same values as the planes below give.
+    if layer.is_none() {
+        let fmt = doc.pixel_format();
+        let colors = color_count(doc);
+        match r {
+            ChanRef::Color(k) if k < colors => return Ok(composite_values(doc, |px| px.get(k).copied().unwrap_or(0.0))),
+            ChanRef::Composite if colors == 1 => return Ok(composite_values(doc, |px| px.first().copied().unwrap_or(0.0))),
+            ChanRef::Composite => {
+                return Ok(composite_values(doc, |px| {
+                    if fmt.alpha
+                        && let Some(a) = px.get_mut(colors)
+                    {
+                        *a = 1.0;
+                    }
+                    luminosity(to_rgba(&fmt, px))
+                }));
+            }
+            _ => {}
+        }
+    }
     let mut planes = ref_planes(doc, layer, active, r)?;
     if planes.len() == 1
         && let Some(only) = planes.pop()
@@ -609,7 +732,7 @@ pub(crate) enum Target {
 pub(crate) fn target_of(p: &Value) -> Target {
     match p.get("target") {
         Some(Value::String(s)) => match s.as_str() {
-            "mask" => Target::Mask,
+            "mask" | "secondMask" => Target::Mask,
             "quickMask" => Target::QuickMask,
             _ => Target::Pixels,
         },
@@ -652,7 +775,8 @@ pub(crate) fn read_target_surface<'a>(doc: &'a Document, layer: Option<LayerId>,
         }
         Target::Mask => {
             let id = layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
-            doc.layer(id).and_then(|l| l.mask.as_ref()).map(|m| &m.surface).ok_or(EngineError::NoLayer(id))
+            let second = crate::commands::is_second_mask_target(p);
+            doc.layer(id).and_then(|l| l.pixel_mask(second)).map(|m| &m.surface).ok_or(EngineError::NoLayer(id))
         }
     }
 }
@@ -689,7 +813,8 @@ pub(crate) fn mask_target_enabled(s: &Session, id: &str, p: &Value) -> Option<st
     if target_of(p) != Target::Mask || !edits_mask(id) {
         return None;
     }
-    Some(crate::active_layer_of(s).and_then(|l| if l.mask.is_some() { Ok(()) } else { Err("the active layer has no layer mask".into()) }))
+    let second = crate::commands::is_second_mask_target(p);
+    Some(crate::active_layer_of(s).and_then(|l| if l.pixel_mask(second).is_some() { Ok(()) } else { Err("the active layer has no layer mask".into()) }))
 }
 
 /// Whether command `id` edits the targeted channel or mask when its params name no `"target"`
@@ -705,7 +830,7 @@ pub(crate) fn routed(id: &str) -> bool {
     id.starts_with("filter.")
         || id == "plugin.run"
         || id.starts_with("image.adjustments.")
-        || matches!(id, "paint.stroke" | "paint.pencil" | "paint.bucket" | "paint.gradient" | "paint.mixerBrush" | "edit.fill" | "image.applyImage")
+        || matches!(id, "paint.stroke" | "paint.pencil" | "paint.bucket" | "paint.fill" | "paint.gradient" | "paint.mixerBrush" | "edit.fill" | "image.applyImage")
         || crate::fill_key_cmds::IDS.contains(&id)
         // Pasting into a targeted mask or channel (#1035); Copy takes a targeted mask (#2928).
         || matches!(id, "edit.copy" | "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "edit.pasteSpecial.pasteInto" | "edit.pasteSpecial.pasteOutside")

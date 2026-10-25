@@ -1,5 +1,5 @@
-//! The menu bar from the keyboard (#4988): Alt / F10 focus the bar, Alt+letter opens a menu,
-//! letters run rows, and the shortcuts wait while the bar has the keyboard.
+//! The menu bar from the keyboard (#4988): F10 focuses the bar, letters run rows, the shortcuts
+//! wait while the bar has the keyboard, and Alt does nothing to the menus.
 use crate::PhotocraftApp;
 use crate::menu_keys::Keys;
 use crate::menu_nav::{Nav, is_open};
@@ -49,11 +49,11 @@ fn rows(h: &Harness<'static, PhotocraftApp>, level: usize) -> Vec<crate::menu_na
 }
 
 #[test]
-fn alt_focuses_the_bar_arrows_move_and_down_opens_the_lit_menu() {
+fn f10_focuses_the_bar_arrows_move_and_down_opens_the_lit_menu() {
     let mut h = bar();
     assert_eq!(Keys::current(&h.ctx).focus, None);
-    alt_tap(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "Alt puts the keyboard on File");
+    key(&mut h, egui::Key::F10);
+    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "F10 puts the keyboard on File");
     assert!(crate::menu_keys::is_focused(&h.ctx), "the shortcuts wait for the bar");
     assert!(!is_open(&h.ctx), "no menu opens yet");
     key(&mut h, egui::Key::ArrowRight);
@@ -108,14 +108,14 @@ fn alt_with_a_wheel_scroll_or_a_lost_focus_is_no_tap() {
 }
 
 #[test]
-fn a_second_alt_or_esc_or_a_click_takes_the_keyboard_off_the_bar() {
+fn a_second_f10_or_esc_or_a_click_takes_the_keyboard_off_the_bar() {
     let mut h = bar();
-    alt_tap(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0));
-    alt_tap(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, None, "a second tap leaves");
     key(&mut h, egui::Key::F10);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "F10 focuses the bar too");
+    assert_eq!(Keys::current(&h.ctx).focus, Some(0));
+    key(&mut h, egui::Key::F10);
+    assert_eq!(Keys::current(&h.ctx).focus, None, "a second F10 leaves");
+    key(&mut h, egui::Key::F10);
+    assert_eq!(Keys::current(&h.ctx).focus, Some(0));
     key(&mut h, egui::Key::Escape);
     assert_eq!(Keys::current(&h.ctx).focus, None);
     assert!(!crate::menu_keys::is_focused(&h.ctx));
@@ -129,16 +129,13 @@ fn a_second_alt_or_esc_or_a_click_takes_the_keyboard_off_the_bar() {
 }
 
 #[test]
-fn alt_with_a_letter_opens_that_menu_and_enter_opens_the_lit_one() {
+fn alt_does_nothing_to_the_menus_and_enter_opens_the_lit_one() {
     let mut h = bar();
+    alt_tap(&mut h);
+    assert_eq!(Keys::current(&h.ctx).focus, None, "an Alt tap leaves the bar alone");
     alt_key(&mut h, egui::Key::E);
     h.run_steps(2);
-    assert!(is_open(&h.ctx) && h.query_by_label_contains("Undo").is_some(), "Alt+E opens Edit");
-    alt_key(&mut h, egui::Key::F);
-    h.run_steps(2);
-    assert!(h.query_by_label_contains("Open…").is_some(), "Alt+F switches to File while a menu is open");
-    key(&mut h, egui::Key::Escape);
-    assert!(!is_open(&h.ctx));
+    assert!(!is_open(&h.ctx), "Alt+E opens no menu");
     key(&mut h, egui::Key::F10);
     key(&mut h, egui::Key::Enter);
     h.run_steps(2);
@@ -153,7 +150,8 @@ fn alt_with_a_letter_opens_that_menu_and_enter_opens_the_lit_one() {
 #[test]
 fn a_letter_in_an_open_menu_runs_the_row_with_that_mnemonic_or_opens_its_submenu() {
     let mut h = bar();
-    alt_key(&mut h, egui::Key::V);
+    key(&mut h, egui::Key::F10);
+    key(&mut h, egui::Key::V);
     h.run_steps(2);
     assert!(h.query_by_label_contains("Zoom In").is_some(), "View is open");
     let level = rows(&h, 0);
@@ -166,7 +164,8 @@ fn a_letter_in_an_open_menu_runs_the_row_with_that_mnemonic_or_opens_its_submenu
     assert!(h.state().ui.views[0].zoom > zoom, "the letter ran Zoom In ({letter})");
     assert!(!is_open(&h.ctx), "and closed the menu");
     // A submenu's letter opens it, with its first row lit.
-    alt_key(&mut h, egui::Key::V);
+    key(&mut h, egui::Key::F10);
+    key(&mut h, egui::Key::V);
     h.run_steps(2);
     let level = rows(&h, 0);
     let sub = level.iter().find(|r| r.command.is_none() && r.enabled && r.mnemonic.is_some()).expect("an enabled submenu with a mnemonic");
@@ -178,7 +177,7 @@ fn a_letter_in_an_open_menu_runs_the_row_with_that_mnemonic_or_opens_its_submenu
 }
 
 #[test]
-fn mnemonics_are_underlined_only_with_alt_or_a_keyboard_opened_menu() {
+fn mnemonics_are_underlined_only_in_a_keyboard_opened_menu() {
     let mut h = bar();
     h.get_by_label("File").click();
     h.run_steps(4);
@@ -186,12 +185,13 @@ fn mnemonics_are_underlined_only_with_alt_or_a_keyboard_opened_menu() {
     assert!(!Nav::current(&h.ctx).underline, "a menu opened with the mouse shows no underlines");
     h.key_down(egui::Key::AltLeft);
     h.run_steps(3);
-    assert!(Nav::current(&h.ctx).underline, "while Alt is held they show");
+    assert!(!Nav::current(&h.ctx).underline, "holding Alt shows none either");
     h.key_up(egui::Key::AltLeft);
     h.run_steps(3);
-    // The tap closed the menu (as on Windows); opening from the keyboard underlines.
-    assert!(!is_open(&h.ctx), "an Alt tap closes an open menu");
-    alt_key(&mut h, egui::Key::F);
+    assert!(is_open(&h.ctx), "an Alt tap leaves an open menu open");
+    key(&mut h, egui::Key::Escape);
+    key(&mut h, egui::Key::F10);
+    key(&mut h, egui::Key::F);
     h.run_steps(2);
     assert!(is_open(&h.ctx) && Nav::current(&h.ctx).underline);
     assert!(rows(&h, 0).iter().any(|r| r.mnemonic.is_some()), "rows carry their letters");
@@ -270,7 +270,7 @@ fn labels_without_latin_letters_show_their_english_key() {
     assert_eq!(crate::menu_keys::localized(&labels, &["File", "Edit"], &[Some('F'), Some('E')]).0, labels);
 }
 
-/// The whole app: with the bar focused by an Alt tap, a command shortcut leaves the bar and runs
+/// The whole app: with the bar focused by F10, a command shortcut leaves the bar and runs
 /// in the same press (#6573); the bar's own keys still drive it.
 #[test]
 fn a_command_shortcut_leaves_the_bar_and_runs() {
@@ -283,8 +283,9 @@ fn a_command_shortcut_leaves_the_bar_and_runs() {
     h.run_steps(4);
     h.state_mut().run("select.all", json!({})).unwrap();
     h.run_steps(2);
-    alt_tap(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "Alt puts the keyboard on File");
+    // F10, not an Alt tap: Alt never takes the keyboard to the bar (a user request).
+    key(&mut h, egui::Key::F10);
+    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "F10 puts the keyboard on File");
     key(&mut h, egui::Key::ArrowRight);
     assert_eq!(Keys::current(&h.ctx).focus, Some(1), "→ still moves along the bar");
     assert!(h.state().session.active().unwrap().doc.selection.is_some());
@@ -334,109 +335,3 @@ fn every_menu_row_starts_its_label_after_one_checkmark_column() {
     out.textures_delta.clear();
 }
 
-/// The whole app (shortcuts, dialogs and the menu bar), for keys other handlers see first.
-fn whole_app() -> Harness<'static, PhotocraftApp> {
-    let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).with_max_steps(16).build_eframe(|cc| {
-        PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
-        app()
-    });
-    h.run_steps(4);
-    h
-}
-
-/// `key` pressed and released with `mods` held, as the platform reports a chord.
-fn chord(h: &mut Harness<'static, PhotocraftApp>, key: egui::Key, mods: egui::Modifiers) {
-    h.event_modifiers(egui::Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: mods }, mods);
-    h.event_modifiers(egui::Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers: mods }, mods);
-    h.run_steps(2);
-}
-
-fn alt_down(h: &mut Harness<'static, PhotocraftApp>, mods: egui::Modifiers) {
-    h.event_modifiers(egui::Event::Key { key: egui::Key::AltLeft, physical_key: None, pressed: true, repeat: false, modifiers: mods }, mods);
-    h.run_steps(2);
-}
-
-fn alt_up(h: &mut Harness<'static, PhotocraftApp>) {
-    h.event_modifiers(
-        egui::Event::Key { key: egui::Key::AltLeft, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::NONE },
-        egui::Modifiers::NONE,
-    );
-    h.run_steps(3);
-}
-
-/// #7481: Alt held through a shortcut is no tap, even when the shortcut consumed its key before
-/// the bar saw it. Ctrl+Alt+I opens Image Size; releasing Alt leaves the keyboard where it was,
-/// so Enter confirms the dialog instead of opening File. A lone tap still puts it on the bar.
-#[test]
-fn alt_held_through_a_shortcut_does_not_put_the_keyboard_on_the_bar() {
-    let mut h = whole_app();
-    alt_down(&mut h, egui::Modifiers::ALT);
-    chord(&mut h, egui::Key::I, egui::Modifiers::CTRL | egui::Modifiers::ALT | egui::Modifiers::COMMAND);
-    alt_up(&mut h);
-    assert_eq!(h.state().ui.dialogs.len(), 1, "Image Size opened");
-    assert_eq!(Keys::current(&h.ctx).focus, None, "the bar did not take the keyboard");
-    h.key_press(egui::Key::Enter);
-    h.run_steps(4);
-    assert!(!is_open(&h.ctx), "Enter opened no menu");
-    assert!(h.state().ui.dialogs.is_empty(), "Enter confirmed Image Size");
-
-    alt_down(&mut h, egui::Modifiers::ALT);
-    alt_up(&mut h);
-    assert_eq!(Keys::current(&h.ctx).focus, Some(0), "a lone tap still focuses the bar");
-}
-
-/// #8113: Alt pressed during a drag (Free Transform's scale from the centre) is a modifier for the
-/// drag, not a tap: with the mouse button let go before or after Alt, the keyboard stays where
-/// it was, so Enter commits the transform instead of opening File. A lone tap still works.
-#[test]
-fn alt_held_during_a_drag_is_no_tap() {
-    let mut h = bar();
-    let at = egui::pos2(640.0, 400.0);
-    let button = |h: &mut Harness<'static, PhotocraftApp>, pressed: bool, mods: egui::Modifiers| {
-        h.event_modifiers(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed, modifiers: mods }, mods);
-        h.run_steps(2);
-    };
-    for mouse_up_first in [true, false] {
-        h.hover_at(at);
-        button(&mut h, true, egui::Modifiers::NONE);
-        h.key_down(egui::Key::AltLeft);
-        h.run_steps(2);
-        if mouse_up_first {
-            button(&mut h, false, egui::Modifiers::ALT);
-            h.key_up(egui::Key::AltLeft);
-        } else {
-            h.key_up(egui::Key::AltLeft);
-            h.run_steps(2);
-            button(&mut h, false, egui::Modifiers::NONE);
-        }
-        h.run_steps(3);
-        assert_eq!(Keys::current(&h.ctx).focus, None, "mouse up first: {mouse_up_first}");
-        key(&mut h, egui::Key::Enter);
-        assert!(!is_open(&h.ctx), "Enter opens no menu (mouse up first: {mouse_up_first})");
-    }
-    // The whole gesture within one frame: press, Alt down, Alt up, release.
-    let (alt, none) = (egui::Modifiers::ALT, egui::Modifiers::NONE);
-    h.event_modifiers(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: true, modifiers: none }, none);
-    h.event_modifiers(egui::Event::Key { key: egui::Key::AltLeft, physical_key: None, pressed: true, repeat: false, modifiers: alt }, alt);
-    h.event_modifiers(egui::Event::Key { key: egui::Key::AltLeft, physical_key: None, pressed: false, repeat: false, modifiers: none }, none);
-    h.event_modifiers(egui::Event::PointerButton { pos: at, button: egui::PointerButton::Primary, pressed: false, modifiers: none }, none);
-    h.run_steps(3);
-    assert_eq!(Keys::current(&h.ctx).focus, None, "one frame");
-    // Two buttons: the right one let go while the left is still down. Alt pressed then is still
-    // pressed during the left-button drag.
-    let btn = |h: &mut Harness<'static, PhotocraftApp>, button: egui::PointerButton, pressed: bool| {
-        h.event_modifiers(egui::Event::PointerButton { pos: at, button, pressed, modifiers: none }, none);
-        h.run_steps(2);
-    };
-    btn(&mut h, egui::PointerButton::Primary, true);
-    btn(&mut h, egui::PointerButton::Secondary, true);
-    btn(&mut h, egui::PointerButton::Secondary, false);
-    h.key_down(egui::Key::AltLeft);
-    h.run_steps(2);
-    h.key_up(egui::Key::AltLeft);
-    h.run_steps(3);
-    assert_eq!(Keys::current(&h.ctx).focus, None, "the left button is still down");
-    btn(&mut h, egui::PointerButton::Primary, false);
-    alt_tap(&mut h);
-    assert!(Keys::current(&h.ctx).focus.is_some(), "a lone tap still focuses the bar");
-}

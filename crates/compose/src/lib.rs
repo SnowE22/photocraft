@@ -721,6 +721,197 @@ fn render_reduced_with(doc: &Document, b: Rect, w: u32, h: u32, damage: Option<R
     Buffer { rect: out, px: acc }
 }
 
+/// The composite of an area area-averaged (premultiplied) down to a smaller size band by band,
+/// exactly as [`render_reduced`] does it: fed the bands of a render the caller makes anyway, so the
+/// merged image a PSD save renders gives its thumbnail too, and one render gives a .pcraft save
+/// both its thumbnail and its preview.
+pub struct Reducer {
+    fw: usize,
+    fh: usize,
+    w: usize,
+    h: usize,
+    /// Output pixels made, and the document area they read.
+    out: Rect,
+    src: Rect,
+    b: Rect,
+    /// Output column of each source column of `src`, and output row of each document row of `b`.
+    cols: Vec<u32>,
+    rows: Vec<u32>,
+    acc: Vec<[f32; 4]>,
+    /// The next source row a band must start at (`None` once bands came out of order).
+    next: Option<i32>,
+}
+
+impl Reducer {
+    /// The reduction of all of `b` (a document's bounds) to `w`×`h` (clamped to `b`'s size), or
+    /// `None` when there is nothing to reduce (`b` is empty, or `w`×`h` is its own size).
+    pub fn new(b: Rect, w: u32, h: u32) -> Option<Self> {
+        Self::over(b, w, h, None).ok()
+    }
+
+    /// [`Self::new`] for the output pixels a change to `damage` affects. `Err(Some(out))`: `w`×`h`
+    /// is `b`'s own size (output pixels `out` are document pixels); `Err(None)`: nothing to make.
+    fn over(b: Rect, w: u32, h: u32, damage: Option<Rect>) -> Result<Self, Option<Rect>> {
+        let (fw, fh) = (b.width() as usize, b.height() as usize);
+        let (w, h) = (w.clamp(1, b.width().max(1)) as usize, h.clamp(1, b.height().max(1)) as usize);
+        let full = Rect::from_xywh(0, 0, w as u32, h as u32);
+        if fw == 0 || fh == 0 {
+            return Err(None);
+        }
+        // The output pixel whose span holds document column / row `x` (spans are contiguous: n <= f).
+        let cell = |x: usize, f: usize, n: usize| ((x + 1) * n).saturating_sub(1) / f;
+        // Output pixels to produce and the document area they cover.
+        let out = match damage {
+            None => full,
+            Some(d) => {
+                let d = d.intersect(&b);
+                if d.is_empty() {
+                    return Err(None);
+                }
+                let (x0, x1) = ((d.x0 - b.x0) as usize, (d.x1 - b.x0) as usize);
+                let (y0, y1) = ((d.y0 - b.y0) as usize, (d.y1 - b.y0) as usize);
+                Rect::new(cell(x0, fw, w) as i32, cell(y0, fh, h) as i32, cell(x1 - 1, fw, w) as i32 + 1, cell(y1 - 1, fh, h) as i32 + 1)
+            }
+        };
+        let (ox0, oy0, ow, oh) = (out.x0 as usize, out.y0 as usize, out.width() as usize, out.height() as usize);
+        let (sx0, sx1) = (reduce_span(ox0, fw, w).0, reduce_span(ox0 + ow - 1, fw, w).1);
+        let (sy0, sy1) = (reduce_span(oy0, fh, h).0, reduce_span(oy0 + oh - 1, fh, h).1);
+        let src = Rect::new(b.x0 + sx0 as i32, b.y0 + sy0 as i32, b.x0 + sx1 as i32, b.y0 + sy1 as i32);
+        if (w, h) == (fw, fh) {
+            return Err(Some(out));
+        }
+        let map = |f: usize, n: usize| {
+            let mut m = vec![0u32; f];
+            for t in 0..n {
+                let (a, z) = reduce_span(t, f, n);
+                m[a..z].fill(t as u32);
+            }
+            m
+        };
+        let (cols, rows) = (map(fw, w), map(fh, h));
+        let cols = cols[sx0..sx1].to_vec();
+        Ok(Self { fw, fh, w, h, out, src, b, cols, rows, acc: vec![[0.0f32; 4]; ow * oh], next: Some(src.y0) })
+    }
+
+    /// The document area whose composite this reduction reads: the bands given to [`Self::add`]
+    /// must cover it top to bottom, each as wide as it.
+    pub fn source(&self) -> Rect {
+        self.src
+    }
+
+    /// Adds the next band of the composite of [`Self::source`] (its rows in order after the
+    /// band before). A band that isn't the next one spoils the reduction ([`Self::finish`] gives
+    /// `None`).
+    pub fn add(&mut self, band: &Buffer) {
+        let Some(next) = self.next else { return };
+        if band.rect.x0 != self.src.x0 || band.rect.x1 != self.src.x1 || band.rect.y0 != next || band.rect.y1 > self.src.y1 || band.rect.is_empty() {
+            self.next = None;
+            return;
+        }
+        self.next = Some(band.rect.y1);
+        let (b, fh, h, ox0, oy0, ow) = (self.b, self.fh, self.h, self.out.x0 as usize, self.out.y0 as usize, self.out.width() as usize);
+        let (by0, by1) = ((band.rect.y0 - b.y0) as usize, (band.rect.y1 - b.y0) as usize);
+        let (t0, t1) = (self.rows[by0] as usize, self.rows[by1 - 1] as usize + 1);
+        let sw = self.cols.len();
+        let cols = &self.cols;
+        // Each output row sums its source rows in this band (in order, top to bottom).
+        let sum_row = |t: usize, out: &mut [[f32; 4]]| {
+            let (a, z) = reduce_span(t, fh, h);
+            for y in a.max(by0)..z.min(by1) {
+                let src = &band.px[(y - by0) * sw..(y - by0 + 1) * sw];
+                for (p, &c) in src.iter().zip(cols) {
+                    let o = &mut out[c as usize - ox0];
+                    for i in 0..3 {
+                        o[i] += p[i] * p[3];
+                    }
+                    o[3] += p[3];
+                }
+            }
+        };
+        let part = &mut self.acc[(t0 - oy0) * ow..(t1 - oy0) * ow];
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            use rayon::prelude::*;
+            part.par_chunks_mut(ow).enumerate().for_each(|(i, out)| sum_row(t0 + i, out));
+        }
+        #[cfg(target_arch = "wasm32")]
+        for (i, out) in part.chunks_mut(ow).enumerate() {
+            sum_row(t0 + i, out);
+        }
+    }
+
+    /// The reduced image (output pixels from (0, 0)), once every row of [`Self::source`] was
+    /// added in order; `None` otherwise.
+    pub fn finish(self) -> Option<Buffer> {
+        if self.next != Some(self.src.y1) {
+            return None;
+        }
+        let (fw, fh, w, h) = (self.fw, self.fh, self.w, self.h);
+        let (ox0, oy0, ow) = (self.out.x0 as usize, self.out.y0 as usize, self.out.width() as usize);
+        let mut acc = self.acc;
+        for (i, p) in acc.iter_mut().enumerate() {
+            let ((x0, x1), (y0, y1)) = (reduce_span(ox0 + i % ow, fw, w), reduce_span(oy0 + i / ow, fh, h));
+            let n = ((y1 - y0) * (x1 - x0)).max(1) as f32;
+            let a = p[3];
+            *p = if a > 0.0 { [p[0] / a, p[1] / a, p[2] / a, a / n] } else { [0.0; 4] };
+        }
+        Some(Buffer { rect: self.out, px: acc })
+    }
+}
+
+/// Output column / row `t` of `n` covers document columns / rows `[t·f/n, (t+1)·f/n)`.
+fn reduce_span(t: usize, f: usize, n: usize) -> (usize, usize) {
+    (t * f / n, ((t + 1) * f / n).max(t * f / n + 1).min(f))
+}
+
+/// The reduction [`thumbnail_buffer`]`(doc, max_side)` makes from the full-size composite, or
+/// `None` when it takes another way (a reduced proxy of a big document, or no reduction at all).
+pub fn thumbnail_reducer(doc: &Document, max_side: u32) -> Option<Reducer> {
+    let b = doc.bounds();
+    let longest = b.width().max(b.height()).max(1);
+    let k = longest / max_side.max(1).saturating_mul(2);
+    if k >= 2 && doc.size.area() > PROXY_THUMBNAIL_PIXELS && proxy::proxy_faithful(doc) {
+        return None;
+    }
+    let (w, h) = thumbnail_size(doc, max_side);
+    Reducer::new(b, w, h)
+}
+
+/// [`thumbnail_buffer`] for several sizes: those made from the full-size composite share one
+/// render of it (a .pcraft save's thumbnail and preview rendered it twice). `progress` gets the
+/// share done, 0..=1, per band of that render and as each other size is made.
+pub fn thumbnail_buffers(doc: &Document, sides: &[u32], progress: &mut dyn FnMut(f32)) -> Vec<Buffer> {
+    let mut reducers: Vec<Option<Reducer>> = sides.iter().map(|&s| thumbnail_reducer(doc, s)).collect();
+    let shared = reducers.iter().flatten().count();
+    if shared > 1 {
+        let b = doc.bounds();
+        let rows = b.height().max(1) as f32;
+        let ok: Result<(), ()> = render_bands(doc, b, 0, |band| {
+            reducers.iter_mut().flatten().for_each(|r| r.add(&band));
+            progress((band.rect.y1 - b.y0) as f32 / rows * shared as f32 / sides.len() as f32);
+            Ok(())
+        });
+        debug_assert!(ok.is_ok());
+    } else {
+        reducers.iter_mut().for_each(|r| *r = None);
+    }
+    let first = if shared > 1 { shared } else { 0 };
+    let mut made = first;
+    sides
+        .iter()
+        .zip(reducers)
+        .map(|(&s, r)| match r.and_then(Reducer::finish) {
+            Some(b) => b,
+            None => {
+                let b = thumbnail_buffer(doc, s);
+                made += 1;
+                progress(made as f32 / sides.len().max(1) as f32);
+                b
+            }
+        })
+        .collect()
+}
+
 type VectorMaskSlot = std::sync::Arc<std::sync::OnceLock<photocraft_vector::CompiledVectorMask>>;
 
 #[derive(Default)]
@@ -1298,8 +1489,9 @@ pub fn shape_bounds(sh: &photocraft_doc::ShapeLayer) -> Option<Rect> {
 /// The layer's effective mask over `rect` (row-major), read once per tile: the pixel mask
 /// times the rasterized vector mask.
 fn mask_vals(layer: &Layer, rect: Rect, cx: &Ctx) -> Option<Vec<f32>> {
-    // Feathers blur across tiles: read the cached, canvas-wide combined mask.
-    if masks::has_feather(layer)
+    // Feathers blur across tiles: read the cached, canvas-wide combined mask (which also holds
+    // a second pixel mask).
+    if (masks::has_feather(layer) || masks::has_second_mask(layer))
         && let Some(s) = masks::combined_mask(layer, cx.canvas)
     {
         let mut v = Vec::new();
@@ -1486,6 +1678,7 @@ fn shapeless_stroke_bounds(layer: &Layer) -> Option<Rect> {
         || !layer.blend_if.is_default()
         || layer.mask.as_ref().is_some_and(|m| m.enabled)
         || layer.vector_mask.as_ref().is_some_and(|m| m.enabled)
+        || masks::has_second_mask(layer)
         || !transparent_outside(layer)
         || !effects::maps_are_local(layer)
     {
@@ -1665,6 +1858,7 @@ pub fn occludes_below(layer: &Layer, mode: photocraft_color::ColorMode) -> bool 
         && layer.fill_opacity >= 1.0
         && !layer.mask.as_ref().is_some_and(|m| m.enabled)
         && !layer.vector_mask.as_ref().is_some_and(|m| m.enabled)
+        && !masks::has_second_mask(layer)
         && !effects::has_effects(layer)
         && layer.excluded_channels == 0
         && !blend_if_active(layer, mode)
@@ -1865,7 +2059,7 @@ fn composite_layer_plain(layer: &Layer, clipped: &[Layer], backdrop: &mut Buffer
         && !effects::has_effects(layer)
         && !clip_base_adjusts
     {
-        let needs_mix = opacity < 1.0 || layer.mask.is_some() || layer.vector_mask.is_some();
+        let needs_mix = opacity < 1.0 || layer.mask.is_some() || layer.vector_mask.is_some() || layer.second_mask.is_some();
         let has_clipped = clipped.iter().any(|c| c.visible);
         // Children can draw directly unless mixing or clipping needs the original backdrop.
         let before = (needs_mix || has_clipped).then(|| backdrop.clone());
@@ -2106,6 +2300,9 @@ fn layer_identity(layer: &Layer, h: &mut std::collections::hash_map::DefaultHash
     }
     if let Some(m) = &layer.mask {
         (surface_fp(&m.surface, pin), m.enabled, m.density.to_bits(), m.feather.to_bits()).hash(h);
+    }
+    if let Some(m) = &layer.second_mask {
+        (2u8, surface_fp(&m.surface, pin), m.enabled, m.density.to_bits(), m.feather.to_bits()).hash(h);
     }
     if let Some(vm) = &layer.vector_mask {
         format!("{vm:?}").hash(h);

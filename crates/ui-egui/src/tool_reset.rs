@@ -77,7 +77,9 @@ fn reset_tool(app: &mut PhotocraftApp, tool: Tool) {
         // The session brush is the options bar's tool's: make sure it is `tool`'s before resetting.
         crate::paint_mouse::sync_tool_brush(app);
         app.ui.tool_brushes.retain(|(t, _)| *t != tool);
+        app.ui.tool_presets.retain(|(t, _)| *t != tool);
         reset_session_brush(app);
+        crate::paint_mouse::tool_brushes_changed(app);
     }
 }
 
@@ -86,7 +88,9 @@ fn reset_all(app: &mut PhotocraftApp) {
     app.ui.tool_options = ToolOptions::default();
     app.ui.selection_mode = 0;
     app.ui.tool_brushes.clear();
+    app.ui.tool_presets.clear();
     reset_session_brush(app);
+    crate::paint_mouse::tool_brushes_changed(app);
 }
 
 fn reset_session_brush(app: &mut PhotocraftApp) {
@@ -156,13 +160,13 @@ pub fn option_keys(tool: Tool) -> &'static [&'static str] {
         }};
     }
     match tool {
-        Tool::Move => reset!(move_auto_select, move_target, move_show_transform),
+        Tool::Move => reset!(move_auto_select, move_target, move_show_transform, move_pick_opacity),
         Tool::RectMarquee | Tool::EllipseMarquee => reset!(feather, anti_alias, marquee_style, marquee_width, marquee_height, marquee_unit),
         // The single-pixel marquees are never anti-aliased: Feather is their only option.
         Tool::SingleRowMarquee | Tool::SingleColumnMarquee => reset!(feather),
         Tool::Lasso | Tool::PolygonLasso => reset!(feather, anti_alias),
         Tool::MagneticLasso => reset!(feather, anti_alias, magnetic_width, magnetic_contrast, magnetic_frequency, magnetic_pressure),
-        Tool::MagicWand => reset!(tolerance, anti_alias, contiguous),
+        Tool::MagicWand => reset!(tolerance, anti_alias, contiguous, wand_fill),
         Tool::QuickSelection => reset!(enhance_edge),
         Tool::ObjectSelection => reset!(enhance_edge, object_finder),
         Tool::Crop => reset!(
@@ -181,16 +185,17 @@ pub fn option_keys(tool: Tool) -> &'static [&'static str] {
             crop_custom_ratio_height,
         ),
         Tool::PerspectiveCrop => reset!(crop_width, crop_height, crop_resolution, crop_resolution_unit, perspective_crop_grid),
-        Tool::Eyedropper => reset!(eyedropper_size, eyedropper_sample, eyedropper_ring),
+        Tool::Eyedropper => reset!(eyedropper_size, eyedropper_sample, eyedropper_ring, eyedropper_alt_instant, eyedropper_alt_hold_ms),
         Tool::Brush => reset!(brush_clear),
         Tool::Pencil => reset!(pencil_auto_erase, pencil_clear),
         Tool::Eraser => reset!(eraser_mode),
-        Tool::Remove => reset!(remove_new_layer, remove_after_each_stroke),
+        Tool::Remove => reset!(remove_lama, remove_diffusion, remove_nano, remove_generative, remove_model, remove_nano_mark, remove_area, remove_creative, remove_quality),
         Tool::BackgroundEraser => reset!(bg_sampling, bg_limits, bg_tolerance, bg_protect_fg),
         Tool::ColorReplacement => reset!(cr_mode, cr_sampling, cr_limits, cr_tolerance, cr_anti_alias),
         Tool::MagicEraser => reset!(tolerance, anti_alias, contiguous, magic_eraser_opacity),
         Tool::Gradient => reset!(gradient_style, gradient_reverse, gradient_dither, gradient_classic, gradient_blend_mode, fill_opacity),
         Tool::PaintBucket => reset!(bucket_fill_pattern, fill_opacity, tolerance, anti_alias, contiguous),
+        Tool::Fill => reset!(fill_tool, fill_opacity),
         Tool::Type | Tool::VerticalType | Tool::HorizontalTypeMask | Tool::VerticalTypeMask => {
             reset!(type_font, type_style, type_size, type_aa, type_align, type_direction, type_style_defaults)
         }
@@ -250,7 +255,9 @@ mod tests {
         let all = serde_json::to_value(ToolOptions::default()).unwrap();
         let all = all.as_object().unwrap();
         let listed: std::collections::BTreeSet<&str> = Tool::ALL.iter().flat_map(|t| option_keys(*t).iter().copied()).collect();
-        for k in all.keys().filter(|k| *k != "sample_all") {
+        // How the brush keys ([ ] ⇧[ ⇧]) repeat is one setting for every tool: Reset Tool and tool
+        // presets leave it.
+        for k in all.keys().filter(|k| !matches!(k.as_str(), "sample_all" | "brush_key_repeat")) {
             assert!(listed.contains(k.as_str()), "{k} is no tool's option");
         }
         for k in listed {

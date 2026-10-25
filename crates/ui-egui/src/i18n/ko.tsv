@@ -3530,6 +3530,364 @@ curves	Smooth	매끄럽게
 	Replace	대치
 	{name} was changed by another app after it was opened or saved here.	{name}이(가) 여기서 열거나 저장한 뒤 다른 앱에서 변경되었습니다.
 	Replace it with this document, or cancel and use File › Save As to keep both.	이 문서로 대치하거나, 취소하고 파일 › 다른 이름으로 저장을 사용해 둘 다 보관하세요.
+
+	Panel Icons	패널 아이콘
+	Move Tools panel	도구 패널 이동
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	드래그하여 도구 패널을 이동하고, 캔버스 가장자리에 놓으면 도킹됩니다
+	New Document…	새 문서…
+	Open Document…	문서 열기…
+	Delete Brushes	브러시 삭제
+	Thumbnail size	썸네일 크기
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop 액션 가져오기
+	No Photoshop Actions palette was found on this computer	이 컴퓨터에서 Photoshop 액션 팔레트를 찾을 수 없습니다
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Topaz Gigapixel AI에서 열었습니다: 그곳에서 이미지를 내보내면 여기로 돌아옵니다
+	Stopped waiting for Topaz Gigapixel AI	Topaz Gigapixel AI 대기를 중지했습니다
+	Topaz Gigapixel AI's image could not be applied: {error}	Topaz Gigapixel AI 이미지를 적용할 수 없습니다: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× 확대하여 {w} × {h} px (새 레이어)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI를 기다리는 중: 그곳에서 확대한 이미지를 내보내면 여기로 돌아옵니다.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file}에서 세트 {sets}개의 액션 {n}개를 불러왔습니다
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	생성형 AI 켜기
+	Generative AI Off	생성형 AI 끄기
+	Loading the AI model…	AI 모델 불러오는 중…
+	AI model not installed	AI 모델이 설치되지 않음
+	AI model failed to load	AI 모델을 불러오지 못했습니다
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx와 ONNX Runtime(onnxruntime.dll, DirectML.dll)을 다음 폴더 중 하나에 넣으세요: {folders}. 그 전까지 '자동'은 일반 채우기를 사용합니다.
+	Model:	모델:
+	LaMa (fast)	LaMa(빠름)
+	Diffusion (detailed)	디퓨전(정밀)
+	Prompt (optional)	프롬프트(선택 사항)
+	What should be there. Empty: the model's own guess.	그 자리에 있어야 할 것. 비우면 모델이 추측합니다.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	디퓨전 모델 폴더와 ONNX Runtime을 다음 중 한 곳에 넣으십시오: {folders}. 그때까지 자동은 LaMa를 사용합니다.
+	Generative Fill…	생성형 채우기…
+	Center Canvas When Zoomed Out	축소 시 캔버스 가운데 정렬
+	High (slower)	높음 (느림)
+	Quality:	품질:
+	There is no such Topaz Gigapixel preset	해당 Topaz Gigapixel 사전 설정이 없습니다
+	Saved Topaz Gigapixel preset “{name}”	Topaz Gigapixel 사전 설정 “{name}” 저장됨
+	New Preset	새 사전 설정
+	Upscale:	업스케일:
+	With these settings	이 설정으로
+	With two presets	두 사전 설정으로
+	Save two presets with their own settings first; then this one can run them together.	먼저 자체 설정이 있는 사전 설정 두 개를 저장하십시오. 그러면 이 사전 설정이 둘을 함께 실행합니다.
+	First:	먼저:
+	Then:	그다음:
+	Results:	결과:
+	One after the other	차례로
+	Each on its own layer	각각 별도 레이어에
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	두 사전 설정이 모두 이미지를 업스케일하며 각 결과는 비교하거나 혼합할 수 있도록 레이어가 됩니다.
+	The second preset upscales the first one's result.	두 번째 사전 설정이 첫 번째 결과를 업스케일합니다.
+	Topaz Gigapixel Presets	Topaz Gigapixel 사전 설정
+	Manage Presets…	사전 설정 관리…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	저장된 사전 설정은 파일 › 자동화 › Topaz Gigapixel 사전 설정에서 실행합니다.
+	Auto lets Gigapixel choose.	자동이면 Gigapixel이 정합니다.
+	Denoise:	노이즈 제거:
+	Sharpen:	선명 효과:
+	Fix Compression:	압축 보정:
+	Face Recovery:	얼굴 복원:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	타임랩스 녹화를 저장할 폴더를 선택하세요
+	Saved {name} ({seconds} s timelapse)	{name} 저장됨({seconds}초 타임랩스)
+	Export Timelapse	타임랩스 내보내기
+	Export Timelapse…	타임랩스 내보내기…
+	Timelapse export cancelled	타임랩스 내보내기가 취소됨
+	Timelapse	타임랩스
+	Auto record	자동 녹화
+	Records whatever document you're on, unless you paused it yourself.	직접 일시 정지한 문서가 아니면 작업 중인 문서를 녹화합니다.
+	Open a document to record a timelapse.	타임랩스를 녹화하려면 문서를 여세요.
+	Recording (idle)	녹화 중(유휴)
+	Recording	녹화 중
+	Click to pause	클릭하여 일시 정지
+	Paused: click to resume	일시 정지됨: 클릭하여 재개
+	Start recording	녹화 시작
+	Pause Recording	녹화 일시 정지
+	Reference Layer	참조 레이어
+	Reference layer	참조 레이어
+	Recorded more since the last export	마지막 내보내기 이후 더 녹화됨
+	Select a layer	레이어를 선택하세요
+	Not recorded: you see it, the timelapse doesn't	녹화 안 됨: 사용자에게는 보이지만 타임랩스에는 나오지 않음
+	Recorded	녹화됨
+	{count} of {total} not recorded	{total}개 중 {count}개 녹화 안 됨
+	Reference	참조
+	Adds {tag} to the layer's name	레이어 이름에 {tag}을(를) 추가합니다
+	Export again…	다시 내보내기…
+	Export video…	비디오 내보내기…
+	Play video	비디오 재생
+	Show in folder	폴더에서 보기
+	Make:	만들기:
+	Advanced settings	고급 설정
+	Show the finished drawing first	완성된 그림을 먼저 표시
+	Flash before the final image	최종 이미지 전에 플래시
+	Hold the final image	최종 이미지 유지
+	Slow down at the end	끝부분 느리게
+	Remove flicker	깜박임 제거
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	잠깐 나타났다 사라지는 프레임을 뺍니다. 잠시 숨긴 레이어, 바로 취소한 획 등.
+	Work-time counter	작업 시간 카운터
+	Bars:	여백 막대:
+	Fills the edges when the canvas size changed during the recording.	녹화 중 캔버스 크기가 바뀌었을 때 가장자리를 채웁니다.
+	Folder:	폴더:
+	not chosen yet	아직 선택 안 됨
+	Choose…	선택…
+	Remove frames with undo	실행 취소 시 프레임 제거
+	Reference tag:	참조 태그:
+	Work timer stops after:	작업 타이머 정지 시간:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	MP4를 만듭니다. 자동은 PhotoCraft 옆을 먼저, 그다음 PATH를 찾습니다.
+	Choose the ffmpeg program on this computer	이 컴퓨터의 ffmpeg 프로그램을 선택하세요
+	Opening files isn't available here	여기서는 파일을 열 수 없습니다
+	MP4 video (ffmpeg)	MP4 비디오(ffmpeg)
+	JPEG frames	JPEG 프레임
+	Bottom right	오른쪽 아래
+	Bottom left	왼쪽 아래
+	Top right	오른쪽 위
+	Top left	왼쪽 위
+	5 seconds	5초
+	10 seconds	10초
+	15 seconds	15초
+	20 seconds	20초
+	30 seconds	30초
+	1 minute	1분
+	2 minutes	2분
+	5 minutes	5분
+@plural	{n} frame|{n} frames	프레임 {n}개
+	Library	라이브러리
+	Refresh	새로 고침
+	Recordings will be listed here once you've chosen a folder.	폴더를 선택하면 여기에 녹화가 표시됩니다.
+	No recordings yet.	아직 녹화가 없습니다.
+	Open folder	폴더 열기
+	Delete frames	프레임 삭제
+	Delete folder	폴더 삭제
+	Pause the recording first	먼저 녹화를 일시 정지하세요
+	REC	REC
+	EXPORTED	내보냄
+	NOT EXPORTED	내보내지 않음
+	{time} work	작업 {time}
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	‘{name}’은(는) 아직 내보내지 않았습니다. 프레임({frames})을 삭제하면 더 이상 비디오를 만들 수 없습니다. 이 작업은 취소할 수 없습니다.
+	Delete the {frames} of “{name}”?	‘{name}’의 프레임({frames})을 삭제할까요?
+	You've recorded more since the last export, and that part isn't in the video.	마지막 내보내기 이후 더 녹화했으며, 그 부분은 비디오에 없습니다.
+	Your videos and the work time are kept. This can't be undone.	비디오와 작업 시간은 유지됩니다. 이 작업은 취소할 수 없습니다.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	‘{name}’과(와) 해당 폴더를 삭제할까요? 작업 시간과 함께 라이브러리에서 제거됩니다. 내보낸 비디오는 저장한 위치에 그대로 남습니다. 이 작업은 취소할 수 없습니다.
+	Frames deleted.	프레임을 삭제했습니다.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	‘{name}’을(를) 삭제했습니다. 폴더에 다른 파일이 있어 폴더는 유지했습니다.
+	Deleted “{name}”.	‘{name}’을(를) 삭제했습니다.
+@plural	{n} recording|{n} recordings	녹화 {n}개
+	Save Preset from Last Upscale…	마지막 업스케일에서 사전 설정 저장…
+	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI에서 아직 돌아온 업스케일이 없습니다
+	Detail:	디테일:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× 확대하여 {w} × {h} px (새 레이어). 이 설정은 Topaz Gigapixel 사전 설정 › 마지막 업스케일에서 사전 설정 저장으로 보관합니다
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} 저장됨({seconds} 비디오).
+	Export failed: {error}	내보내기 실패: {error}
+	Export cancelled.	내보내기가 취소되었습니다.
+	just now	방금
+	{n} min ago	{n}분 전
+	{n} h ago	{n}시간 전
+	yesterday	어제
+	{n} days ago	{n}일 전
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	파일이 작고 가장 빠르게 기록합니다. 빠른 스케치와 미리 보기에 적합합니다.
+	Sharper video for big screens. Uses about twice the disk space.	큰 화면용 더 선명한 비디오. 디스크 공간을 약 두 배 사용합니다.
+	Full-HD video, good for social media. Recommended.	풀 HD 비디오, 소셜 미디어에 적합합니다. 권장.
+	idle	유휴
+	Record	녹화
+	Paused	일시 정지됨
+	Click to resume recording	클릭하여 녹화 재개
+	Open a document to record it.	녹화하려면 문서를 여세요.
+	You'll be asked where to save recordings.	녹화를 저장할 위치를 묻습니다.
+	Export again	다시 내보내기
+	Export video	비디오 내보내기
+	Show the export results	내보내기 결과 표시
+	Hide the export results	내보내기 결과 숨기기
+	≈ {seconds} video from {frames}.	≈ {frames}로 {seconds} 비디오.
+	Confirm	확인
+	Cancel export	내보내기 취소
+	Frames	프레임
+	Timer	시간
+	On disk	디스크
+	Hide the live preview	실시간 미리 보기 숨기기
+	Show the newest frame	최신 프레임 표시
+	No frames yet — just start drawing	아직 프레임이 없습니다 — 그리기를 시작하세요
+	No frames yet	아직 프레임이 없습니다
+	No layer selected	선택된 레이어 없음
+	{n} layers selected	레이어 {n}개 선택됨
+	Not recorded	녹화 안 됨
+	A reference layer works like a normal layer, but won't show up in the timelapse.	참조 레이어는 일반 레이어처럼 작동하지만 타임랩스에는 나오지 않습니다.
+	Back	뒤로
+	Export settings	내보내기 설정
+	Make video with	비디오 만들기 도구
+	Bars colour	여백 막대 색
+	Bars fill the empty space when the canvas size changed during recording.	녹화 중 캔버스 크기가 바뀌면 막대가 빈 공간을 채웁니다.
+	Show finished drawing first	완성된 그림 먼저 표시
+	Hold final image	최종 이미지 유지
+	Show work-time counter	작업 시간 카운터 표시
+	Record something in this document to see how long the video will be.	이 문서에서 무언가를 녹화하면 비디오 길이를 볼 수 있습니다.
+	≈ {seconds} video	≈ {seconds} 비디오
+	{n} recorded frames	녹화된 프레임 {n}개
+	Auto shows every frame once (at least 5 s, at most 1 min).	자동은 모든 프레임을 한 번씩 표시합니다(최소 5초, 최대 1분).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	녹화 중 캔버스 크기가 바뀌었습니다. 이전 프레임은 최종 크기에 맞춰집니다.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	깜박임 제거는 잠깐 나타났다 사라지는 프레임(잠시 숨긴 레이어, 바로 취소한 획 등)을 빼므로 비디오가 조금 짧아질 수 있습니다.
+	Recordings folder	녹화 폴더
+	Not chosen yet — see Settings	아직 선택 안 됨 — 설정 참고
+	recorded {when}	녹화 {when}
+	Recorded more since the last export.	마지막 내보내기 이후 더 녹화되었습니다.
+	Frames folder	프레임 폴더
+	Not chosen yet	아직 선택 안 됨
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	녹화된 프레임을 보관하는 곳입니다. 비디오는 내보낼 때 선택한 곳에 저장됩니다.
+	Choose folder…	폴더 선택…
+	Change folder…	폴더 변경…
+	Recording quality	녹화 품질
+	Undoing something removes those recorded frames.	실행 취소하면 해당 녹화 프레임이 제거됩니다.
+	Reference layers	참조 레이어
+	Name tag	이름 태그
+	Layers with this in their name are left out of the timelapse.	이름에 이것이 들어간 레이어는 타임랩스에서 빠집니다.
+	Work timer	작업 타이머
+	Idle after	유휴 전환 시간
+	The timer stops counting after this long without activity.	이 시간 동안 활동이 없으면 타이머가 멈춥니다.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg(빠름)
+	Dark grey	진한 회색
+	0.5 s	0.5초
+	1 s	1초
+	1.5 s	1.5초
+	2 s	2초
+	3 s	3초
+	4 s	4초
+	5 s	5초
+	8 s	8초
+	10 s	10초
+	1 min	1분
+	1.5 min	1.5분
+	2 min	2분
+	3 min	3분
+	5 min	5분
+	45 seconds	45초
+
+# Window › Timelapse panel (more)
+	Run Two Presets…	사전 설정 두 개 실행…
+	Run Two Topaz Gigapixel Presets	Topaz Gigapixel 사전 설정 두 개 실행
+	Run	실행
+	Set Shortcut…	바로 가기 키 설정…
+	Action Shortcut	액션 바로 가기 키
+	No shortcut.	바로 가기 키 없음.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut}은(는) {commands}의 바로 가기 키이기도 합니다. 대신 이 액션을 실행합니다.
+	Press the keys that play “{action}”.	“{action}”을(를) 실행할 키를 누르십시오.
+	Shortcut:	바로 가기 키:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Ctrl, Alt, Shift와 함께 어떤 키든 사용할 수 있습니다. Backspace는 바로 가기 키를 제거합니다.
+	The action no longer exists.	액션이 더 이상 없습니다.
+	Fill Tool	채우기 도구
+	Nothing to fill there	그곳에는 채울 영역이 없습니다
+	No enclosed area to fill there	그곳에는 채울 닫힌 영역이 없습니다
+	Fill: click an area	채우기: 영역을 클릭
+	Enclose and Fill: draw round the areas to fill	둘러싸서 채우기: 채울 영역을 둘러 그리세요
+	Paint Unfilled Area: paint over the gaps a fill left	빈 영역 칠하기: 채우기가 남긴 빈틈 위에 칠하세요
+	Refer	참조
+	Editing Layer	편집 중인 레이어
+	Selected Layers	선택한 레이어
+	Layers in Folder	폴더 안의 레이어
+	Reference Layers	참조 레이어
+	Exclude	제외
+	Editing layer	편집 중인 레이어
+	Text layers	텍스트 레이어
+	Locked layers	잠긴 레이어
+	Layers the fill doesn't read	채우기가 읽지 않는 레이어
+	Close Gap	틈 닫기
+	Treat gaps in the lines up to this wide as closed (0: off)	이 너비까지의 선 틈을 닫힌 것으로 처리합니다(0: 끔)
+	Area Scaling	영역 크기 조정
+	Grow the fill under the lines, or shrink it	채우기를 선 아래로 넓히거나 줄입니다
+	To Darkest Pixel	가장 어두운 픽셀까지
+	Follow Adjacent Pixels	인접 픽셀 따라가기
+	Target	대상
+	White and Transparent	흰색 및 투명
+	Image Border	이미지 가장자리
+	The canvas edge closes gaps as a line does	캔버스 가장자리가 선처럼 틈을 닫습니다
+	Reference layer: the Fill tool reads it	참조 레이어: 채우기 도구가 읽습니다
+	Set as Reference Layer	참조 레이어로 설정
+	Clear Reference Layer	참조 레이어 해제
+	Fill Tool Options	채우기 도구 옵션
+	Size Key Repeat	크기 키 반복
+	Holding [ or ] to resize the brush	[ 또는 ]를 누르고 있으면 브러시 크기 변경
+	Pause before repeating	반복 전 잠시 멈춤
+	Wait half a second before the size keeps changing, as typing does	입력할 때처럼 크기가 계속 바뀌기 전에 0.5초 기다립니다
+	Change every	변경 간격
+	Sample on Alt	Alt로 샘플링
+	With a painting tool, pressing Alt picks the colour under the pointer at once	페인팅 도구에서 Alt를 누르면 포인터 아래의 색을 바로 가져옵니다
+	Hold:	누르기:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Alt가 일반 스포이드처럼 작동하기까지(스포이드 커서, 클릭하여 샘플링) 눌러야 하는 시간
+	Move Layer Mask	레이어 마스크 이동
+	Copy Layer Mask	레이어 마스크 복사
+	Move Vector Mask	벡터 마스크 이동
+	Copy Vector Mask	벡터 마스크 복사
+	Save as:	다른 이름으로 저장:
+	Save Preset	사전 설정 저장
+	Keep these two presets as one, listed with the others	이 두 사전 설정을 하나로 저장하여 다른 설정과 함께 표시합니다
+	Stop recording first	먼저 기록을 중지하십시오
+	Select a step first	먼저 단계를 선택하십시오
+	This step has no dialog to record again	이 단계에는 다시 기록할 대화 상자가 없습니다
+	Record Again…	다시 기록…
+	Insert Menu Item…	메뉴 항목 삽입…
+	Insert Conditional…	조건 삽입…
+	Set Options…	세트 옵션…
+	Action Options…	액션 옵션…
+	Playback Options…	재생 옵션…
+	Allow Tool Recording	도구 기록 허용
+	Record brush and other painting strokes, and the brush settings they use	브러시 및 기타 페인팅 획과 획이 사용하는 브러시 설정을 기록합니다
+	Clear All Actions	모든 액션 지우기
+	Replace Actions…	액션 바꾸기…
+	Create new set	새 세트 만들기
+	Delete the set “{name}”?	“{name}” 세트를 삭제하시겠습니까?
+	Delete the action “{name}”?	“{name}” 액션을 삭제하시겠습니까?
+	Delete the selection?	선택 항목을 삭제하시겠습니까?
+	Function Key:	기능 키:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	이 액션에는 다른 바로 가기가 있습니다(바로 가기 설정…). 여기서 키를 고르면 바뀝니다.
+	Accelerated	가속
+	Step by Step	단계별
+	Pause For:	일시 정지:
+	seconds	초
+	None Selected	선택 안 함
+	Menu Item:	메뉴 항목:
+	Type part of a menu item's name, then pick it below.	메뉴 항목 이름의 일부를 입력한 다음 아래에서 고르십시오.
+	If Current:	현재 조건:
+	Then Play Action:	이면 액션 재생:
+	Else Play Action:	아니면 액션 재생:
+	Document Is Open	문서가 열려 있음
+	Document Is Landscape	문서가 가로 방향임
+	Document Is Square	문서가 정사각형임
+	Document Is Portrait	문서가 세로 방향임
+	Document Mode Is RGB	문서 모드가 RGB임
+	Document Mode Is CMYK	문서 모드가 CMYK임
+	Document Mode Is Grayscale	문서 모드가 회색 음영임
+	Document Mode Is Lab	문서 모드가 Lab임
+	Document Mode Is Bitmap	문서 모드가 비트맵임
+	Document Mode Is Indexed	문서 모드가 인덱스 색상임
+	Document Mode Is Duotone	문서 모드가 이중톤임
+	Document Mode Is Multichannel	문서 모드가 다중 채널임
+	Document Is 8 Bits/Channel	문서가 8비트/채널임
+	Document Is 16 Bits/Channel	문서가 16비트/채널임
+	Document Is 32 Bits/Channel	문서가 32비트/채널임
+	Document Has Unsaved Changes	문서에 저장하지 않은 변경 사항이 있음
+	Document Has a Selection	문서에 선택 영역이 있음
+	Document Has Layers	문서에 레이어가 있음
+	Document Has Alpha Channels	문서에 알파 채널이 있음
+	Layer Is Background	레이어가 배경임
+	Layer Is a Pixel Layer	레이어가 픽셀 레이어임
+	Layer Is an Adjustment Layer	레이어가 조정 레이어임
+	Layer Is a Shape Layer	레이어가 모양 레이어임
+	Layer Is a Type Layer	레이어가 문자 레이어임
+	Layer Is a Smart Object	레이어가 고급 개체임
+	Layer Is a Group	레이어가 그룹임
+	Layer Is Locked	레이어가 잠겨 있음
+	Layer Is Visible	레이어가 표시됨
+	Layer Has Pixel Mask	레이어에 픽셀 마스크가 있음
+	Layer Has Vector Mask	레이어에 벡터 마스크가 있음
+	Layer Has Effects	레이어에 효과가 있음
+	Pick a menu item first	먼저 메뉴 항목을 고르십시오
+	Find	찾기
+	Close gaps up to {px} px	{px}px까지의 틈 닫기
+	Grow the selection under the lines, or shrink it	선택 영역을 선 아래로 넓히거나 줄입니다
 	Decrease Brush Size	브러시 크기 줄이기
 	Increase Brush Size	브러시 크기 늘리기
 	Decrease Brush Hardness	브러시 경도 줄이기
@@ -3561,6 +3919,25 @@ curves	Smooth	매끄럽게
 	Behind	뒤
 	Blend	혼합
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	두 번째 마스크 추가  (선택 영역에서, {key}로 반전)
+	Convert to Vector Mask	벡터 마스크로 변환
+	Delete Second Mask	두 번째 마스크 삭제
+	Disable Second Mask	두 번째 마스크 비활성화
+	Enable Second Mask	두 번째 마스크 활성화
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	선택 잠금: 캔버스 클릭이 통과합니다 (레이어 패널에서는 계속 선택됨)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	현재 레이어 설정
+	Editing layer blocks the fill	편집 중인 레이어가 채우기를 막음
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	채우는 레이어의 칠이 허용치와 상관없이 채우기를 막고, 채우기는 그 뒤로 들어갑니다: 틈 위에 그려서 닫으세요
+	Undo widens Close Gap	실행 취소로 틈 닫기 넓히기
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	채우기를 실행 취소할 때마다 다른 도구를 고를 때까지 다음 클릭에서 더 큰 틈을 닫습니다
+	Close Gap widened to {px} px: click again to fill	틈 닫기를 {px} px로 넓혔습니다: 다시 클릭하여 채우세요
+	Pick From	선택 시작 불투명도
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl+클릭과 자동 선택이 레이어를 고르려면 포인터 아래에서 얼마나 불투명해야 하는지: 거의 검은 마스크처럼 옅은 픽셀은 클릭이 통과합니다 (0: 보이는 모든 픽셀)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	혼합 조건 또는 고급 혼합이 설정됨: 클릭하여 혼합 옵션 열기
 # DDS Options (#1327)
 	DDS Options	DDS 옵션
 	Compression	압축
@@ -3633,6 +4010,38 @@ curves	Smooth	매끄럽게
 	Start Size:	시작 크기:
 	End Size:	끝 크기:
 	Save as Pattern	패턴으로 저장
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, 유료)
+	Remove Selection	선택 영역 제거
+	Remove what is selected ({key})	선택한 부분 제거 ({key})
+	API Key…	API 키…
+	Change or remove the Google API key Nano Banana uses	Nano Banana가 사용하는 Google API 키 변경 또는 제거
+	Set API Key…	API 키 설정…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana에는 사용자 본인의 Google API 키가 필요합니다. 그 전까지 자동은 LaMa를 사용합니다
+	No API key	API 키 없음
+	Nano Banana API Key	Nano Banana API 키
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1은 Google 서버에서 실행되며 Google 계정으로 청구됩니다: 제거 1회에 약 {small}, 큰 것은 {large}.
+	The area around what you remove is sent to Google, which is asked not to keep it.	제거하는 부분의 주변이 Google로 전송되며, 보관하지 않도록 요청합니다.
+	Get a key at	키 받는 곳:
+	A key is saved in the system's credential store.	키가 시스템 자격 증명 저장소에 저장되어 있습니다.
+	Using the {var} environment variable.	{var} 환경 변수를 사용 중입니다.
+	Google API key	Google API 키
+	Remove Saved Key	저장된 키 제거
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	이 시스템에는 PhotoCraft가 사용할 수 있는 자격 증명 저장소가 없습니다. 대신 {var} 환경 변수를 설정하세요.
+	Mask image	마스크 이미지
+	Painted red	빨간색으로 칠함
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana에 그림을 그대로 보내고 제거할 영역은 별도의 마스크로 보냅니다
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana에 제거할 영역을 빨간색으로 칠한 그림을 보냅니다 (Photoshop 방식과 같음)
+	Close up	가까이
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana에 제거할 부분 주변만 보내므로 페이지 해상도의 약 2배로 그립니다
+	Whole page	전체 페이지
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana에 전체 페이지를 보냅니다: 참고할 내용은 많지만 결과가 더 부드럽습니다
+	Creative	창의적
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Nano Banana가 그린 모든 것을 표시하고, 제거하는 영역 주변에서 바꾼 부분도 보여 줍니다 (레이어 마스크는 가장자리에서 흐려짐)
+	Grain…	입자…
+	Roughness:	거칠기:
+	Color field	색상 필드
+	Color slider	색상 슬라이더
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	먼저 열려 있는 액션 단계 대화 상자를 확인하거나 취소하세요
 	Pro Medium Gray	프로 중간 회색
@@ -3660,3 +4069,10 @@ curves	Smooth	매끄럽게
 	Sheet	시트
 	Tone Gamma	톤 감ма
 	White Threshold	흰색 임계값
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	샘플: 기록된 색상
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	AI 제거
+	Remove what is selected with Nano Banana ({key})	Nano Banana로 선택 영역 제거 ({key})
+	Pin to Top	맨 위에 고정
+	Unpin from Top	맨 위 고정 해제

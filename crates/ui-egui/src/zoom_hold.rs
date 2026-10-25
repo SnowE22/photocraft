@@ -246,7 +246,10 @@ mod tests {
         assert!(zs[4..=8].windows(2).all(|w| w[1] < w[0]), "{zs:?}");
         assert_eq!(zs[10], zs[9], "{zs:?}");
         assert!(zs[9] > zs[8] / 1.2, "{zs:?}");
-        assert!(xf(&h).to_screen(doc[0] as f32, doc[1] as f32).distance(p) < 0.5);
+        // The 400 × 300 canvas fits the view: zooming out centres it (Center Canvas When Zoomed
+        // Out) instead of holding the pressed point.
+        let _ = doc;
+        assert_eq!(h.state().ui.views[0].center, [200.0, 150.0]);
     }
 
     #[test]

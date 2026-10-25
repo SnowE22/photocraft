@@ -1165,8 +1165,18 @@ pub(crate) fn selected_saved_path(app: &PhotocraftApp) -> Option<&Path> {
     app.session.active()?.doc.paths.iter().find(|p| p.name == sel).map(|p| &p.path)
 }
 
-/// Work path / active shape path / selected saved path outlines, anchors, and the pen path in
-/// progress.
+/// The document path the canvas outlines for the Paths panel's selection `selected` (`"work"` or
+/// a saved path's name; the layer's own path is drawn with its layer). Nothing selected shows
+/// nothing, as in Photoshop.
+pub(crate) fn outlined_document_path<'a>(selected: Option<&str>, doc: &'a Document) -> Option<&'a Path> {
+    match selected? {
+        "work" => doc.work_path.as_ref(),
+        "layer" => None,
+        name => doc.paths.iter().find(|p| p.name == name).map(|p| &p.path),
+    }
+}
+
+/// Work path / active shape path outlines, anchors, and the pen path in progress.
 pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, doc: &Document) {
     let tool = app.ui.tool;
     let accent = Tokens::get(painter.ctx()).accent;
@@ -1193,19 +1203,19 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
             crate::anchor_tools::draw_hover(app, painter, &to_scr, accent, painter.ctx().input(|i| i.modifiers));
         }
     } else if paths {
-        // The shape's or vector mask's path stays visible as an outline with any tool. Path
-        // Selection and the Pen tools add anchor squares; Direct Selection has its own overlay
-        // above. The Work Path is drawn only while it is the path selected in the Paths panel or
-        // a path tool is active, as in Photoshop: a Work Path left unselected (one a PSD arrived
-        // with, or after Ctrl-click Load as Selection) would otherwise cover the marching ants (#6551).
+        // Paths remain visible as outlines with any tool. Path Selection and the Pen tools add
+        // anchor squares; Direct Selection has its own overlay above. Only the path selected in
+        // the Paths panel shows, as in Photoshop: a work path saved in an opened file stays hidden
+        // until it is clicked (user report: Photoshop files opened with a path drawn over them),
+        // or a path tool is active (#6551).
         let anchors = shows_anchors(tool);
-        if let Some(wp) = &doc.work_path
-            && (anchors || app.ui.selected_path.as_deref() == Some("work"))
+        if anchors
+            && app.ui.selected_path.as_deref() != Some("work")
+            && let Some(wp) = &doc.work_path
         {
             draw_path(wp, anchors);
         }
-        // The saved path selected in the Paths panel is the target path (#6550).
-        if let Some(p) = selected_saved_path(app) {
+        if let Some(p) = outlined_document_path(app.ui.selected_path.as_deref(), doc) {
             draw_path(p, anchors);
         }
         let st = app.session.active();
@@ -2400,6 +2410,55 @@ mod tests {
         assert_eq!(duplicate["name"], "First copy 2", "duplicate must not overwrite an existing path");
     }
 
+    /// Only the path selected in the Paths panel is outlined (user report: Photoshop files opened
+    /// with their saved work path drawn over the image). A command that changes the work path
+    /// selects it; a work path that came with the document stays unselected.
+    #[test]
+    fn only_the_selected_path_is_outlined() {
+        let mut app = app();
+        let tri = |d: f64| json!({"subpaths": [{"closed": true, "knots": [[d, d], [90.0, d], [90.0, 90.0]]}]});
+        // As an opened file brings it: made without the app, so nothing selects it.
+        app.session.execute("path.set", json!({"name": "work", "path": tri(10.0)})).unwrap();
+        let doc = app.session.active().unwrap().doc.clone();
+        assert_eq!(app.ui.selected_path, None);
+        assert!(outlined_document_path(app.ui.selected_path.as_deref(), &doc).is_none(), "hidden until selected");
+        // Through the app (the Pen, Make Work Path, a type or shape path…) the new work path is selected.
+        app.run("path.set", json!({"name": "work", "path": tri(20.0)})).unwrap();
+        assert_eq!(app.ui.selected_path.as_deref(), Some("work"));
+        app.run("path.set", json!({"name": "Saved", "path": tri(30.0)})).unwrap();
+        assert_eq!(app.ui.selected_path.as_deref(), Some("work"), "a saved path leaves the work path selected");
+        let doc = app.session.active().unwrap().doc.clone();
+        assert!(outlined_document_path(Some("work"), &doc).is_some_and(|p| p == doc.work_path.as_ref().unwrap()));
+        assert!(outlined_document_path(Some("Saved"), &doc).is_some_and(|p| *p == doc.paths[0].path));
+        assert!(outlined_document_path(Some("Gone"), &doc).is_none());
+        assert!(outlined_document_path(Some("layer"), &doc).is_none(), "the layer's path draws with its layer");
+    }
+
+    /// The selection belongs to its document: switching documents (or opening one) clears it.
+    #[test]
+    fn switching_documents_clears_the_path_selection() {
+        let mut app = app();
+        app.run("file.new", json!({"width": 100, "height": 100})).unwrap();
+        app.sync_views();
+        let mut h = egui_kittest::Harness::builder().with_size(vec2(800.0, 600.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                // Fonts set up after the first frame only apply from the next one.
+                if ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    crate::canvas::document_area(app, ui);
+                }
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+        h.run_steps(3);
+        h.state_mut().ui.selected_path = Some("work".into());
+        h.run_steps(2);
+        assert_eq!(h.state().ui.selected_path.as_deref(), Some("work"), "the same document keeps it");
+        h.state_mut().run("document.activate", json!({"document": 0})).unwrap();
+        h.run_steps(2);
+        assert_eq!(h.state().ui.selected_path, None, "another document starts with none");
+    }
+
     #[test]
     fn work_path_context_save_and_layer_path_deletion_rules() {
         let mut app = app();
@@ -2541,6 +2600,8 @@ mod tests {
             {"anchor": [90, 90], "in": [90, 90], "out": [90, 90]}
         ]}]});
         app.run("path.set", json!({"name": "work", "path": path})).unwrap();
+        // Drawn by a command, the Work Path is selected; one a file arrived with is not.
+        app.ui.selected_path = None;
         app.run("path.toSelection", json!({"name": "work", "mode": "replace"})).unwrap();
         assert!(app.ui.selected_path.is_none());
         for tool in [Tool::Move, Tool::Brush, Tool::Rectangle, Tool::Zoom] {
@@ -3253,11 +3314,15 @@ mod tests {
         // Deselected (or a stale name): the selection is the layer mask, no vector mask.
         for sel in [None, Some("Gone".to_string())] {
             app.ui.selected_path = sel;
+            app.run("select.rect", json!({"x": 150, "y": 150, "width": 20, "height": 20})).unwrap();
             let r = app.run("layer.newFillLayer.solidColor", json!({}));
             let l = layer(&app, r);
             assert!(l.vector_mask.is_none() && l.mask.is_some());
+            // The selection is in the mask now: dropped, as in Photoshop.
+            assert!(app.session.active().unwrap().doc.selection.is_none());
         }
         // Make Work Path selects the new work path.
+        app.run("select.rect", json!({"x": 150, "y": 150, "width": 20, "height": 20})).unwrap();
         app.run("select.toWorkPath", json!({"tolerance": 2.0})).unwrap();
         assert_eq!(app.ui.selected_path.as_deref(), Some("work"));
     }

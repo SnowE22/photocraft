@@ -6,7 +6,7 @@ default-members = [
     "crates/photocraft-ai","crates/*", "apps/photocraft", "apps/photocraft-cli", "xtask"]
 
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"
@@ -35,6 +35,7 @@ photocraft-vector = { path = "crates/vector" }
 photocraft-format = { path = "crates/format" }
 photocraft-automation = { path = "crates/automation" }
 photocraft-plugins = { path = "crates/plugins" }
+photocraft-ml = { path = "crates/ml" }
 photocraft-engine = { path = "crates/engine" }
 photocraft-ui-egui = { path = "crates/ui-egui" }
 photocraft-testkit = { path = "crates/testkit" }

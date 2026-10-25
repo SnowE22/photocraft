@@ -180,6 +180,30 @@ impl GpuCanvas {
         Self { rs: rs.clone(), tile, high, health, vram, canvas_budget: budget }
     }
 
+    /// Start making the layer compositor on a thread. Its pipelines take seconds to build on some
+    /// drivers (D3D12 compiles every entry point of the shader: 2–3 s on an RTX laptop), which the
+    /// first document opened used to wait for; the app calls this at start, and the first
+    /// composite takes the finished compositor (or waits for the rest of it). Dropping the canvas
+    /// waits for a build still under way, so no thread is left in the driver when the app quits.
+    pub fn warm_up(&self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            if std::env::var_os("PHOTOCRAFT_CPU_COMPOSE").is_some() {
+                return;
+            }
+            let mut renderer = self.rs.renderer.write();
+            let Some(res) = renderer.callback_resources.get_mut::<Resources>() else { return };
+            if res.compositor.is_some() || res.compositor_warmup.is_some() || res.compositor_failed.is_some() {
+                return;
+            }
+            let (device, format) = (self.rs.device.clone(), photocraft_gpu::Compositor::preferred_acc_format(&self.rs.adapter));
+            res.compositor_warmup = std::thread::Builder::new()
+                .name("gpu-compositor".into())
+                .spawn(move || photocraft_gpu::Compositor::try_new_with_format(&device, format))
+                .ok();
+        }
+    }
+
     /// The device's health flag (shared with the wgpu compositor and the paint callback).
     pub fn health(&self) -> &photocraft_gpu::DeviceHealth {
         &self.health
@@ -370,6 +394,20 @@ impl GpuCanvas {
         }
     }
 
+    /// Whether a full refresh of `doc` would stay on the wgpu compositor: it [`supports`] the
+    /// document, the display textures fit, and the layer pages fit the memory budget (else
+    /// `composite` refuses with [`OVER_BUDGET`] and the CPU draws it).
+    ///
+    /// [`supports`]: GpuCanvas::supports
+    pub fn composites_full(&self, doc: &photocraft_doc::Document) -> bool {
+        if !self.fits_canvas(doc) || !self.supports(doc) {
+            return false;
+        }
+        let r = self.rs.renderer.read();
+        let Some(res) = r.callback_resources.get::<Resources>() else { return false };
+        res.compositor.as_ref().is_none_or(|c| c.fits_budget(doc, doc.bounds()))
+    }
+
     /// Replace the whole document image with an `Rgba8Unorm` texture. `rgba` is premultiplied
     /// RGBA8, `size[0] * size[1] * 4` bytes (anything else is ignored).
     pub fn upload_full(&self, doc: u64, size: [u32; 2], rgba: &[u8]) {
@@ -445,6 +483,17 @@ impl GpuCanvas {
         self.upload_rect(doc, [r.x0 as u32, r.y0 as u32], [r.width(), r.height()], &texels(format, &buf.px))
     }
 
+    /// The layer compositor: the one [`GpuCanvas::warm_up`] made, else one made now.
+    fn new_compositor(&self, res: &mut Resources) -> Result<photocraft_gpu::Compositor, photocraft_gpu::Unsupported> {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(Ok(made)) = res.compositor_warmup.take().map(std::thread::JoinHandle::join) {
+            return made;
+        }
+        #[cfg(target_arch = "wasm32")]
+        let _ = res;
+        photocraft_gpu::Compositor::try_new_with_format(&self.rs.device, photocraft_gpu::Compositor::preferred_acc_format(&self.rs.adapter))
+    }
+
     /// Composite `region` of `doc` with the wgpu compositor straight into its display texture
     /// (no CPU pixels, no upload of the composite). `encode_srgb` stores the sRGB encoding of the
     /// composite (linear documents, see `photocraft_engine::display_color`). Returns `Err` when the
@@ -475,7 +524,7 @@ impl GpuCanvas {
         }
         let mut comp = match res.compositor.take() {
             Some(c) => c,
-            None => match photocraft_gpu::Compositor::try_new_with_format(device, photocraft_gpu::Compositor::preferred_acc_format(&self.rs.adapter)) {
+            None => match self.new_compositor(res) {
                 Ok(c) => c,
                 Err(e) => {
                     log::warn!("{e}; using the CPU compositor");
@@ -1586,6 +1635,9 @@ struct Resources {
     separate_mip_targets: bool,
     /// The wgpu layer compositor (created on first use).
     compositor: Option<photocraft_gpu::Compositor>,
+    /// The compositor being made on a thread ([`GpuCanvas::warm_up`]): the first use takes it.
+    #[cfg(not(target_arch = "wasm32"))]
+    compositor_warmup: Option<std::thread::JoinHandle<Result<photocraft_gpu::Compositor, photocraft_gpu::Unsupported>>>,
     /// Why the wgpu compositor couldn't be created (then the CPU compositor is used).
     compositor_failed: Option<photocraft_gpu::Unsupported>,
     /// The device's health: the paint callback issues no GPU work once it's lost.
@@ -1790,6 +1842,17 @@ fn pipeline(
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for Resources {
+    /// A compositor still being built ([`GpuCanvas::warm_up`]) is waited for: a thread left inside
+    /// the driver's shader compiler as the process exits can crash it.
+    fn drop(&mut self) {
+        if let Some(h) = self.compositor_warmup.take() {
+            let _ = h.join();
+        }
+    }
+}
+
 impl Resources {
     fn new(device: &wgpu::Device, queue: &wgpu::Queue, target: wgpu::TextureFormat, high: bool) -> Self {
         let module =
@@ -1919,6 +1982,8 @@ impl Resources {
             out_linear: target.is_srgb(),
             separate_mip_targets: false,
             compositor: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            compositor_warmup: None,
             compositor_failed: None,
             health: photocraft_gpu::DeviceHealth::new(),
             compositor_budget: None,

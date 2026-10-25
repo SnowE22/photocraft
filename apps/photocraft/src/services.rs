@@ -662,16 +662,26 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
                     Err(error @ arboard::Error::ClipboardOccupied) => return Err(error.to_string()),
                     Err(_) => {}
                 }
-                match cb.get_image() {
-                    Ok(img) => Ok(Some((img.width as u32, img.height as u32, img.bytes.into_owned()))),
-                    Err(error) => {
-                        #[cfg(target_os = "linux")]
-                        if let Some(image) = wayland_clipboard_image() {
-                            return Ok(Some(image));
+                // Another application can hold the clipboard open for a moment (a screenshot
+                // tool, a clipboard manager, the app that just copied): a paste then found
+                // nothing, and worked when tried again. Try again for a little while instead.
+                let mut attempt = 0;
+                loop {
+                    attempt += 1;
+                    match cb.get_image() {
+                        Ok(img) => return Ok(Some((img.width as u32, img.height as u32, img.bytes.into_owned()))),
+                        Err(arboard::Error::ClipboardOccupied) if attempt < CLIPBOARD_ATTEMPTS => {
+                            std::thread::sleep(std::time::Duration::from_millis(20));
                         }
-                        match error {
-                            arboard::Error::ContentNotAvailable => Ok(None),
-                            _ => Err(error.to_string()),
+                        Err(error) => {
+                            #[cfg(target_os = "linux")]
+                            if let Some(image) = wayland_clipboard_image() {
+                                return Ok(Some(image));
+                            }
+                            return match error {
+                                arboard::Error::ContentNotAvailable => Ok(None),
+                                _ => Err(error.to_string()),
+                            };
                         }
                     }
                 }
@@ -680,6 +690,7 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
         clipboard_unreadable: Some(Box::new(move || clip_unreadable.get())),
         load_prefs: Some(Box::new(|| std::fs::read_to_string(prefs_file()?).ok())),
         photoshop_shortcuts: Some(Box::new(|| crate::photoshop_settings::live_keyboard_shortcuts(&|k| std::env::var_os(k)))),
+        photoshop_actions: Some(Box::new(|| crate::photoshop_settings::actions_palette(&|k| std::env::var_os(k)))),
         save_prefs: Some(Box::new(|text: &str| write_atomic(&prefs_file().ok_or("no config directory")?, text.as_bytes()))),
         system_theme: crate::appearance::service(),
         append_text: Some(Box::new(|path: &str, text: &str| {
@@ -695,6 +706,9 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
         ..recovery_services(recovery_dir())
     }
 }
+
+/// How many times a paste reads a clipboard another application holds open, 20 ms apart.
+const CLIPBOARD_ATTEMPTS: usize = 10;
 
 /// Preferences ▸ General ▸ Beep When Done: the platform's default information beep.
 fn platform_beep() {

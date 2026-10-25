@@ -1,5 +1,7 @@
 //! Preferences › Performance › Low Resolution Previews: on (the default) live previews of a large
-//! document render on a reduced copy, off they render at full resolution.
+//! document render on a reduced copy, off they render at full resolution. An adjustment layer's
+//! live preview that the GPU composites is drawn at full resolution either way (the GPU draws it
+//! faster than the CPU draws the reduced copy); the preference applies when the CPU composites.
 //!
 //! A 3000 × 2000 document of 1 px black and white columns: the reduced copy (every 2nd pixel at
 //! this size) is all black, so its preview shows a flat colour where the full-size one shows the
@@ -7,7 +9,7 @@
 //! skips when no GPU adapter exists (like `drag_preview_canvas.rs`).
 
 use photocraft_color::{Color, ColorMode, SampleType};
-use photocraft_doc::{Document, Size};
+use photocraft_doc::{Document, Layer, Size};
 use photocraft_geom::Rect;
 use photocraft_ui_egui::PhotocraftApp;
 use photocraft_ui_egui::control::{ControlRequest, handle};
@@ -54,10 +56,24 @@ fn columns_document() -> Document {
     doc
 }
 
+/// [`columns_document`] with an empty layer the wgpu compositor can't draw (Knockout), so the CPU
+/// composites it; it changes no pixel.
+fn cpu_columns_document() -> Document {
+    let mut doc = columns_document();
+    let mut l = Layer::raster("knockout", doc.pixel_format());
+    l.advanced.knockout = photocraft_doc::Knockout::Shallow;
+    doc.layers.push(l);
+    doc
+}
+
 fn setup(h: &mut Harness, zoom: f32) {
+    setup_with(h, zoom, columns_document());
+}
+
+fn setup_with(h: &mut Harness, zoom: f32, doc: Document) {
     {
         let app = h.state_mut();
-        app.session.add_document(columns_document(), None);
+        app.session.add_document(doc, None);
         app.sync_views();
         app.ui.extras.rulers = false;
     }
@@ -109,40 +125,46 @@ fn mean(r: &[i32]) -> f32 {
     r.iter().sum::<i32>() as f32 / r.len() as f32
 }
 
-/// Dragging an adjustment layer's control (Properties panel) previews through the reduced copy
-/// only as coarse as the screen (#5764): at 100 % every column shows even with low-resolution
-/// previews on; zoomed out to 50 % the default drag runs on the reduced copy (only the black columns, inverted), and with
-/// them off it matches the committed view (the columns' mipmapped grey).
+/// Add an Invert adjustment layer and start its live preview, as a Properties drag does.
+fn invert_drag(h: &mut Harness) -> photocraft_doc::LayerId {
+    let app = h.state_mut();
+    app.run("layer.newAdjustmentLayer.invert", json!({})).expect("adjustment layer");
+    let id = app.session.active().and_then(|d| d.active_layer).expect("active layer");
+    // What the Properties panel sets while a slider drags.
+    app.live_adjust = Some((id, json!({})));
+    id
+}
+
 #[test]
-fn adjustment_layer_drag_previews_at_full_resolution_when_low_res_is_off() {
+fn adjustment_layer_drag_on_the_gpu_previews_at_full_resolution() {
     let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness() else { return };
     setup(&mut h, 1.0);
     if !on_gpu(&mut h) {
         return;
     }
+    invert_drag(&mut h);
+    let shown = row(&mut h);
+    assert!(columns(&shown) > 0.9, "low-res previews on (the default): the GPU still shows every column ({})", columns(&shown));
+    assert!(h.state().perf.last_refresh.starts_with("gpu"), "{}", h.state().perf.last_refresh);
+}
+
+#[test]
+fn adjustment_layer_drag_previews_at_full_resolution_when_low_res_is_off() {
+    let _gpu = photocraft_testkit::gpu_lock();
+    let Some(mut h) = harness() else { return };
+    setup_with(&mut h, 1.0, cpu_columns_document());
+    if !on_gpu(&mut h) {
+        return;
+    }
     assert!(columns(&row(&mut h)) > 0.9, "the canvas shows the 1 px columns at 100 %");
-    let layer = {
-        let app = h.state_mut();
-        app.run("layer.newAdjustmentLayer.invert", json!({})).expect("adjustment layer");
-        let id = app.session.active().and_then(|d| d.active_layer).expect("active layer");
-        // What the Properties panel sets while a slider drags.
-        app.live_adjust = Some((id, json!({})));
-        id
-    };
-    let at_100 = row(&mut h);
-    assert!(columns(&at_100) > 0.9, "default at 100 %: the drag is never coarser than the screen ({})", columns(&at_100));
-    control(&mut h, "ui.set", json!({"zoom": 0.5, "center": [W / 2, H / 2]}));
-    h.state_mut().live_adjust = None;
-    let committed = mean(&row(&mut h));
-    assert!(committed > 60.0, "zoomed out the inverted columns average to grey ({committed})");
-    h.state_mut().live_adjust = Some((layer, json!({})));
-    let reduced = mean(&row(&mut h));
-    assert!(reduced > 225.0, "default at 50 %: the reduced copy keeps only the (inverted) black columns ({reduced})");
+    let layer = invert_drag(&mut h);
+    let reduced = row(&mut h);
+    assert!(columns(&reduced) < 0.1, "default: the reduced copy loses the columns ({})", columns(&reduced));
     low_res(&mut h, false);
     h.state_mut().live_adjust = Some((layer, json!({})));
-    let full = mean(&row(&mut h));
-    assert!((full - committed).abs() < 8.0, "low-res previews off: the drag matches the committed view ({full} vs {committed})");
+    let full = row(&mut h);
+    assert!(columns(&full) > 0.9, "low-res previews off: every column shows ({})", columns(&full));
 }
 
 /// A filter dialog's live preview is never coarser than the screen either (#6326): at 100 % every

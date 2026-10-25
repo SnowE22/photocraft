@@ -276,6 +276,15 @@ impl Mips {
         let (x0, y0) = (fx.floor(), fy.floor());
         let (tx, ty) = (fx - x0, fy - y0);
         let (x0, y0) = (x0 as i64, y0 as i64);
+        // Inside the bitmap (most samples of a large dab): the four texels in two reads.
+        if x0 >= 0 && y0 >= 0 && x0 + 1 < *w as i64 && y0 + 1 < *h as i64 {
+            let i = y0 as usize * w + x0 as usize;
+            if let (Some(&[p00, p10]), Some(&[p01, p11])) = (d.get(i..i + 2), d.get(i + w..i + w + 2)) {
+                let a = p00 + (p10 - p00) * tx;
+                let b = p01 + (p11 - p01) * tx;
+                return a + (b - a) * ty;
+            }
+        }
         let get = |x: i64, y: i64| if x < 0 || y < 0 || x >= *w as i64 || y >= *h as i64 { 0.0 } else { d[y as usize * w + x as usize] };
         let a = get(x0, y0) + (get(x0 + 1, y0) - get(x0, y0)) * tx;
         let b = get(x0, y0 + 1) + (get(x0 + 1, y0 + 1) - get(x0, y0 + 1)) * tx;

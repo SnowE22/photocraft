@@ -25,6 +25,10 @@ use crate::actions_cmds::Action;
 use crate::commands::CommandSpec;
 use crate::{EngineError, Result, Session};
 
+/// Event shapes from Photoshop 2024–2026 actions (Create Clipping Mask, Color Range, the Camera
+/// Raw filter, Blend If, layer masks, selection combinations…).
+mod extra;
+
 /// A step PhotoCraft cannot play yet, kept verbatim (`{"event", "name", "descriptor": base64}`).
 pub const PHOTOSHOP_STEP: &str = "actions.photoshopStep";
 /// Photoshop's Insert Stop: `{"message", "allowContinue"}`.
@@ -215,6 +219,11 @@ fn layer_ref(p: &Value) -> Option<D> {
     match p.get("layer") {
         None | Some(Value::Null) => Some(target_ref("Lyr ")),
         Some(Value::String(n)) => Some(name_ref("Lyr ", n)),
+        // A recorded step's layer (`layer_refs`): by name, or the current layer as the target.
+        Some(Value::Object(o)) => match o.get("name").and_then(Value::as_str) {
+            Some(n) => Some(name_ref("Lyr ", n)),
+            None => (o.get("current").and_then(Value::as_bool) == Some(true)).then(|| target_ref("Lyr ")),
+        },
         _ => None,
     }
 }
@@ -262,6 +271,18 @@ fn color_hex(c: &Descriptor) -> Option<String> {
             _ => (v, p, q),
         };
         return Some(hex(r * 255.0, g * 255.0, b * 255.0));
+    }
+    // `LbCl`: CIE Lab (D50), as Color Range and Lab colour pickers record it.
+    if let (Some(l), Some(a), Some(b)) = (get_num(c, "Lmnc"), get_num(c, "A   "), get_num(c, "B   ")) {
+        let [r, g, b] = photocraft_color::convert::lab_to_srgb([l as f32, a as f32, b as f32]);
+        return Some(hex(f64::from(r) * 255.0, f64::from(g) * 255.0, f64::from(b) * 255.0));
+    }
+    // `CMYC` (percent inks), uncalibrated: the step's colour, not a proof of the inks.
+    if let (Some(cy), Some(m), Some(y), Some(k)) = (get_num(c, "Cyn "), get_num(c, "Mgnt"), get_num(c, "Ylw "), get_num(c, "Blck")) {
+        let ink = |v: f64| (v / 100.0).clamp(0.0, 1.0);
+        let k = ink(k);
+        let ch = |v: f64| 255.0 * (1.0 - ink(v)) * (1.0 - k);
+        return Some(hex(ch(cy), ch(m), ch(y)));
     }
     get_num(c, "Gry ").map(|g| {
         let v = 255.0 - g * 2.55;
@@ -335,8 +356,32 @@ const BLEND_MODES: &[(&str, &str)] = &[
     ("PsTh", "Pass Through"),
 ];
 
+/// The string ids Photoshop writes for the blend modes [`BLEND_MODES`] knows by code: since CC an
+/// action often records `multiply` where older ones have `Mltp`, and the two mean the same.
+const BLEND_STRING_IDS: &[(&str, &str)] = &[
+    ("normal", "Nrml"),
+    ("dissolve", "Dslv"),
+    ("darken", "Drkn"),
+    ("multiply", "Mltp"),
+    ("colorBurn", "CBrn"),
+    ("lighten", "Lghn"),
+    ("screen", "Scrn"),
+    ("colorDodge", "CDdg"),
+    ("overlay", "Ovrl"),
+    ("softLight", "SftL"),
+    ("hardLight", "HrdL"),
+    ("difference", "Dfrn"),
+    ("exclusion", "Xclu"),
+    ("hue", "H"),
+    ("saturation", "Strt"),
+    ("color", "Clr"),
+    ("luminosity", "Lmns"),
+    ("passThrough", "PsTh"),
+];
+
 fn blend_label(ps: &str) -> Option<&'static str> {
-    BLEND_MODES.iter().find(|(k, _)| *k == ps).map(|(_, v)| *v)
+    let code = BLEND_STRING_IDS.iter().find(|(s, _)| *s == ps).map_or(ps, |(_, c)| *c);
+    BLEND_MODES.iter().find(|(k, _)| *k == code).map(|(_, v)| *v)
 }
 
 fn blend_ps(label: &str) -> Option<&'static str> {
@@ -1085,8 +1130,21 @@ const SMART_BLUR_QUALITY: &[(&str, &str)] = &[("SBQL", "low"), ("SBQM", "medium"
 const SMART_BLUR_MODE: &[(&str, &str)] = &[("SBMN", "normal"), ("SBME", "edgeOnly"), ("SBMO", "overlayEdge")];
 const RADIAL_METHOD: &[(&str, &str)] = &[("Spn ", "spin"), ("Zm  ", "zoom")];
 const RADIAL_QUALITY: &[(&str, &str)] = &[("Drft", "draft"), ("Gd  ", "good"), ("Bst ", "best")];
-const LABEL_COLORS: &[(&str, &str)] =
-    &[("None", "none"), ("Rd", "red"), ("Orng", "orange"), ("Ylw", "yellow"), ("Grn", "green"), ("Bl", "blue"), ("Vlt", "violet"), ("Gry", "gray")];
+const LABEL_COLORS: &[(&str, &str)] = &[
+    ("None", "none"),
+    ("Rd", "red"),
+    ("Orng", "orange"),
+    ("Ylw", "yellow"),
+    ("Grn", "green"),
+    ("Bl", "blue"),
+    ("Vlt", "violet"),
+    ("Gry", "gray"),
+    // The colours Photoshop 23 added to the layer menu.
+    ("Mgnt", "magenta"),
+    ("seafoam", "seafoam"),
+    ("indigo", "indigo"),
+    ("fuchsia", "fuchsia"),
+];
 const ALIGN: &[(&str, &str)] =
     &[("AdLf", "leftEdges"), ("AdCH", "horizontalCenters"), ("AdRg", "rightEdges"), ("AdTp", "topEdges"), ("AdCV", "verticalCenters"), ("AdBt", "bottomEdges")];
 const PURGE: &[(&str, &str)] = &[("Al", "all"), ("Clpb", "clipboard"), ("Hsty", "histories"), ("Undo", "undo")];
@@ -1177,17 +1235,8 @@ fn make_from(d: &Descriptor) -> Mapped {
         }
         return step("layer.duplicate", Value::Object(p));
     }
-    // Add Layer Mask: a `Chnl` class made at the mask channel, `Usng` what it reveals.
-    if let Some(D::Class(c)) = d.get("Nw  ")
-        && trimmed(&c.class_id) == "Chnl"
-    {
-        // The target layer's mask only: a further item (a `Lyr` by name…) puts it on another layer.
-        let at_mask = get_ref(d, "At  ")
-            .is_some_and(|r| r.len() == 1 && ref_class(r).as_deref() == Some("Chnl") && matches!(target(r), Target::Ordinal(o) if o == "Msk"));
-        return match get_enum(d, "Usng").and_then(|u| lookup(MASK_USING, &u)) {
-            Some(id) if at_mask => none(id),
-            _ => Mapped::Unsupported { harmless: false },
-        };
+    if let Some(m) = extra::make_from(d) {
+        return m;
     }
     if let Some(nw) = get_obj(d, "Nw  ") {
         // Layer via Copy / Cut (`Usng` = the selection), or a new document.
@@ -1414,6 +1463,13 @@ fn make_to(id: &str, p: &Value) -> Option<Descriptor> {
 }
 
 fn set_from(d: &Descriptor) -> Mapped {
+    match set_from_table(d) {
+        Mapped::Unsupported { harmless: false } => extra::set_from(d).unwrap_or(Mapped::Unsupported { harmless: false }),
+        m => m,
+    }
+}
+
+fn set_from_table(d: &Descriptor) -> Mapped {
     let Some(r) = get_ref(d, "null") else { return Mapped::Unsupported { harmless: false } };
     let unsupported = Mapped::Unsupported { harmless: false };
     match (ref_class(r).as_deref(), target(r)) {
@@ -1521,8 +1577,24 @@ fn set_from(d: &Descriptor) -> Mapped {
             if let Some(vis) = get_bool(t, "Vsbl") {
                 p.insert("visible".into(), vis.into());
             }
+            // Blending Options › Blend If (`Blnd`: one entry per channel).
+            let blend_if = match get_list(t, "Blnd") {
+                Some(l) => match extra::blend_if(l) {
+                    Some(b) => Some(b),
+                    None => return unsupported,
+                },
+                None => None,
+            };
+            let layer = p.get("layer").cloned();
             if p.keys().any(|k| k != "layer") {
                 v.push(("layer.setProps", Value::Object(p)));
+            }
+            if let Some(b) = blend_if {
+                let mut bp = json!({"blendIf": b});
+                if let Some(l) = layer {
+                    bp["layer"] = l;
+                }
+                v.push(("layer.layerStyle.blendingOptions", bp));
             }
             if v.is_empty() { unsupported } else { steps(v) }
         }
@@ -1674,6 +1746,13 @@ fn is_tool_class(c: &str) -> bool {
 }
 
 fn select_from(d: &Descriptor) -> Mapped {
+    match select_from_table(d) {
+        Mapped::Unsupported { harmless: false } => extra::select_from(d).unwrap_or(Mapped::Unsupported { harmless: false }),
+        m => m,
+    }
+}
+
+fn select_from_table(d: &Descriptor) -> Mapped {
     let Some(r) = get_ref(d, "null") else { return Mapped::Unsupported { harmless: false } };
     match (ref_class(r).as_deref(), target(r)) {
         (Some("Lyr"), Target::Name(n)) => {
@@ -1781,6 +1860,9 @@ fn select_to(id: &str, p: &Value) -> Option<Descriptor> {
 }
 
 fn delete_from(d: &Descriptor) -> Mapped {
+    if let Some(m) = extra::delete_from(d) {
+        return m;
+    }
     match get_ref(d, "null") {
         None => none("edit.clear"),
         Some(r) if ref_class(r).as_deref() == Some("Lyr") => match layer_target(r) {
@@ -2174,12 +2256,17 @@ fn visibility_from(d: &Descriptor, id: &str) -> Mapped {
     };
     let mut v = Vec::new();
     for r in refs {
+        // One effect of a layer (the eye on its row): `[class SoFi, layer]`.
+        if let Some(m) = extra::effect_visibility(r, id == "layer.showLayers") {
+            v.push(m);
+            continue;
+        }
         match layer_target(r) {
             Some(p) => v.push((id, Value::Object(p))),
             None => return Mapped::Unsupported { harmless: false },
         }
     }
-    if v.is_empty() { Mapped::Unsupported { harmless: false } } else { steps(v) }
+    if v.is_empty() { Mapped::Unsupported { harmless: false } } else { Mapped::Steps(v.into_iter().map(|(id, p)| (id.to_string(), p)).collect()) }
 }
 
 fn visibility_to(_: &str, p: &Value) -> Option<Descriptor> {
@@ -2224,6 +2311,13 @@ fn move_from(d: &Descriptor) -> Mapped {
                 _ => return Mapped::Unsupported { harmless: false },
             }
             step("layer.translate", Value::Object(p))
+        }
+        // Dragged in the Layers panel: to a position of the stack (Photoshop's layer index). Index
+        // 0, the bottom, is Send to Back (below).
+        Some(D::Reference(t)) if matches!(t.first(), Some(ReferenceItem::Index { index, .. }) if *index != 0) && t.len() == 1 => {
+            let Some(ReferenceItem::Index { index, .. }) = t.first() else { return Mapped::Unsupported { harmless: false } };
+            p.insert("index".into(), json!(index));
+            step("layer.moveTo", Value::Object(p))
         }
         Some(D::Reference(t)) => {
             let id = match target(t) {
@@ -2335,7 +2429,7 @@ fn apply_comp_to(_: &str, p: &Value) -> Option<Descriptor> {
 
 fn play_from(d: &Descriptor) -> Mapped {
     match get_ref(d, "null").map(target) {
-        Some(Target::Name(n)) => step("actions.play", json!({"action": n})),
+        Some(Target::Name(n)) => step("actions.play", json!({"action": display_name(&n)})),
         _ => Mapped::Unsupported { harmless: false },
     }
 }
@@ -2937,6 +3031,9 @@ fn merge_visible_to(id: &str, _: &Value) -> Option<Descriptor> {
 }
 
 fn align_from(d: &Descriptor) -> Mapped {
+    if get_enum(d, "Usng").as_deref() == Some("ADSContent") {
+        return extra::auto_align_from(d);
+    }
     match get_enum(d, "Usng").and_then(|u| lookup(ALIGN, &u)) {
         Some(a) => step(&format!("layer.align.{a}"), if get_bool(d, "alignToCanvas") == Some(true) { json!({"to": "canvas"}) } else { json!({}) }),
         None => Mapped::Unsupported { harmless: false },
@@ -3149,6 +3246,10 @@ const COLOR_RANGE_KEYS: &[&str] = &[
 /// key (Detect Faces, Localized Color Clusters…) could change the result: both stay
 /// unsupported.
 fn color_range_from(d: &Descriptor) -> Mapped {
+    // Sampled Colors: the sampled CIE Lab box (`extra`).
+    if get_enum(d, "Clrs").is_none() {
+        return extra::color_range_from(d);
+    }
     let unsupported = Mapped::Unsupported { harmless: false };
     if d.items.iter().any(|(k, _)| !COLOR_RANGE_KEYS.contains(&trimmed(k).as_str())) {
         return unsupported;
@@ -3186,8 +3287,11 @@ fn color_range_from(d: &Descriptor) -> Mapped {
     step("select.colorRange", Value::Object(p))
 }
 
-fn color_range_to(_: &str, p: &Value) -> Option<Descriptor> {
-    let preset = jstr(p, "select")?;
+fn color_range_to(id: &str, p: &Value) -> Option<Descriptor> {
+    let preset = jstr(p, "select").unwrap_or("sampledColors");
+    if preset == "sampledColors" {
+        return extra::color_range_to(id, p);
+    }
     if p.as_object()?.keys().any(|k| !matches!(k.as_str(), "select" | "fuzziness" | "tonalRange" | "invert")) {
         return None;
     }
@@ -3682,7 +3786,7 @@ const LEGACY_CODES: &[(&str, &str)] =
 
 fn event_for(item: &AtnEvent) -> Option<&'static Event> {
     let id = item.id();
-    let find = |id: &str| EVENTS.iter().find(|e| (!e.code.is_empty() && e.code.trim_end() == id.trim_end()) || e.name == id);
+    let find = |id: &str| EVENTS.iter().chain(extra::EVENTS).find(|e| (!e.code.is_empty() && e.code.trim_end() == id.trim_end()) || e.name == id);
     find(&id).or_else(|| match item {
         AtnEvent::Code(_) => LEGACY_CODES.iter().find(|(code, _)| *code == id).and_then(|(_, name)| find(name)),
         AtnEvent::Name(_) => None,
@@ -3692,7 +3796,7 @@ fn event_for(item: &AtnEvent) -> Option<&'static Event> {
 /// The event `id` exports as: the first event listing it whose converter accepts the params
 /// (Quick Mask on is a `set`, off a `clearEvent`).
 fn event_and_descriptor(id: &str, params: &Value) -> Option<(&'static Event, Descriptor)> {
-    EVENTS.iter().filter(|e| e.ids.contains(&id)).find_map(|e| (e.to)(id, params).map(|d| (e, d)))
+    EVENTS.iter().chain(extra::EVENTS).filter(|e| e.ids.contains(&id)).find_map(|e| (e.to)(id, params).map(|d| (e, d)))
 }
 
 // ------------------------------------------------------------------ import
@@ -3700,6 +3804,8 @@ fn event_and_descriptor(id: &str, params: &Value) -> Option<(&'static Event, Des
 /// A step with no PhotoCraft equivalent.
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct Unsupported {
+    /// The set the action is in (a palette holds several).
+    pub set: String,
     pub action: String,
     pub step: usize,
     pub event: String,
@@ -3741,8 +3847,17 @@ fn normalise(v: &mut Value) {
     }
 }
 
+/// A name as Photoshop shows it: its own sets name sets and actions with a localisation key and
+/// the English text (`$$$/Presets/Actions/DefaultActions_atn/DefaultActions=Default Actions`).
+pub fn display_name(name: &str) -> String {
+    match name.strip_prefix("$$$/").and_then(|rest| rest.split_once('=')) {
+        Some((_, text)) if !text.trim().is_empty() => text.to_string(),
+        _ => name.to_string(),
+    }
+}
+
 fn convert_action(a: &AtnAction, set: &str, unsupported: &mut Vec<Unsupported>) -> Action {
-    let name = a.name.to_string_lossy();
+    let name = display_name(&a.name.to_string_lossy());
     let mut action = Action::new(name.clone(), Vec::new());
     action.set = Some(set.to_string());
     for (i, item) in a.items.iter().enumerate() {
@@ -3754,7 +3869,7 @@ fn convert_action(a: &AtnAction, set: &str, unsupported: &mut Vec<Unsupported>) 
         let (new_steps, enabled) = match mapped {
             Mapped::Steps(s) => (s, item.enabled),
             Mapped::Unsupported { harmless } => {
-                unsupported.push(Unsupported { action: name.clone(), step: i, event: item.event.id(), name: item.label() });
+                unsupported.push(Unsupported { set: set.to_string(), action: name.clone(), step: i, event: item.event.id(), name: item.label() });
                 (vec![photoshop_step(item)], item.enabled && !harmless)
             }
         };
@@ -3777,17 +3892,41 @@ fn convert_action(a: &AtnAction, set: &str, unsupported: &mut Vec<Unsupported>) 
 /// command or as a kept Photoshop step.
 pub fn import(bytes: &[u8]) -> std::result::Result<Imported, String> {
     let file = atn::parse(bytes).map_err(|e| e.to_string())?;
-    let set = file.name.to_string_lossy();
+    Ok(import_set(&file))
+}
+
+/// Convert a `.atn` file or Photoshop's Actions palette (`Actions Palette.psp`, every set of its
+/// Actions panel): one [`Imported`] per set, in panel order. The two layouts start alike: a file
+/// that reads cleanly as one set is a `.atn`, else one that reads as a palette is one (Photoshop
+/// 2026 writes a few bytes after the last set, kept as a warning).
+pub fn import_any(bytes: &[u8]) -> std::result::Result<Vec<Imported>, String> {
+    let single = atn::parse(bytes);
+    if let Ok(f) = &single
+        && f.warnings.is_empty()
+    {
+        return Ok(vec![import_set(f)]);
+    }
+    if let Ok(sets) = atn::parse_palette(bytes)
+        && !sets.is_empty()
+    {
+        return Ok(sets.iter().map(import_set).collect());
+    }
+    single.map(|f| vec![import_set(&f)]).map_err(|e| e.to_string())
+}
+
+fn import_set(file: &AtnFile) -> Imported {
+    let set = display_name(&file.name.to_string_lossy());
     let set = if set.trim().is_empty() { DEFAULT_SET.to_string() } else { set };
     let mut out = Imported { set: set.clone(), warnings: file.warnings.clone(), ..Default::default() };
     for a in &file.actions {
         let action = convert_action(a, &set, &mut out.unsupported);
-        if a.function_key > 0 {
-            out.function_keys.push((action.name.clone(), function_key_name(a.function_key, a.shift, a.command)));
+        // With its Shift and Control (⌘) modifiers, as Photoshop's Action Options set them.
+        if let Some(key) = crate::actions_cmds::action_key(a.function_key, a.shift, a.command) {
+            out.function_keys.push((action.name.clone(), key));
         }
         out.actions.push(action);
     }
-    Ok(out)
+    out
 }
 
 // ------------------------------------------------------------------ export
@@ -3870,7 +4009,8 @@ pub fn parse_function_key(key: &str) -> Option<(u16, bool, bool)> {
 }
 
 /// The `.atn` bytes of `actions` as the set `set`. `function_keys` gives each action's key
-/// (`F1`…`F15`, with `Shift+` and `Cmd+` as [`function_key_name`] writes them). Steps with no Photoshop equivalent are an error unless `skip_unsupported`.
+/// (`F1`…`F15`, with `Shift+` and/or `Cmd+`: [`crate::actions_cmds::action_key`]). Steps with no
+/// Photoshop equivalent are an error unless `skip_unsupported`.
 pub fn export(
     set: &str,
     actions: &[&Action],
@@ -3945,19 +4085,32 @@ impl UniqueNames {
     }
 }
 
+fn unique(name: &str, taken: &[String]) -> String {
+    if !taken.iter().any(|t| t == name) {
+        return name.to_string();
+    }
+    (2..).map(|i| format!("{name} {i}")).find(|n| !taken.contains(n)).unwrap_or_else(|| name.to_string())
+}
+
 fn load(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "actions.load";
     if s.actions.recording.is_some() || s.actions.playing > 0 {
         return Err(bad(cmd, "stop recording or playing before loading actions"));
     }
-    let (bytes, _) = crate::preset_import_cmds::file_bytes(p, cmd, ".atn file")?;
-    let mut imp = import(&bytes).map_err(|e| bad(cmd, e))?;
+    let (bytes, _) = crate::preset_import_cmds::file_bytes(p, cmd, ".atn file or Actions palette")?;
+    let mut sets = import_any(&bytes).map_err(|e| bad(cmd, e))?;
     match p.get("set") {
         None | Some(Value::Null) => {}
         Some(Value::String(n)) if !n.trim().is_empty() => {
+            let [imp] = sets.as_mut_slice() else {
+                return Err(bad(cmd, "`set` renames a single set; an Actions palette keeps its sets' names"));
+            };
             imp.set = n.trim().to_string();
             for a in &mut imp.actions {
                 a.set = Some(imp.set.clone());
+            }
+            for u in &mut imp.unsupported {
+                u.set = imp.set.clone();
             }
         }
         Some(_) => return Err(bad(cmd, "`set` must be a non-empty string")),
@@ -3967,6 +4120,50 @@ fn load(s: &mut Session, p: &Value) -> Result<Value> {
         Some(Value::Bool(b)) => *b,
         Some(_) => return Err(bad(cmd, "`replace` must be true or false")),
     };
+    let palette = sets.len() > 1;
+    let mut loaded: Vec<Value> = Vec::with_capacity(sets.len());
+    let mut seen: Vec<(String, Vec<Action>)> = Vec::new();
+    for mut imp in sets {
+        // Photoshop's panel can hold the same set twice (an installer run four times): an exact
+        // copy loads once, a different set of the same name gets a numbered name.
+        if seen.iter().any(|(n, a)| *n == imp.set && *a == imp.actions) {
+            continue;
+        }
+        if seen.iter().any(|(n, _)| *n == imp.set) {
+            let taken: Vec<String> = seen.iter().map(|(n, _)| n.clone()).collect();
+            imp.set = unique(&imp.set, &taken);
+            for a in &mut imp.actions {
+                a.set = Some(imp.set.clone());
+            }
+            for u in &mut imp.unsupported {
+                u.set = imp.set.clone();
+            }
+        }
+        seen.push((imp.set.clone(), imp.actions.clone()));
+        loaded.push(load_set(s, imp, replace));
+    }
+    s.actions.touch();
+    if !palette && let Some(one) = loaded.pop() {
+        return Ok(one);
+    }
+    // A palette: every set's report, and the totals in the single-set fields.
+    let all = |k: &str| loaded.iter().flat_map(|v| v[k].as_array().cloned().unwrap_or_default()).collect::<Vec<_>>();
+    let steps: u64 = loaded.iter().filter_map(|v| v["steps"].as_u64()).sum();
+    Ok(json!({
+        "sets": loaded.iter().map(|v| v["set"].clone()).collect::<Vec<_>>(),
+        "set": loaded.first().map_or(Value::Null, |v| v["set"].clone()),
+        "actions": all("actions"),
+        "steps": steps,
+        "unsupported": all("unsupported"),
+        "functionKeys": all("functionKeys"),
+        "warnings": all("warnings"),
+        "bySet": loaded,
+    }))
+}
+
+/// Add one imported set to the Actions panel (replacing the actions of a set of the same name
+/// when `replace`), and report it as `actions.load` does.
+fn load_set(s: &mut Session, mut imp: Imported, replace: bool) -> Value {
     if replace {
         s.actions.list.retain(|a| a.set.as_deref() != Some(imp.set.as_str()));
     }
@@ -4013,15 +4210,20 @@ fn load(s: &mut Session, p: &Value) -> Result<Value> {
             }
         });
     }
-    s.actions.touch();
-    Ok(json!({
+    // Unsupported steps name the action as loaded (a rename on a clash included).
+    for u in &mut imp.unsupported {
+        if let Some(to) = renamed.get(&u.action) {
+            u.action = to.clone();
+        }
+    }
+    json!({
         "set": imp.set,
         "actions": names,
         "steps": steps,
         "unsupported": imp.unsupported,
         "functionKeys": keys.iter().map(|(n, k)| json!({"action": n, "key": k})).collect::<Vec<_>>(),
         "warnings": imp.warnings,
-    }))
+    })
 }
 
 fn save(s: &mut Session, p: &Value) -> Result<Value> {
@@ -4105,7 +4307,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Load Actions…",
             menu: &[],
             shortcut: None,
-            params: r##"{"path":".atn file"?,"data":base64 bytes?,"set":name? (override the file's set name),"replace":bool=true (replace the actions of a set of the same name)} → {set, actions:[names], steps, unsupported:[{action, step, event, name}], functionKeys:[{action, key}], warnings}. Photoshop steps PhotoCraft cannot play become actions.photoshopStep steps (kept for Save Actions; they fail at playback with the step's name); tool selections and other steps with no document effect are imported switched off. Layer references by name replay in any document."##,
+            params: r##"{"path":".atn file or Photoshop's Actions Palette.psp"?,"data":base64 bytes?,"set":name? (override a .atn file's set name),"replace":bool=true (replace the actions of a set of the same name)} → {set, actions:[names], steps, unsupported:[{set, action, step, event, name}], functionKeys:[{action, key}], warnings}; a palette loads every set of Photoshop's Actions panel and adds {sets:[names], bySet:[each set's report]}. Photoshop steps PhotoCraft cannot play become actions.photoshopStep steps (kept for Save Actions; they fail at playback with the step's name); tool selections and other steps with no document effect are imported switched off. Layer references by name replay in any document."##,
             enabled: always,
             run: load,
             journal: false,

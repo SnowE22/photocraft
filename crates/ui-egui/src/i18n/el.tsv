@@ -4023,6 +4023,356 @@ curves	Smooth	Εξομάλυνση
 	{path}: the path is not valid Unicode; save under another name.	{path}: η διαδρομή δεν είναι έγκυρο Unicode· αποθηκεύστε με άλλο όνομα.
 	{name} was changed by another app after it was opened or saved here.	Το {name} άλλαξε από άλλη εφαρμογή αφού ανοίχτηκε ή αποθηκεύτηκε εδώ.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Αντικαταστήστε το με αυτό το έγγραφο ή ακυρώστε και χρησιμοποιήστε Αρχείο › Αποθήκευση ως για να κρατήσετε και τα δύο.
+
+	Panel Icons	Εικονίδια πλαισίων
+	Move Tools panel	Μετακίνηση πλαισίου Εργαλείων
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Σύρετε για να μετακινήσετε το πλαίσιο Εργαλείων· αφήστε το στην άκρη του καμβά για αγκύρωση
+	New Document…	Νέο έγγραφο…
+	Open Document…	Άνοιγμα εγγράφου…
+	Delete Brushes	Διαγραφή πινέλων
+	Thumbnail size	Μέγεθος μικρογραφιών
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Εισαγωγή ενεργειών Photoshop
+	No Photoshop Actions palette was found on this computer	Δεν βρέθηκε παλέτα ενεργειών Photoshop σε αυτόν τον υπολογιστή
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Άνοιξε στο Topaz Gigapixel AI: εξαγάγετε εκεί την εικόνα για να επιστρέψει εδώ
+	Stopped waiting for Topaz Gigapixel AI	Η αναμονή για το Topaz Gigapixel AI σταμάτησε
+	Topaz Gigapixel AI's image could not be applied: {error}	Δεν ήταν δυνατή η εφαρμογή της εικόνας του Topaz Gigapixel AI: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: μεγέθυνση {scale}× σε {w} × {h} px (νέο επίπεδο)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Αναμονή για το Topaz Gigapixel AI: εξαγάγετε εκεί τη μεγεθυμένη εικόνα για να επιστρέψει εδώ.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Φορτώθηκε {n} ενέργεια σε {sets} σύνολα από το {file}|Φορτώθηκαν {n} ενέργειες σε {sets} σύνολα από το {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Παραγωγική ΤΝ ενεργή
+	Generative AI Off	Παραγωγική ΤΝ ανενεργή
+	Loading the AI model…	Φόρτωση του μοντέλου ΤΝ…
+	AI model not installed	Το μοντέλο ΤΝ δεν είναι εγκατεστημένο
+	AI model failed to load	Η φόρτωση του μοντέλου ΤΝ απέτυχε
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Τοποθετήστε τα lama_fp32.onnx και ONNX Runtime (onnxruntime.dll, DirectML.dll) σε έναν από τους φακέλους: {folders}. Μέχρι τότε το «Αυτόματα» χρησιμοποιεί το συνηθισμένο γέμισμα.
+	Model:	Μοντέλο:
+	LaMa (fast)	LaMa (γρήγορο)
+	Diffusion (detailed)	Διάχυση (λεπτομερής)
+	Prompt (optional)	Οδηγία (προαιρετική)
+	What should be there. Empty: the model's own guess.	Τι πρέπει να υπάρχει εκεί. Κενό: η εκτίμηση του μοντέλου.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Τοποθετήστε τον φάκελο του μοντέλου διάχυσης και το ONNX Runtime σε έναν από: {folders}. Μέχρι τότε το Αυτόματο χρησιμοποιεί LaMa.
+	Generative Fill…	Γενετική γέμιση…
+	Center Canvas When Zoomed Out	Κεντράρισμα καμβά κατά τη σμίκρυνση
+	High (slower)	Υψηλή (πιο αργή)
+	Quality:	Ποιότητα:
+	There is no such Topaz Gigapixel preset	Δεν υπάρχει τέτοια προρύθμιση Topaz Gigapixel
+	Saved Topaz Gigapixel preset “{name}”	Η προρύθμιση Topaz Gigapixel «{name}» αποθηκεύτηκε
+	New Preset	Νέα προρύθμιση
+	Upscale:	Μεγέθυνση:
+	With these settings	Με αυτές τις ρυθμίσεις
+	With two presets	Με δύο προρυθμίσεις
+	Save two presets with their own settings first; then this one can run them together.	Αποθηκεύστε πρώτα δύο προρυθμίσεις με δικές τους ρυθμίσεις· έπειτα αυτή μπορεί να τις εκτελέσει μαζί.
+	First:	Πρώτα:
+	Then:	Έπειτα:
+	Results:	Αποτελέσματα:
+	One after the other	Το ένα μετά το άλλο
+	Each on its own layer	Το καθένα σε δική του στρώση
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Και οι δύο προρυθμίσεις μεγεθύνουν την εικόνα· κάθε αποτέλεσμα γίνεται στρώση, για σύγκριση ή ανάμειξη.
+	The second preset upscales the first one's result.	Η δεύτερη προρύθμιση μεγεθύνει το αποτέλεσμα της πρώτης.
+	Topaz Gigapixel Presets	Προρυθμίσεις Topaz Gigapixel
+	Manage Presets…	Διαχείριση προρυθμίσεων…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Εκτελέστε μια αποθηκευμένη προρύθμιση από Αρχείο › Αυτοματοποίηση › Προρυθμίσεις Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Το Αυτόματα αφήνει την επιλογή στο Gigapixel.
+	Denoise:	Αποθορυβοποίηση:
+	Sharpen:	Όξυνση:
+	Fix Compression:	Διόρθωση συμπίεσης:
+	Face Recovery:	Αποκατάσταση προσώπων:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Επιλέξτε φάκελο για τις εγγραφές timelapse
+	Saved {name} ({seconds} s timelapse)	Αποθηκεύτηκε το {name} (timelapse {seconds} δ)
+	Export Timelapse	Εξαγωγή timelapse
+	Export Timelapse…	Εξαγωγή timelapse…
+	Timelapse export cancelled	Η εξαγωγή timelapse ακυρώθηκε
+	Timelapse	Timelapse
+	Auto record	Αυτόματη εγγραφή
+	Records whatever document you're on, unless you paused it yourself.	Καταγράφει όποιο έγγραφο έχετε ανοιχτό, εκτός αν το έχετε θέσει σε παύση εσείς.
+	Open a document to record a timelapse.	Ανοίξτε ένα έγγραφο για να καταγράψετε timelapse.
+	Recording (idle)	Εγγραφή (αδράνεια)
+	Recording	Εγγραφή
+	Click to pause	Κάντε κλικ για παύση
+	Paused: click to resume	Σε παύση: κάντε κλικ για συνέχεια
+	Start recording	Έναρξη εγγραφής
+	Pause Recording	Παύση εγγραφής
+	Reference Layer	Επίπεδο αναφοράς
+	Reference layer	Επίπεδο αναφοράς
+	Recorded more since the last export	Έχουν καταγραφεί περισσότερα από την τελευταία εξαγωγή
+	Select a layer	Επιλέξτε ένα επίπεδο
+	Not recorded: you see it, the timelapse doesn't	Δεν καταγράφεται: εσείς το βλέπετε, το timelapse όχι
+	Recorded	Καταγράφεται
+	{count} of {total} not recorded	{count} από {total} δεν καταγράφονται
+	Reference	Αναφορά
+	Adds {tag} to the layer's name	Προσθέτει το {tag} στο όνομα του επιπέδου
+	Export again…	Εξαγωγή ξανά…
+	Export video…	Εξαγωγή βίντεο…
+	Play video	Αναπαραγωγή βίντεο
+	Show in folder	Εμφάνιση στον φάκελο
+	Make:	Δημιουργία:
+	Advanced settings	Ρυθμίσεις για προχωρημένους
+	Show the finished drawing first	Εμφάνιση πρώτα του ολοκληρωμένου σχεδίου
+	Flash before the final image	Λάμψη πριν από την τελική εικόνα
+	Hold the final image	Διατήρηση της τελικής εικόνας
+	Slow down at the end	Επιβράδυνση στο τέλος
+	Remove flicker	Αφαίρεση τρεμοπαίγματος
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Παραλείπει καρέ που εμφανίζονται και χάνονται: ένα επίπεδο κρυμμένο για λίγο, μια πινελιά που αναιρέθηκε αμέσως.
+	Work-time counter	Μετρητής χρόνου εργασίας
+	Bars:	Μπάρες:
+	Fills the edges when the canvas size changed during the recording.	Γεμίζει τις άκρες όταν το μέγεθος του καμβά άλλαξε κατά την εγγραφή.
+	Folder:	Φάκελος:
+	not chosen yet	δεν έχει επιλεγεί ακόμη
+	Remove frames with undo	Αφαίρεση καρέ με την αναίρεση
+	Reference tag:	Ετικέτα αναφοράς:
+	Work timer stops after:	Ο χρονομετρητής σταματά μετά από:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Δημιουργεί το MP4. Το Αυτόματα ψάχνει δίπλα στο PhotoCraft και μετά στο PATH.
+	Choose the ffmpeg program on this computer	Επιλέξτε το πρόγραμμα ffmpeg σε αυτόν τον υπολογιστή
+	Opening files isn't available here	Το άνοιγμα αρχείων δεν είναι διαθέσιμο εδώ
+	MP4 video (ffmpeg)	Βίντεο MP4 (ffmpeg)
+	JPEG frames	Καρέ JPEG
+	Bottom right	Κάτω δεξιά
+	Bottom left	Κάτω αριστερά
+	Top right	Πάνω δεξιά
+	Top left	Πάνω αριστερά
+	5 seconds	5 δευτερόλεπτα
+	10 seconds	10 δευτερόλεπτα
+	15 seconds	15 δευτερόλεπτα
+	20 seconds	20 δευτερόλεπτα
+	30 seconds	30 δευτερόλεπτα
+	1 minute	1 λεπτό
+	2 minutes	2 λεπτά
+	5 minutes	5 λεπτά
+@plural	{n} frame|{n} frames	{n} καρέ|{n} καρέ
+	Refresh	Ανανέωση
+	Recordings will be listed here once you've chosen a folder.	Οι εγγραφές θα εμφανιστούν εδώ μόλις επιλέξετε φάκελο.
+	No recordings yet.	Δεν υπάρχουν εγγραφές ακόμη.
+	Open folder	Άνοιγμα φακέλου
+	Delete frames	Διαγραφή καρέ
+	Delete folder	Διαγραφή φακέλου
+	Pause the recording first	Πρώτα θέστε την εγγραφή σε παύση
+	REC	REC
+	EXPORTED	ΕΞΑΧΘΗΚΕ
+	NOT EXPORTED	ΔΕΝ ΕΞΑΧΘΗΚΕ
+	{time} work	{time} εργασίας
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Η εγγραφή «{name}» δεν έχει εξαχθεί ακόμη. Αν διαγράψετε τα καρέ της ({frames}), δεν θα μπορείτε πια να φτιάξετε βίντεο από αυτήν. Η ενέργεια δεν αναιρείται.
+	Delete the {frames} of “{name}”?	Διαγραφή των καρέ της εγγραφής «{name}» ({frames});
+	You've recorded more since the last export, and that part isn't in the video.	Καταγράψατε κι άλλο μετά την τελευταία εξαγωγή και αυτό το τμήμα δεν υπάρχει στο βίντεο.
+	Your videos and the work time are kept. This can't be undone.	Τα βίντεό σας και ο χρόνος εργασίας διατηρούνται. Η ενέργεια δεν αναιρείται.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Διαγραφή της εγγραφής «{name}» και του φακέλου της; Αφαιρείται από τη βιβλιοθήκη μαζί με τον χρόνο εργασίας. Τα βίντεο που εξαγάγατε μένουν εκεί που τα αποθηκεύσατε. Η ενέργεια δεν αναιρείται.
+	Frames deleted.	Τα καρέ διαγράφηκαν.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Η εγγραφή «{name}» διαγράφηκε. Ο φάκελός της περιέχει άλλα αρχεία, οπότε διατηρήθηκε.
+	Deleted “{name}”.	Η εγγραφή «{name}» διαγράφηκε.
+@plural	{n} recording|{n} recordings	{n} εγγραφή|{n} εγγραφές
+	Save Preset from Last Upscale…	Αποθήκευση προρύθμισης από την τελευταία μεγέθυνση…
+	No upscale has come back from Topaz Gigapixel AI yet	Δεν έχει επιστρέψει ακόμη καμία μεγέθυνση από το Topaz Gigapixel AI
+	Detail:	Λεπτομέρεια:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: μεγέθυνση {scale}× σε {w} × {h} px (νέο επίπεδο). Κρατήστε αυτές τις ρυθμίσεις με Προρυθμίσεις Topaz Gigapixel › Αποθήκευση προρύθμισης από την τελευταία μεγέθυνση
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Αποθηκεύτηκε το {name} (βίντεο {seconds}).
+	Export failed: {error}	Η εξαγωγή απέτυχε: {error}
+	Export cancelled.	Η εξαγωγή ακυρώθηκε.
+	just now	μόλις τώρα
+	{n} min ago	πριν από {n} λεπ.
+	{n} h ago	πριν από {n} ώρ.
+	yesterday	χθες
+	{n} days ago	πριν από {n} ημέρες
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Μικρότερα αρχεία και η πιο γρήγορη καταγραφή. Αρκεί για γρήγορα σκίτσα και προεπισκοπήσεις.
+	Sharper video for big screens. Uses about twice the disk space.	Πιο καθαρό βίντεο για μεγάλες οθόνες. Χρησιμοποιεί περίπου διπλάσιο χώρο στον δίσκο.
+	Full-HD video, good for social media. Recommended.	Βίντεο Full HD, κατάλληλο για τα μέσα κοινωνικής δικτύωσης. Συνιστάται.
+	idle	αδράνεια
+	Record	Εγγραφή
+	Paused	Σε παύση
+	Click to resume recording	Κάντε κλικ για συνέχιση της εγγραφής
+	Open a document to record it.	Ανοίξτε ένα έγγραφο για να το καταγράψετε.
+	You'll be asked where to save recordings.	Θα ερωτηθείτε πού να αποθηκεύονται οι εγγραφές.
+	Export again	Εξαγωγή ξανά
+	Export video	Εξαγωγή βίντεο
+	Show the export results	Εμφάνιση των αποτελεσμάτων εξαγωγής
+	Hide the export results	Απόκρυψη των αποτελεσμάτων εξαγωγής
+	≈ {seconds} video from {frames}.	≈ {seconds} βίντεο από {frames}.
+	Cancel export	Ακύρωση εξαγωγής
+	Frames	Καρέ
+	Timer	Χρόνος
+	On disk	Στον δίσκο
+	Hide the live preview	Απόκρυψη της ζωντανής προεπισκόπησης
+	Show the newest frame	Εμφάνιση του πιο πρόσφατου καρέ
+	No frames yet — just start drawing	Δεν υπάρχουν καρέ ακόμη — απλώς ξεκινήστε να σχεδιάζετε
+	No frames yet	Δεν υπάρχουν καρέ ακόμη
+	No layer selected	Δεν έχει επιλεγεί επίπεδο
+	{n} layers selected	{n} επίπεδα επιλεγμένα
+	Not recorded	Δεν καταγράφεται
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Ένα επίπεδο αναφοράς λειτουργεί σαν κανονικό επίπεδο, αλλά δεν εμφανίζεται στο timelapse.
+	Export settings	Ρυθμίσεις εξαγωγής
+	Make video with	Δημιουργία βίντεο με
+	Bars colour	Χρώμα μπαρών
+	Bars fill the empty space when the canvas size changed during recording.	Οι μπάρες γεμίζουν τον κενό χώρο όταν το μέγεθος του καμβά άλλαξε κατά την εγγραφή.
+	Show finished drawing first	Πρώτα το ολοκληρωμένο σχέδιο
+	Hold final image	Διατήρηση τελικής εικόνας
+	Show work-time counter	Εμφάνιση μετρητή χρόνου εργασίας
+	Record something in this document to see how long the video will be.	Καταγράψτε κάτι σε αυτό το έγγραφο για να δείτε πόσο θα διαρκεί το βίντεο.
+	≈ {seconds} video	≈ {seconds} βίντεο
+	{n} recorded frames	{n} καταγεγραμμένα καρέ
+	Auto shows every frame once (at least 5 s, at most 1 min).	Το Αυτόματο δείχνει κάθε καρέ μία φορά (τουλάχιστον 5 δ, το πολύ 1 λεπ.).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Το μέγεθος του καμβά άλλαξε κατά την εγγραφή· τα προηγούμενα καρέ προσαρμόζονται στο τελικό μέγεθος.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Η αφαίρεση τρεμοπαίγματος παραλείπει καρέ που εμφανίζονται και χάνονται (ένα επίπεδο κρυμμένο για λίγο, μια πινελιά που αναιρέθηκε αμέσως), οπότε το βίντεο μπορεί να βγει λίγο πιο σύντομο.
+	Recordings folder	Φάκελος εγγραφών
+	Not chosen yet — see Settings	Δεν έχει επιλεγεί ακόμη — δείτε τις Ρυθμίσεις
+	recorded {when}	καταγραφή {when}
+	Recorded more since the last export.	Έχουν καταγραφεί περισσότερα από την τελευταία εξαγωγή.
+	Frames folder	Φάκελος καρέ
+	Not chosen yet	Δεν έχει επιλεγεί ακόμη
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Εδώ φυλάσσονται τα καταγεγραμμένα καρέ. Τα βίντεο αποθηκεύονται όπου επιλέξετε κατά την εξαγωγή.
+	Choose folder…	Επιλογή φακέλου…
+	Change folder…	Αλλαγή φακέλου…
+	Recording quality	Ποιότητα εγγραφής
+	Undoing something removes those recorded frames.	Η αναίρεση αφαιρεί τα αντίστοιχα καταγεγραμμένα καρέ.
+	Reference layers	Επίπεδα αναφοράς
+	Name tag	Ετικέτα ονόματος
+	Layers with this in their name are left out of the timelapse.	Τα επίπεδα με αυτό στο όνομά τους μένουν έξω από το timelapse.
+	Work timer	Χρονομετρητής εργασίας
+	Idle after	Αδράνεια μετά από
+	The timer stops counting after this long without activity.	Ο χρονομετρητής σταματά να μετρά μετά από τόσο χρόνο χωρίς δραστηριότητα.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (γρήγορο)
+	Dark grey	Σκούρο γκρι
+	0.5 s	0,5 δ
+	1 s	1 δ
+	1.5 s	1,5 δ
+	2 s	2 δ
+	3 s	3 δ
+	4 s	4 δ
+	5 s	5 δ
+	8 s	8 δ
+	10 s	10 δ
+	1 min	1 λεπ.
+	1.5 min	1,5 λεπ.
+	2 min	2 λεπ.
+	3 min	3 λεπ.
+	5 min	5 λεπ.
+	45 seconds	45 δευτερόλεπτα
+	Run Two Presets…	Εκτέλεση δύο προρυθμίσεων…
+	Run Two Topaz Gigapixel Presets	Εκτέλεση δύο προρυθμίσεων Topaz Gigapixel
+	Run	Εκτέλεση
+	Set Shortcut…	Ορισμός συντόμευσης…
+	Action Shortcut	Συντόμευση ενέργειας
+	No shortcut.	Χωρίς συντόμευση.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	Το {shortcut} είναι και συντόμευση του {commands}: θα εκτελεί αντί γι’ αυτό αυτήν την ενέργεια.
+	Press the keys that play “{action}”.	Πατήστε τα πλήκτρα που εκτελούν το «{action}».
+	Shortcut:	Συντόμευση:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Λειτουργεί κάθε πλήκτρο, με Ctrl, Alt και Shift. Το Backspace αφαιρεί τη συντόμευση.
+	The action no longer exists.	Η ενέργεια δεν υπάρχει πια.
+	Fill Tool	Εργαλείο γεμίσματος
+	Nothing to fill there	Δεν υπάρχει τίποτα για γέμισμα εκεί
+	No enclosed area to fill there	Δεν υπάρχει κλειστή περιοχή για γέμισμα εκεί
+	Fill: click an area	Γέμισμα: κάντε κλικ σε μια περιοχή
+	Enclose and Fill: draw round the areas to fill	Περίκλειση και γέμισμα: σχεδιάστε γύρω από τις περιοχές
+	Paint Unfilled Area: paint over the gaps a fill left	Βάψιμο κενών: βάψτε πάνω από τα κενά που άφησε το γέμισμα
+	Refer	Αναφορά
+	Editing Layer	Επίπεδο επεξεργασίας
+	Selected Layers	Επιλεγμένα επίπεδα
+	Layers in Folder	Επίπεδα στον φάκελο
+	Reference Layers	Επίπεδα αναφοράς
+	Exclude	Εξαίρεση
+	Editing layer	Επίπεδο επεξεργασίας
+	Text layers	Επίπεδα κειμένου
+	Locked layers	Κλειδωμένα επίπεδα
+	Layers the fill doesn't read	Επίπεδα που δεν διαβάζει το γέμισμα
+	Close Gap	Κλείσιμο κενών
+	Treat gaps in the lines up to this wide as closed (0: off)	Τα κενά στις γραμμές έως αυτό το πλάτος θεωρούνται κλειστά (0: όχι)
+	Area Scaling	Κλιμάκωση περιοχής
+	Grow the fill under the lines, or shrink it	Επέκταση του γεμίσματος κάτω από τις γραμμές ή σμίκρυνση
+	To Darkest Pixel	Έως το πιο σκούρο pixel
+	Follow Adjacent Pixels	Γειτονικά pixel
+	Target	Στόχος
+	White and Transparent	Λευκό και διαφανές
+	Image Border	Περίγραμμα εικόνας
+	The canvas edge closes gaps as a line does	Το άκρο του καμβά κλείνει κενά όπως μια γραμμή
+	Reference layer: the Fill tool reads it	Επίπεδο αναφοράς: το διαβάζει το εργαλείο γεμίσματος
+	Set as Reference Layer	Ορισμός ως επιπέδου αναφοράς
+	Clear Reference Layer	Κατάργηση επιπέδου αναφοράς
+	Fill Tool Options	Επιλογές εργαλείου γεμίσματος
+	Size Key Repeat	Επανάληψη πλήκτρων μεγέθους
+	Holding [ or ] to resize the brush	Κράτημα [ ή ] για αλλαγή μεγέθους πινέλου
+	Pause before repeating	Παύση πριν από την επανάληψη
+	Wait half a second before the size keeps changing, as typing does	Αναμονή μισού δευτερολέπτου πριν συνεχίσει να αλλάζει το μέγεθος, όπως στην πληκτρολόγηση
+	Change every	Αλλαγή κάθε
+	Sample on Alt	Δειγματοληψία με Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Με εργαλείο ζωγραφικής, το πάτημα του Alt επιλέγει αμέσως το χρώμα κάτω από τον δείκτη
+	Hold:	Κράτημα:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Πόση ώρα πρέπει να κρατηθεί το Alt πριν λειτουργήσει ως το συνηθισμένο σταγονόμετρο: η πιπέτα και κλικ για δειγματοληψία
+	Move Layer Mask	Μετακίνηση μάσκας επιπέδου
+	Copy Layer Mask	Αντιγραφή μάσκας επιπέδου
+	Move Vector Mask	Μετακίνηση διανυσματικής μάσκας
+	Copy Vector Mask	Αντιγραφή διανυσματικής μάσκας
+	Save as:	Αποθήκευση ως:
+	Save Preset	Αποθήκευση προρύθμισης
+	Keep these two presets as one, listed with the others	Διατήρηση αυτών των δύο προρυθμίσεων ως μίας, μαζί με τις άλλες
+	Stop recording first	Σταματήστε πρώτα την εγγραφή
+	Select a step first	Επιλέξτε πρώτα ένα βήμα
+	This step has no dialog to record again	Αυτό το βήμα δεν έχει παράθυρο διαλόγου για νέα εγγραφή
+	Record Again…	Νέα εγγραφή…
+	Insert Menu Item…	Εισαγωγή στοιχείου μενού…
+	Insert Conditional…	Εισαγωγή συνθήκης…
+	Set Options…	Επιλογές συνόλου…
+	Action Options…	Επιλογές ενέργειας…
+	Playback Options…	Επιλογές αναπαραγωγής…
+	Allow Tool Recording	Να επιτρέπεται η εγγραφή εργαλείων
+	Record brush and other painting strokes, and the brush settings they use	Εγγραφή πινελιών και άλλων πινελιών ζωγραφικής, μαζί με τις ρυθμίσεις πινέλου που χρησιμοποιούν
+	Clear All Actions	Διαγραφή όλων των ενεργειών
+	Replace Actions…	Αντικατάσταση ενεργειών…
+	Delete the set “{name}”?	Διαγραφή του συνόλου «{name}»;
+	Delete the action “{name}”?	Διαγραφή της ενέργειας «{name}»;
+	Delete the selection?	Διαγραφή της επιλογής;
+	Function Key:	Πλήκτρο λειτουργίας:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Η ενέργεια έχει άλλη συντόμευση (Ορισμός συντόμευσης…)· ένα πλήκτρο που επιλέγετε εδώ την αντικαθιστά.
+	Accelerated	Επιταχυμένη
+	Step by Step	Βήμα προς βήμα
+	Pause For:	Παύση για:
+	seconds	δευτερόλεπτα
+	None Selected	Καμία επιλογή
+	Menu Item:	Στοιχείο μενού:
+	Type part of a menu item's name, then pick it below.	Πληκτρολογήστε μέρος του ονόματος ενός στοιχείου μενού και επιλέξτε το παρακάτω.
+	If Current:	Αν το τρέχον:
+	Then Play Action:	Τότε αναπαραγωγή ενέργειας:
+	Else Play Action:	Αλλιώς αναπαραγωγή ενέργειας:
+	Document Is Open	Το έγγραφο είναι ανοιχτό
+	Document Is Landscape	Το έγγραφο είναι οριζόντιο
+	Document Is Square	Το έγγραφο είναι τετράγωνο
+	Document Is Portrait	Το έγγραφο είναι κατακόρυφο
+	Document Mode Is RGB	Η λειτουργία του εγγράφου είναι RGB
+	Document Mode Is CMYK	Η λειτουργία του εγγράφου είναι CMYK
+	Document Mode Is Grayscale	Η λειτουργία του εγγράφου είναι Κλίμακα του γκρι
+	Document Mode Is Lab	Η λειτουργία του εγγράφου είναι Lab
+	Document Mode Is Bitmap	Η λειτουργία του εγγράφου είναι Bitmap
+	Document Mode Is Indexed	Η λειτουργία του εγγράφου είναι Χρώμα με ευρετήριο
+	Document Mode Is Duotone	Η λειτουργία του εγγράφου είναι Διτονική
+	Document Mode Is Multichannel	Η λειτουργία του εγγράφου είναι Πολυκαναλική
+	Document Is 8 Bits/Channel	Το έγγραφο είναι 8 bit/κανάλι
+	Document Is 16 Bits/Channel	Το έγγραφο είναι 16 bit/κανάλι
+	Document Is 32 Bits/Channel	Το έγγραφο είναι 32 bit/κανάλι
+	Document Has Unsaved Changes	Το έγγραφο έχει μη αποθηκευμένες αλλαγές
+	Document Has a Selection	Το έγγραφο έχει επιλογή
+	Document Has Layers	Το έγγραφο έχει επίπεδα
+	Document Has Alpha Channels	Το έγγραφο έχει κανάλια άλφα
+	Layer Is Background	Το επίπεδο είναι το φόντο
+	Layer Is a Pixel Layer	Το επίπεδο είναι επίπεδο εικονοστοιχείων
+	Layer Is an Adjustment Layer	Το επίπεδο είναι επίπεδο προσαρμογής
+	Layer Is a Shape Layer	Το επίπεδο είναι επίπεδο σχήματος
+	Layer Is a Type Layer	Το επίπεδο είναι επίπεδο κειμένου
+	Layer Is a Smart Object	Το επίπεδο είναι έξυπνο αντικείμενο
+	Layer Is a Group	Το επίπεδο είναι ομάδα
+	Layer Is Locked	Το επίπεδο είναι κλειδωμένο
+	Layer Is Visible	Το επίπεδο είναι ορατό
+	Layer Has Pixel Mask	Το επίπεδο έχει μάσκα εικονοστοιχείων
+	Layer Has Vector Mask	Το επίπεδο έχει διανυσματική μάσκα
+	Layer Has Effects	Το επίπεδο έχει εφέ
+	Pick a menu item first	Επιλέξτε πρώτα ένα στοιχείο μενού
+	Close gaps up to {px} px	Κλείσιμο κενών έως {px} px
+	Grow the selection under the lines, or shrink it	Επέκταση της επιλογής κάτω από τις γραμμές ή σμίκρυνσή της
 	Decrease Brush Size	Μείωση μεγέθους πινέλου
 	Increase Brush Size	Αύξηση μεγέθους πινέλου
 	Decrease Brush Hardness	Μείωση σκληρότητας πινέλου
@@ -4053,6 +4403,25 @@ curves	Smooth	Εξομάλυνση
 	In Front	Μπροστά
 	Behind	Πίσω
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Προσθήκη δεύτερης μάσκας  (από την επιλογή· το {key} αντιστρέφει)
+	Convert to Vector Mask	Μετατροπή σε διανυσματική μάσκα
+	Delete Second Mask	Διαγραφή δεύτερης μάσκας
+	Disable Second Mask	Απενεργοποίηση δεύτερης μάσκας
+	Enable Second Mask	Ενεργοποίηση δεύτερης μάσκας
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Κλείδωμα επιλογής: τα κλικ στον καμβά περνούν από μέσα (το πάνελ Επίπεδα την επιλέγει ακόμη)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Ορισμός τρέχοντος επιπέδου
+	Editing layer blocks the fill	Το επίπεδο επεξεργασίας σταματά το γέμισμα
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Η βαφή στο επίπεδο που γεμίζει σταματά το γέμισμα σε κάθε ανοχή και το γέμισμα μπαίνει πίσω της: ζωγραφίστε πάνω από ένα κενό για να το κλείσετε
+	Undo widens Close Gap	Η αναίρεση διευρύνει το Κλείσιμο κενών
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Κάθε αναίρεση γεμίσματος κλείνει μεγαλύτερα κενά στο επόμενο κλικ, μέχρι να επιλέξετε άλλο εργαλείο
+	Close Gap widened to {px} px: click again to fill	Το Κλείσιμο κενών διευρύνθηκε σε {px} px: κάντε ξανά κλικ για γέμισμα
+	Pick From	Επιλογή από
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Πόσο αδιαφανές πρέπει να είναι ένα επίπεδο κάτω από τον δείκτη για να το επιλέξουν το Ctrl-κλικ και η Αυτόματη επιλογή: πιο αχνά εικονοστοιχεία, όπως μια σχεδόν μαύρη μάσκα, παρακάμπτονται (0: κάθε ορατό εικονοστοιχείο)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Έχει οριστεί Blend If ή προηγμένη ανάμειξη: κάντε κλικ για τις Επιλογές ανάμειξης
 # DDS Options (#1327)
 	DDS Options	Επιλογές DDS
 	Generate Mipmaps	Δημιουργία mipmap
@@ -4084,6 +4453,38 @@ curves	Smooth	Εξομάλυνση
 	Start Size:	Αρχικό μέγεθος:
 	End Size:	Τελικό μέγεθος:
 	Save as Pattern	Αποθήκευση ως μοτίβο
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, επί πληρωμή)
+	Remove Selection	Αφαίρεση επιλογής
+	Remove what is selected ({key})	Αφαίρεση του επιλεγμένου ({key})
+	API Key…	Κλειδί API…
+	Change or remove the Google API key Nano Banana uses	Αλλαγή ή αφαίρεση του κλειδιού Google API που χρησιμοποιεί το Nano Banana
+	Set API Key…	Ορισμός κλειδιού API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Το Nano Banana χρειάζεται το δικό σας κλειδί Google API· μέχρι τότε το Αυτόματο χρησιμοποιεί το LaMa
+	No API key	Χωρίς κλειδί API
+	Nano Banana API Key	Κλειδί API του Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Το Nano Banana 2.1 εκτελείται στους διακομιστές της Google και χρεώνεται στον λογαριασμό σας Google: περίπου {small} ανά αφαίρεση, {large} για μεγάλες.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Η περιοχή γύρω από ό,τι αφαιρείτε στέλνεται στη Google, η οποία καλείται να μην τη διατηρήσει.
+	Get a key at	Πάρτε ένα κλειδί από το
+	A key is saved in the system's credential store.	Ένα κλειδί είναι αποθηκευμένο στη διαχείριση διαπιστευτηρίων του συστήματος.
+	Using the {var} environment variable.	Χρησιμοποιείται η μεταβλητή περιβάλλοντος {var}.
+	Google API key	Κλειδί Google API
+	Remove Saved Key	Αφαίρεση αποθηκευμένου κλειδιού
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Αυτό το σύστημα δεν έχει χώρο διαπιστευτηρίων που μπορεί να χρησιμοποιήσει το PhotoCraft: ορίστε αντί γι' αυτό τη μεταβλητή περιβάλλοντος {var}.
+	Mask image	Εικόνα μάσκας
+	Painted red	Βαμμένο κόκκινο
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Το Nano Banana λαμβάνει την εικόνα ως έχει και ξεχωριστή μάσκα της περιοχής προς αφαίρεση
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Το Nano Banana λαμβάνει την εικόνα με την περιοχή προς αφαίρεση βαμμένη κόκκινη, όπως στη διαδικασία του Photoshop
+	Close up	Από κοντά
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Το Nano Banana λαμβάνει την περιοχή γύρω από ό,τι αφαιρείτε, ώστε να τη σχεδιάσει σε περίπου διπλάσια ανάλυση από τη σελίδα
+	Whole page	Ολόκληρη σελίδα
+	Nano Banana gets the whole page: more to go on, but a softer result	Το Nano Banana λαμβάνει ολόκληρη τη σελίδα: περισσότερες πληροφορίες, αλλά πιο θολό αποτέλεσμα
+	Creative	Δημιουργικό
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Εμφάνιση όλων όσων σχεδίασε το Nano Banana, και όσων άλλαξε γύρω από την περιοχή που αφαιρείτε (η μάσκα του επιπέδου σβήνει στις άκρες)
+	Grain…	Κόκκος…
+	Roughness:	Τραχύτητα:
+	Color field	Πεδίο χρώματος
+	Color slider	Ρυθμιστικό χρώματος
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Επιβεβαιώστε ή ακυρώστε πρώτα το ανοιχτό παράθυρο βήματος της ενέργειας
 	Pro Medium Gray	Pro μεσαίου γκρι
@@ -4103,3 +4504,10 @@ curves	Smooth	Εξομάλυνση
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Δείγμα: καταγεγραμμένα χρώματα
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	Αφαίρεση με AI
+	Remove what is selected with Nano Banana ({key})	Αφαίρεση της επιλογής με το Nano Banana ({key})
+	Pin to Top	Καρφίτσωμα στην κορυφή
+	Unpin from Top	Ξεκαρφίτσωμα από την κορυφή

@@ -3936,6 +3936,357 @@ navigator	Zoom	Zvětšení
 	{path}: the path is not valid Unicode; save under another name.	{path}: cesta není platný Unicode; uložte soubor pod jiným názvem.
 	{name} was changed by another app after it was opened or saved here.	Soubor {name} změnila jiná aplikace poté, co byl zde otevřen nebo uložen.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Nahraďte ho tímto dokumentem, nebo zrušte a použijte Soubor › Uložit jako, abyste zachovali obojí.
+
+	Panel Icons	Ikony panelů
+	Move Tools panel	Přesunout panel Nástroje
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Přetažením přesunete panel Nástroje; pusťte jej u okraje plátna a ukotví se
+	New Document…	Nový dokument…
+	Open Document…	Otevřít dokument…
+	Delete Brushes	Odstranit štětce
+	Thumbnail size	Velikost miniatur
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Importovat akce Photoshopu
+	No Photoshop Actions palette was found on this computer	V tomto počítači nebyla nalezena paleta akcí Photoshopu
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Otevřeno v aplikaci Topaz Gigapixel AI: obrázek tam exportujte a vrátí se sem
+	Stopped waiting for Topaz Gigapixel AI	Čekání na Topaz Gigapixel AI ukončeno
+	Topaz Gigapixel AI's image could not be applied: {error}	Obrázek z Topaz Gigapixel AI nelze použít: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: zvětšeno {scale}× na {w} × {h} px (nová vrstva)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Čeká se na Topaz Gigapixel AI: zvětšený obrázek tam exportujte a vrátí se sem.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Načtena {n} akce v sadách ({sets}) ze souboru {file}|Načteny {n} akce v sadách ({sets}) ze souboru {file}|Načteno {n} akcí v sadách ({sets}) ze souboru {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Generativní AI zapnuto
+	Generative AI Off	Generativní AI vypnuto
+	Loading the AI model…	Načítání modelu AI…
+	AI model not installed	Model AI není nainstalován
+	AI model failed to load	Model AI se nepodařilo načíst
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Umístěte lama_fp32.onnx a ONNX Runtime (onnxruntime.dll, DirectML.dll) do jedné ze složek: {folders}. Do té doby režim „Automaticky“ používá běžnou výplň.
+	Model:	Model:
+	LaMa (fast)	LaMa (rychlý)
+	Diffusion (detailed)	Difuze (podrobná)
+	Prompt (optional)	Pokyn (nepovinný)
+	What should be there. Empty: the model's own guess.	Co tam má být. Prázdné: vlastní odhad modelu.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Vložte složku difuzního modelu a ONNX Runtime do jedné z: {folders}. Do té doby režim Auto používá LaMa.
+	Generative Fill…	Generativní výplň…
+	Center Canvas When Zoomed Out	Vycentrovat plátno při oddálení
+	High (slower)	Vysoká (pomalejší)
+	Quality:	Kvalita:
+	There is no such Topaz Gigapixel preset	Takové přednastavení Topaz Gigapixel neexistuje
+	Saved Topaz Gigapixel preset “{name}”	Přednastavení Topaz Gigapixel „{name}“ uloženo
+	New Preset	Nové přednastavení
+	Upscale:	Zvětšení:
+	With these settings	S tímto nastavením
+	With two presets	Dvěma přednastaveními
+	Save two presets with their own settings first; then this one can run them together.	Nejprve uložte dvě přednastavení s vlastním nastavením; toto je pak spustí společně.
+	First:	První:
+	Then:	Potom:
+	Results:	Výsledky:
+	One after the other	Jeden po druhém
+	Each on its own layer	Každý na vlastní vrstvě
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Obě přednastavení zvětší obraz; každý výsledek se stane vrstvou, kterou lze porovnat nebo prolnout.
+	The second preset upscales the first one's result.	Druhé přednastavení zvětší výsledek prvního.
+	Topaz Gigapixel Presets	Přednastavení Topaz Gigapixel
+	Manage Presets…	Spravovat přednastavení…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Uložené přednastavení spustíte z nabídky Soubor › Automatizace › Přednastavení Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Automaticky nechává volbu na Gigapixelu.
+	Denoise:	Odšumění:
+	Sharpen:	Doostření:
+	Fix Compression:	Opravit kompresi:
+	Face Recovery:	Obnova tváří:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Vyberte složku pro záznamy timelapse
+	Saved {name} ({seconds} s timelapse)	Uloženo {name} (timelapse {seconds} s)
+	Export Timelapse	Exportovat timelapse
+	Export Timelapse…	Exportovat timelapse…
+	Timelapse export cancelled	Export timelapse byl zrušen
+	Timelapse	Timelapse
+	Auto record	Automatické nahrávání
+	Records whatever document you're on, unless you paused it yourself.	Nahrává dokument, se kterým právě pracujete, pokud jste ho sami nepozastavili.
+	Open a document to record a timelapse.	Otevřete dokument, abyste mohli nahrát timelapse.
+	Recording (idle)	Nahrávání (nečinné)
+	Recording	Nahrávání
+	Click to pause	Kliknutím pozastavíte
+	Paused: click to resume	Pozastaveno: kliknutím pokračujte
+	Start recording	Spustit nahrávání
+	Pause Recording	Pozastavit nahrávání
+	Reference Layer	Referenční vrstva
+	Reference layer	Referenční vrstva
+	Recorded more since the last export	Od posledního exportu bylo nahráno více
+	Select a layer	Vyberte vrstvu
+	Not recorded: you see it, the timelapse doesn't	Nenahrává se: vy ji vidíte, timelapse ne
+	Recorded	Nahrává se
+	{count} of {total} not recorded	{count} z {total} se nenahrává
+	Reference	Referenční
+	Adds {tag} to the layer's name	Přidá {tag} k názvu vrstvy
+	Export again…	Exportovat znovu…
+	Export video…	Exportovat video…
+	Play video	Přehrát video
+	Show in folder	Zobrazit ve složce
+	Make:	Vytvořit:
+	Advanced settings	Pokročilá nastavení
+	Show the finished drawing first	Nejprve ukázat hotovou kresbu
+	Flash before the final image	Záblesk před konečným obrázkem
+	Hold the final image	Podržet konečný obrázek
+	Slow down at the end	Zpomalit na konci
+	Remove flicker	Odstranit blikání
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Vynechá snímky, které jen probliknou: vrstvu na chvíli skrytou, tah hned vrácený zpět.
+	Work-time counter	Počítadlo pracovního času
+	Bars:	Pruhy:
+	Fills the edges when the canvas size changed during the recording.	Vyplní okraje, když se během nahrávání změnila velikost plátna.
+	Folder:	Složka:
+	not chosen yet	zatím nevybráno
+	Choose…	Vybrat…
+	Remove frames with undo	Odstraňovat snímky při vrácení zpět
+	Reference tag:	Značka reference:
+	Work timer stops after:	Časovač práce se zastaví po:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Vytváří MP4. Automaticky hledá vedle PhotoCraftu, pak v PATH.
+	Choose the ffmpeg program on this computer	Vyberte program ffmpeg v tomto počítači
+	Opening files isn't available here	Otevírání souborů zde není k dispozici
+	MP4 video (ffmpeg)	Video MP4 (ffmpeg)
+	JPEG frames	Snímky JPEG
+	Bottom right	Vpravo dole
+	Bottom left	Vlevo dole
+	Top right	Vpravo nahoře
+	Top left	Vlevo nahoře
+	5 seconds	5 sekund
+	10 seconds	10 sekund
+	15 seconds	15 sekund
+	20 seconds	20 sekund
+	30 seconds	30 sekund
+	1 minute	1 minuta
+	2 minutes	2 minuty
+	5 minutes	5 minut
+@plural	{n} frame|{n} frames	{n} snímek|{n} snímky|{n} snímků
+	Refresh	Obnovit
+	Recordings will be listed here once you've chosen a folder.	Záznamy se tu zobrazí, jakmile zvolíte složku.
+	No recordings yet.	Zatím žádné záznamy.
+	Open folder	Otevřít složku
+	Delete frames	Smazat snímky
+	Delete folder	Smazat složku
+	Pause the recording first	Nejprve nahrávání pozastavte
+	REC	REC
+	EXPORTED	EXPORTOVÁNO
+	NOT EXPORTED	NEEXPORTOVÁNO
+	{time} work	{time} práce
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	Záznam „{name}“ ještě nebyl exportován. Pokud smažete jeho snímky ({frames}), už z něj nevytvoříte video. Tuto akci nelze vrátit.
+	Delete the {frames} of “{name}”?	Smazat snímky záznamu „{name}“ ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Od posledního exportu jste nahráli víc a tato část ve videu není.
+	Your videos and the work time are kept. This can't be undone.	Vaše videa a čas práce zůstanou zachovány. Tuto akci nelze vrátit.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Smazat záznam „{name}“ i jeho složku? Zmizí z knihovny i s časem práce. Exportovaná videa zůstanou tam, kam jste je uložili. Tuto akci nelze vrátit.
+	Frames deleted.	Snímky smazány.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Záznam „{name}“ smazán. Složka obsahuje jiné soubory, proto byla ponechána.
+	Deleted “{name}”.	Záznam „{name}“ smazán.
+@plural	{n} recording|{n} recordings	{n} záznam|{n} záznamy|{n} záznamů
+	Save Preset from Last Upscale…	Uložit přednastavení z posledního zvětšení…
+	No upscale has come back from Topaz Gigapixel AI yet	Z Topaz Gigapixel AI se zatím nevrátilo žádné zvětšení
+	Detail:	Detail:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: zvětšeno {scale}× na {w} × {h} px (nová vrstva). Tato nastavení si ponecháte přes Přednastavení Topaz Gigapixel › Uložit přednastavení z posledního zvětšení
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Uloženo {name} (video {seconds}).
+	Export failed: {error}	Export se nezdařil: {error}
+	Export cancelled.	Export byl zrušen.
+	just now	právě teď
+	{n} min ago	před {n} min
+	{n} h ago	před {n} h
+	yesterday	včera
+	{n} days ago	před {n} dny
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Menší soubory a nejrychlejší zachytávání. Stačí pro rychlé skici a náhledy.
+	Sharper video for big screens. Uses about twice the disk space.	Ostřejší video pro velké obrazovky. Zabere asi dvojnásobek místa na disku.
+	Full-HD video, good for social media. Recommended.	Video ve Full HD, vhodné pro sociální sítě. Doporučeno.
+	idle	nečinné
+	Record	Nahrávat
+	Paused	Pozastaveno
+	Click to resume recording	Kliknutím obnovíte nahrávání
+	Open a document to record it.	Otevřete dokument, abyste ho mohli nahrávat.
+	You'll be asked where to save recordings.	Budete dotázáni, kam záznamy ukládat.
+	Export again	Exportovat znovu
+	Export video	Exportovat video
+	Show the export results	Zobrazit výsledky exportu
+	Hide the export results	Skrýt výsledky exportu
+	≈ {seconds} video from {frames}.	≈ {seconds} videa z {frames}.
+	Cancel export	Zrušit export
+	Frames	Snímky
+	Timer	Časovač
+	On disk	Na disku
+	Hide the live preview	Skrýt živý náhled
+	Show the newest frame	Zobrazit nejnovější snímek
+	No frames yet — just start drawing	Zatím žádné snímky — prostě začněte kreslit
+	No frames yet	Zatím žádné snímky
+	No layer selected	Není vybrána žádná vrstva
+	{n} layers selected	Vybrané vrstvy: {n}
+	Not recorded	Nenahrává se
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Referenční vrstva funguje jako běžná vrstva, ale v timelapse se neobjeví.
+	Export settings	Nastavení exportu
+	Make video with	Vytvořit video pomocí
+	Bars colour	Barva pruhů
+	Bars fill the empty space when the canvas size changed during recording.	Pruhy vyplní prázdné místo, když se během nahrávání změnila velikost plátna.
+	Show finished drawing first	Nejprve ukázat hotovou kresbu
+	Hold final image	Podržet konečný obrázek
+	Show work-time counter	Zobrazit počítadlo pracovního času
+	Record something in this document to see how long the video will be.	Nahrajte v tomto dokumentu něco, abyste viděli, jak dlouhé bude video.
+	≈ {seconds} video	≈ {seconds} videa
+	{n} recorded frames	Nahrané snímky: {n}
+	Auto shows every frame once (at least 5 s, at most 1 min).	Automaticky ukáže každý snímek jednou (nejméně 5 s, nejvýše 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Velikost plátna se během nahrávání změnila; dřívější snímky se vejdou do konečné velikosti.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Odstranění blikání vynechá snímky, které jen probliknou (vrstvu na chvíli skrytou, tah hned vrácený zpět), takže video může být o něco kratší.
+	Recordings folder	Složka záznamů
+	Not chosen yet — see Settings	Zatím nevybráno — viz Nastavení
+	recorded {when}	nahráno {when}
+	Recorded more since the last export.	Od posledního exportu bylo nahráno více.
+	Frames folder	Složka snímků
+	Not chosen yet	Zatím nevybráno
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Kde se uchovávají nahrané snímky. Videa se ukládají tam, kam zvolíte při exportu.
+	Choose folder…	Vybrat složku…
+	Change folder…	Změnit složku…
+	Recording quality	Kvalita záznamu
+	Undoing something removes those recorded frames.	Vrácení zpět odstraní příslušné nahrané snímky.
+	Reference layers	Referenční vrstvy
+	Name tag	Značka v názvu
+	Layers with this in their name are left out of the timelapse.	Vrstvy, které toto mají v názvu, se do timelapse nedostanou.
+	Work timer	Časovač práce
+	Idle after	Nečinnost po
+	The timer stops counting after this long without activity.	Časovač přestane počítat po této době bez činnosti.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (rychlé)
+	Dark grey	Tmavě šedá
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 sekund
+	Run Two Presets…	Spustit dvě přednastavení…
+	Run Two Topaz Gigapixel Presets	Spustit dvě přednastavení Topaz Gigapixel
+	Run	Spustit
+	Set Shortcut…	Nastavit klávesovou zkratku…
+	Action Shortcut	Klávesová zkratka akce
+	No shortcut.	Bez klávesové zkratky.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} je také zkratkou pro {commands}: místo toho spustí tuto akci.
+	Press the keys that play “{action}”.	Stiskněte klávesy, které spustí „{action}“.
+	Shortcut:	Klávesová zkratka:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Funguje jakákoli klávesa, s Ctrl, Alt a Shift. Backspace zkratku odebere.
+	The action no longer exists.	Akce už neexistuje.
+	Fill Tool	Nástroj Výplň
+	Nothing to fill there	Tam není co vyplnit
+	No enclosed area to fill there	Není tam žádná uzavřená oblast k vyplnění
+	Fill: click an area	Výplň: klepněte na oblast
+	Enclose and Fill: draw round the areas to fill	Ohraničit a vyplnit: obtáhněte oblasti k vyplnění
+	Paint Unfilled Area: paint over the gaps a fill left	Vybarvit nevyplněné: přetřete mezery, které výplň vynechala
+	Refer	Odkaz
+	Editing Layer	Upravovaná vrstva
+	Selected Layers	Vybrané vrstvy
+	Layers in Folder	Vrstvy ve složce
+	Reference Layers	Referenční vrstvy
+	Exclude	Vyloučit
+	Editing layer	Upravovaná vrstva
+	Text layers	Textové vrstvy
+	Locked layers	Zamčené vrstvy
+	Layers the fill doesn't read	Vrstvy, které výplň nečte
+	Close Gap	Uzavřít mezeru
+	Treat gaps in the lines up to this wide as closed (0: off)	Mezery v čarách až do této šířky brát jako uzavřené (0: vypnuto)
+	Area Scaling	Změna velikosti oblasti
+	Grow the fill under the lines, or shrink it	Rozšířit výplň pod čáry, nebo ji zmenšit
+	To Darkest Pixel	K nejtmavšímu pixelu
+	Follow Adjacent Pixels	Sledovat sousední pixely
+	White and Transparent	Bílá a průhledná
+	Image Border	Okraj obrazu
+	The canvas edge closes gaps as a line does	Okraj plátna uzavírá mezery jako čára
+	Reference layer: the Fill tool reads it	Referenční vrstva: čte ji nástroj Výplň
+	Set as Reference Layer	Nastavit jako referenční vrstvu
+	Clear Reference Layer	Zrušit referenční vrstvu
+	Fill Tool Options	Možnosti nástroje Výplň
+	Size Key Repeat	Opakování kláves velikosti
+	Holding [ or ] to resize the brush	Držení [ nebo ] pro změnu velikosti štětce
+	Pause before repeating	Pauza před opakováním
+	Wait half a second before the size keeps changing, as typing does	Počkat půl sekundy, než se velikost začne dál měnit, jako při psaní
+	Change every	Měnit každých
+	Sample on Alt	Vzorkovat při Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Při kreslicím nástroji stisk Alt hned převezme barvu pod ukazatelem
+	Hold:	Držet:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Jak dlouho držet Alt, než bude fungovat jako obvyklé Kapátko: pipeta a vzorkování kliknutím
+	Move Layer Mask	Přesunout masku vrstvy
+	Copy Layer Mask	Kopírovat masku vrstvy
+	Move Vector Mask	Přesunout vektorovou masku
+	Copy Vector Mask	Kopírovat vektorovou masku
+	Save as:	Uložit jako:
+	Save Preset	Uložit přednastavení
+	Keep these two presets as one, listed with the others	Uložit tato dvě přednastavení jako jedno, uvedené s ostatními
+	Stop recording first	Nejprve zastavte záznam
+	Select a step first	Nejprve vyberte krok
+	This step has no dialog to record again	Tento krok nemá dialogové okno, které by šlo znovu zaznamenat
+	Record Again…	Zaznamenat znovu…
+	Insert Menu Item…	Vložit položku nabídky…
+	Insert Conditional…	Vložit podmínku…
+	Set Options…	Volby sady…
+	Action Options…	Volby akce…
+	Playback Options…	Volby přehrávání…
+	Allow Tool Recording	Povolit záznam nástrojů
+	Record brush and other painting strokes, and the brush settings they use	Zaznamenávat tahy štětcem a dalšími malířskými nástroji i nastavení štětce, které používají
+	Clear All Actions	Vymazat všechny akce
+	Replace Actions…	Nahradit akce…
+	Create new set	Vytvořit novou sadu
+	Delete the set “{name}”?	Odstranit sadu „{name}“?
+	Delete the action “{name}”?	Odstranit akci „{name}“?
+	Delete the selection?	Odstranit výběr?
+	Function Key:	Funkční klávesa:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Akce má jinou klávesovou zkratku (Nastavit zkratku…); klávesa vybraná zde ji nahradí.
+	Accelerated	Zrychleně
+	Step by Step	Krok za krokem
+	Pause For:	Pozastavit na:
+	seconds	s
+	None Selected	Nic nevybráno
+	Menu Item:	Položka nabídky:
+	Type part of a menu item's name, then pick it below.	Napište část názvu položky nabídky a pak ji vyberte níže.
+	If Current:	Pokud aktuální:
+	Then Play Action:	Pak přehrát akci:
+	Else Play Action:	Jinak přehrát akci:
+	Document Is Open	Dokument je otevřený
+	Document Is Landscape	Dokument je na šířku
+	Document Is Square	Dokument je čtvercový
+	Document Is Portrait	Dokument je na výšku
+	Document Mode Is RGB	Režim dokumentu je RGB
+	Document Mode Is CMYK	Režim dokumentu je CMYK
+	Document Mode Is Grayscale	Režim dokumentu je Stupně šedi
+	Document Mode Is Lab	Režim dokumentu je Lab
+	Document Mode Is Bitmap	Režim dokumentu je Bitová mapa
+	Document Mode Is Indexed	Režim dokumentu je Indexované barvy
+	Document Mode Is Duotone	Režim dokumentu je Duplex
+	Document Mode Is Multichannel	Režim dokumentu je Vícekanálový
+	Document Is 8 Bits/Channel	Dokument má 8 bitů/kanál
+	Document Is 16 Bits/Channel	Dokument má 16 bitů/kanál
+	Document Is 32 Bits/Channel	Dokument má 32 bitů/kanál
+	Document Has Unsaved Changes	Dokument má neuložené změny
+	Document Has a Selection	Dokument má výběr
+	Document Has Layers	Dokument má vrstvy
+	Document Has Alpha Channels	Dokument má alfa kanály
+	Layer Is Background	Vrstva je pozadí
+	Layer Is a Pixel Layer	Vrstva je obrazová vrstva
+	Layer Is an Adjustment Layer	Vrstva je vrstva úprav
+	Layer Is a Shape Layer	Vrstva je vrstva tvaru
+	Layer Is a Type Layer	Vrstva je textová vrstva
+	Layer Is a Smart Object	Vrstva je inteligentní objekt
+	Layer Is a Group	Vrstva je skupina
+	Layer Is Locked	Vrstva je zamčená
+	Layer Is Visible	Vrstva je viditelná
+	Layer Has Pixel Mask	Vrstva má obrazovou masku
+	Layer Has Vector Mask	Vrstva má vektorovou masku
+	Layer Has Effects	Vrstva má efekty
+	Pick a menu item first	Nejprve vyberte položku nabídky
+	Close gaps up to {px} px	Uzavřít mezery do {px} px
+	Grow the selection under the lines, or shrink it	Rozšířit výběr pod čáry, nebo ho zmenšit
 	Decrease Brush Size	Zmenšit velikost štětce
 	Increase Brush Size	Zvětšit velikost štětce
 	Decrease Brush Hardness	Snížit tvrdost štětce
@@ -4098,6 +4449,25 @@ cameraRaw	Dehaze	Odstranění oparu
 	In Front	Vpředu
 	Behind	Vzadu
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Přidat druhou masku  (z výběru; {key} invertuje)
+	Convert to Vector Mask	Převést na vektorovou masku
+	Delete Second Mask	Odstranit druhou masku
+	Disable Second Mask	Vypnout druhou masku
+	Enable Second Mask	Zapnout druhou masku
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Zamknout výběr: kliknutí na plátno projde skrz (panel Vrstvy ji stále vybere)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Nastavit aktuální vrstvu
+	Editing layer blocks the fill	Upravovaná vrstva zastaví výplň
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Malba na vyplňované vrstvě zastaví výplň při jakékoli toleranci a výplň se dostane pod ni: přetažením přes mezeru ji uzavřete
+	Undo widens Close Gap	Zpět rozšíří Uzavřít mezeru
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Každé Zpět u výplně uzavře pro další kliknutí větší mezery, dokud nezvolíte jiný nástroj
+	Close Gap widened to {px} px: click again to fill	Uzavřít mezeru rozšířeno na {px} px: klikněte znovu pro vyplnění
+	Pick From	Vybírat od
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Jak neprůhledná musí být vrstva pod ukazatelem, aby ji Ctrl+klik a Automatický výběr vybraly: slabší pixely, například téměř černá maska, se proklikne (0: jakýkoli viditelný pixel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Je nastaveno Prolnout když nebo pokročilé prolnutí: klepnutím otevřete Možnosti prolnutí
 # DDS Options (#1327)
 	DDS Options	Možnosti DDS
 	Generate Mipmaps	Generovat mipmapy
@@ -4129,6 +4499,38 @@ cameraRaw	Dehaze	Odstranění oparu
 	Start Size:	Počáteční velikost:
 	End Size:	Konečná velikost:
 	Save as Pattern	Uložit jako vzorek
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, placené)
+	Remove Selection	Odstranit výběr
+	Remove what is selected ({key})	Odstranit, co je vybráno ({key})
+	API Key…	Klíč API…
+	Change or remove the Google API key Nano Banana uses	Změnit nebo odebrat klíč Google API, který Nano Banana používá
+	Set API Key…	Nastavit klíč API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana potřebuje váš vlastní klíč Google API; do té doby Auto použije LaMa
+	No API key	Žádný klíč API
+	Nano Banana API Key	Klíč API pro Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 běží na serverech Googlu a účtuje se na váš účet Google: asi {small} za odstranění, {large} za velká.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Okolí toho, co odstraňujete, se odešle Googlu, který je požádán, aby si ho neuchovával.
+	Get a key at	Klíč získáte na
+	A key is saved in the system's credential store.	Klíč je uložen ve správci přihlašovacích údajů systému.
+	Using the {var} environment variable.	Používá se proměnná prostředí {var}.
+	Google API key	Klíč Google API
+	Remove Saved Key	Odebrat uložený klíč
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Tento systém nemá úložiště přihlašovacích údajů, které by PhotoCraft mohl použít: nastavte místo toho proměnnou prostředí {var}.
+	Mask image	Obrázek masky
+	Painted red	Natřeno červeně
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana dostane obraz beze změny a samostatnou masku oblasti k odstranění
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana dostane obraz s oblastí k odstranění natřenou červeně, jako při postupu ve Photoshopu
+	Close up	Zblízka
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana dostane oblast kolem toho, co odstraňujete, takže ji nakreslí asi v dvojnásobném rozlišení stránky
+	Whole page	Celá stránka
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana dostane celou stránku: víc podkladů, ale měkčí výsledek
+	Creative	Kreativní
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Zobrazit vše, co Nano Banana nakreslila, i to, co změnila kolem odstraňované oblasti (maska vrstvy se k okrajům vytrácí)
+	Grain…	Zrno…
+	Roughness:	Drsnost:
+	Color field	Barevné pole
+	Color slider	Barevný posuvník
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Nejprve potvrďte nebo zrušte otevřený dialog kroku akce
 	Pro Medium Gray	Pro (středně šedý)
@@ -4148,3 +4550,10 @@ cameraRaw	Dehaze	Odstranění oparu
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Vzorek: zaznamenané barvy
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	AI odstranění
+	Remove what is selected with Nano Banana ({key})	Odstranit vybrané pomocí Nano Banana ({key})
+	Pin to Top	Připnout nahoru
+	Unpin from Top	Odepnout shora

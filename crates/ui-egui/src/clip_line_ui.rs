@@ -111,7 +111,7 @@ pub fn show(ui: &mut egui::Ui, doc: &Document, actions: &mut Vec<(String, Value)
     // PhotoCraft's own cursors: a hooked arrow onto the layer below, and the same arrow with a
     // small "no" badge to release. The arrow's tip, (15, 16) of the 24-unit box, is the hot spot.
     let icon = if line.release { "clip-release" } else { "clip-below" };
-    crate::icons::cursor(&ctx, icon, p, vec2(15.0, 16.0) / 24.0, CURSOR_SIZE);
+    crate::icons::cursor(&ctx, icon, p, vec2(15.0, 16.0) / 24.0, CURSOR_SIZE, false);
     ctx.set_cursor_icon(egui::CursorIcon::None);
     if resp.clicked() {
         let key = format!("clip-line:{}:{}", line.upper.0, ctx.cumulative_pass_nr());

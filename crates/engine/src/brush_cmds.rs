@@ -155,10 +155,9 @@ pub fn merge_brush(base: &BrushSettings, patch: &Value, cmd: &str) -> Result<Bru
     if let Some(p) = pattern {
         out.texture.pattern = p;
     }
+    // A new diameter takes the Dual Brush tip with it, unless the patch sets the tip's own size.
     if patch.get("size").is_some() && !touches(&["dualBrush", "size"]) {
-        let new_size = out.size;
-        out.size = base.size;
-        out.resize_with_dual_brush(new_size);
+        out.scale_dual_with_size(base.size);
     }
     Ok(out)
 }
@@ -205,7 +204,13 @@ pub fn resolve_brush(s: &Session, p: &Value, cmd: &str) -> Result<BrushSettings>
     // A library preset's tips stay on disk until a stroke uses them (#1843).
     s.load_brush_tips(&mut b).map_err(|e| bad(cmd, e))?;
     if let Some(v) = num(p, "size") {
-        b.resize_with_dual_brush(v.max(0.5));
+        let before = b.size;
+        b.size = v.max(0.5);
+        // The Dual Brush tip keeps its proportion (see `scale_dual_with_size`), unless the
+        // `brush` patch sets its size.
+        if p.get("brush").and_then(|i| i.get("dualBrush")).and_then(|d| d.get("size")).is_none() {
+            b.scale_dual_with_size(before);
+        }
     }
     if let Some(v) = num(p, "hardness") {
         b.hardness = v.clamp(0.0, 1.0);
@@ -820,7 +825,9 @@ fn presets_save(s: &mut Session, p: &Value) -> Result<Value> {
     if captures.color {
         brush.color = s.tools.foreground;
     }
-    upsert(s, BrushPreset { name: name.clone(), brush, builtin: false, group: String::new(), folder: Vec::new(), captures });
+    // Photoshop's tool presets: picking one switches to its tool (`brush`, `eraser`, …).
+    let tool = p.get("tool").and_then(Value::as_str).filter(|t| photocraft_paint::brush::PRESET_TOOLS.contains(t)).map(str::to_string);
+    upsert(s, BrushPreset { name: name.clone(), brush, builtin: false, group: String::new(), folder: Vec::new(), captures, tool });
     // The saved brush is the current brush now (Photoshop selects the brush it just saved).
     s.tools.current_preset = Some(name.clone());
     s.tools.brush_changed();
@@ -929,7 +936,18 @@ fn define_from_selection(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     let (brush, tw, th) = sampled_brush(cmd, &v, w, h)?;
-    upsert(s, BrushPreset { name: name.clone(), brush: brush.clone(), builtin: false, group: String::new(), folder: Vec::new(), captures: Default::default() });
+    upsert(
+        s,
+        BrushPreset {
+            name: name.clone(),
+            brush: brush.clone(),
+            builtin: false,
+            group: String::new(),
+            folder: Vec::new(),
+            captures: Default::default(),
+            tool: None,
+        },
+    );
     s.tools.brush = brush;
     s.tools.current_preset = Some(name.clone());
     s.tools.brush_changed();
@@ -984,6 +1002,7 @@ pub(crate) fn set_brush(s: &mut Session, p: &Value) -> Result<Value> {
     if reset {
         b = BrushSettings::default();
     }
+    // `merge_brush` takes the Dual Brush tip along with a new diameter.
     let mut patch = p.clone();
     if let Some(o) = patch.as_object_mut() {
         for k in ["preset", "reset", "coalesce"] {
@@ -1044,11 +1063,17 @@ pub fn remember_brush(s: &mut Session) {
     s.tools.brush_saved_rev = s.tools.brush_rev;
 }
 
-/// The current brush as JSON for `Preferences::last_brush`: settings plus tip references, no full
-/// bitmap. `None` while a sampled bitmap too big to embed is current (only before the store
-/// externalizes it; see [`ref_tip`]), so the previous remembered brush stands.
+/// The current brush as JSON for `Preferences::last_brush` (see [`remembered`]).
 fn remembered_brush(s: &Session) -> Option<Value> {
-    Some(json!({ "preset": s.tools.current_preset.clone(), "brush": remembered_settings(&s.tools.brush)? }))
+    remembered(&s.tools.brush, s.tools.current_preset.as_deref())
+}
+
+/// A brush as remembered in the preferences (`Preferences::last_brush`, each tool's in
+/// `Preferences::tool_brushes`): its settings ([`remembered_settings`]) and the preset it was
+/// picked from. `None` while a sampled bitmap too big to embed is in it, so the previous
+/// remembered brush stands.
+pub fn remembered(b: &BrushSettings, preset: Option<&str>) -> Option<Value> {
+    Some(json!({ "preset": preset, "brush": remembered_settings(b)? }))
 }
 
 /// A brush as JSON for the preferences (the last brush, each painting tool's own brush): its
@@ -1061,12 +1086,27 @@ pub fn remembered_settings(b: &BrushSettings) -> Option<Value> {
     serde_json::to_value(&c).ok()
 }
 
-/// A brush remembered by [`remembered_settings`], read back at launch: `None` when the value is
-/// not a brush or fails the checks `tools.setBrush` makes (a size or scatter out of range). The
-/// options-bar values are clamped to the ranges their controls allow (size 1..max px; hardness,
-/// opacity, flow and smoothing 0..100 %), and stored tips load when the store is attached (else
+/// A brush [`remembered`] in the preferences, read back: the settings ([`settings_read_back`])
+/// and the preset name. `None` for a missing, malformed or out-of-range value. Its stored tips
+/// are references until the preset store loads them ([`Session::load_brush_tips`]).
+pub fn recalled(v: &Value) -> Option<(BrushSettings, Option<String>)> {
+    let b = settings_read_back(v.get("brush")?)?;
+    Some((b, v.get("preset").and_then(Value::as_str).map(str::to_string)))
+}
+
+/// A brush remembered by [`remembered_settings`], read back with its stored tips loaded (else
 /// they paint with their previews until `Session::attach_preset_store`).
 pub fn restored_settings(s: &Session, v: &Value) -> Option<BrushSettings> {
+    let mut b = settings_read_back(v)?;
+    let _ = s.load_brush_tips(&mut b);
+    Some(b)
+}
+
+/// [`remembered_settings`] read back: `None` when the value is not a brush or fails the checks
+/// `tools.setBrush` makes (a size or scatter out of range). The options-bar values are clamped to
+/// the ranges their controls allow (size 1..max px; hardness, opacity, flow and smoothing
+/// 0..100 %), over the defaults so a field added since still gets its default.
+fn settings_read_back(v: &Value) -> Option<BrushSettings> {
     if !v.is_object() {
         return None;
     }
@@ -1076,17 +1116,16 @@ pub fn restored_settings(s: &Session, v: &Value) -> Option<BrushSettings> {
     for f in [&mut b.hardness, &mut b.opacity, &mut b.flow, &mut b.smoothing.amount] {
         *f = if f.is_nan() { 1.0 } else { f.clamp(0.0, 1.0) };
     }
-    let _ = s.load_brush_tips(&mut b);
     Some(b)
 }
 
 /// Restore `Preferences::last_brush` into the session at launch (a missing or malformed value
 /// keeps the default brush). Stored tips load when the preset store attaches.
 pub fn restore_brush(s: &mut Session) {
-    let v = s.prefs().last_brush.clone();
-    let Some(b) = v.get("brush").and_then(|b| restored_settings(s, b)) else { return };
+    let Some((mut b, preset)) = recalled(&s.prefs().last_brush) else { return };
+    let _ = s.load_brush_tips(&mut b);
     s.tools.brush = b;
-    s.tools.current_preset = v.get("preset").and_then(Value::as_str).map(str::to_string);
+    s.tools.current_preset = preset;
     // What was just restored is exactly what the preferences hold: nothing new to write.
     s.tools.brush_saved_rev = s.tools.brush_rev;
 }
@@ -1222,7 +1261,7 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!(
             "brush.presets.save",
             "Save Brush Preset",
-            r##"{"name":string,"brush":{…BrushSettings}?=current brush,"captureSize":bool=true (false: picking it keeps the tool's size),"toolSettings":bool=true (false: picking it keeps the tool's mode, opacity, flow and pressure buttons),"color":bool=false (picking it sets the foreground to the current foreground)}"##,
+            r##"{"name":string,"brush":{…BrushSettings}?=current brush,"captureSize":bool=true (false: picking it keeps the tool's size),"toolSettings":bool=true (false: picking it keeps the tool's mode, opacity, flow and pressure buttons),"color":bool=false (picking it sets the foreground to the current foreground),"tool":"brush"|"pencil"|"eraser"|"smudge"|"mixerBrush"? (picking it switches to that tool)}"##,
             always,
             presets_save,
             true

@@ -45,7 +45,7 @@ fn tip16(w: u32, h: u32, seed: u32) -> GrayTile {
 
 fn sampled(name: &str, group: &str, tip: GrayTile) -> BrushPreset {
     let brush = BrushSettings { size: 42.0, spacing: 0.1, tip: TipShape::Sampled(tip), ..Default::default() };
-    BrushPreset { name: name.into(), brush, builtin: false, group: group.into(), folder: Vec::new(), captures: Default::default() }
+    BrushPreset { name: name.into(), brush, builtin: false, group: group.into(), folder: Vec::new(), captures: Default::default(), tool: None }
 }
 
 fn user(s: &Session) -> Vec<BrushPreset> {
@@ -293,6 +293,31 @@ fn reordering_presets_and_groups_persists() {
     let (t, _) = session(&dir);
     assert_eq!(names(&t), names(&s));
     assert!(t.tools.presets.iter().all(|p| p.group != "Washes" && p.group != "Inks"));
+}
+
+/// Loose presets (no group) share one file; ones on both sides of a group keep their places
+/// after a restart, as `brush.presets.moveItems` leaves them.
+#[test]
+fn loose_presets_between_groups_keep_their_places() {
+    let names = |s: &Session| s.tools.presets.iter().filter(|p| !p.builtin).map(|p| (p.name.clone(), p.group.clone())).collect::<Vec<_>>();
+    let dir = TempDir::new("loose");
+    let (mut s, _) = session(&dir);
+    for (n, g) in [("Loose 1", ""), ("Ink 1", "Inks"), ("Loose 2", ""), ("Wash", "Washes")] {
+        s.execute("brush.presets.save", json!({"name": n})).unwrap();
+        s.tools.presets.iter_mut().find(|p| p.name == n).unwrap().group = g.into();
+    }
+    s.brush_presets_changed();
+    s.sync_preset_store();
+    let (t, w) = session(&dir);
+    assert!(w.is_empty(), "{w:?}");
+    assert_eq!(names(&t), names(&s), "the loose presets stay on both sides of Inks");
+    // A loose preset moved between the two groups.
+    s.execute("brush.presets.moveItems", json!({"items": [{"preset": "Loose 1"}], "before": {"folder": "Washes"}})).unwrap();
+    let (t, _) = session(&dir);
+    assert_eq!(
+        names(&t),
+        [("Ink 1".to_string(), "Inks".to_string()), ("Loose 2".into(), "".into()), ("Loose 1".into(), "".into()), ("Wash".into(), "Washes".into())]
+    );
 }
 
 #[test]

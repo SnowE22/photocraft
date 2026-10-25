@@ -134,6 +134,7 @@ pub fn editor(ui: &mut egui::Ui, kind: &str, v: &mut Value, cx: &EditorCx) -> Ed
         "posterize" => sliders(ui, v, &[("levels", "Levels", 2.0, 255.0, 4.0, "", None)]),
         "threshold" => threshold(ui, v, cx),
         "gradientMap" => gradient_map(ui, v, cx),
+        "grain" => grain(ui, v),
         _ => Edit::default(),
     }
 }
@@ -409,30 +410,71 @@ fn set_pencil(v: &mut Value, pencil: bool, gray: bool) -> bool {
     true
 }
 
-/// Mode buttons above the graph: points, pencil, and Smooth for the shown channel's drawing.
-fn curves_mode_row(ui: &mut egui::Ui, v: &mut Value, key: &str, gray: bool) -> Edit {
+/// The Curves graph's fixed size (graph plus its gradient bars), as in Photoshop: it keeps this
+/// size whatever the panel's height, and shrinks only to fit a panel too narrow for it (not
+/// below [`CURVES_MIN_SIDE`]).
+pub const CURVES_SIDE: f32 = 236.0;
+pub const CURVES_MIN_SIDE: f32 = 150.0;
+/// The tool column left of the graph: its buttons' size and the gap between them.
+pub const CURVES_TOOL: f32 = 28.0;
+pub const CURVES_TOOL_GAP: f32 = 4.0;
+/// The room the Properties panel's three eyedroppers take at the top of the tool column
+/// (`layer_picker::controls_in`); the modal dialog shows them in a row of its own.
+pub const CURVES_PICKER_SLOTS_H: f32 = CURVES_TOOL * 3.0 + CURVES_TOOL_GAP * 2.0;
+
+/// Where the Properties panel's eyedroppers go in the Curves tool column this frame.
+pub fn curves_picker_slots_id(mem: egui::Id) -> egui::Id {
+    mem.with("curves-picker-slots")
+}
+
+/// The Curves input sliders' triangles (under the gradient bar): width and height.
+const CURVES_SLIDER_W: f32 = 9.0;
+const CURVES_SLIDER_H: f32 = 7.0;
+
+/// The space left of the Curves tool column that centres it and a graph of `side` in `width`.
+fn curves_indent(width: f32, side: f32, gap: f32) -> f32 {
+    let w = CURVES_TOOL + gap + side;
+    if width.is_finite() && w.is_finite() { ((width - w) / 2.0).max(0.0) } else { 0.0 }
+}
+
+/// Moves the curve's black (or `white`) end point to `input` (0..255), keeping its output and
+/// staying clear of its neighbour: Photoshop's input sliders. True when it moved.
+fn curves_input_slider(pts: &mut [[f32; 2]], white: bool, input: f32) -> bool {
+    let i = if white { pts.len().saturating_sub(1) } else { 0 };
+    let Some(q) = pts.get(i).copied() else { return false };
+    input.is_finite() && curve_edit::move_to(pts, i, [input, q[1]])
+}
+
+/// The point and pencil buttons, one above the other in the tool column (Photoshop's curve
+/// buttons).
+fn curves_mode_buttons(ui: &mut egui::Ui, v: &mut Value, gray: bool) -> Edit {
     let pencil = v.get("pencil").and_then(Value::as_bool).unwrap_or(false);
     let mut e = Edit::default();
-    ui.horizontal(|ui| {
-        if crate::icons::button(ui, "spline", 24.0, !pencil, tl!("Edit points to modify the curve")).clicked() && pencil {
-            e.add(Edit::discrete(set_pencil(v, false, gray)));
-        }
-        if crate::icons::button(ui, "pencil", 24.0, pencil, tl!("Draw to modify the curve")).clicked() && !pencil {
-            e.add(Edit::discrete(set_pencil(v, true, gray)));
-        }
-        let label = crate::i18n::tr_ctx(crate::i18n::current(), "curves", "Smooth");
-        let smooth = ui
-            .add_enabled_ui(pencil, |ui| widgets::secondary_button(ui, label, 0.0))
-            .inner
-            .on_hover_text(tl!("Smooth the curve values"))
-            .on_disabled_hover_text(tl!("Smooth the curve values"));
-        if smooth.clicked() {
-            let mut map = read_map(v, key);
-            adjust_params::smooth_curve_map(&mut map);
-            write_map(v, key, &map);
-            e.add(Edit::discrete(true));
-        }
-    });
+    if crate::icons::button(ui, "spline", CURVES_TOOL, !pencil, tl!("Edit points to modify the curve")).clicked() && pencil {
+        e.add(Edit::discrete(set_pencil(v, false, gray)));
+    }
+    if crate::icons::button(ui, "pencil", CURVES_TOOL, pencil, tl!("Draw to modify the curve")).clicked() && !pencil {
+        e.add(Edit::discrete(set_pencil(v, true, gray)));
+    }
+    e
+}
+
+/// Smooth, under the graph: smooths the shown channel's drawing (pencil mode only).
+fn curves_smooth(ui: &mut egui::Ui, v: &mut Value, key: &str) -> Edit {
+    let pencil = v.get("pencil").and_then(Value::as_bool).unwrap_or(false);
+    let mut e = Edit::default();
+    let label = crate::i18n::tr_ctx(crate::i18n::current(), "curves", "Smooth");
+    let smooth = ui
+        .add_enabled_ui(pencil, |ui| widgets::secondary_button(ui, label, 0.0))
+        .inner
+        .on_hover_text(tl!("Smooth the curve values"))
+        .on_disabled_hover_text(tl!("Smooth the curve values"));
+    if smooth.clicked() {
+        let mut map = read_map(v, key);
+        adjust_params::smooth_curve_map(&mut map);
+        write_map(v, key, &map);
+        e.add(Edit::discrete(true));
+    }
     e
 }
 
@@ -457,13 +499,33 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
     let tinted = isolated.is_some_and(|c| c.tint) || (isolated.is_none() && ch != 0);
     let hist_i = isolated.map_or(ch, |c| c.hist);
     let key = curve_key(&chan);
-    let mut e = curves_mode_row(ui, v, key, cx.gray);
+    let mut e = Edit::default();
+    // Photoshop's layout: a tool column (the eyedroppers, then the point and pencil buttons) left
+    // of a fixed-size graph, Smooth under it.
+    let room = ui.available_width() - CURVES_TOOL - ui.spacing().item_spacing.x;
+    let side = CURVES_SIDE.min(room).max(CURVES_MIN_SIDE);
+    // Centred in the panel, as Photoshop draws it, rather than against its left edge.
+    let indent = curves_indent(ui.available_width(), side, ui.spacing().item_spacing.x);
+    ui.add_space(4.0);
+    let (full, resp) = ui
+        .horizontal_top(|ui| {
+            ui.add_space(indent);
+            ui.vertical(|ui| {
+                ui.set_width(CURVES_TOOL);
+                ui.spacing_mut().item_spacing.y = CURVES_TOOL_GAP;
+                if !cx.dialog {
+                    let (slots, _) = ui.allocate_exact_size(vec2(CURVES_TOOL, CURVES_PICKER_SLOTS_H), Sense::hover());
+                    ui.data_mut(|d| d.insert_temp(curves_picker_slots_id(cx.mem), slots));
+                    ui.add_space(6.0);
+                }
+                e.add(curves_mode_buttons(ui, v, cx.gray));
+            });
+            ui.allocate_exact_size(vec2(side, side + 14.0), Sense::click_and_drag())
+        })
+        .inner;
     let pencil = v.get("pencil").and_then(Value::as_bool).unwrap_or(false);
     let mut pts = read_curve(v, key);
     let mut map = read_map(v, key);
-    let side = ui.available_width().clamp(120.0, 300.0);
-    ui.add_space(4.0);
-    let (full, resp) = ui.allocate_exact_size(vec2(side, side + 14.0), Sense::click_and_drag());
     let graph = curve_graph(full, side);
     ui.data_mut(|d| d.insert_temp(cx.mem.with("curves-graph"), graph));
     let to_scr = |q: [f32; 2]| pos2(graph.left() + q[0] / 255.0 * graph.width(), graph.bottom() - q[1] / 255.0 * graph.height());
@@ -495,6 +557,33 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         changed = interaction.changed;
         e.commit |= interaction.commit;
     }
+    // Photoshop's black and white input sliders under the gradient bar: they move the curve's
+    // end points sideways (its darkest and brightest input levels).
+    let hbar = Rect::from_min_max(pos2(graph.left(), graph.bottom() + 4.0), pos2(graph.right(), graph.bottom() + 12.0));
+    let mut sliders = Vec::new();
+    if !pencil {
+        for (end, i) in [(0usize, 0usize), (1, pts.len().saturating_sub(1))] {
+            let Some(q) = pts.get(i).copied() else { continue };
+            let x = to_scr(q).x;
+            let r = Rect::from_min_max(
+                pos2(x - CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0),
+                pos2(x + CURVES_SLIDER_W / 2.0, hbar.bottom() + 1.0 + CURVES_SLIDER_H),
+            );
+            let id = cx.mem.with(("curves-input-slider", end));
+            let s = ui.interact(r.expand(3.0), id, Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeHorizontal);
+            if s.dragged()
+                && let Some(pos) = s.interact_pointer_pos()
+            {
+                let input = (pos.x - graph.left()) / graph.width().max(1.0) * 255.0;
+                if curves_input_slider(&mut pts, end == 1, input) {
+                    changed = true;
+                    st.gesture.selected = Some(i);
+                }
+            }
+            e.commit |= s.drag_stopped();
+            sliders.push((end == 1, i));
+        }
+    }
 
     // Draw: histogram, quarter grid, baseline, gradient bars, other channels, the curve, points.
     let p = ui.painter_at(full.expand(2.0));
@@ -515,10 +604,17 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         Stroke::new(if resp.has_focus() { 1.5 } else { 1.0 }, if resp.has_focus() { t.accent } else { t.field_border }),
         StrokeKind::Outside,
     );
-    let hbar = Rect::from_min_max(pos2(graph.left(), graph.bottom() + 4.0), pos2(graph.right(), graph.bottom() + 12.0));
     let vbar = Rect::from_min_max(pos2(full.left(), graph.top()), pos2(full.left() + 8.0, graph.bottom()));
     gradient_bar(&p, hbar, Color32::BLACK, bar_color(&chan, &t), false);
     gradient_bar(&p, vbar, Color32::BLACK, bar_color(&chan, &t), true);
+    for &(white, i) in &sliders {
+        let Some(q) = pts.get(i) else { continue };
+        let x = to_scr(*q).x;
+        let top = hbar.bottom() + 1.0;
+        let tri = vec![pos2(x, top), pos2(x + CURVES_SLIDER_W / 2.0, top + CURVES_SLIDER_H), pos2(x - CURVES_SLIDER_W / 2.0, top + CURVES_SLIDER_H)];
+        let (fill, edge) = if white { (Color32::WHITE, Color32::from_gray(90)) } else { (Color32::BLACK, Color32::from_gray(170)) };
+        p.add(egui::Shape::convex_polygon(tri, fill, Stroke::new(1.0, edge)));
+    }
     let draw_curve = |pts: &[[f32; 2]], color: Color32, width: f32| {
         let cp: Vec<photocraft_doc::adjust::CurvePoint> =
             pts.iter().map(|q| photocraft_doc::adjust::CurvePoint { input: q[0] / 255.0, output: q[1] / 255.0 }).collect();
@@ -566,6 +662,12 @@ fn curves(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         }
     }
 
+    // Smooth, under the graph.
+    ui.add_space(4.0);
+    ui.horizontal(|ui| {
+        ui.add_space((graph.left() - ui.cursor().left()).max(0.0));
+        e.add(curves_smooth(ui, v, key));
+    });
     // Input / Output of the selected point.
     ui.add_space(6.0);
     ui.horizontal(|ui| {
@@ -819,6 +921,21 @@ fn levels(ui: &mut egui::Ui, v: &mut Value, cx: &EditorCx) -> Edit {
         write_levels(v, chan.key, &l);
         e.changed = true;
     }
+    e
+}
+
+// ---------------------------------------------------------------------------------------------
+// Grain
+
+/// Amount, then Size and Roughness, which (as in Photoshop) only apply, and so only edit, once
+/// Amount is at least 1.
+fn grain(ui: &mut egui::Ui, v: &mut Value) -> Edit {
+    let (amount, size, roughness) = adjust_params::GRAIN_DEFAULTS;
+    let mut e = sliders(ui, v, &[("amount", tl!("Amount:"), 0.0, 100.0, amount, "", None)]);
+    let on = num(v, "amount", amount) >= 1.0;
+    ui.add_enabled_ui(on, |ui| {
+        e.add(sliders(ui, v, &[("size", tl!("Size:"), 0.0, 100.0, size, "", None), ("roughness", tl!("Roughness:"), 0.0, 100.0, roughness, "", None)]));
+    });
     e
 }
 
@@ -1634,7 +1751,7 @@ pub fn layer_editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj
         _ => committed.clone(),
     };
     let gray = app.session.active().is_some_and(|s| is_gray(s.doc.mode));
-    let hist = needs_histogram(kind).then(|| tone::histograms(app, HistSource::BelowLayer(id), space_of(&values)));
+    let hist = needs_histogram(kind).then(|| tone::histograms(app, ui.ctx(), HistSource::BelowLayer(id), space_of(&values)));
     let cx = EditorCx {
         mem: layer_mem(id),
         hist,
@@ -1645,10 +1762,16 @@ pub fn layer_editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj
         dynamic_color_sliders: app.session.prefs().interface.dynamic_color_sliders,
         isolated_curve: None,
     };
-    if matches!(kind, "levels" | "curves") {
+    if kind == "levels" {
         crate::layer_picker::controls(app, ui, id);
     }
     let e = editor(ui, kind, &mut values, &cx);
+    if kind == "curves"
+        && let Some(slots) = ui.data(|d| d.get_temp::<Rect>(curves_picker_slots_id(cx.mem)))
+    {
+        // Curves: the eyedroppers stand at the top of the graph's tool column.
+        crate::layer_picker::controls_in(app, ui, id, slots);
+    }
     if e.import_gradients {
         crate::preset_files_ui::import_gradients_dialog(app);
     }
@@ -1676,6 +1799,30 @@ pub fn layer_editor(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: LayerId, adj
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Photoshop's Curves input sliders move the end points sideways, keeping their outputs, and
+    /// never past the next point.
+    #[test]
+    fn curves_input_sliders_move_the_end_points() {
+        let mut pts = vec![[0.0, 0.0], [128.0, 140.0], [255.0, 255.0]];
+        assert!(curves_input_slider(&mut pts, false, 40.4));
+        assert_eq!(pts[0], [40.0, 0.0]);
+        assert!(curves_input_slider(&mut pts, true, 200.0));
+        assert_eq!(pts[2], [200.0, 255.0]);
+        assert!(curves_input_slider(&mut pts, false, 999.0), "stops before the middle point");
+        assert_eq!(pts[0], [127.0, 0.0]);
+        assert!(!curves_input_slider(&mut pts, true, f32::NAN));
+        assert!(!curves_input_slider(&mut [], false, 10.0));
+    }
+
+    /// The Curves graph is centred in a wide panel and flush left in a narrow one.
+    #[test]
+    fn curves_graph_is_centred() {
+        let w = CURVES_TOOL + 8.0 + CURVES_SIDE;
+        assert_eq!(curves_indent(w + 100.0, CURVES_SIDE, 8.0), 50.0);
+        assert_eq!(curves_indent(w - 20.0, CURVES_SIDE, 8.0), 0.0);
+        assert_eq!(curves_indent(f32::NAN, CURVES_SIDE, 8.0), 0.0);
+    }
 
     #[test]
     fn saturation_track_follows_the_hue() {

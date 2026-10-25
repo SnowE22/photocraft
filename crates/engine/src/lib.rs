@@ -9,6 +9,7 @@
 
 pub mod actions_cmds;
 pub mod actions_edit_cmds;
+pub mod actions_set_cmds;
 pub mod adjust_cmds;
 pub mod adjust_params;
 pub mod align_cmds;
@@ -21,6 +22,7 @@ pub mod background_cmds;
 pub mod brush_cmds;
 pub mod brush_key_cmds;
 pub mod brush_preset_cmds;
+pub mod brush_preset_items_cmds;
 pub mod build_info;
 mod canvas_geom;
 mod channel_clip;
@@ -47,6 +49,7 @@ pub mod face_cmds;
 pub mod file_cmds;
 pub mod fill_cmds;
 pub mod fill_key_cmds;
+pub mod fill_tool_cmds;
 pub mod filters;
 pub mod filters_ext;
 pub mod float_cmds;
@@ -54,6 +57,8 @@ mod frame_cmds;
 pub mod fx_view_cmds;
 pub mod fx_visibility_cmds;
 pub mod gallery_cmds;
+pub mod generative;
+pub mod gigapixel_cmds;
 pub mod gradient_fill_cmds;
 pub mod group_view_cmds;
 pub mod guide_layout;
@@ -69,6 +74,7 @@ pub mod jobs;
 pub mod kys;
 pub mod layer_copy_cmds;
 pub mod layer_label_cmds;
+pub mod layer_refs;
 pub mod layer_list_cmds;
 pub mod layer_mask_props_cmds;
 pub mod layer_menu_cmds;
@@ -79,6 +85,7 @@ pub mod layer_xmp_cmds;
 pub mod lens_cmds;
 pub mod link_watch;
 pub mod magnetic_cmds;
+pub mod mask_transfer_cmds;
 pub mod mask_view_cmds;
 mod migrate_cmds;
 pub mod mode_cmds;
@@ -108,6 +115,8 @@ pub mod retouch_cmds;
 pub mod sample_cmds;
 pub mod sampler_cmds;
 pub mod screentone_cmds;
+pub mod second_mask_cmds;
+
 pub mod select_extra_cmds;
 pub mod selection_cmds;
 pub mod shell_commands;
@@ -120,6 +129,7 @@ pub mod solid_fill_cmds;
 pub mod stamp_cmds;
 pub mod swatch_cmds;
 pub mod symmetry_cmds;
+pub mod timelapse_cmds;
 mod timeline_cmds;
 pub mod transform_cmds;
 mod trap_cmds;
@@ -477,6 +487,10 @@ pub struct Session {
     /// Layer › Layer Style › Copy Layer Style: the effects and the Blending Options
     /// ([`CopiedStyle`]: blend mode, fill opacity, Advanced Blending, Blend If, channels).
     pub style_clipboard: Option<CopiedStyle>,
+    /// The Fill tool's referenced composite, kept between clicks while its layers are unchanged.
+    pub(crate) fill_reference: std::sync::Mutex<Option<fill_tool_cmds::ReferenceCache>>,
+    /// The Fill tool's (and the Magic Wand's) drag going on from its click.
+    pub(crate) fill_gesture: std::sync::Mutex<Option<fill_tool_cmds::Gesture>>,
     /// Shape path context menu: copied vector fill and stroke styles.
     pub path_fill_clipboard: Option<photocraft_doc::Fill>,
     pub path_stroke_clipboard: Option<photocraft_doc::ShapeStroke>,
@@ -545,6 +559,8 @@ pub struct Session {
     /// document, source read-only)`. The shell takes them with [`Session::take_held_open`].
     held_opens: Vec<(u64, Document, bool)>,
     next_held_open: u64,
+    /// File › Timelapse: recordings of the open documents ([`timelapse_cmds`]).
+    pub timelapse: timelapse_cmds::Recorder,
 }
 
 /// Move item `i` of `v` to position `to`, clamped to the end. Returns where it went; `None` when
@@ -662,6 +678,7 @@ impl Session {
             self.cancel_jobs_on(id);
             self.subject_cache.forget_doc(id);
             self.object_finder.forget_doc(id);
+            channel_cmds::forget_merged(id);
         }
         let d = self.docs.remove(index);
         self.active = if self.docs.is_empty() {

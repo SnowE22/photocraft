@@ -4083,6 +4083,355 @@ curves	Smooth	Vloeiend maken
 	{path}: the path is not valid Unicode; save under another name.	{path}: het pad is geen geldige Unicode; sla op onder een andere naam.
 	{name} was changed by another app after it was opened or saved here.	{name} is door een andere app gewijzigd nadat het hier is geopend of bewaard.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Vervang het door dit document, of annuleer en gebruik Bestand › Opslaan als om beide te houden.
+
+	Panel Icons	Paneelpictogrammen
+	Move Tools panel	Gereedschapspaneel verplaatsen
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Sleep om het gereedschapspaneel te verplaatsen; zet het neer aan de rand van het canvas om het vast te zetten
+	New Document…	Nieuw document…
+	Open Document…	Document openen…
+	Delete Brushes	Penselen verwijderen
+	Thumbnail size	Miniatuurgrootte
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop-handelingen importeren
+	No Photoshop Actions palette was found on this computer	Op deze computer is geen Photoshop-handelingenpalet gevonden
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Geopend in Topaz Gigapixel AI: exporteer de afbeelding daar om hem terug te halen
+	Stopped waiting for Topaz Gigapixel AI	Wachten op Topaz Gigapixel AI gestopt
+	Topaz Gigapixel AI's image could not be applied: {error}	De afbeelding van Topaz Gigapixel AI kan niet worden toegepast: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× vergroot tot {w} × {h} px (nieuwe laag)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Wachten op Topaz Gigapixel AI: exporteer daar de vergrote afbeelding om hem terug te halen.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} handeling in {sets} sets geladen uit {file}|{n} handelingen in {sets} sets geladen uit {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Generatieve AI aan
+	Generative AI Off	Generatieve AI uit
+	Loading the AI model…	AI-model laden…
+	AI model not installed	AI-model niet geïnstalleerd
+	AI model failed to load	AI-model kon niet worden geladen
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Zet lama_fp32.onnx en ONNX Runtime (onnxruntime.dll, DirectML.dll) in een van deze mappen: {folders}. Tot die tijd gebruikt 'Automatisch' de gewone vulling.
+	Model:	Model:
+	LaMa (fast)	LaMa (snel)
+	Diffusion (detailed)	Diffusie (gedetailleerd)
+	Prompt (optional)	Prompt (optioneel)
+	What should be there. Empty: the model's own guess.	Wat er moet staan. Leeg: de eigen inschatting van het model.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Zet de map van het diffusiemodel en ONNX Runtime in een van: {folders}. Tot dan gebruikt Auto LaMa.
+	Generative Fill…	Generatieve vulling…
+	Center Canvas When Zoomed Out	Canvas centreren bij uitzoomen
+	High (slower)	Hoog (langzamer)
+	Quality:	Kwaliteit:
+	There is no such Topaz Gigapixel preset	Deze Topaz Gigapixel-voorinstelling bestaat niet
+	Saved Topaz Gigapixel preset “{name}”	Topaz Gigapixel-voorinstelling ‘{name}’ opgeslagen
+	New Preset	Nieuwe voorinstelling
+	Upscale:	Opschalen:
+	With these settings	Met deze instellingen
+	With two presets	Met twee voorinstellingen
+	Save two presets with their own settings first; then this one can run them together.	Sla eerst twee voorinstellingen met eigen instellingen op; deze kan ze daarna samen uitvoeren.
+	First:	Eerst:
+	Then:	Daarna:
+	Results:	Resultaten:
+	One after the other	Na elkaar
+	Each on its own layer	Elk op een eigen laag
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Beide voorinstellingen schalen de afbeelding op; elk resultaat wordt een laag, om te vergelijken of te mengen.
+	The second preset upscales the first one's result.	De tweede voorinstelling schaalt het resultaat van de eerste op.
+	Topaz Gigapixel Presets	Topaz Gigapixel-voorinstellingen
+	Manage Presets…	Voorinstellingen beheren…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Voer een opgeslagen voorinstelling uit via Bestand › Automatiseren › Topaz Gigapixel-voorinstellingen.
+	Auto lets Gigapixel choose.	Automatisch laat Gigapixel kiezen.
+	Denoise:	Ruis verwijderen:
+	Sharpen:	Verscherpen:
+	Fix Compression:	Compressie herstellen:
+	Face Recovery:	Gezichtsherstel:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Kies een map voor je timelapse-opnamen
+	Saved {name} ({seconds} s timelapse)	{name} opgeslagen (timelapse van {seconds} s)
+	Export Timelapse	Timelapse exporteren
+	Export Timelapse…	Timelapse exporteren…
+	Timelapse export cancelled	Timelapse-export geannuleerd
+	Timelapse	Timelapse
+	Auto record	Automatisch opnemen
+	Records whatever document you're on, unless you paused it yourself.	Neemt het document op waaraan je werkt, tenzij je het zelf hebt gepauzeerd.
+	Open a document to record a timelapse.	Open een document om een timelapse op te nemen.
+	Recording (idle)	Opnemen (inactief)
+	Recording	Opnemen
+	Click to pause	Klik om te pauzeren
+	Paused: click to resume	Gepauzeerd: klik om verder te gaan
+	Start recording	Opname starten
+	Pause Recording	Opname pauzeren
+	Reference Layer	Referentielaag
+	Reference layer	Referentielaag
+	Recorded more since the last export	Meer opgenomen sinds de laatste export
+	Select a layer	Selecteer een laag
+	Not recorded: you see it, the timelapse doesn't	Niet opgenomen: jij ziet hem, de timelapse niet
+	Recorded	Wordt opgenomen
+	{count} of {total} not recorded	{count} van {total} niet opgenomen
+	Reference	Referentie
+	Adds {tag} to the layer's name	Voegt {tag} toe aan de laagnaam
+	Export again…	Opnieuw exporteren…
+	Export video…	Video exporteren…
+	Play video	Video afspelen
+	Show in folder	In map weergeven
+	Make:	Maken:
+	Advanced settings	Geavanceerde instellingen
+	Show the finished drawing first	Eerst de afgemaakte tekening tonen
+	Flash before the final image	Flits voor het eindbeeld
+	Hold the final image	Eindbeeld vasthouden
+	Slow down at the end	Vertragen aan het eind
+	Remove flicker	Flikkering verwijderen
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Laat frames weg die even opflitsen: een laag die even verborgen was, een streek die meteen ongedaan is gemaakt.
+	Work-time counter	Werktijdteller
+	Bars:	Balken:
+	Fills the edges when the canvas size changed during the recording.	Vult de randen als het canvasformaat tijdens de opname is veranderd.
+	Folder:	Map:
+	not chosen yet	nog niet gekozen
+	Remove frames with undo	Frames verwijderen bij ongedaan maken
+	Reference tag:	Referentielabel:
+	Work timer stops after:	Werktimer stopt na:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Maakt de MP4. Automatisch zoekt naast PhotoCraft, daarna in PATH.
+	Choose the ffmpeg program on this computer	Kies het programma ffmpeg op deze computer
+	Opening files isn't available here	Bestanden openen is hier niet beschikbaar
+	MP4 video (ffmpeg)	MP4-video (ffmpeg)
+	JPEG frames	JPEG-frames
+	Bottom right	Rechtsonder
+	Bottom left	Linksonder
+	Top right	Rechtsboven
+	Top left	Linksboven
+	5 seconds	5 seconden
+	10 seconds	10 seconden
+	15 seconds	15 seconden
+	20 seconds	20 seconden
+	30 seconds	30 seconden
+	1 minute	1 minuut
+	2 minutes	2 minuten
+	5 minutes	5 minuten
+@plural	{n} frame|{n} frames	{n} frame|{n} frames
+	Refresh	Vernieuwen
+	Recordings will be listed here once you've chosen a folder.	Opnamen verschijnen hier zodra je een map hebt gekozen.
+	No recordings yet.	Nog geen opnamen.
+	Open folder	Map openen
+	Delete frames	Frames verwijderen
+	Delete folder	Map verwijderen
+	Pause the recording first	Pauzeer eerst de opname
+	REC	REC
+	EXPORTED	GEËXPORTEERD
+	NOT EXPORTED	NIET GEËXPORTEERD
+	{time} work	{time} werk
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	‘{name}’ is nog niet geëxporteerd. Als je de frames verwijdert ({frames}), kun je er geen video meer van maken. Dit kan niet ongedaan worden gemaakt.
+	Delete the {frames} of “{name}”?	Frames van ‘{name}’ verwijderen ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Je hebt sinds de laatste export meer opgenomen; dat deel zit niet in de video.
+	Your videos and the work time are kept. This can't be undone.	Je video's en de werktijd blijven bewaard. Dit kan niet ongedaan worden gemaakt.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	‘{name}’ en de map verwijderen? De opname verdwijnt uit de bibliotheek, samen met de werktijd. Geëxporteerde video's blijven waar je ze hebt opgeslagen. Dit kan niet ongedaan worden gemaakt.
+	Frames deleted.	Frames verwijderd.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	‘{name}’ verwijderd. De map bevat andere bestanden en is bewaard.
+	Deleted “{name}”.	‘{name}’ verwijderd.
+@plural	{n} recording|{n} recordings	{n} opname|{n} opnamen
+	Save Preset from Last Upscale…	Voorinstelling opslaan van laatste opschaling…
+	No upscale has come back from Topaz Gigapixel AI yet	Er is nog geen opschaling teruggekomen uit Topaz Gigapixel AI
+	Detail:	Detail:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× vergroot tot {w} × {h} px (nieuwe laag). Bewaar deze instellingen met Topaz Gigapixel-voorinstellingen › Voorinstelling opslaan van laatste opschaling
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} opgeslagen (video van {seconds}).
+	Export failed: {error}	Exporteren mislukt: {error}
+	Export cancelled.	Exporteren geannuleerd.
+	just now	zojuist
+	{n} min ago	{n} min geleden
+	{n} h ago	{n} uur geleden
+	yesterday	gisteren
+	{n} days ago	{n} dagen geleden
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Kleinere bestanden en het snelste vastleggen. Prima voor snelle schetsen en voorvertoningen.
+	Sharper video for big screens. Uses about twice the disk space.	Scherpere video voor grote schermen. Gebruikt ongeveer twee keer zoveel schijfruimte.
+	Full-HD video, good for social media. Recommended.	Full-HD-video, goed voor sociale media. Aanbevolen.
+	idle	inactief
+	Record	Opnemen
+	Paused	Gepauzeerd
+	Click to resume recording	Klik om de opname te hervatten
+	Open a document to record it.	Open een document om het op te nemen.
+	You'll be asked where to save recordings.	Je wordt gevraagd waar opnamen worden opgeslagen.
+	Export again	Opnieuw exporteren
+	Export video	Video exporteren
+	Show the export results	Exportresultaten tonen
+	Hide the export results	Exportresultaten verbergen
+	≈ {seconds} video from {frames}.	≈ {seconds} video uit {frames}.
+	Cancel export	Exporteren annuleren
+	Frames	Frames
+	Timer	Tijd
+	On disk	Op schijf
+	Hide the live preview	Live-voorvertoning verbergen
+	Show the newest frame	Nieuwste frame tonen
+	No frames yet — just start drawing	Nog geen frames — begin gewoon te tekenen
+	No frames yet	Nog geen frames
+	No layer selected	Geen laag geselecteerd
+	{n} layers selected	{n} lagen geselecteerd
+	Not recorded	Niet opgenomen
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Een referentielaag werkt als een gewone laag, maar verschijnt niet in de timelapse.
+	Export settings	Exportinstellingen
+	Make video with	Video maken met
+	Bars colour	Kleur van de balken
+	Bars fill the empty space when the canvas size changed during recording.	Balken vullen de lege ruimte als het canvasformaat tijdens de opname is veranderd.
+	Show finished drawing first	Eerst de afgemaakte tekening
+	Hold final image	Eindbeeld vasthouden
+	Show work-time counter	Werktijdteller tonen
+	Record something in this document to see how long the video will be.	Neem iets op in dit document om te zien hoe lang de video wordt.
+	≈ {seconds} video	≈ {seconds} video
+	{n} recorded frames	{n} opgenomen frames
+	Auto shows every frame once (at least 5 s, at most 1 min).	Auto toont elk frame één keer (minimaal 5 s, maximaal 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Het canvasformaat is tijdens de opname veranderd; eerdere frames worden in het uiteindelijke formaat gepast.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Flikkering verwijderen laat frames weg die even opflitsen (een laag die even verborgen was, een streek die meteen ongedaan is gemaakt), dus de video kan iets korter worden.
+	Recordings folder	Map met opnamen
+	Not chosen yet — see Settings	Nog niet gekozen — zie Instellingen
+	recorded {when}	opgenomen {when}
+	Recorded more since the last export.	Meer opgenomen sinds de laatste export.
+	Frames folder	Map met frames
+	Not chosen yet	Nog niet gekozen
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Hier worden de opgenomen frames bewaard. Video's worden opgeslagen waar je kiest bij het exporteren.
+	Choose folder…	Map kiezen…
+	Change folder…	Map wijzigen…
+	Recording quality	Opnamekwaliteit
+	Undoing something removes those recorded frames.	Iets ongedaan maken verwijdert die opgenomen frames.
+	Reference layers	Referentielagen
+	Name tag	Naamlabel
+	Layers with this in their name are left out of the timelapse.	Lagen met dit in hun naam blijven buiten de timelapse.
+	Work timer	Werktimer
+	Idle after	Inactief na
+	The timer stops counting after this long without activity.	De timer stopt na zo lang zonder activiteit.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (snel)
+	Dark grey	Donkergrijs
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 seconden
+	Run Two Presets…	Twee voorinstellingen uitvoeren…
+	Run Two Topaz Gigapixel Presets	Twee Topaz Gigapixel-voorinstellingen uitvoeren
+	Run	Uitvoeren
+	Set Shortcut…	Sneltoets instellen…
+	Action Shortcut	Sneltoets van handeling
+	No shortcut.	Geen sneltoets.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} is ook de sneltoets van {commands}: in plaats daarvan wordt deze handeling uitgevoerd.
+	Press the keys that play “{action}”.	Druk op de toetsen die ‘{action}’ uitvoeren.
+	Shortcut:	Sneltoets:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Elke toets werkt, met Ctrl, Alt en Shift. Backspace verwijdert de sneltoets.
+	The action no longer exists.	De handeling bestaat niet meer.
+	Fill Tool	Vulgereedschap
+	Nothing to fill there	Daar valt niets te vullen
+	No enclosed area to fill there	Daar is geen ingesloten gebied om te vullen
+	Fill: click an area	Vullen: klik op een gebied
+	Enclose and Fill: draw round the areas to fill	Omsluiten en vullen: teken rond de te vullen gebieden
+	Paint Unfilled Area: paint over the gaps a fill left	Niet-gevuld gebied verven: verf over de gaten die een vulling liet
+	Refer	Verwijzing
+	Editing Layer	Bewerkte laag
+	Selected Layers	Geselecteerde lagen
+	Layers in Folder	Lagen in map
+	Reference Layers	Referentielagen
+	Exclude	Uitsluiten
+	Editing layer	Bewerkte laag
+	Text layers	Tekstlagen
+	Locked layers	Vergrendelde lagen
+	Layers the fill doesn't read	Lagen die de vulling niet leest
+	Close Gap	Openingen sluiten
+	Treat gaps in the lines up to this wide as closed (0: off)	Gaten in de lijnen tot deze breedte als gesloten behandelen (0: uit)
+	Area Scaling	Gebied schalen
+	Grow the fill under the lines, or shrink it	De vulling onder de lijnen uitbreiden of verkleinen
+	To Darkest Pixel	Tot donkerste pixel
+	Follow Adjacent Pixels	Aangrenzende pixels volgen
+	White and Transparent	Wit en transparant
+	Image Border	Afbeeldingsrand
+	The canvas edge closes gaps as a line does	De canvasrand sluit gaten zoals een lijn
+	Reference layer: the Fill tool reads it	Referentielaag: het vulgereedschap leest deze
+	Set as Reference Layer	Instellen als referentielaag
+	Clear Reference Layer	Referentielaag opheffen
+	Fill Tool Options	Opties voor vulgereedschap
+	Size Key Repeat	Herhaling van groottetoetsen
+	Holding [ or ] to resize the brush	[ of ] ingedrukt houden om het penseel te vergroten of verkleinen
+	Pause before repeating	Pauze voor herhalen
+	Wait half a second before the size keeps changing, as typing does	Een halve seconde wachten voordat de grootte blijft veranderen, zoals bij typen
+	Change every	Wijzigen elke
+	Sample on Alt	Monster nemen bij Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Met een tekengereedschap neemt Alt meteen de kleur onder de aanwijzer op
+	Hold:	Vasthouden:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Hoe lang Alt moet worden vastgehouden voordat het werkt als het gewone pipet: de pipet, en klikken om op te nemen
+	Move Layer Mask	Laagmasker verplaatsen
+	Copy Layer Mask	Laagmasker kopiëren
+	Move Vector Mask	Vectormasker verplaatsen
+	Copy Vector Mask	Vectormasker kopiëren
+	Save as:	Opslaan als:
+	Save Preset	Voorinstelling opslaan
+	Keep these two presets as one, listed with the others	Deze twee voorinstellingen als één bewaren, bij de andere vermeld
+	Stop recording first	Stop eerst met opnemen
+	Select a step first	Selecteer eerst een stap
+	This step has no dialog to record again	Deze stap heeft geen dialoogvenster om opnieuw op te nemen
+	Record Again…	Opnieuw opnemen…
+	Insert Menu Item…	Menuopdracht invoegen…
+	Insert Conditional…	Voorwaarde invoegen…
+	Set Options…	Setopties…
+	Action Options…	Handelingsopties…
+	Playback Options…	Afspeelopties…
+	Allow Tool Recording	Gereedschapsopname toestaan
+	Record brush and other painting strokes, and the brush settings they use	Penseelstreken en andere verfstreken opnemen, met de penseelinstellingen die ze gebruiken
+	Clear All Actions	Alle handelingen wissen
+	Replace Actions…	Handelingen vervangen…
+	Delete the set “{name}”?	Set ‘{name}’ verwijderen?
+	Delete the action “{name}”?	Handeling ‘{name}’ verwijderen?
+	Delete the selection?	Selectie verwijderen?
+	Function Key:	Functietoets:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	De handeling heeft een andere sneltoets (Sneltoets instellen…); een toets die u hier kiest, vervangt die.
+	Accelerated	Versneld
+	Step by Step	Stap voor stap
+	Pause For:	Pauzeren gedurende:
+	seconds	seconden
+	None Selected	Niets geselecteerd
+	Menu Item:	Menuopdracht:
+	Type part of a menu item's name, then pick it below.	Typ een deel van de naam van een menuopdracht en kies die hieronder.
+	If Current:	Als huidig:
+	Then Play Action:	Dan handeling afspelen:
+	Else Play Action:	Anders handeling afspelen:
+	Document Is Open	Document is geopend
+	Document Is Landscape	Document is liggend
+	Document Is Square	Document is vierkant
+	Document Is Portrait	Document is staand
+	Document Mode Is RGB	Documentmodus is RGB
+	Document Mode Is CMYK	Documentmodus is CMYK
+	Document Mode Is Grayscale	Documentmodus is Grijswaarden
+	Document Mode Is Lab	Documentmodus is Lab
+	Document Mode Is Bitmap	Documentmodus is Bitmap
+	Document Mode Is Indexed	Documentmodus is Geïndexeerde kleur
+	Document Mode Is Duotone	Documentmodus is Duotoon
+	Document Mode Is Multichannel	Documentmodus is Multikanaal
+	Document Is 8 Bits/Channel	Document is 8 bits/kanaal
+	Document Is 16 Bits/Channel	Document is 16 bits/kanaal
+	Document Is 32 Bits/Channel	Document is 32 bits/kanaal
+	Document Has Unsaved Changes	Document heeft niet-opgeslagen wijzigingen
+	Document Has a Selection	Document heeft een selectie
+	Document Has Layers	Document heeft lagen
+	Document Has Alpha Channels	Document heeft alfakanalen
+	Layer Is Background	Laag is achtergrond
+	Layer Is a Pixel Layer	Laag is een pixellaag
+	Layer Is an Adjustment Layer	Laag is een aanpassingslaag
+	Layer Is a Shape Layer	Laag is een vormlaag
+	Layer Is a Type Layer	Laag is een tekstlaag
+	Layer Is a Smart Object	Laag is een slim object
+	Layer Is a Group	Laag is een groep
+	Layer Is Locked	Laag is vergrendeld
+	Layer Is Visible	Laag is zichtbaar
+	Layer Has Pixel Mask	Laag heeft pixelmasker
+	Layer Has Vector Mask	Laag heeft vectormasker
+	Layer Has Effects	Laag heeft effecten
+	Pick a menu item first	Kies eerst een menuopdracht
+	Close gaps up to {px} px	Openingen tot {px} px sluiten
+	Grow the selection under the lines, or shrink it	De selectie onder de lijnen uitbreiden of verkleinen
 	Decrease Brush Size	Penseelgrootte verkleinen
 	Increase Brush Size	Penseelgrootte vergroten
 	Decrease Brush Hardness	Penseelhardheid verlagen
@@ -4113,6 +4462,25 @@ curves	Smooth	Vloeiend maken
 	In Front	Voor
 	Behind	Achter
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Tweede masker toevoegen  (uit de selectie; {key} keert om)
+	Convert to Vector Mask	Omzetten in vectormasker
+	Delete Second Mask	Tweede masker verwijderen
+	Disable Second Mask	Tweede masker uitschakelen
+	Enable Second Mask	Tweede masker inschakelen
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Selectie vergrendelen: klikken op het canvas gaan erdoorheen (het deelvenster Lagen selecteert hem nog wel)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Huidige laag instellen
+	Editing layer blocks the fill	Bewerkte laag houdt de vulling tegen
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Verf op de laag die wordt gevuld houdt de vulling bij elke tolerantie tegen, en de vulling gaat erachter: teken over een opening om die te sluiten
+	Undo widens Close Gap	Ongedaan maken vergroot Openingen sluiten
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Elke keer dat u een vulling ongedaan maakt, sluit de volgende klik grotere openingen, tot u een ander gereedschap kiest
+	Close Gap widened to {px} px: click again to fill	Openingen sluiten vergroot tot {px} px: klik opnieuw om te vullen
+	Pick From	Selecteren vanaf
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Hoe dekkend een laag onder de aanwijzer moet zijn om met Ctrl-klik en Automatisch selecteren te worden gekozen: zwakkere pixels, zoals een bijna zwart masker, worden doorgeklikt (0: elke zichtbare pixel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Overvloeien als of geavanceerd overvloeien is ingesteld: klik voor Overvloeiopties
 # DDS Options (#1327)
 	DDS Options	DDS-opties
 	Generate Mipmaps	Mipmaps genereren
@@ -4144,6 +4512,38 @@ curves	Smooth	Vloeiend maken
 	Start Size:	Startgrootte:
 	End Size:	Eindgrootte:
 	Save as Pattern	Opslaan als patroon
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, betaald)
+	Remove Selection	Selectie verwijderen
+	Remove what is selected ({key})	Verwijderen wat geselecteerd is ({key})
+	API Key…	API-sleutel…
+	Change or remove the Google API key Nano Banana uses	De Google API-sleutel die Nano Banana gebruikt wijzigen of verwijderen
+	Set API Key…	API-sleutel instellen…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana heeft uw eigen Google API-sleutel nodig; tot dan gebruikt Auto LaMa
+	No API key	Geen API-sleutel
+	Nano Banana API Key	API-sleutel voor Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 draait op de servers van Google en wordt op uw Google-account gefactureerd: ongeveer {small} per verwijdering, {large} voor grote.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Het gebied rond wat u verwijdert wordt naar Google gestuurd, met het verzoek het niet te bewaren.
+	Get a key at	Vraag een sleutel aan op
+	A key is saved in the system's credential store.	Er is een sleutel opgeslagen in de referentiebeheerder van het systeem.
+	Using the {var} environment variable.	De omgevingsvariabele {var} wordt gebruikt.
+	Google API key	Google API-sleutel
+	Remove Saved Key	Opgeslagen sleutel verwijderen
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Dit systeem heeft geen referentieopslag die PhotoCraft kan gebruiken: stel in plaats daarvan de omgevingsvariabele {var} in.
+	Mask image	Maskerafbeelding
+	Painted red	Rood geschilderd
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana krijgt de afbeelding zoals ze is en een apart masker van het te verwijderen gebied
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana krijgt de afbeelding met het te verwijderen gebied rood geschilderd, zoals bij de werkwijze in Photoshop
+	Close up	Dichtbij
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana krijgt het gebied rond wat je verwijdert, en tekent het zo op ongeveer twee keer de resolutie van de pagina
+	Whole page	Hele pagina
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana krijgt de hele pagina: meer houvast, maar een zachter resultaat
+	Creative	Creatief
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Alles tonen wat Nano Banana tekende, ook wat het rond het verwijderde gebied veranderde (het laagmasker vervaagt aan de randen)
+	Grain…	Korrel…
+	Roughness:	Ruwheid:
+	Color field	Kleurveld
+	Color slider	Kleurschuifregelaar
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Bevestig of annuleer eerst het geopende dialoogvenster van de handelingsstap
 	Pro Medium Gray	Pro middelgrijs
@@ -4163,3 +4563,10 @@ curves	Smooth	Vloeiend maken
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Monster: opgenomen kleuren
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	AI-verwijderen
+	Remove what is selected with Nano Banana ({key})	Selectie verwijderen met Nano Banana ({key})
+	Pin to Top	Bovenaan vastzetten
+	Unpin from Top	Losmaken van bovenaan

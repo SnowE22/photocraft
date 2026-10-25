@@ -100,6 +100,8 @@ pub const PASTEBOARD_MENU: &[Row] = &[
     Some(("Custom", "pasteboard.custom")),
     None,
     Some(("Select Custom Color…", PASTEBOARD_PICK)),
+    None,
+    Some(("Center Canvas When Zoomed Out", PASTEBOARD_ZOOM_FIT)),
 ];
 
 /// Photoshop's right-click menu inside text being edited: the edit rows act on the text (its
@@ -178,6 +180,9 @@ const ENDS_TYPE_EDIT: [&str; 5] =
 
 /// The pasteboard menu's Select Custom Color… row.
 pub const PASTEBOARD_PICK: &str = "pasteboard.selectCustomColor";
+
+/// The pasteboard menu's toggle for Interface › `center_when_zoomed_out`.
+pub const PASTEBOARD_ZOOM_FIT: &str = "pasteboard.centerWhenZoomedOut";
 
 /// The guide menu's Edit Selected Guides row: New Guide's dialog on the selected guide.
 pub const GUIDE_EDIT: &str = "guides.editSelected";
@@ -258,13 +263,25 @@ pub const SELECTION_MENU: &[Row] = &[
     Some(("Fade…", "edit.fade")),
 ];
 
-/// The selection tools' context menu with nothing selected: making a selection.
+/// The selection tools' context menu with nothing selected: making a selection, then the layer
+/// rows that need no selection (Photoshop keeps Free Transform, New Layer, Fill and the filter
+/// rows there, acting on the whole layer).
 pub const NO_SELECTION_MENU: &[Row] = &[
     Some(("Select All", "select.all")),
     Some(("Reselect", "select.reselect")),
     Some(("Color Range…", "select.colorRange")),
     None,
     Some(("Load Selection…", "select.loadSelection")),
+    None,
+    Some(("New Layer…", "layer.new.layer")),
+    None,
+    Some(("Free Transform", "edit.freeTransform")),
+    None,
+    Some(("Fill…", "edit.fill")),
+    None,
+    Some(("Last Filter", "filter.lastFilter")),
+    None,
+    Some(("Fade…", "edit.fade")),
 ];
 
 /// Photoshop's Pen context menu order. Rows whose operation is not applicable to the current
@@ -371,6 +388,9 @@ pub(crate) fn mode_checked(app: &PhotocraftApp, menu: &CanvasToolMenu, command: 
         return command == "view.lockGuides" && app.ui.extras.lock_guides;
     }
     if menu.pasteboard {
+        if command == PASTEBOARD_ZOOM_FIT {
+            return app.session.prefs().interface.center_when_zoomed_out;
+        }
         return pasteboard_choice(command) == Some(app.session.prefs().interface.canvas_color);
     }
     if menu.text || menu.type_layer {
@@ -512,6 +532,9 @@ pub fn engine_call(app: &PhotocraftApp, menu: &CanvasToolMenu, command: &str) ->
     }
     match pasteboard_choice(command) {
         Some(c) if menu.pasteboard => ("prefs.set".into(), json!({"values": {"interface.canvasColor": c.name()}})),
+        _ if menu.pasteboard && command == PASTEBOARD_ZOOM_FIT => {
+            ("prefs.set".into(), json!({"values": {"interface.centerWhenZoomedOut": !app.session.prefs().interface.center_when_zoomed_out}}))
+        }
         _ if menu.pasteboard => ("prefs.set".into(), json!({})),
         _ if menu.text && matches!(command, FAUX_BOLD | FAUX_ITALIC) => ("type.setStyle".into(), json!({})),
         _ if is_spelling(menu, command) => spelling_call(menu, command),
@@ -1424,7 +1447,26 @@ mod tests {
                 Some("Fade…"),
             ]
         );
-        assert_eq!(labels(NO_SELECTION_MENU), vec![Some("Select All"), Some("Reselect"), Some("Color Range…"), None, Some("Load Selection…")]);
+        assert_eq!(
+            labels(NO_SELECTION_MENU),
+            vec![
+                Some("Select All"),
+                Some("Reselect"),
+                Some("Color Range…"),
+                None,
+                Some("Load Selection…"),
+                None,
+                Some("New Layer…"),
+                None,
+                Some("Free Transform"),
+                None,
+                Some("Fill…"),
+                None,
+                Some("Last Filter"),
+                None,
+                Some("Fade…"),
+            ]
+        );
         // Every row runs a real command: one the menu bar has, or an engine command.
         let app = app();
         let items = crate::menus::menu_items(&app);
@@ -1459,6 +1501,21 @@ mod tests {
         assert!(open(&mut app, &Context::default(), Tool::Lasso, [10.0, 10.0]));
         choose(&mut app, &Context::default(), "select.all");
         assert!(app.session.active().unwrap().doc.selection.is_some());
+    }
+
+    #[test]
+    fn no_selection_menu_still_free_transforms_the_layer() {
+        let mut app = app();
+        app.ui.tool = Tool::RectMarquee;
+        app.run("layer.new.layer", json!({})).unwrap();
+        app.run("edit.fill", json!({"color": "#ff0000"})).unwrap();
+        assert!(app.session.active().unwrap().doc.selection.is_none());
+        assert!(open(&mut app, &Context::default(), Tool::RectMarquee, [10.0, 10.0]));
+        let menu = app.ui.canvas_tool_menu.clone().unwrap();
+        assert_eq!(rows(&menu), NO_SELECTION_MENU);
+        assert!(entry_enabled(&app, &menu, "edit.freeTransform"));
+        choose(&mut app, &Context::default(), "edit.freeTransform");
+        assert!(app.ui.transform.is_some(), "the whole layer gets a transform box");
     }
 
     #[test]
@@ -1584,6 +1641,8 @@ mod tests {
             let mut app = zoom_app(400, 300);
             app.ui.tool = Tool::Zoom;
             app.run("prefs.set", json!({"values": {"general.animatedZoom": false, "tools.zoomClickedPointToCenter": false}})).unwrap();
+            // Zoomed out to fit, the canvas would otherwise be centred (Interface › Center When Zoomed Out).
+            app.session.edit_prefs(|p| p.interface.center_when_zoomed_out = false);
             let mut h = harness(app);
             let doc = [300.0, 100.0];
             let p = screen_of(h.state(), doc);

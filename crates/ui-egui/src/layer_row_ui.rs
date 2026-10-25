@@ -1,7 +1,8 @@
 //! Layers panel row: the right-hand indicators and the name between them and the thumbnails
 //! (#144).
 //!
-//! The indicators (lock, fx badge with its effects triangle, link, the blend-mode label) are
+//! The indicators (lock, fx badge with its effects triangle, link, the Fill tool's reference-layer
+//! mark, the blend-mode label) are
 //! laid out first, from the row's right edge inward; the name gets the width that is left and
 //! is cut with an ellipsis, so a long name never runs under an indicator at any panel width or
 //! UI scale. The blend-mode label is optional: it is dropped before the name gets too narrow.
@@ -40,7 +41,18 @@ pub enum Indicator {
     SmartFilters,
     Screentone,
     Link,
+    /// A reference layer for the Fill tool (`layer.setReference`).
+    Reference,
+    /// Blend If or other advanced blending is set (Photoshop's overlapping squares); a click
+    /// opens Blending Options.
+    BlendIf,
     Blend,
+}
+
+/// Whether `l` blends in a way its blend mode and opacity don't show: Blend If ranges, or
+/// Advanced Blending (knockout, channels, clipping options).
+pub fn advanced_blending(l: &Layer) -> bool {
+    !l.blend_if.is_default() || !l.advanced.is_default()
 }
 
 /// Where one row's name and indicators went this frame (screen points).
@@ -108,6 +120,12 @@ pub fn reserved_width(l: &Layer) -> f32 {
         w += ICON_W + GAP;
     }
     if l.link_group.is_some() {
+        w += ICON_W + GAP;
+    }
+    if l.reference {
+        w += ICON_W + GAP;
+    }
+    if advanced_blending(l) {
         w += ICON_W + GAP;
     }
     w
@@ -188,6 +206,12 @@ pub fn indicators(
     if l.link_group.is_some() {
         items.push((Indicator::Link, ICON_W));
     }
+    if l.reference {
+        items.push((Indicator::Reference, ICON_W));
+    }
+    if advanced_blending(l) {
+        items.push((Indicator::BlendIf, ICON_W));
+    }
     if let Some(g) = &blend_galley {
         items.push((Indicator::Blend, g.size().x));
     }
@@ -210,6 +234,21 @@ pub fn indicators(
                 ui.interact(r, ui.id().with(("screentone-badge", l.id.0)), Sense::hover()).on_hover_text(tl!("Screentone"));
             }
             Indicator::Link => icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "link-2", 12.0, t.text_faint),
+            Indicator::Reference => {
+                icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "fill-tool", 12.0, t.accent);
+                ui.interact(r, ui.id().with(("reference-mark", l.id.0)), Sense::hover()).on_hover_text(tl!("Reference layer: the Fill tool reads it"));
+            }
+            Indicator::BlendIf => {
+                let resp = ui.interact(r, ui.id().with(("blend-if-mark", l.id.0)), Sense::click());
+                icons::paint(ui, Rect::from_center_size(r.center(), vec2(ICON_W, ICON_W)), "copy", 12.0, if resp.hovered() { t.text } else { t.text_faint });
+                if resp.clicked() {
+                    clicked = true;
+                    actions.push(("layer.select".into(), json!({"layer": l.id.0, "mode": "replace"})));
+                    actions.push(("layer.layerStyle.blendingOptions".into(), Value::Null));
+                }
+                let resp = resp.on_hover_text(tl!("Blend If or advanced blending is set: click for Blending Options"));
+                resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, format!("Blending Options {}", l.name)));
+            }
             Indicator::Fx => {
                 if let Some(g) = fx_galley.clone() {
                     painter.galley(pos2(r.left(), cy - g.size().y / 2.0), g, t.text_dim);
@@ -249,6 +288,40 @@ pub fn indicators(
         }
     }
     (name_right, rects, clicked)
+}
+
+/// The visibility eye of Photoshop's themes: a plain almond outline with a round pupil, about
+/// 13 × 8 pt, centred on `c`.
+pub fn paint_eye(painter: &Painter, c: Pos2, color: egui::Color32) {
+    let (hw, hh) = (6.5, 4.0);
+    let stroke = Stroke::new(1.4, color);
+    // A cubic whose inner control points sit `k` above its ends peaks at 0.75 k.
+    let k = hh / 0.75;
+    for dir in [-1.0, 1.0] {
+        let lid = [pos2(c.x - hw, c.y), pos2(c.x - hw * 0.45, c.y + dir * k), pos2(c.x + hw * 0.45, c.y + dir * k), pos2(c.x + hw, c.y)];
+        painter.add(egui::epaint::CubicBezierShape::from_points_stroke(lid, false, egui::Color32::TRANSPARENT, stroke));
+    }
+    painter.circle_filled(c, 2.2, color);
+}
+
+/// A group row's folder glyph in Photoshop's themes, filling `r` (about 15 × 11 pt): the back
+/// outlined with its tab, the front flap solid.
+pub fn paint_folder(painter: &Painter, r: Rect, color: egui::Color32) {
+    let stroke = Stroke::new(1.0, color);
+    // Half-pixel insets keep the 1 pt outline crisp.
+    let o = r.shrink(0.5);
+    let tab_w = (r.width() * 0.42).round();
+    let pts = vec![
+        o.left_bottom(),
+        o.left_top(),
+        pos2(o.left() + tab_w, o.top()),
+        pos2(o.left() + tab_w, o.top() + 2.0),
+        pos2(o.right(), o.top() + 2.0),
+        o.right_bottom(),
+    ];
+    painter.add(Shape::closed_line(pts, stroke));
+    let front = Rect::from_min_max(pos2(r.left(), (r.top() + r.height() * 0.45).round()), r.max);
+    painter.rect_filled(front, 0.0, color);
 }
 
 /// A small disclosure triangle: pointing down when open, right when closed.
@@ -348,6 +421,33 @@ fn rects_id() -> egui::Id {
 }
 
 /// Start a frame's record (the Layers panel calls it before drawing its rows).
+/// Windows' default double-click time, Photoshop's (egui's own is 0.3 s).
+const DOUBLE_CLICK_S: f64 = 0.5;
+
+/// Whether this click on the row of layer `layer` completes a double-click: a second click on the
+/// same `part` of that layer's row (its name, thumbnail, a mask…) within Windows' double-click
+/// time. Counted by layer and part, not by where on the screen the clicks land: the first click
+/// makes the layer active, which can change what the panels around the Layers panel show and move
+/// the row before the second click comes (user report: a double-click on a Solid Color
+/// thumbnail sometimes didn't open the Color Picker). A third click starts over.
+pub(crate) fn second_click(ctx: &egui::Context, resp: &egui::Response, layer: u64, part: u8) -> bool {
+    if !resp.clicked() {
+        return false;
+    }
+    let id = egui::Id::new("pc-layer-row-click");
+    let now = ctx.input(|i| i.time);
+    let last: Option<(f64, u64, u8)> = ctx.data(|d| d.get_temp(id));
+    let double = last.is_some_and(|(t, l, p)| l == layer && p == part && (0.0..DOUBLE_CLICK_S).contains(&(now - t)));
+    ctx.data_mut(|d| {
+        if double {
+            d.remove::<(f64, u64, u8)>(id);
+        } else {
+            d.insert_temp(id, (now, layer, part));
+        }
+    });
+    double
+}
+
 pub fn begin(ctx: &egui::Context) {
     ctx.data_mut(|d| d.insert_temp(rects_id(), Vec::<RowRects>::new()));
 }

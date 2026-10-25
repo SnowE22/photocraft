@@ -52,9 +52,12 @@ pub struct Runtime {
     show_rulers: Option<bool>,
     /// Tool options as last remembered in the preferences (see `tool_memory`).
     pub(crate) tool_options: Option<crate::state::ToolOptions>,
+    /// Bumped whenever a tool's saved brush or the tool owning the live brush changes
+    /// (`paint_mouse::tool_brushes_changed`), and the revision `Preferences::tool_brushes` holds
+    /// (see `last_brush`).
+    pub(crate) tool_brushes_rev: u64,
+    pub(crate) tool_brushes_saved_rev: u64,
     pub(crate) selected_tool: Option<crate::state::Tool>,
-    /// The tool owning the session brush and the other tools' brushes, as last remembered.
-    pub(crate) tool_brushes: Option<crate::tool_memory::ToolBrushes>,
 }
 
 /// The GPU canvas colours from Preferences › Transparency & Gamut.
@@ -247,6 +250,7 @@ pub fn load(app: &mut PhotocraftApp) {
     }
     crate::dock::restore(app);
     crate::brush_picker::restore(app);
+    crate::brush_panel::restore_panel(app);
     crate::last_brush::restore(app);
     sync_rulers(app);
     crate::tool_memory::restore(app);
@@ -681,24 +685,10 @@ fn autosave(app: &mut PhotocraftApp) {
     }
     // A successful queue operation is not a successful disk write. Poll each frame,
     // including frames before the next autosave interval, so failures are visible.
-    if let Some(results) = app.services.autosave_results.as_mut() {
-        for (raw_id, revision, result) in results() {
-            let id = DocId(raw_id);
-            if app.prefs_rt.autosave_pending.get(&id) != Some(&revision) {
-                continue;
-            }
-            app.prefs_rt.autosave_pending.remove(&id);
-            match result {
-                Ok(()) => {
-                    app.prefs_rt.autosaved.insert(id, revision);
-                }
-                Err(e) => {
-                    let template = "Autosave failed: {error}";
-                    app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
-                    app.ui.status_error = true;
-                }
-            }
-        }
+    for (_, e) in collect_autosave_results(app) {
+        let template = "Autosave failed: {error}";
+        app.ui.status = crate::i18n::fmt(tl!(template), &[("error", &e)]);
+        app.ui.status_error = true;
     }
     let now = crate::gpu_canvas::now_ms();
     // Saved or closed documents drop their recovery data.
@@ -750,6 +740,81 @@ fn autosave(app: &mut PhotocraftApp) {
             }
         }
     }
+}
+
+/// Record finished background autosaves; returns the failed ones as (document, error).
+fn collect_autosave_results(app: &mut PhotocraftApp) -> Vec<(DocId, String)> {
+    let mut failed = Vec::new();
+    let Some(results) = app.services.autosave_results.as_mut() else { return failed };
+    for (raw_id, revision, result) in results() {
+        let id = DocId(raw_id);
+        if app.prefs_rt.autosave_pending.get(&id) != Some(&revision) {
+            continue;
+        }
+        app.prefs_rt.autosave_pending.remove(&id);
+        match result {
+            Ok(()) => {
+                app.prefs_rt.autosaved.insert(id, revision);
+            }
+            Err(e) => failed.push((id, e)),
+        }
+    }
+    failed
+}
+
+/// Write every document with unsaved changes to crash recovery now and wait (up to `timeout`)
+/// until the files are on disk, whatever the autosave preference: the window is about to close
+/// (its graphics device was lost, see `gpu_status`). Returns the documents that could not be
+/// saved, as "name: reason" lines; empty when everything unsaved is in crash recovery.
+pub(crate) fn save_recovery_now(app: &mut PhotocraftApp, timeout: std::time::Duration) -> Vec<String> {
+    let names: HashMap<DocId, String> = app.session.documents().iter().map(|d| (d.doc.id, d.doc.name.clone())).collect();
+    let name = |id: &DocId| names.get(id).cloned().unwrap_or_else(|| format!("document {}", id.0));
+    let mut failed: Vec<String> = Vec::new();
+    // Earlier autosaves that finished meanwhile count; a failed one is written again below.
+    let _ = collect_autosave_results(app);
+    let jobs: Vec<_> = app
+        .session
+        .documents()
+        .iter()
+        .filter(|d| {
+            d.is_dirty() && app.prefs_rt.autosaved.get(&d.doc.id) != Some(&d.revision) && app.prefs_rt.autosave_pending.get(&d.doc.id) != Some(&d.revision)
+        })
+        .map(|d| (d.doc.clone(), d.revision, d.path.clone()))
+        .collect();
+    if !jobs.is_empty() && app.services.autosave.is_none() {
+        return jobs.iter().map(|(doc, ..)| format!("{}: crash recovery is not available", doc.name)).collect();
+    }
+    for (doc, rev, path) in jobs {
+        let Some(save) = app.services.autosave.as_mut() else { break };
+        match save(&doc, rev, path.as_deref()) {
+            Ok(()) if app.services.autosave_results.is_some() => {
+                app.prefs_rt.autosave_pending.insert(doc.id, rev);
+            }
+            Ok(()) => {
+                app.prefs_rt.autosaved.insert(doc.id, rev);
+            }
+            Err(e) => failed.push(format!("{}: {e}", doc.name)),
+        }
+    }
+    // The documents still open, so a pending write of a closed one isn't waited for.
+    let open: Vec<DocId> = names.keys().copied().collect();
+    let waiting = |app: &PhotocraftApp| open.iter().any(|id| app.prefs_rt.autosave_pending.contains_key(id));
+    let deadline = crate::gpu_canvas::now_ms() + timeout.as_secs_f64() * 1000.0;
+    loop {
+        failed.extend(collect_autosave_results(app).iter().map(|(id, e)| format!("{}: {e}", name(id))));
+        if !waiting(app) || crate::gpu_canvas::now_ms() >= deadline {
+            break;
+        }
+        // The web has no blocking wait (and no crash recovery service).
+        #[cfg(not(target_arch = "wasm32"))]
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        #[cfg(target_arch = "wasm32")]
+        break;
+    }
+    failed.extend(
+        open.iter().filter(|id| app.prefs_rt.autosave_pending.contains_key(id)).map(|id| format!("{}: the recovery file was still being written", name(id))),
+    );
+    failed
 }
 
 /// Force the autosave timer to fire on the next tick (tests, `prefs` changes).
@@ -1218,6 +1283,10 @@ fn humanize(key: &str) -> String {
     }
     if key == "notificationDurationSeconds" {
         return "Notification Duration (seconds)".into();
+    }
+    // The pasteboard menu's row of the same name toggles it too.
+    if key == "centerWhenZoomedOut" {
+        return "Center Canvas When Zoomed Out".into();
     }
     // Tools: arrow-key nudges bundle into one History state (#2259).
     if key == "bundleNudges" {
@@ -3516,6 +3585,38 @@ mod tests {
     }
 
     #[test]
+    fn brushes_panel_view_survives_a_restart() {
+        // User report (2026-10-17): open groups and the thumbnail size reset after a restart.
+        let (mut app, store) = app_with_store();
+        let ctx = egui::Context::default();
+        tick(&mut app, &ctx);
+        app.ui.brushes_panel.collapsed = vec!["General".into(), "jojos/old".into()];
+        app.ui.brushes_panel.tile = 150.0;
+        app.ui.brushes_panel.show_tip = true;
+        app.ui.brushes_panel.filter = "ink".into();
+        crate::brush_panel::persist_panel(&mut app, &ctx);
+        tick(&mut app, &ctx);
+        assert_eq!(stored(&store)["brushesPanel"]["tile"], json!(150.0));
+        let saved = store.lock().unwrap().clone().unwrap();
+        let (mut app2, _) = app_with_saved(Some(saved));
+        tick(&mut app2, &ctx);
+        let st = &app2.ui.brushes_panel;
+        assert_eq!(st.collapsed, vec!["General".to_string(), "jojos/old".to_string()]);
+        assert!((st.tile - 150.0).abs() < 1e-6);
+        assert!(st.show_tip && st.show_name && st.show_stroke);
+        // The search is per session.
+        assert!(st.filter.is_empty());
+        // A hand-edited file: the size is clamped, junk entries dropped, a tile never empty.
+        let bad = json!({"brushesPanel": {"collapsed": ["A", 3, null], "tile": 1e9, "showName": false, "showStroke": false, "showTip": false}}).to_string();
+        let (mut app3, _) = app_with_saved(Some(bad));
+        tick(&mut app3, &ctx);
+        let st = &app3.ui.brushes_panel;
+        assert_eq!(st.collapsed, vec!["A".to_string()]);
+        assert_eq!(st.tile, *crate::brushes_tab::TILE_RANGE.end());
+        assert!(st.show_name || st.show_stroke || st.show_tip);
+    }
+
+    #[test]
     fn brush_picker_view_survives_a_restart() {
         let (mut app, store) = app_with_store();
         let ctx = egui::Context::default();
@@ -3725,10 +3826,10 @@ mod tests {
         crate::tool_memory::persist(&mut app, &ctx);
         tick(&mut app, &ctx);
         let saved = stored(&store);
-        assert_eq!(saved["toolBrushes"]["owner"], json!("Eraser"));
-        assert_eq!(saved["toolBrushes"]["brushes"]["Brush"]["size"], json!(77.0));
-        assert_eq!(saved["toolBrushes"]["brushes"]["CloneStamp"]["size"], json!(12.0));
-        assert!(saved["toolBrushes"]["brushes"].get("Eraser").is_none(), "the owner's brush is the last brush");
+        assert_eq!(saved["toolBrushes"]["active"], json!("Eraser"));
+        assert_eq!(saved["toolBrushes"]["tools"]["Brush"]["brush"]["size"], json!(77.0));
+        assert_eq!(saved["toolBrushes"]["tools"]["CloneStamp"]["brush"]["size"], json!(12.0));
+        assert!(saved["toolBrushes"]["tools"].get("Eraser").is_none(), "the owner's brush is the last brush");
 
         let (mut app2, _) = app_with_saved(store.lock().unwrap().clone());
         tick(&mut app2, &ctx);
@@ -3756,18 +3857,16 @@ mod tests {
         app.session.tools.brush.size = 77.0;
         app.session.tools.brush_changed();
         crate::last_brush::persist(&mut app, &ctx);
-        crate::tool_memory::persist(&mut app, &ctx);
-        // The Brush's tip becomes a big sampled one, then the Eraser takes over that brush.
+                // The Brush's tip becomes a big sampled one, then the Eraser takes over that brush.
         app.session.tools.brush.tip = TipShape::Sampled(GrayTile::from_fn(400, 300, |x, y| ((x * y) % 7) as f32 / 7.0));
         app.session.tools.brush_changed();
         app.ui.tool = Tool::Eraser;
         crate::paint_mouse::sync_tool_brush(&mut app);
         crate::last_brush::persist(&mut app, &ctx);
-        crate::tool_memory::persist(&mut app, &ctx);
-        tick(&mut app, &ctx);
+                tick(&mut app, &ctx);
         let saved = stored(&store);
         assert_eq!(saved["lastBrush"]["brush"]["size"], json!(77.0), "the big tip is not remembered yet");
-        assert_ne!(saved["toolBrushes"]["owner"], json!("Eraser"), "{saved}");
+        assert_ne!(saved["toolBrushes"]["active"], json!("Eraser"), "{saved}");
         let (mut app2, _) = app_with_saved(store.lock().unwrap().clone());
         tick(&mut app2, &ctx);
         assert_eq!(app2.ui.brush_tool, Tool::Brush, "the 77 px brush is the Brush's");
@@ -3778,10 +3877,9 @@ mod tests {
         app.session.tools.brush.size = 33.0;
         app.session.tools.brush_changed();
         crate::last_brush::persist(&mut app, &ctx);
-        crate::tool_memory::persist(&mut app, &ctx);
-        tick(&mut app, &ctx);
+                tick(&mut app, &ctx);
         let saved = stored(&store);
-        assert_eq!(saved["toolBrushes"]["owner"], json!("Eraser"), "{saved}");
+        assert_eq!(saved["toolBrushes"]["active"], json!("Eraser"), "{saved}");
         assert_eq!(saved["lastBrush"]["brush"]["size"], json!(33.0));
     }
 
@@ -3791,20 +3889,20 @@ mod tests {
     fn remembered_tool_brushes_survive_damage() {
         use crate::state::Tool;
         let ctx = egui::Context::default();
-        for bad in [json!("junk"), json!(42), json!({"owner": [1], "brushes": "x"}), json!({"brushes": {"Eraser": 5}})] {
+        for bad in [json!("junk"), json!(42), json!({"active": [1], "tools": "x"}), json!({"tools": {"Eraser": 5}})] {
             let (mut app, _) = app_with_saved(Some(json!({"toolBrushes": bad}).to_string()));
             tick(&mut app, &ctx);
             assert_eq!(app.ui.brush_tool, Tool::Brush, "{bad}");
             assert!(app.ui.tool_brushes.is_empty(), "{bad}");
         }
-        let hostile = json!({"toolBrushes": {"owner": "Move", "brushes": {
-            "Eraser": {"size": 1e30}, "Bogus": {"size": 5.0}, "Move": {"size": 5.0},
-            "Smudge": {"size": -3.0, "opacity": 50.0, "flow": -2.0, "hardness": 1e30},
-            "Brush": {"size": 9.0},
+        let hostile = json!({"toolBrushes": {"active": "Brush", "tools": {
+            "Eraser": {"brush": {"size": 1e30}}, "Bogus": {"brush": {"size": 5.0}}, "Move": {"brush": {"size": 5.0}},
+            "Smudge": {"brush": {"size": -3.0, "opacity": 50.0, "flow": -2.0, "hardness": 1e30}},
+            "Brush": {"brush": {"size": 9.0}},
         }}});
         let (mut app, _) = app_with_saved(Some(hostile.to_string()));
         tick(&mut app, &ctx);
-        assert_eq!(app.ui.brush_tool, Tool::Brush, "the Move tool has no brush");
+        assert_eq!(app.ui.brush_tool, Tool::Brush);
         let tools: Vec<Tool> = app.ui.tool_brushes.iter().map(|(t, _)| *t).collect();
         assert_eq!(tools, vec![Tool::Smudge], "too large, unknown, brushless and the owner's own are skipped");
         let b = &app.ui.tool_brushes[0].1;
@@ -3836,27 +3934,30 @@ mod tests {
         crate::paint_mouse::sync_tool_brush(&mut app);
         crate::last_brush::persist(&mut app, &ctx);
         crate::tool_memory::persist(&mut app, &ctx);
+        crate::last_brush::persist(&mut app, &ctx);
         tick(&mut app, &ctx);
         let saved = stored(&store);
         assert_eq!(saved["toolOptions"]["strength"], json!(80.0));
-        assert!(saved["toolBrushes"]["brushes"].get("Eraser").is_some() && saved["toolBrushes"]["brushes"].get("Brush").is_some());
+        assert!(saved["toolBrushes"]["tools"].get("Eraser").is_some() && saved["toolBrushes"]["tools"].get("Brush").is_some());
 
         crate::menus::invoke(&mut app, &ctx, crate::tool_reset::RESET, json!({})).unwrap();
         crate::last_brush::persist(&mut app, &ctx);
         crate::tool_memory::persist(&mut app, &ctx);
+        crate::last_brush::persist(&mut app, &ctx);
         tick(&mut app, &ctx);
         let saved = stored(&store);
         assert!(saved["toolOptions"].get("strength").is_none(), "the Smudge's Strength is forgotten");
         assert_eq!(saved["toolOptions"]["feather"], json!(12.0), "the marquee's Feather is not the Smudge's");
-        assert!(saved["toolBrushes"]["brushes"].get("Eraser").is_some());
+        assert!(saved["toolBrushes"]["tools"].get("Eraser").is_some());
 
         crate::menus::invoke(&mut app, &ctx, crate::tool_reset::RESET_ALL, json!({"confirmed": true})).unwrap();
         crate::last_brush::persist(&mut app, &ctx);
         crate::tool_memory::persist(&mut app, &ctx);
+        crate::last_brush::persist(&mut app, &ctx);
         tick(&mut app, &ctx);
         let saved = stored(&store);
         assert!(saved["toolOptions"].is_null(), "{saved}");
-        assert!(saved["toolBrushes"]["brushes"].as_object().is_none_or(|m| m.is_empty()), "{saved}");
+        assert!(saved["toolBrushes"]["tools"].as_object().is_none_or(|m| m.is_empty()), "{saved}");
         let (app2, _) = app_with_saved(store.lock().unwrap().clone());
         assert_eq!(app2.ui.tool_options, crate::state::ToolOptions::default());
         assert!(app2.ui.tool_brushes.is_empty());

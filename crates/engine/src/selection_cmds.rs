@@ -121,12 +121,32 @@ pub(crate) fn sample_rgba8(s: &Session, all_layers: bool) -> Result<(Rect, Vec<[
 
 fn magic_wand(s: &mut Session, p: &Value) -> Result<Value> {
     let (x, y) = (f(p, "x", 0.0).floor() as i32, f(p, "y", 0.0).floor() as i32);
-    let (area, img) = match shown_gray(s) {
-        Some(plane) => plane,
-        None => sample_rgba8(s, b(p, "sampleAllLayers", false))?,
+    let gray = shown_gray(s);
+    // With the Fill tool's options (Close Gap, Area Scaling, Refer, a drag's gesture) the wand
+    // selects what that fill would fill, as Clip Studio's Auto Select does.
+    let fill_like = ["closeGap", "areaScaling", "reference", "gesture"].iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null()));
+    let region = if fill_like && gray.is_none() {
+        let mut fp = p.clone();
+        if let Some(o) = fp.as_object_mut() {
+            // The wand's tolerance is in levels (0–255), the fill's in percent.
+            o.insert("tolerance".into(), json!((f(p, "tolerance", 32.0) / 2.55).clamp(0.0, 100.0)));
+            if !o.contains_key("reference") {
+                o.insert("reference".into(), json!(if b(p, "sampleAllLayers", false) { "all" } else { "layer" }));
+            }
+            o.remove("mode");
+        }
+        crate::fill_tool_cmds::region(s, &fp)?
+    } else {
+        let (area, img) = match gray {
+            Some(plane) => plane,
+            None => sample_rgba8(s, b(p, "sampleAllLayers", false))?,
+        };
+        sel::wand_region(&img, area, (x, y), f(p, "tolerance", 32.0), b(p, "contiguous", true), b(p, "antiAlias", true))
     };
-    let region = sel::wand_region(&img, area, (x, y), f(p, "tolerance", 32.0), b(p, "contiguous", true), b(p, "antiAlias", true));
-    drop(img);
+    if region.is_none() && p.get("gesture").is_some_and(|g| !g.is_null()) {
+        // A drag reaching an area it already selected (or one unlike the first): no step.
+        return Ok(json!({ "selected": s.active().is_some_and(|d| d.doc.selection.is_some()), "added": false }));
+    }
     let m = mode(p);
     let selected = s.edit("Magic Wand", |doc, _| {
         doc.selection = sel::combine_region(doc.selection.as_ref(), region.as_ref(), m);
@@ -312,7 +332,10 @@ impl ColorRangeSamples {
             sel::LabRange::point(colour_to_lab(&to_lab, [r, g, b]))
         };
         let fixed_lab: Vec<[f32; 3]> = fixed.iter().map(|c| colour_to_lab(&to_lab, *c)).collect();
-        let mut range = sel::LabRange::spanning(&fixed_lab);
+        let mut range = match lab_range_param(p).map_err(bad)? {
+            Some(r) => Some(fixed_lab.iter().fold(r, |r, c| r.grow(c))),
+            None => sel::LabRange::spanning(&fixed_lab),
+        };
         let (mut pi, mut mi) = (plus.iter(), minus.iter());
         for add in order {
             if add {
@@ -326,6 +349,11 @@ impl ColorRangeSamples {
         }
         let range = range.unwrap_or_else(foreground);
         Ok(Self { to_lab, range, grid, fuzziness: fuzz(40.0), localized, plus_at })
+    }
+
+    /// The sampled colours as one CIE Lab box (`lo`, `hi`): Photoshop's `Mnm` / `Mxm`.
+    pub fn lab_range(&self) -> ([f32; 3], [f32; 3]) {
+        (self.range.lo, self.range.hi)
     }
 
     /// Coverage of a composite rectangle. `scale` is the original document pixels represented
@@ -342,6 +370,46 @@ impl ColorRangeSamples {
         let points: Vec<_> = self.plus_at.iter().map(|(x, y)| ((x - origin[0]) / scale, (y - origin[1]) / scale)).collect();
         sel::color_range_lab(&lab, width, &self.range, self.fuzziness, self.grid, self.localized.map(|r| (r / scale, points.as_slice())))
     }
+}
+
+/// `"labRange": {"min": [L, a, b], "max": [L, a, b]}`: the sampled colours as a CIE Lab box (L
+/// 0–100, a and b −128–127), as Photoshop records Color Range (`Mnm` / `Mxm`). Each axis is put in
+/// order; `None` without one.
+fn lab_range_param(p: &Value) -> std::result::Result<Option<sel::LabRange>, String> {
+    let Some(v) = p.get("labRange").filter(|v| !v.is_null()) else { return Ok(None) };
+    let want = "`labRange` must be {\"min\": [L, a, b], \"max\": [L, a, b]}";
+    let lab = |k: &str| -> Option<[f32; 3]> {
+        let a = v.get(k)?.as_array()?;
+        let n = |i: usize| a.get(i)?.as_f64().filter(|x| x.is_finite()).map(|x| x as f32);
+        (a.len() == 3).then_some(())?;
+        Some([n(0)?.clamp(0.0, 100.0), n(1)?.clamp(-128.0, 127.0), n(2)?.clamp(-128.0, 127.0)])
+    };
+    let (Some(lo), Some(hi)) = (lab("min"), lab("max")) else { return Err(want.into()) };
+    Ok(Some(sel::LabRange { lo: [0, 1, 2].map(|k| lo[k].min(hi[k])), hi: [0, 1, 2].map(|k| lo[k].max(hi[k])) }))
+}
+
+/// Color Range as an action records it: the colours its eyedroppers sampled, as Photoshop does
+/// (the sampled Lab box, `labRange`), not where they were picked. Played on another picture, or
+/// with the colour somewhere else, it selects the same colours (user report: the action sampled
+/// whatever was at the old position). Localized Color Clusters keep their points, which they
+/// need; a step that can't be sampled is kept as it was.
+pub(crate) fn recorded_color_range(s: &Session, p: Value) -> Value {
+    let sampled = p.get("select").and_then(Value::as_str).unwrap_or("sampledColors") == "sampledColors";
+    let picked = p.get("points").is_some() || p.get("subtractPoints").is_some();
+    if !sampled || !picked || b(&p, "localized", false) {
+        return p;
+    }
+    let Ok(q) = ColorRangeSamples::new(s, &p) else { return p };
+    let (lo, hi) = q.lab_range();
+    let round = |c: [f32; 3]| c.map(|v| (f64::from(v) * 1000.0).round() / 1000.0);
+    let mut p = p;
+    if let Some(o) = p.as_object_mut() {
+        for k in ["points", "subtractPoints", "order", "color", "colors", "sampleAllLayers"] {
+            o.remove(k);
+        }
+        o.insert("labRange".into(), json!({"min": round(lo), "max": round(hi)}));
+    }
+    p
 }
 
 fn color_range(s: &mut Session, p: &Value) -> Result<Value> {
@@ -659,7 +727,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "select.magicWand",
             "Magic Wand",
             [],
-            r##"{"x":px,"y":px,"tolerance":0..255=32,"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect"="replace"} (samples the visible alpha, Quick Mask, or layer mask when that is the picture)"##,
+            r##"{"x":px,"y":px,"tolerance":0..255=32,"contiguous":bool=true,"antiAlias":bool=true,"sampleAllLayers":bool=false,"mode":"replace|add|subtract|intersect"="replace","closeGap":0..100?,"areaScaling":-100..100?,"scalingMode":"darkest|round|square"?,"reference":"layer|all|selected|folder|reference"?,"exclude":[…]?,"imageBorder":bool?,"gesture":str?} (samples the visible alpha, Quick Mask, or layer mask when that is the picture). With any of closeGap, areaScaling, reference or gesture it selects what paint.fill with those options would fill (Clip Studio's Auto Select); a gesture's later clicks add only areas like its first one's that it hasn't selected (→ {selected, added:false} when none)"##,
             has_doc,
             magic_wand
         ),
@@ -667,7 +735,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "select.colorRange",
             "Color Range…",
             ["Select"],
-            r##"{"select":"sampledColors|reds|yellows|greens|cyans|blues|magentas|highlights|midtones|shadows|skinTones|outOfGamut"="sampledColors","color":"#rrggbb"=foreground,"colors":["#rrggbb",…]?,"points":[[x,y],…]? (eyedropper samples),"subtractPoints":[[x,y],…]? (minus eyedropper),"order":["+"|"-",…]? (click order of points and subtractPoints; default all points first),"fuzziness":0..200=40 (tones: 0..100 %=20),"detectFaces":bool=false (not available yet: refused),"localized":bool=false,"range":0..100=100 (% of the longer side),"tonalRange":level|[lo,hi] (shadows 65, highlights 190, midtones [105,150]),"invert":bool=false,"sampleAllLayers":bool=true,"mode":"replace|add|subtract|intersect"="replace"}"##,
+            r##"{"select":"sampledColors|reds|yellows|greens|cyans|blues|magentas|highlights|midtones|shadows|skinTones|outOfGamut"="sampledColors","color":"#rrggbb"=foreground,"colors":["#rrggbb",…]?,"labRange":{"min":[L,a,b],"max":[L,a,b]}? (sampled colours as a CIE Lab box, as actions record them; points add to it),"points":[[x,y],…]? (eyedropper samples),"subtractPoints":[[x,y],…]? (minus eyedropper),"order":["+"|"-",…]? (click order of points and subtractPoints; default all points first),"fuzziness":0..200=40 (tones: 0..100 %=20),"detectFaces":bool=false (not available yet: refused),"localized":bool=false,"range":0..100=100 (% of the longer side),"tonalRange":level|[lo,hi] (shadows 65, highlights 190, midtones [105,150]),"invert":bool=false,"sampleAllLayers":bool=true,"mode":"replace|add|subtract|intersect"="replace"}"##,
             has_doc,
             color_range
         ),
@@ -758,6 +826,108 @@ mod tests {
         assert!(coverage(&s, 10, 10) < 0.05 && coverage(&s, 30, 10) > 0.95, "{} {}", coverage(&s, 10, 10), coverage(&s, 30, 10));
         let err = s.execute("select.colorRange", json!({"select": "skinTones", "detectFaces": true})).unwrap_err();
         assert!(err.to_string().contains("detectFaces"), "{err}");
+    }
+
+    /// A document `40×30` at `depth` with one red square, at `x`.
+    fn red_at(depth: u32, x: i32) -> Session {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 40, "height": 30, "depth": depth, "background": "white"})).unwrap();
+        s.edit("paint", |doc, _| {
+            doc.layers[0].surface_mut().unwrap().fill_rect(Rect::new(x, 5, x + 10, 15), &[0.9, 0.1, 0.1, 1.0]);
+            Ok(())
+        })
+        .unwrap();
+        s
+    }
+
+    /// User report: Color Range in an action remembered where the colour was sampled, so played on
+    /// a picture with that colour elsewhere it selected whatever was at the old spot. Photoshop
+    /// records the sampled colours (a Lab box); so does PhotoCraft now, at every depth.
+    #[test]
+    fn a_recorded_color_range_selects_the_sampled_colour_wherever_it_is() {
+        for depth in [8, 16, 32] {
+            let mut s = red_at(depth, 5);
+            s.execute("actions.record", json!({"name": "Reds"})).unwrap();
+            s.execute("select.colorRange", json!({"points": [[8, 8]], "fuzziness": 20})).unwrap();
+            assert!(coverage(&s, 8, 8) > 0.95 && coverage(&s, 30, 8) < 0.05, "depth {depth}: the red square");
+            s.execute("actions.stop", json!({})).unwrap();
+            let step = &s.execute("actions.get", json!({"action": "Reds"})).unwrap()["steps"][0];
+            assert_eq!(step[0], "select.colorRange");
+            assert!(step[1].get("points").is_none(), "depth {depth}: no position recorded: {step}");
+            let (lo, hi) = (&step[1]["labRange"]["min"], &step[1]["labRange"]["max"]);
+            assert_eq!(lo, hi, "depth {depth}: one colour, a point box: {step}");
+            assert!(lo[1].as_f64().unwrap() > 40.0, "depth {depth}: a red's a*: {step}");
+            assert_eq!(step[1]["fuzziness"], 20);
+            // The red is on the right in this picture, and white where it was sampled.
+            let mut t = red_at(depth, 25);
+            t.actions = s.actions.clone();
+            let played = t.execute("actions.play", json!({"action": "Reds"})).unwrap();
+            assert!(played.get("failed").is_none(), "depth {depth}: {played}");
+            assert!(coverage(&t, 30, 8) > 0.95, "depth {depth}: the red where it is now");
+            assert!(coverage(&t, 8, 8) < 0.05, "depth {depth}: not the white where it was sampled");
+        }
+    }
+
+    /// Several samples, added and subtracted, record the box they made; Localized Color Clusters
+    /// keep their points (they need them). Steps run without recording keep their points too.
+    #[test]
+    fn recorded_color_range_keeps_the_sampled_box_and_localized_points() {
+        let mut s = session();
+        s.edit("paint", |doc, _| {
+            doc.layers[0].surface_mut().unwrap().fill_rect(Rect::new(25, 5, 35, 15), &[0.1, 0.2, 0.9, 1.0]);
+            Ok(())
+        })
+        .unwrap();
+        let p = json!({"points": [[8, 8], [28, 8]], "fuzziness": 10});
+        let r = recorded_color_range(&s, p.clone());
+        let (lo, hi) = (r["labRange"]["min"].clone(), r["labRange"]["max"].clone());
+        assert!(lo[2].as_f64().unwrap() < hi[2].as_f64().unwrap(), "red to blue spans b*: {r}");
+        // Played back, the box selects both colours, as the samples did.
+        s.execute("select.colorRange", p).unwrap();
+        let sampled = (coverage(&s, 8, 8), coverage(&s, 30, 8), coverage(&s, 2, 2));
+        clear_selection(&mut s);
+        s.execute("select.colorRange", r).unwrap();
+        assert_eq!((coverage(&s, 8, 8), coverage(&s, 30, 8), coverage(&s, 2, 2)), sampled);
+        let localized = json!({"points": [[8, 8]], "localized": true, "range": 50});
+        assert_eq!(recorded_color_range(&s, localized.clone()), localized);
+        let preset = json!({"select": "reds"});
+        assert_eq!(recorded_color_range(&s, preset.clone()), preset);
+        // A box given with samples grows by them, as Add to Sample does.
+        let red_only = json!({"labRange": lo_hi(&recorded_color_range(&s, json!({"points": [[8, 8]]})))});
+        clear_selection(&mut s);
+        s.execute("select.colorRange", red_only.clone()).unwrap();
+        assert!(coverage(&s, 30, 8) < 0.05);
+        let mut grown = red_only;
+        grown["points"] = json!([[28, 8]]);
+        grown["fuzziness"] = json!(10);
+        // (An active selection limits Color Range to it.)
+        clear_selection(&mut s);
+        s.execute("select.colorRange", grown).unwrap();
+        assert_eq!((coverage(&s, 8, 8), coverage(&s, 30, 8), coverage(&s, 2, 2)), sampled, "as sampling both");
+    }
+
+    fn lo_hi(p: &Value) -> Value {
+        p["labRange"].clone()
+    }
+
+    /// A bad `labRange` is refused, never a panic; axes given the wrong way round are put in order.
+    #[test]
+    fn color_range_lab_range_param_is_validated() {
+        let mut s = session();
+        for bad in [
+            json!({"labRange": 5}),
+            json!({"labRange": {"min": [50, 0, 0]}}),
+            json!({"labRange": {"min": [50, 0], "max": [60, 0, 0]}}),
+            json!({"labRange": {"min": ["x", 0, 0], "max": [60, 0, 0]}}),
+            json!({"labRange": {"min": [50, 0, 0, 1], "max": [60, 0, 0]}}),
+        ] {
+            assert!(s.execute("select.colorRange", bad.clone()).is_err(), "{bad}");
+        }
+        let red = recorded_color_range(&s, json!({"points": [[8, 8]]}))["labRange"].clone();
+        let swapped = json!({"labRange": {"min": red["max"], "max": red["min"]}, "fuzziness": 10});
+        s.execute("select.colorRange", swapped).unwrap();
+        assert!(coverage(&s, 8, 8) > 0.95 && coverage(&s, 2, 2) < 0.05);
+        s.execute("select.colorRange", json!({"labRange": {"min": [1e30, -1e30, 0], "max": [-5, 9e9, 0]}})).unwrap();
     }
 
     #[test]

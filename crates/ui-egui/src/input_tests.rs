@@ -273,7 +273,7 @@ fn color_picker_samples_the_image_under_its_pipette() {
 
     h.hover_at(red);
     h.run_steps(1);
-    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::None, "the pipette replaces the pointer");
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("pipette"), "the pipette replaces the pointer");
     h.hover_at(r.center());
     h.run_steps(1);
     assert_ne!(h.output().platform_output.cursor_icon, egui::CursorIcon::None, "over the dialog it is the normal pointer");
@@ -344,7 +344,7 @@ fn curves_picker_samples_document_coordinates_through_the_view_transform() {
     let left = pos2(canvas.left() + 60.0, canvas.center().y);
     h.hover_at(left);
     h.run_steps(1);
-    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::None);
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("pipette"));
     press(&mut h, left, true);
     press(&mut h, left, false);
     h.run_steps(3);
@@ -932,11 +932,17 @@ fn eyedropper_and_alt_sampling_show_a_pipette() {
         h.run_steps(2);
         h.output().platform_output.cursor_icon
     };
+    // The pipette is the pointer: an OS bitmap on the desktop (moving with the hardware pointer).
+    let pipette = |h: &mut Harness<'static, PhotocraftApp>| {
+        cursor(h);
+        (crate::tool_cursor::shown_icon(&h.ctx), h.output().platform_output.cursor_image.is_some())
+    };
+    let desktop = cfg!(not(target_arch = "wasm32"));
     h.state_mut().ui.tool = crate::state::Tool::Eyedropper;
-    assert_eq!(cursor(&mut h), egui::CursorIcon::None, "the pipette replaces the pointer");
+    assert_eq!(pipette(&mut h), (Some("pipette"), desktop), "the pipette replaces the pointer");
     h.state_mut().ui.tool = crate::state::Tool::Brush;
     h.event(egui::Event::ModifiersChanged(Modifiers::ALT));
-    assert_eq!(cursor(&mut h), egui::CursorIcon::None, "⌥ samples with a pipette");
+    assert_eq!(pipette(&mut h), (Some("pipette"), desktop), "⌥ samples with a pipette");
     h.state_mut().run("prefs.set", json!({"values": {"cursors.other": "precise"}})).unwrap();
     // Every platform reports the crosshair. The desktop builds also hand the OS a black-and-white
     // bitmap for it (`tool_cursor`, #1160, #1343), with `Crosshair` underneath as the fallback.
@@ -944,8 +950,8 @@ fn eyedropper_and_alt_sampling_show_a_pipette() {
         let icon = cursor(h);
         (icon, h.output().platform_output.cursor_image.is_some())
     };
-    let desktop = cfg!(not(target_arch = "wasm32"));
     assert_eq!(precise(&mut h), (egui::CursorIcon::Crosshair, desktop), "Precise keeps the crosshair");
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), None);
     h.event(egui::Event::ModifiersChanged(Modifiers::NONE));
     h.state_mut().ui.tool = crate::state::Tool::Eyedropper;
     assert_eq!(precise(&mut h), (egui::CursorIcon::Crosshair, desktop));
@@ -960,7 +966,7 @@ fn paint_bucket_shows_a_bucket_cursor() {
     h.state_mut().ui.tool = crate::state::Tool::PaintBucket;
     h.hover_at(p);
     h.run_steps(2);
-    assert_eq!(h.output().platform_output.cursor_icon, egui::CursorIcon::None, "the bucket replaces the pointer");
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some("paint-bucket"), "the bucket replaces the pointer");
     h.state_mut().run("prefs.set", json!({"values": {"cursors.other": "precise"}})).unwrap();
     h.hover_at(p);
     h.run_steps(2);
@@ -1199,6 +1205,44 @@ fn wheel_zoom_over_the_image_still_anchors_on_the_pointer() {
     assert!((d1[0] - d0[0]).abs() < 0.1 && (d1[1] - d0[1]).abs() < 0.1, "{d0:?} -> {d1:?}");
 }
 
+/// Over the scrollbars and the document tabs the wheel scrolls the image even with Zoom with
+/// Scroll Wheel on, as in Photoshop: up and down over the right bar and the tabs, sideways over
+/// the bottom bar. Over the image it still zooms.
+#[test]
+fn the_wheel_scrolls_over_the_scrollbars_and_tabs_with_zoom_with_scroll_wheel_on() {
+    let mut h = harness();
+    h.state_mut().session.edit_prefs(|p| p.general.zoom_with_scroll_wheel = true);
+    // Zoomed in, so both axes can scroll.
+    h.state_mut().ui.views[0].zoom = 8.0;
+    h.state_mut().ui.views[0].center = [200.0, 150.0];
+    h.run_steps(4);
+    let canvas = h.state().last_canvas_rect;
+    let tabs = h.state().tab_strip.as_ref().map(|t| t.rect).expect("the tab strip");
+    let right_bar = pos2(canvas.right() + 6.0, canvas.center().y);
+    let bottom_bar = pos2(canvas.center().x, canvas.bottom() + 6.0);
+    let tab_strip = pos2(tabs.right() - 40.0, tabs.center().y);
+    for (at, axis) in [(right_bar, 1), (tab_strip, 1), (bottom_bar, 0)] {
+        let before = (h.state().ui.views[0].center, zoom(&h));
+        h.hover_at(at);
+        h.run_steps(2);
+        for _ in 0..3 {
+            wheel(&h, -1.0, Modifiers::NONE);
+            h.run_steps(3);
+        }
+        h.run_steps(20);
+        let after = (h.state().ui.views[0].center, zoom(&h));
+        assert_eq!(after.1, before.1, "{at:?}: the zoom stays");
+        assert!(after.0[axis] > before.0[axis] + 1.0, "{at:?}: the wheel scrolls along axis {axis}: {before:?} -> {after:?}");
+        assert!((after.0[1 - axis] - before.0[1 - axis]).abs() < 0.01, "{at:?}: and only along it: {before:?} -> {after:?}");
+    }
+    h.hover_at(canvas.center());
+    h.run_steps(2);
+    let z = zoom(&h);
+    wheel(&h, 1.0, Modifiers::NONE);
+    h.run_steps(20);
+    assert!(zoom(&h) > z, "over the image the wheel zooms");
+}
+
 /// #4658: with the Move tool's Show Transform Controls, the band just outside the box shows the
 /// curved rotate arrow, not a plain pointer, and one drag from there rotates the layer.
 #[test]
@@ -1232,6 +1276,27 @@ fn move_tool_controls_rotate_from_just_outside_the_box() {
     let end = h.state().ui.transform.as_ref().map(|t| t.quad).expect("the drag opened Free Transform");
     let tilt = (end[1][1] - end[0][1]).atan2(end[1][0] - end[0][0]).to_degrees();
     assert!((tilt - 90.0).abs() < 8.0 || (tilt + 270.0).abs() < 8.0, "rotated about a quarter turn, got {tilt}° (zoom {zoom})");
+}
+
+/// A user report: the Pen's pointer felt less smooth than the brush's. The icon cursors (Pen,
+/// Eyedropper, Paint Bucket) are OS cursor bitmaps on the desktop now, which move with the
+/// hardware pointer (elsewhere painted straight onto a top layer), never an `egui::Area`.
+#[test]
+fn the_pen_cursor_is_painted_at_the_pointer_without_an_area() {
+    let mut h = harness();
+    h.state_mut().ui.tool = crate::state::Tool::Pen;
+    h.run_steps(2);
+    let r = h.state().last_canvas_rect;
+    let at = r.center();
+    for _ in 0..4 {
+        h.event(egui::Event::PointerMoved(at));
+        h.run_steps(2);
+    }
+    assert_eq!(crate::tool_cursor::shown_icon(&h.ctx), Some(crate::icons::tool_icon(crate::state::Tool::Pen)));
+    let image = h.output().platform_output.cursor_image.clone().expect("an OS cursor bitmap");
+    // The nib is the hotspot: up and left in the bitmap, the pen running down and right of it.
+    assert!(image.hotspot[0] < image.size[0] / 2 && image.hotspot[1] < image.size[1] / 2, "{:?} {:?}", image.hotspot, image.size);
+    assert!(!h.ctx.memory(|m| m.areas().visible_layer_ids().iter().any(|l| l.id == egui::Id::new("pc-icon-cursor"))), "no Area for the cursor");
 }
 
 #[test]

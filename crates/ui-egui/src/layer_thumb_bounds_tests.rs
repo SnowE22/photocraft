@@ -8,7 +8,7 @@ use photocraft_geom::Rect;
 use serde_json::json;
 
 use crate::PhotocraftApp;
-use crate::mask_thumbs_ui::THUMB_LAYER;
+use crate::mask_thumbs_ui::{THUMB_LAYER, THUMB_LAYER_BOUNDS};
 
 fn harness() -> (Harness<'static, PhotocraftApp>, u64) {
     let mut s = photocraft_engine::Session::new();
@@ -32,33 +32,31 @@ fn frame(h: &Harness<'_, PhotocraftApp>, id: u64) -> Rect {
     *h.state().thumb_frames.get(&LayerId(id)).expect("layer thumbnail drawn")
 }
 
-fn texture_area(h: &Harness<'_, PhotocraftApp>, id: u64) -> usize {
-    let (_, tex) = h.state().thumbs.get(&(LayerId(id), THUMB_LAYER)).expect("layer thumbnail drawn");
-    let [w, h] = tex.size();
-    w * h
+fn texture_size(h: &Harness<'_, PhotocraftApp>, id: u64, kind: u8) -> [usize; 2] {
+    let (_, tex) = h.state().thumbs.get(&(LayerId(id), kind)).expect("layer thumbnail drawn");
+    tex.size()
 }
 
 #[test]
-fn layer_thumbnails_frame_the_canvas_by_default() {
+fn layer_thumbnails_frame_the_layer_pixels_by_default() {
+    // Photoshop 2026's Layers panel (Layer Bounds): the filled rect, at its own 2:1 shape.
     let (h, id) = harness();
-    assert!(!h.state().session.prefs().interface.clip_thumbnails_to_layer_bounds);
-    assert_eq!(frame(&h, id), Rect::new(0, 0, 2000, 1000));
+    assert!(h.state().session.prefs().interface.clip_thumbnails_to_layer_bounds);
+    assert_eq!(frame(&h, id), Rect::new(100, 200, 120, 210));
+    assert_eq!(texture_size(&h, id, THUMB_LAYER_BOUNDS), [64, 32]);
 }
 
 #[test]
-fn clipped_layer_thumbnails_frame_the_layer_pixels() {
+fn unclipped_layer_thumbnails_frame_the_canvas() {
     let (mut h, id) = harness();
-    let before = h.state().thumbs.get(&(LayerId(id), THUMB_LAYER)).map(|(r, _)| *r).unwrap();
-    h.state_mut().run("prefs.set", json!({"path": "interface.clipThumbnailsToLayerBounds", "value": true})).unwrap();
-    h.run_steps(4);
-    assert_eq!(frame(&h, id), Rect::new(100, 200, 120, 210), "framed on the filled rect");
-    let after = h.state().thumbs.get(&(LayerId(id), THUMB_LAYER)).map(|(r, _)| *r).unwrap();
-    assert_ne!(before, after, "toggling the preference rebuilds the thumbnail");
-    assert_eq!(texture_area(&h, id), 64 * 64, "still a 64 px square texture");
-
     h.state_mut().run("prefs.set", json!({"path": "interface.clipThumbnailsToLayerBounds", "value": false})).unwrap();
     h.run_steps(4);
-    assert_eq!(frame(&h, id), Rect::new(0, 0, 2000, 1000), "and back to the canvas");
+    assert_eq!(frame(&h, id), Rect::new(0, 0, 2000, 1000), "framed on the canvas");
+    assert_eq!(texture_size(&h, id, THUMB_LAYER), [64, 64], "a 64 px square texture, letterboxed");
+
+    h.state_mut().run("prefs.set", json!({"path": "interface.clipThumbnailsToLayerBounds", "value": true})).unwrap();
+    h.run_steps(4);
+    assert_eq!(frame(&h, id), Rect::new(100, 200, 120, 210), "and back to the layer's pixels");
 }
 
 #[test]

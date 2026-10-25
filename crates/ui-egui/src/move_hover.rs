@@ -52,7 +52,7 @@ pub(crate) fn target(app: &mut PhotocraftApp, at: Option<[f64; 2]>, command: boo
         app.canvas_hover_layer = h.target_layer;
         return h.bounds;
     }
-    let target_layer = photocraft_engine::pick_cmds::auto_select_target(&st.doc, at[0], at[1], group);
+    let target_layer = photocraft_engine::pick_cmds::auto_select_target_at(&st.doc, at[0], at[1], group, app.ui.tool_options.move_pick_opacity.clamp(0.0, 100.0) / 100.0);
     let bounds = target_layer.and_then(|id| outline(&st.doc, id));
     let target_layer = if bounds.is_some() { target_layer } else { None };
     app.move_hover = Some(Hover { doc, revision, at, group, target_layer, bounds });

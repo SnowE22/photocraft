@@ -4053,6 +4053,355 @@ cameraData	Lens	Lens
 	{path}: the path is not valid Unicode; save under another name.	{path}: yol geçerli bir Unicode değil; başka bir adla kaydedin.
 	{name} was changed by another app after it was opened or saved here.	{name}, burada açıldıktan veya kaydedildikten sonra başka bir uygulama tarafından değiştirildi.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Bu belgeyle değiştirin ya da iptal edip ikisini de korumak için Dosya › Farklı Kaydet'i kullanın.
+
+	Panel Icons	Panel Simgeleri
+	Move Tools panel	Araçlar Panelini Taşı
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Araçlar panelini taşımak için sürükleyin; yerleştirmek için kanvasın kenarına bırakın
+	New Document…	Yeni Belge…
+	Open Document…	Belge Aç…
+	Delete Brushes	Fırçaları Sil
+	Thumbnail size	Küçük resim boyutu
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Photoshop Eylemlerini İçe Aktar
+	No Photoshop Actions palette was found on this computer	Bu bilgisayarda Photoshop eylemler paleti bulunamadı
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Topaz Gigapixel AI'da açıldı: geri getirmek için görüntüyü orada dışa aktarın
+	Stopped waiting for Topaz Gigapixel AI	Topaz Gigapixel AI beklemesi durduruldu
+	Topaz Gigapixel AI's image could not be applied: {error}	Topaz Gigapixel AI görüntüsü uygulanamadı: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: {scale}× büyütülerek {w} × {h} px oldu (yeni katman)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Topaz Gigapixel AI bekleniyor: geri getirmek için büyütülmüş görüntüyü orada dışa aktarın.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{file} dosyasından {sets} kümede {n} eylem yüklendi
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Üretken YZ Açık
+	Generative AI Off	Üretken YZ Kapalı
+	Loading the AI model…	YZ modeli yükleniyor…
+	AI model not installed	YZ modeli yüklü değil
+	AI model failed to load	YZ modeli yüklenemedi
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	lama_fp32.onnx dosyasını ve ONNX Runtime'ı (onnxruntime.dll, DirectML.dll) şu klasörlerden birine koyun: {folders}. O zamana kadar "Otomatik" normal dolguyu kullanır.
+	Model:	Model:
+	LaMa (fast)	LaMa (hızlı)
+	Diffusion (detailed)	Difüzyon (ayrıntılı)
+	Prompt (optional)	İstem (isteğe bağlı)
+	What should be there. Empty: the model's own guess.	Orada ne olmalı. Boş: modelin kendi tahmini.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Difüzyon modelinin klasörünü ve ONNX Runtime'ı şunlardan birine koyun: {folders}. O zamana kadar Otomatik, LaMa kullanır.
+	Generative Fill…	Üretken Dolgu…
+	Center Canvas When Zoomed Out	Uzaklaştırınca Tuvali Ortala
+	High (slower)	Yüksek (daha yavaş)
+	Quality:	Kalite:
+	There is no such Topaz Gigapixel preset	Böyle bir Topaz Gigapixel hazır ayarı yok
+	Saved Topaz Gigapixel preset “{name}”	“{name}” Topaz Gigapixel hazır ayarı kaydedildi
+	New Preset	Yeni Hazır Ayar
+	Upscale:	Büyütme:
+	With these settings	Bu ayarlarla
+	With two presets	İki hazır ayarla
+	Save two presets with their own settings first; then this one can run them together.	Önce kendi ayarları olan iki hazır ayar kaydedin; bu hazır ayar ardından ikisini birlikte çalıştırabilir.
+	First:	Önce:
+	Then:	Sonra:
+	Results:	Sonuçlar:
+	One after the other	Art arda
+	Each on its own layer	Her biri kendi katmanında
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	İki hazır ayar da görüntüyü büyütür; her sonuç karşılaştırmak veya karıştırmak için bir katman olur.
+	The second preset upscales the first one's result.	İkinci hazır ayar, ilkinin sonucunu büyütür.
+	Topaz Gigapixel Presets	Topaz Gigapixel Hazır Ayarları
+	Manage Presets…	Hazır Ayarları Yönet…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Kayıtlı bir hazır ayarı Dosya › Otomatikleştir › Topaz Gigapixel Hazır Ayarları menüsünden çalıştırın.
+	Auto lets Gigapixel choose.	Otomatik, seçimi Gigapixel'e bırakır.
+	Denoise:	Gürültü Giderme:
+	Sharpen:	Keskinleştir:
+	Fix Compression:	Sıkıştırmayı Düzelt:
+	Face Recovery:	Yüz Kurtarma:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Timelapse kayıtlarınız için bir klasör seçin
+	Saved {name} ({seconds} s timelapse)	{name} kaydedildi ({seconds} sn timelapse)
+	Export Timelapse	Timelapse'i Dışa Aktar
+	Export Timelapse…	Timelapse'i Dışa Aktar…
+	Timelapse export cancelled	Timelapse dışa aktarımı iptal edildi
+	Timelapse	Timelapse
+	Auto record	Otomatik kayıt
+	Records whatever document you're on, unless you paused it yourself.	Kendiniz duraklatmadıysanız üzerinde çalıştığınız belgeyi kaydeder.
+	Open a document to record a timelapse.	Timelapse kaydetmek için bir belge açın.
+	Recording (idle)	Kaydediliyor (boşta)
+	Recording	Kaydediliyor
+	Click to pause	Duraklatmak için tıklayın
+	Paused: click to resume	Duraklatıldı: devam etmek için tıklayın
+	Start recording	Kaydı başlat
+	Pause Recording	Kaydı Duraklat
+	Reference Layer	Referans Katmanı
+	Reference layer	Referans katmanı
+	Recorded more since the last export	Son dışa aktarımdan bu yana daha fazla kaydedildi
+	Select a layer	Bir katman seçin
+	Not recorded: you see it, the timelapse doesn't	Kaydedilmiyor: siz görürsünüz, timelapse görmez
+	Recorded	Kaydediliyor
+	{count} of {total} not recorded	{total} katmandan {count} tanesi kaydedilmiyor
+	Reference	Referans
+	Adds {tag} to the layer's name	Katman adına {tag} ekler
+	Export again…	Yeniden dışa aktar…
+	Export video…	Videoyu dışa aktar…
+	Play video	Videoyu oynat
+	Show in folder	Klasörde göster
+	Make:	Oluştur:
+	Advanced settings	Gelişmiş ayarlar
+	Show the finished drawing first	Önce bitmiş çizimi göster
+	Flash before the final image	Son görüntüden önce parlama
+	Hold the final image	Son görüntüyü beklet
+	Slow down at the end	Sonda yavaşlat
+	Remove flicker	Titremeyi kaldır
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Bir anlığına görünüp kaybolan kareleri atlar: kısa süre gizlenen bir katman, hemen geri alınan bir fırça darbesi.
+	Work-time counter	Çalışma süresi sayacı
+	Bars:	Kenar şeritleri:
+	Fills the edges when the canvas size changed during the recording.	Kayıt sırasında tuval boyutu değiştiyse kenarları doldurur.
+	Folder:	Klasör:
+	not chosen yet	henüz seçilmedi
+	Remove frames with undo	Geri alınca kareleri kaldır
+	Reference tag:	Referans etiketi:
+	Work timer stops after:	Çalışma sayacı şu süreden sonra durur:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	MP4'ü oluşturur. Otomatik, önce PhotoCraft'ın yanında, sonra PATH'te arar.
+	Choose the ffmpeg program on this computer	Bu bilgisayardaki ffmpeg programını seçin
+	Opening files isn't available here	Dosya açma burada kullanılamıyor
+	MP4 video (ffmpeg)	MP4 video (ffmpeg)
+	JPEG frames	JPEG kareleri
+	Bottom right	Sağ alt
+	Bottom left	Sol alt
+	Top right	Sağ üst
+	Top left	Sol üst
+	5 seconds	5 saniye
+	10 seconds	10 saniye
+	15 seconds	15 saniye
+	20 seconds	20 saniye
+	30 seconds	30 saniye
+	1 minute	1 dakika
+	2 minutes	2 dakika
+	5 minutes	5 dakika
+@plural	{n} frame|{n} frames	{n} kare
+	Refresh	Yenile
+	Recordings will be listed here once you've chosen a folder.	Bir klasör seçtiğinizde kayıtlar burada listelenir.
+	No recordings yet.	Henüz kayıt yok.
+	Open folder	Klasörü aç
+	Delete frames	Kareleri sil
+	Delete folder	Klasörü sil
+	Pause the recording first	Önce kaydı duraklatın
+	REC	REC
+	EXPORTED	DIŞA AKTARILDI
+	NOT EXPORTED	DIŞA AKTARILMADI
+	{time} work	{time} çalışma
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}” henüz dışa aktarılmadı. Karelerini ({frames}) silerseniz artık ondan video yapamazsınız. Bu işlem geri alınamaz.
+	Delete the {frames} of “{name}”?	“{name}” kareleri ({frames}) silinsin mi?
+	You've recorded more since the last export, and that part isn't in the video.	Son dışa aktarımdan bu yana daha fazla kayıt yaptınız; o kısım videoda yok.
+	Your videos and the work time are kept. This can't be undone.	Videolarınız ve çalışma süresi korunur. Bu işlem geri alınamaz.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	“{name}” ve klasörü silinsin mi? Kayıt, çalışma süresiyle birlikte kütüphaneden kaldırılır. Dışa aktardığınız videolar kaydettiğiniz yerde kalır. Bu işlem geri alınamaz.
+	Frames deleted.	Kareler silindi.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	“{name}” silindi. Klasöründe başka dosyalar olduğu için klasör korundu.
+	Deleted “{name}”.	“{name}” silindi.
+@plural	{n} recording|{n} recordings	{n} kayıt
+	Save Preset from Last Upscale…	Son Büyütmeden Hazır Ayar Kaydet…
+	No upscale has come back from Topaz Gigapixel AI yet	Topaz Gigapixel AI'dan henüz bir büyütme dönmedi
+	Detail:	Ayrıntı:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: {scale}× büyütülerek {w} × {h} px oldu (yeni katman). Bu ayarları Topaz Gigapixel Hazır Ayarları › Son Büyütmeden Hazır Ayar Kaydet ile saklayın
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} kaydedildi ({seconds} video).
+	Export failed: {error}	Dışa aktarma başarısız: {error}
+	Export cancelled.	Dışa aktarma iptal edildi.
+	just now	az önce
+	{n} min ago	{n} dk önce
+	{n} h ago	{n} sa önce
+	yesterday	dün
+	{n} days ago	{n} gün önce
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Daha küçük dosyalar ve en hızlı yakalama. Hızlı eskizler ve önizlemeler için yeterli.
+	Sharper video for big screens. Uses about twice the disk space.	Büyük ekranlar için daha keskin video. Yaklaşık iki kat disk alanı kullanır.
+	Full-HD video, good for social media. Recommended.	Full HD video, sosyal medya için uygun. Önerilir.
+	idle	boşta
+	Record	Kayıt
+	Paused	Duraklatıldı
+	Click to resume recording	Kayda devam etmek için tıklayın
+	Open a document to record it.	Kaydetmek için bir belge açın.
+	You'll be asked where to save recordings.	Kayıtların nereye kaydedileceği sorulacak.
+	Export again	Yeniden dışa aktar
+	Export video	Videoyu dışa aktar
+	Show the export results	Dışa aktarma sonuçlarını göster
+	Hide the export results	Dışa aktarma sonuçlarını gizle
+	≈ {seconds} video from {frames}.	≈ {frames} ile {seconds} video.
+	Cancel export	Dışa aktarmayı iptal et
+	Frames	Kareler
+	Timer	Süre
+	On disk	Diskte
+	Hide the live preview	Canlı önizlemeyi gizle
+	Show the newest frame	En yeni kareyi göster
+	No frames yet — just start drawing	Henüz kare yok — çizmeye başlayın
+	No frames yet	Henüz kare yok
+	No layer selected	Katman seçilmedi
+	{n} layers selected	{n} katman seçildi
+	Not recorded	Kaydedilmiyor
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Referans katmanı normal bir katman gibi çalışır ama timelapse'te görünmez.
+	Export settings	Dışa aktarma ayarları
+	Make video with	Videoyu şununla oluştur
+	Bars colour	Şerit rengi
+	Bars fill the empty space when the canvas size changed during recording.	Kayıt sırasında tuval boyutu değiştiyse şeritler boş alanı doldurur.
+	Show finished drawing first	Önce bitmiş çizimi göster
+	Hold final image	Son görüntüyü beklet
+	Show work-time counter	Çalışma süresi sayacını göster
+	Record something in this document to see how long the video will be.	Videonun ne kadar süreceğini görmek için bu belgede bir şey kaydedin.
+	≈ {seconds} video	≈ {seconds} video
+	{n} recorded frames	{n} kaydedilmiş kare
+	Auto shows every frame once (at least 5 s, at most 1 min).	Otomatik her kareyi bir kez gösterir (en az 5 sn, en fazla 1 dk).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Kayıt sırasında tuval boyutu değişti; önceki kareler son boyuta sığdırılır.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Titremeyi kaldır, bir anlığına görünüp kaybolan kareleri atlar (kısa süre gizlenen bir katman, hemen geri alınan bir fırça darbesi); bu yüzden video biraz kısalabilir.
+	Recordings folder	Kayıt klasörü
+	Not chosen yet — see Settings	Henüz seçilmedi — Ayarlar'a bakın
+	recorded {when}	kaydedildi: {when}
+	Recorded more since the last export.	Son dışa aktarımdan bu yana daha fazla kaydedildi.
+	Frames folder	Kare klasörü
+	Not chosen yet	Henüz seçilmedi
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Kaydedilen karelerin tutulduğu yer. Videolar dışa aktarırken seçtiğiniz yere kaydedilir.
+	Choose folder…	Klasör seç…
+	Change folder…	Klasörü değiştir…
+	Recording quality	Kayıt kalitesi
+	Undoing something removes those recorded frames.	Bir şeyi geri almak o kaydedilmiş kareleri kaldırır.
+	Reference layers	Referans katmanları
+	Name tag	Ad etiketi
+	Layers with this in their name are left out of the timelapse.	Adında bu bulunan katmanlar timelapse'e alınmaz.
+	Work timer	Çalışma sayacı
+	Idle after	Boşta sayılma
+	The timer stops counting after this long without activity.	Sayaç bu kadar süre etkinlik olmazsa durur.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (hızlı)
+	Dark grey	Koyu gri
+	0.5 s	0,5 sn
+	1 s	1 sn
+	1.5 s	1,5 sn
+	2 s	2 sn
+	3 s	3 sn
+	4 s	4 sn
+	5 s	5 sn
+	8 s	8 sn
+	10 s	10 sn
+	1 min	1 dk
+	1.5 min	1,5 dk
+	2 min	2 dk
+	3 min	3 dk
+	5 min	5 dk
+	45 seconds	45 saniye
+	Run Two Presets…	İki Hazır Ayarı Çalıştır…
+	Run Two Topaz Gigapixel Presets	İki Topaz Gigapixel Hazır Ayarını Çalıştır
+	Run	Çalıştır
+	Set Shortcut…	Kısayol Ayarla…
+	Action Shortcut	Eylem Kısayolu
+	No shortcut.	Kısayol yok.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} aynı zamanda {commands} kısayolu: bunun yerine bu eylemi çalıştıracak.
+	Press the keys that play “{action}”.	“{action}” eylemini çalıştıracak tuşlara basın.
+	Shortcut:	Kısayol:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Ctrl, Alt ve Shift ile her tuş kullanılabilir. Backspace kısayolu kaldırır.
+	The action no longer exists.	Eylem artık yok.
+	Fill Tool	Doldurma Aracı
+	Nothing to fill there	Orada doldurulacak bir şey yok
+	No enclosed area to fill there	Orada doldurulacak kapalı alan yok
+	Fill: click an area	Doldurma: bir alana tıklayın
+	Enclose and Fill: draw round the areas to fill	Çevrele ve Doldur: doldurulacak alanların çevresini çizin
+	Paint Unfilled Area: paint over the gaps a fill left	Doldurulmamış Alanı Boya: dolgunun bıraktığı boşlukların üzerine boyayın
+	Refer	Başvuru
+	Editing Layer	Düzenlenen Katman
+	Selected Layers	Seçili Katmanlar
+	Layers in Folder	Klasördeki Katmanlar
+	Reference Layers	Başvuru Katmanları
+	Exclude	Hariç Tut
+	Editing layer	Düzenlenen katman
+	Text layers	Metin katmanları
+	Locked layers	Kilitli katmanlar
+	Layers the fill doesn't read	Dolgunun okumadığı katmanlar
+	Close Gap	Boşlukları Kapat
+	Treat gaps in the lines up to this wide as closed (0: off)	Çizgilerdeki bu genişliğe kadar boşlukları kapalı say (0: kapalı)
+	Area Scaling	Alan Ölçekleme
+	Grow the fill under the lines, or shrink it	Dolguyu çizgilerin altına genişlet veya daralt
+	To Darkest Pixel	En Koyu Piksele Kadar
+	Follow Adjacent Pixels	Bitişik Pikselleri İzle
+	White and Transparent	Beyaz ve Saydam
+	Image Border	Görüntü Kenarı
+	The canvas edge closes gaps as a line does	Tuval kenarı boşlukları bir çizgi gibi kapatır
+	Reference layer: the Fill tool reads it	Başvuru katmanı: Doldurma Aracı bunu okur
+	Set as Reference Layer	Başvuru Katmanı Olarak Ayarla
+	Clear Reference Layer	Başvuru Katmanını Kaldır
+	Fill Tool Options	Doldurma Aracı Seçenekleri
+	Size Key Repeat	Boyut Tuşu Tekrarı
+	Holding [ or ] to resize the brush	Fırçayı yeniden boyutlandırmak için [ veya ] tuşunu basılı tutma
+	Pause before repeating	Tekrarlamadan önce duraklat
+	Wait half a second before the size keeps changing, as typing does	Yazarken olduğu gibi, boyut değişmeye devam etmeden önce yarım saniye bekle
+	Change every	Değiştirme aralığı
+	Sample on Alt	Alt ile Örnekle
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Bir boyama aracıyla Alt'a basmak işaretçinin altındaki rengi hemen alır
+	Hold:	Basılı tut:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Alt'ın normal Damlalık gibi çalışması için ne kadar basılı tutulması gerektiği: damlalık imleci ve örneklemek için tıklama
+	Move Layer Mask	Katman Maskesini Taşı
+	Copy Layer Mask	Katman Maskesini Kopyala
+	Move Vector Mask	Vektör Maskesini Taşı
+	Copy Vector Mask	Vektör Maskesini Kopyala
+	Save as:	Farklı kaydet:
+	Save Preset	Hazır Ayarı Kaydet
+	Keep these two presets as one, listed with the others	Bu iki hazır ayarı tek ayar olarak diğerleriyle birlikte sakla
+	Stop recording first	Önce kaydı durdurun
+	Select a step first	Önce bir adım seçin
+	This step has no dialog to record again	Bu adımın yeniden kaydedilecek bir iletişim kutusu yok
+	Record Again…	Yeniden Kaydet…
+	Insert Menu Item…	Menü Öğesi Ekle…
+	Insert Conditional…	Koşul Ekle…
+	Set Options…	Küme Seçenekleri…
+	Action Options…	Eylem Seçenekleri…
+	Playback Options…	Oynatma Seçenekleri…
+	Allow Tool Recording	Araç Kaydına İzin Ver
+	Record brush and other painting strokes, and the brush settings they use	Fırça ve diğer boyama vuruşlarını ve kullandıkları fırça ayarlarını kaydet
+	Clear All Actions	Tüm Eylemleri Temizle
+	Replace Actions…	Eylemleri Değiştir…
+	Delete the set “{name}”?	“{name}” kümesi silinsin mi?
+	Delete the action “{name}”?	“{name}” eylemi silinsin mi?
+	Delete the selection?	Seçim silinsin mi?
+	Function Key:	İşlev Tuşu:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Eylemin başka bir kısayolu var (Kısayol Ayarla…); burada seçilen tuş onun yerini alır.
+	Accelerated	Hızlandırılmış
+	Step by Step	Adım Adım
+	Pause For:	Duraklat:
+	seconds	saniye
+	None Selected	Hiçbiri Seçili Değil
+	Menu Item:	Menü Öğesi:
+	Type part of a menu item's name, then pick it below.	Bir menü öğesinin adının bir bölümünü yazın, sonra aşağıdan seçin.
+	If Current:	Geçerli ise:
+	Then Play Action:	Sonra Eylemi Oynat:
+	Else Play Action:	Değilse Eylemi Oynat:
+	Document Is Open	Belge Açık
+	Document Is Landscape	Belge Yatay
+	Document Is Square	Belge Kare
+	Document Is Portrait	Belge Dikey
+	Document Mode Is RGB	Belge Modu RGB
+	Document Mode Is CMYK	Belge Modu CMYK
+	Document Mode Is Grayscale	Belge Modu Gri Tonlama
+	Document Mode Is Lab	Belge Modu Lab
+	Document Mode Is Bitmap	Belge Modu Bitmap
+	Document Mode Is Indexed	Belge Modu Dizinlenmiş Renk
+	Document Mode Is Duotone	Belge Modu Çift Ton
+	Document Mode Is Multichannel	Belge Modu Çok Kanallı
+	Document Is 8 Bits/Channel	Belge 8 Bit/Kanal
+	Document Is 16 Bits/Channel	Belge 16 Bit/Kanal
+	Document Is 32 Bits/Channel	Belge 32 Bit/Kanal
+	Document Has Unsaved Changes	Belgede Kaydedilmemiş Değişiklikler Var
+	Document Has a Selection	Belgede Seçim Var
+	Document Has Layers	Belgede Katmanlar Var
+	Document Has Alpha Channels	Belgede Alfa Kanalları Var
+	Layer Is Background	Katman Arka Plan
+	Layer Is a Pixel Layer	Katman Piksel Katmanı
+	Layer Is an Adjustment Layer	Katman Ayarlama Katmanı
+	Layer Is a Shape Layer	Katman Şekil Katmanı
+	Layer Is a Type Layer	Katman Yazı Katmanı
+	Layer Is a Smart Object	Katman Akıllı Nesne
+	Layer Is a Group	Katman Grup
+	Layer Is Locked	Katman Kilitli
+	Layer Is Visible	Katman Görünür
+	Layer Has Pixel Mask	Katmanda Piksel Maskesi Var
+	Layer Has Vector Mask	Katmanda Vektör Maskesi Var
+	Layer Has Effects	Katmanda Efektler Var
+	Pick a menu item first	Önce bir menü öğesi seçin
+	Close gaps up to {px} px	{px} px’e kadar boşlukları kapat
+	Grow the selection under the lines, or shrink it	Seçimi çizgilerin altına genişlet veya daralt
 	Decrease Brush Size	Fırça boyutunu küçült
 	Increase Brush Size	Fırça boyutunu büyüt
 	Decrease Brush Hardness	Fırça sertliğini azalt
@@ -4083,6 +4432,25 @@ cameraData	Lens	Lens
 	In Front	Önde
 	Behind	Arkada
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	İkinci maske ekle  (seçimden; {key} tersine çevirir)
+	Convert to Vector Mask	Vektör Maskesine Dönüştür
+	Delete Second Mask	İkinci Maskeyi Sil
+	Disable Second Mask	İkinci Maskeyi Devre Dışı Bırak
+	Enable Second Mask	İkinci Maskeyi Etkinleştir
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Seçimi kilitle: tuvaldeki tıklamalar içinden geçer (Katmanlar paneli yine de seçer)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Geçerli Katmanı Ayarla
+	Editing layer blocks the fill	Düzenlenen katman dolguyu durdurur
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Doldurulan katmandaki boya her toleransta dolguyu durdurur ve dolgu onun arkasına girer: kapatmak için bir boşluğun üzerine çizin
+	Undo widens Close Gap	Geri alma Boşlukları Kapat'ı genişletir
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Bir dolgunun her geri alınışı, başka bir araç seçene kadar sonraki tıklamada daha büyük boşlukları kapatır
+	Close Gap widened to {px} px: click again to fill	Boşlukları Kapat {px} px'e genişletildi: doldurmak için yeniden tıklayın
+	Pick From	Seçme Eşiği
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Ctrl-tıklama ve Otomatik Seç'in bir katmanı seçmesi için işaretçinin altında ne kadar opak olması gerektiği: neredeyse siyah bir maske gibi daha soluk pikseller tıklamayı geçirir (0: görünen her piksel)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Karıştırma koşulu veya gelişmiş karıştırma ayarlı: Karıştırma Seçenekleri için tıklayın
 # DDS Options (#1327)
 	DDS Options	DDS Seçenekleri
 	Generate Mipmaps	Mipmap oluştur
@@ -4114,6 +4482,38 @@ cameraData	Lens	Lens
 	Start Size:	Başlangıç boyutu:
 	End Size:	Bitiş boyutu:
 	Save as Pattern	Desen Olarak Kaydet
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, ücretli)
+	Remove Selection	Seçimi Kaldır
+	Remove what is selected ({key})	Seçili olanı kaldır ({key})
+	API Key…	API Anahtarı…
+	Change or remove the Google API key Nano Banana uses	Nano Banana'nın kullandığı Google API anahtarını değiştir veya kaldır
+	Set API Key…	API Anahtarı Ayarla…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana kendi Google API anahtarınızı gerektirir; o zamana kadar Otomatik LaMa kullanır
+	No API key	API anahtarı yok
+	Nano Banana API Key	Nano Banana API Anahtarı
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 Google'ın sunucularında çalışır ve Google hesabınıza faturalandırılır: kaldırma başına yaklaşık {small}, büyükler için {large}.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Kaldırdığınız şeyin çevresi Google'a gönderilir ve saklamaması istenir.
+	Get a key at	Anahtarı şuradan alın:
+	A key is saved in the system's credential store.	Sistemin kimlik bilgisi deposunda kayıtlı bir anahtar var.
+	Using the {var} environment variable.	{var} ortam değişkeni kullanılıyor.
+	Google API key	Google API anahtarı
+	Remove Saved Key	Kayıtlı Anahtarı Kaldır
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Bu sistemde PhotoCraft'ın kullanabileceği bir kimlik bilgisi deposu yok: bunun yerine {var} ortam değişkenini ayarlayın.
+	Mask image	Maske görüntüsü
+	Painted red	Kırmızıya boyalı
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana resmi olduğu gibi ve kaldırılacak alanın ayrı bir maskesini alır
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana resmi, kaldırılacak alan kırmızıya boyanmış olarak alır; Photoshop yöntemindeki gibi
+	Close up	Yakından
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana, kaldırdığınız şeyin çevresindeki alanı alır; böylece onu sayfanın yaklaşık iki katı çözünürlükte çizer
+	Whole page	Tüm sayfa
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana tüm sayfayı alır: daha çok ipucu, ama daha yumuşak bir sonuç
+	Creative	Yaratıcı
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Nano Banana'nın çizdiği her şeyi, kaldırdığınız alanın çevresinde değiştirdiklerini de göster (katman maskesi kenarlarda solar)
+	Grain…	Gren…
+	Roughness:	Pürüzlülük:
+	Color field	Renk alanı
+	Color slider	Renk kaydırıcısı
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Önce açık eylem adımı iletişim kutusunu onaylayın veya iptal edin
 	Pro Medium Gray	Pro Orta Gri
@@ -4133,3 +4533,10 @@ cameraData	Lens	Lens
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Örnek: kaydedilen renkler
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	YZ ile Kaldır
+	Remove what is selected with Nano Banana ({key})	Seçili alanı Nano Banana ile kaldır ({key})
+	Pin to Top	Üste Sabitle
+	Unpin from Top	Üstten Sabitlemeyi Kaldır

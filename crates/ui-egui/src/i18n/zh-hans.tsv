@@ -2980,6 +2980,367 @@ curves	Smooth	平滑
 	Replace	替换
 	{name} was changed by another app after it was opened or saved here.	{name} 在此处打开或存储后已被其他应用更改。
 	Replace it with this document, or cancel and use File › Save As to keep both.	用此文档替换它，或取消并使用“文件 › 另存为”以保留两者。
+
+	Panel Icons	面板图标
+	Move Tools panel	移动工具面板
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	拖动以移动工具面板；放到画布边缘即可停靠
+	New Document…	新建文档…
+	Open Document…	打开文档…
+	Delete Brushes	删除画笔
+	Thumbnail size	缩略图大小
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	导入 Photoshop 动作
+	No Photoshop Actions palette was found on this computer	在此电脑上未找到 Photoshop 动作面板文件
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	已在 Topaz Gigapixel AI 中打开：在那里导出图像即可将其带回
+	Stopped waiting for Topaz Gigapixel AI	已停止等待 Topaz Gigapixel AI
+	Topaz Gigapixel AI's image could not be applied: {error}	无法应用 Topaz Gigapixel AI 的图像：{error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新图层）
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	正在等待 Topaz Gigapixel AI：在那里导出放大后的图像即可将其带回。
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	已从 {file} 载入 {sets} 个组中的 {n} 个动作
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	生成式 AI 开启
+	Generative AI Off	生成式 AI 关闭
+	Loading the AI model…	正在加载 AI 模型…
+	AI model not installed	未安装 AI 模型
+	AI model failed to load	AI 模型加载失败
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	请将 lama_fp32.onnx 和 ONNX Runtime（onnxruntime.dll、DirectML.dll）放到以下任一文件夹：{folders}。在此之前，“自动”使用常规填充。
+	Model:	模型：
+	LaMa (fast)	LaMa（快速）
+	Diffusion (detailed)	扩散（精细）
+	Prompt (optional)	提示词（可选）
+	What should be there. Empty: the model's own guess.	那里应该是什么。留空：由模型自行推测。
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	请将扩散模型文件夹和 ONNX Runtime 放到以下任一位置：{folders}。在此之前，自动模式使用 LaMa。
+	Generative Fill…	创成式填充…
+	Center Canvas When Zoomed Out	缩小时将画布居中
+	High (slower)	高 (较慢)
+	Quality:	品质:
+	There is no such Topaz Gigapixel preset	没有这个 Topaz Gigapixel 预设
+	Saved Topaz Gigapixel preset “{name}”	已存储 Topaz Gigapixel 预设“{name}”
+	New Preset	新建预设
+	Upscale:	放大:
+	With these settings	使用这些设置
+	With two presets	使用两个预设
+	Save two presets with their own settings first; then this one can run them together.	请先存储两个带有自身设置的预设；然后此预设即可将它们一起运行。
+	First:	首先:
+	Then:	然后:
+	Results:	结果:
+	One after the other	依次
+	Each on its own layer	各自位于单独图层
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	两个预设都会放大图像；每个结果成为一个图层，便于比较或混合。
+	The second preset upscales the first one's result.	第二个预设放大第一个预设的结果。
+	Topaz Gigapixel Presets	Topaz Gigapixel 预设
+	Manage Presets…	管理预设…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	从“文件 › 自动化 › Topaz Gigapixel 预设”运行存储的预设。
+	Auto lets Gigapixel choose.	选择“自动”时由 Gigapixel 决定。
+	Denoise:	降噪：
+	Sharpen:	锐化：
+	Fix Compression:	修复压缩：
+	Face Recovery:	面部恢复：
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	选择用于保存延时录制的文件夹
+	Saved {name} ({seconds} s timelapse)	已保存 {name}（{seconds} 秒延时视频）
+	Export Timelapse	导出延时视频
+	Export Timelapse…	导出延时视频…
+	Timelapse export cancelled	已取消导出延时视频
+	Timelapse	延时摄影
+	Auto record	自动录制
+	Records whatever document you're on, unless you paused it yourself.	录制你正在处理的文档，除非你自己暂停了它。
+	Open a document to record a timelapse.	打开文档以录制延时视频。
+	Recording (idle)	录制中（空闲）
+	Recording	录制中
+	Click to pause	点击暂停
+	Paused: click to resume	已暂停：点击继续
+	Start recording	开始录制
+	Pause Recording	暂停录制
+	Reference Layer	参考图层
+	Reference layer	参考图层
+	Recorded more since the last export	上次导出后又录制了新内容
+	Select a layer	选择一个图层
+	Not recorded: you see it, the timelapse doesn't	不录制：你能看到，延时视频里没有
+	Recorded	会录制
+	{count} of {total} not recorded	{total} 个中有 {count} 个不录制
+	Reference	参考
+	Adds {tag} to the layer's name	在图层名称后加上 {tag}
+	Export again…	再次导出…
+	Export video…	导出视频…
+	Play video	播放视频
+	Show in folder	在文件夹中显示
+	Make:	生成：
+	Advanced settings	高级设置
+	Show the finished drawing first	先显示完成的画作
+	Flash before the final image	最终画面前闪白
+	Hold the final image	停留在最终画面
+	Slow down at the end	结尾减速
+	Remove flicker	去除闪烁
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	略去一闪而过的帧：短暂隐藏的图层、立即撤销的笔画。
+	Work-time counter	工作时长计数
+	Bars:	边条：
+	Fills the edges when the canvas size changed during the recording.	录制期间画布尺寸有变化时，填充边缘。
+	Settings	设置
+	Folder:	文件夹：
+	not chosen yet	尚未选择
+	Choose…	选择…
+	Remove frames with undo	撤销时移除帧
+	Reference tag:	参考标记：
+	Work timer stops after:	计时停止于闲置：
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	用于生成 MP4。自动会先在 PhotoCraft 旁查找，再在 PATH 中查找。
+	Choose the ffmpeg program on this computer	选择这台电脑上的 ffmpeg 程序
+	Opening files isn't available here	此处无法打开文件
+	MP4 video (ffmpeg)	MP4 视频（ffmpeg）
+	JPEG frames	JPEG 帧
+	Bottom right	右下
+	Bottom left	左下
+	Top right	右上
+	Top left	左上
+	5 seconds	5 秒
+	10 seconds	10 秒
+	15 seconds	15 秒
+	20 seconds	20 秒
+	30 seconds	30 秒
+	1 minute	1 分钟
+	2 minutes	2 分钟
+	5 minutes	5 分钟
+@plural	{n} frame|{n} frames	{n} 帧
+	Library	库
+	Refresh	刷新
+	Recordings will be listed here once you've chosen a folder.	选择文件夹后，录制内容会列在这里。
+	No recordings yet.	还没有录制。
+	Open folder	打开文件夹
+	Delete frames	删除帧
+	Delete folder	删除文件夹
+	Pause the recording first	请先暂停录制
+	REC	REC
+	EXPORTED	已导出
+	NOT EXPORTED	未导出
+	{time} work	工作 {time}
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}”尚未导出。如果删除它的帧（{frames}），就无法再用它制作视频。此操作无法撤销。
+	Delete the {frames} of “{name}”?	要删除“{name}”的帧（{frames}）吗？
+	You've recorded more since the last export, and that part isn't in the video.	上次导出后你又录制了新内容，这部分不在视频中。
+	Your videos and the work time are kept. This can't be undone.	你的视频和工作时间会保留。此操作无法撤销。
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	要删除“{name}”及其文件夹吗？它会连同工作时间一起从库中移除。导出的视频仍留在你保存的位置。此操作无法撤销。
+	Frames deleted.	已删除帧。
+	Deleted “{name}”. Its folder holds other files, so it was kept.	已删除“{name}”。它的文件夹中还有其他文件，因此保留了文件夹。
+	Deleted “{name}”.	已删除“{name}”。
+@plural	{n} recording|{n} recordings	{n} 个录制
+	Save Preset from Last Upscale…	从上次放大存储预设…
+	No upscale has come back from Topaz Gigapixel AI yet	尚未从 Topaz Gigapixel AI 返回任何放大结果
+	Detail:	细节：
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI：已放大 {scale}× 至 {w} × {h} 像素（新图层）。使用 Topaz Gigapixel 预设 › 从上次放大存储预设 保留这些设置
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	已保存 {name}（{seconds} 视频）。
+	Export failed: {error}	导出失败：{error}
+	Export cancelled.	已取消导出。
+	just now	刚刚
+	{n} min ago	{n} 分钟前
+	{n} h ago	{n} 小时前
+	yesterday	昨天
+	{n} days ago	{n} 天前
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	文件更小，录制最快。适合快速草图和预览。
+	Sharper video for big screens. Uses about twice the disk space.	适合大屏幕的更清晰视频。占用约两倍的磁盘空间。
+	Full-HD video, good for social media. Recommended.	全高清视频，适合社交媒体。推荐。
+	idle	空闲
+	Record	录制
+	Paused	已暂停
+	Click to resume recording	点击继续录制
+	Open a document to record it.	打开文档以录制。
+	You'll be asked where to save recordings.	会询问录制内容的保存位置。
+	Export again	再次导出
+	Export video	导出视频
+	Show the export results	显示导出结果
+	Hide the export results	隐藏导出结果
+	≈ {seconds} video from {frames}.	≈ 由 {frames}生成 {seconds} 视频。
+	Confirm	确认
+	Cancel export	取消导出
+	Frames	帧数
+	Timer	计时
+	On disk	占用空间
+	Hide the live preview	隐藏实时预览
+	Show the newest frame	显示最新的帧
+	No frames yet — just start drawing	还没有帧——开始绘画吧
+	No frames yet	还没有帧
+	No layer selected	未选择图层
+	{n} layers selected	已选择 {n} 个图层
+	Not recorded	不录制
+	A reference layer works like a normal layer, but won't show up in the timelapse.	参考图层和普通图层一样使用，但不会出现在延时视频中。
+	Back	返回
+	Export settings	导出设置
+	Make video with	视频生成方式
+	Bars colour	边条颜色
+	Bars fill the empty space when the canvas size changed during recording.	录制期间画布尺寸有变化时，边条会填充空白。
+	Show finished drawing first	先显示完成的画作
+	Hold final image	停留在最终画面
+	Show work-time counter	显示工作时长计数
+	Record something in this document to see how long the video will be.	在此文档中录制一些内容，即可查看视频时长。
+	≈ {seconds} video	≈ {seconds} 视频
+	{n} recorded frames	{n} 个已录制帧
+	Auto shows every frame once (at least 5 s, at most 1 min).	自动会将每一帧显示一次（至少 5 秒，最多 1 分钟）。
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	录制期间画布尺寸发生了变化；较早的帧会适应最终尺寸。
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	去除闪烁会略去一闪而过的帧（短暂隐藏的图层、立即撤销的笔画），因此视频可能会稍短一些。
+	Recordings folder	录制文件夹
+	Not chosen yet — see Settings	尚未选择——请看“设置”
+	recorded {when}	录制于{when}
+	Recorded more since the last export.	上次导出后又录制了新内容。
+	Frames folder	帧文件夹
+	Not chosen yet	尚未选择
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	录制的帧保存在这里。视频会保存到导出时选择的位置。
+	Choose folder…	选择文件夹…
+	Change folder…	更改文件夹…
+	Recording quality	录制质量
+	Undoing something removes those recorded frames.	撤销操作会移除对应的已录制帧。
+	Reference layers	参考图层
+	Name tag	名称标记
+	Layers with this in their name are left out of the timelapse.	名称中含有此标记的图层不会出现在延时视频中。
+	Work timer	工作计时
+	Idle after	闲置判定
+	The timer stops counting after this long without activity.	无操作达到此时长后，计时停止。
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg（快速）
+	Dark grey	深灰色
+	0.5 s	0.5 秒
+	1 s	1 秒
+	1.5 s	1.5 秒
+	2 s	2 秒
+	3 s	3 秒
+	4 s	4 秒
+	5 s	5 秒
+	8 s	8 秒
+	10 s	10 秒
+	1 min	1 分钟
+	1.5 min	1.5 分钟
+	2 min	2 分钟
+	3 min	3 分钟
+	5 min	5 分钟
+	45 seconds	45 秒
+
+# Window › Timelapse panel (more)
+	Length	时长
+	Run Two Presets…	运行两个预设…
+	Run Two Topaz Gigapixel Presets	运行两个 Topaz Gigapixel 预设
+	Run	运行
+	Set Shortcut…	设置快捷键…
+	Action Shortcut	动作快捷键
+	No shortcut.	无快捷键。
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} 也是 {commands} 的快捷键：改为运行此动作。
+	Press the keys that play “{action}”.	按下运行“{action}”的键。
+	Shortcut:	快捷键：
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	任意键均可，可配合 Ctrl、Alt 和 Shift。Backspace 删除快捷键。
+	The action no longer exists.	该动作已不存在。
+	Fill Tool	填充工具
+	Nothing to fill there	那里没有可填充的区域
+	No enclosed area to fill there	那里没有可填充的封闭区域
+	Fill: click an area	填充：单击一个区域
+	Enclose and Fill: draw round the areas to fill	围住填充：围绕要填充的区域绘制
+	Paint Unfilled Area: paint over the gaps a fill left	填充遗漏区域：在填充遗漏的空隙上涂抹
+	Refer	参照
+	Editing Layer	编辑中的图层
+	Selected Layers	选定的图层
+	Layers in Folder	文件夹中的图层
+	Reference Layers	参考图层
+	Exclude	排除
+	Editing layer	编辑中的图层
+	Text layers	文字图层
+	Locked layers	锁定的图层
+	Layers the fill doesn't read	填充不读取的图层
+	Close Gap	闭合间隙
+	Treat gaps in the lines up to this wide as closed (0: off)	将不超过此宽度的线条间隙视为闭合（0：关闭）
+	Area Scaling	区域缩放
+	Grow the fill under the lines, or shrink it	将填充扩展到线条下方或收缩
+	To Darkest Pixel	到最暗像素
+	Follow Adjacent Pixels	仅限相邻像素
+	Target	目标
+	White and Transparent	白色和透明
+	Image Border	图像边缘
+	The canvas edge closes gaps as a line does	画布边缘像线条一样闭合间隙
+	Reference layer: the Fill tool reads it	参考图层：填充工具会读取它
+	Set as Reference Layer	设为参考图层
+	Clear Reference Layer	取消参考图层
+	Fill Tool Options	填充工具选项
+	Size Key Repeat	大小键重复
+	Holding [ or ] to resize the brush	按住 [ 或 ] 调整画笔大小
+	Pause before repeating	重复前暂停
+	Wait half a second before the size keeps changing, as typing does	像打字时一样，在大小持续变化前等待半秒
+	Change every	变化间隔
+	Sample on Alt	按 Alt 时取样
+	With a painting tool, pressing Alt picks the colour under the pointer at once	使用绘画工具时，按下 Alt 立即吸取指针下的颜色
+	Hold:	按住：
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	按住 Alt 多久后才像通常的吸管工具一样工作：吸管指针，单击取样
+	Move Layer Mask	移动图层蒙版
+	Copy Layer Mask	复制图层蒙版
+	Move Vector Mask	移动矢量蒙版
+	Copy Vector Mask	复制矢量蒙版
+	Save as:	另存为：
+	Save Preset	存储预设
+	Keep these two presets as one, listed with the others	将这两个预设存为一个，与其他预设列在一起
+	Stop recording first	请先停止记录
+	Select a step first	请先选择一个步骤
+	This step has no dialog to record again	此步骤没有可重新记录的对话框
+	Duplicate	复制
+	Record Again…	再次记录…
+	Insert Menu Item…	插入菜单项目…
+	Insert Conditional…	插入条件…
+	Set Options…	组选项…
+	Action Options…	动作选项…
+	Playback Options…	回放选项…
+	Allow Tool Recording	允许工具记录
+	Record brush and other painting strokes, and the brush settings they use	记录画笔及其他绘画描边，以及它们使用的画笔设置
+	Clear All Actions	清除全部动作
+	Replace Actions…	替换动作…
+	Create new set	创建新组
+	Delete the set “{name}”?	要删除组“{name}”吗？
+	Delete the action “{name}”?	要删除动作“{name}”吗？
+	Delete the selection?	要删除所选内容吗？
+	Function Key:	功能键：
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	此动作已有其他快捷键（设置快捷键…）；在此选择按键将替换它。
+	Accelerated	加速
+	Step by Step	逐步
+	Pause For:	暂停：
+	seconds	秒
+	None Selected	未选择
+	Menu Item:	菜单项目：
+	Type part of a menu item's name, then pick it below.	输入菜单项目名称的一部分，然后在下方选择。
+	If Current:	如果当前：
+	Then Play Action:	则播放动作：
+	Else Play Action:	否则播放动作：
+	Document Is Open	文档已打开
+	Document Is Landscape	文档为横向
+	Document Is Square	文档为正方形
+	Document Is Portrait	文档为纵向
+	Document Mode Is RGB	文档模式为 RGB
+	Document Mode Is CMYK	文档模式为 CMYK
+	Document Mode Is Grayscale	文档模式为灰度
+	Document Mode Is Lab	文档模式为 Lab
+	Document Mode Is Bitmap	文档模式为位图
+	Document Mode Is Indexed	文档模式为索引颜色
+	Document Mode Is Duotone	文档模式为双色调
+	Document Mode Is Multichannel	文档模式为多通道
+	Document Is 8 Bits/Channel	文档为 8 位/通道
+	Document Is 16 Bits/Channel	文档为 16 位/通道
+	Document Is 32 Bits/Channel	文档为 32 位/通道
+	Document Has Unsaved Changes	文档有未存储的更改
+	Document Has a Selection	文档有选区
+	Document Has Layers	文档有图层
+	Document Has Alpha Channels	文档有 Alpha 通道
+	Layer Is Background	图层是背景
+	Layer Is a Pixel Layer	图层是像素图层
+	Layer Is an Adjustment Layer	图层是调整图层
+	Layer Is a Shape Layer	图层是形状图层
+	Layer Is a Type Layer	图层是文字图层
+	Layer Is a Smart Object	图层是智能对象
+	Layer Is a Group	图层是组
+	Layer Is Locked	图层已锁定
+	Layer Is Visible	图层可见
+	Layer Has Pixel Mask	图层有像素蒙版
+	Layer Has Vector Mask	图层有矢量蒙版
+	Layer Has Effects	图层有效果
+	Pick a menu item first	请先选择一个菜单项目
+	Find	查找
+	Close gaps up to {px} px	封闭 {px} 像素以内的间隙
+	Grow the selection under the lines, or shrink it	将选区扩展到线条下方，或收缩选区
 	Decrease Brush Size	减小画笔大小
 	Increase Brush Size	增大画笔大小
 	Decrease Brush Hardness	减小画笔硬度
@@ -3011,6 +3372,25 @@ curves	Smooth	平滑
 	Behind	后面
 	Blend	混合
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	添加第二个蒙版  (从选区；{key} 反相)
+	Convert to Vector Mask	转换为矢量蒙版
+	Delete Second Mask	删除第二个蒙版
+	Disable Second Mask	停用第二个蒙版
+	Enable Second Mask	启用第二个蒙版
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	锁定选择：画布上的点按会穿过它（图层面板仍可选择）
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	设置当前图层
+	Editing layer blocks the fill	编辑中的图层阻挡填充
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	被填充图层上的绘画在任何容差下都会阻挡填充，填充会进入其后方：在间隙上画一笔即可闭合它
+	Undo widens Close Gap	撤销时扩大闭合间隙
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	每次撤销填充，下一次点按都会闭合更大的间隙，直到您选择其他工具
+	Close Gap widened to {px} px: click again to fill	闭合间隙已扩大到 {px} 像素：再次点按以填充
+	Pick From	选取起点
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	图层在指针下需要多不透明，Ctrl 点按和自动选择才会选中它：更淡的像素（如几乎全黑的蒙版）会被点穿（0：任何可见像素）
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	已设置混合颜色带或高级混合：单击打开混合选项
 # DDS Options (#1327)
 	DDS Options	DDS 选项
 	Compression	压缩
@@ -3044,6 +3424,38 @@ curves	Smooth	平滑
 	Start Size:	起始大小:
 	End Size:	结束大小:
 	Save as Pattern	存储为图案
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1（Google，付费）
+	Remove Selection	移除选区内容
+	Remove what is selected ({key})	移除所选内容（{key}）
+	API Key…	API 密钥…
+	Change or remove the Google API key Nano Banana uses	更改或移除 Nano Banana 使用的 Google API 密钥
+	Set API Key…	设置 API 密钥…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana 需要您自己的 Google API 密钥；在此之前“自动”使用 LaMa
+	No API key	没有 API 密钥
+	Nano Banana API Key	Nano Banana API 密钥
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 在 Google 的服务器上运行，费用记入您的 Google 账户：每次移除约 {small}，大面积为 {large}。
+	The area around what you remove is sent to Google, which is asked not to keep it.	所移除内容周围的区域会发送给 Google，并要求其不予保存。
+	Get a key at	获取密钥：
+	A key is saved in the system's credential store.	系统凭据存储中已保存一个密钥。
+	Using the {var} environment variable.	正在使用环境变量 {var}。
+	Google API key	Google API 密钥
+	Remove Saved Key	移除已保存的密钥
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	此系统没有 PhotoCraft 可用的凭据存储：请改为设置环境变量 {var}。
+	Mask image	蒙版图像
+	Painted red	涂成红色
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana 获得原样的图像，以及要移除区域的单独蒙版
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana 获得将要移除区域涂成红色的图像，与 Photoshop 中的做法相同
+	Close up	近景
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	只把要移除部分周围的区域发给 Nano Banana，它会以约两倍于页面的分辨率绘制
+	Whole page	整页
+	Nano Banana gets the whole page: more to go on, but a softer result	把整页发给 Nano Banana：参考更多，但结果更柔和
+	Creative	创意
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	显示 Nano Banana 绘制的全部内容，包括它在移除区域周围所做的更改（图层蒙版在边缘渐隐）
+	Grain…	颗粒…
+	Roughness:	粗糙度：
+	Color field	颜色区域
+	Color slider	颜色滑块
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	请先确认或取消打开的动作步骤对话框
 	Pro Medium Gray	专业中灰
@@ -3063,3 +3475,10 @@ curves	Smooth	平滑
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	采样：已记录的颜色
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	AI 移除
+	Remove what is selected with Nano Banana ({key})	用 Nano Banana 移除所选内容 ({key})
+	Pin to Top	固定到顶部
+	Unpin from Top	取消固定到顶部

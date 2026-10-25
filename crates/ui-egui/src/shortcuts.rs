@@ -415,6 +415,10 @@ pub fn clipboard_keys(ctx: &egui::Context, typing: bool, raw: &mut egui::RawInpu
 pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     // A held tool letter released: a temporary tool gives the previous one back (#2672).
     crate::spring_tools::tick(app, ctx);
+    // A held [ or ] steps the brush on the app's clock, at the pace its settings ask for.
+    crate::brush_key_repeat::tick(app, ctx);
+    // An action played step by step (Playback Options) plays its next step when it is due.
+    crate::actions::tick(app, ctx);
     // However the tool was picked (toolbar, flyout, shortcut, automation), its group's key brings
     // it back later (#2608).
     app.ui.remember_group_tool();
@@ -670,6 +674,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
             return;
         }
     }
+    // Remove tool with a selection and no strokes waiting: Enter removes what is selected.
+    if app.ui.tool == crate::state::Tool::Remove && app.session.active().is_some_and(|st| st.doc.selection.is_some()) && pressed(Key::Enter) {
+        crate::retouch_ui::remove_selection(app);
+        return;
+    }
     // Enter / Escape commit or cancel in-progress tool state (polygonal lasso, crop).
     if crate::lasso_ui::active(app) {
         let mods = ctx.input(|i| i.modifiers);
@@ -757,6 +766,15 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
         let Some(k) = crate::spring_tools::key_of(t.key()) else { continue };
         let cycle_shift = shift_switch && ctx.input_mut(|i| i.consume_key(Modifiers::SHIFT, k));
         if cycle_shift || pressed(k) {
+            // The crop key on a rotated view straightens the view instead (user request): it
+            // resets the rotation, and picks the crop tools only when the view isn't rotated.
+            if !cycle_shift && t.key() == Tool::Crop.key() && view_rotated(app) {
+                if let Err(e) = crate::menus::invoke(app, ctx, "view.resetView", json!({})) {
+                    app.ui.status = e;
+                    app.ui.status_error = true;
+                }
+                return;
+            }
             let before = app.ui.tool;
             let group: Vec<Tool> = Tool::ALL.iter().copied().filter(|x| x.key() == t.key() && crate::tool_shortcuts::uses_default(app, *x)).collect();
             app.ui.tool = match group.iter().position(|x| *x == app.ui.tool) {
@@ -776,6 +794,11 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
     // Page Up / Page Down (⌘ sideways, ⇧ a small step), Home and End scroll the canvas (#8057).
     crate::page_keys::handle(app, ctx);
+}
+
+/// The active document's view is rotated (Rotate View).
+fn view_rotated(app: &PhotocraftApp) -> bool {
+    app.session.active_index().and_then(|i| app.ui.views.get(i)).is_some_and(|v| crate::rotate_view::wrap_deg(v.rotation).abs() > 0.01)
 }
 
 #[cfg(test)]

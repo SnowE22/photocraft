@@ -32,6 +32,8 @@ photocraft-format = { workspace = true }
 photocraft-codecs = { workspace = true }
 egui = { workspace = true }
 egui_extras = { version = "0.36", default-features = false, features = ["svg"] }
+# Tool icons as OS cursor bitmaps (`tool_cursor/icon.rs`); already linked through egui_extras.
+resvg = { version = "0.45", default-features = false }
 eframe = { workspace = true, features = ["wgpu", "accesskit"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -50,7 +52,10 @@ sys-locale = "=0.3.2"
 # Installed RAM for the GPU memory budget (`gpu_canvas::physical_memory`): the safe binding the
 # desktop app already uses, pinned to the same version.
 [target.'cfg(target_os = "windows")'.dependencies]
-winsafe = { version = "=0.0.29", default-features = false, features = ["kernel", "dxgi"] }
+winsafe = { version = "=0.0.29", default-features = false, features = ["kernel", "dxgi", "user"] }
+# The Eyedropper samples anywhere on screen, outside the window too (Photoshop): one pixel read
+# from the desktop through a safe screen-capture API (Apache-2.0). Released 2026-08-01, pinned.
+xcap = { version = "=0.9.8", default-features = false }
 
 [dev-dependencies]
 # egui's own default fonts in tests: the oracle for egui_fonts.rs, and contexts made with

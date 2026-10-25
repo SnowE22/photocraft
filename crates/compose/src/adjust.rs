@@ -251,9 +251,105 @@ pub fn apply_depth(adj: &Adjustment, buf: &mut Buffer, transfer: Transfer, depth
                 p[..3].copy_from_slice(&o);
             }
         }
+        Adjustment::Grain { amount, size, roughness } => {
+            let g = GrainParams::new(*amount, *size, *roughness);
+            if g.strength <= 0.0 {
+                return;
+            }
+            let hdr = depth == Some(SampleType::F32);
+            let (w, x0, y0) = (buf.rect.width().max(1) as usize, buf.rect.x0, buf.rect.y0);
+            for (i, p) in buf.px.iter_mut().enumerate() {
+                if p[3] <= 0.0 {
+                    continue;
+                }
+                let o = grain_px([p[0], p[1], p[2]], &g, x0 + (i % w) as i32, y0 + (i / w) as i32, hdr);
+                p[..3].copy_from_slice(&o);
+            }
+        }
         // Not evaluated: identity (still round-trips through PSD).
         Adjustment::ColorLookup { .. } | Adjustment::Unsupported { .. } => {}
     }
+}
+
+/// Grain's settings as the per-pixel evaluation uses them (shared with the GPU kernel, which
+/// gets the same four numbers).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GrainParams {
+    /// Peak change at mid-grey, in 0..1 of the tone scale.
+    pub strength: f32,
+    /// One over the grain's cell width in pixels (multiplied, never divided, so the GPU's
+    /// rounding matches).
+    pub inv_cell: f32,
+    /// One over the clumps' cell width (twice the grain's).
+    pub inv_clump: f32,
+    /// How much of the clumps mixes in, 0..1 (Roughness).
+    pub rough: f32,
+}
+
+impl GrainParams {
+    /// Amount, Size and Roughness as Photoshop's sliders show them (0..=100); out-of-range or
+    /// non-finite values are clamped (NaN counts as 0).
+    pub fn new(amount: f32, size: f32, roughness: f32) -> Self {
+        let pct = |v: f32| if v.is_finite() { v.clamp(0.0, 100.0) / 100.0 } else { 0.0 };
+        // Size 0 is one-pixel grain, 100 four pixels across.
+        let cell = 1.0 + 3.0 * pct(size);
+        Self { strength: 0.5 * pct(amount), inv_cell: 1.0 / cell, inv_clump: 0.5 / cell, rough: pct(roughness) }
+    }
+}
+
+/// Integer hash of a lattice point (the "lowbias32" finaliser): the grain depends on the
+/// position alone, so a document renders the same grain every time, tile by tile, on the CPU
+/// and the GPU alike.
+pub fn grain_hash(x: i32, y: i32, seed: u32) -> u32 {
+    let mut h = (x as u32).wrapping_mul(0x8da6_b343) ^ (y as u32).wrapping_mul(0xd816_3841) ^ seed.wrapping_mul(0xcb1a_b31f);
+    h ^= h >> 16;
+    h = h.wrapping_mul(0x7feb_352d);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x846c_a68b);
+    h ^ (h >> 16)
+}
+
+/// A lattice point's noise in -1..1, bell-shaped (two uniform values summed).
+fn grain_lattice(x: i32, y: i32, octave: u32) -> f32 {
+    let u = |seed: u32| (grain_hash(x, y, seed) >> 8) as f32 / 16_777_216.0;
+    u(2 * octave) + u(2 * octave + 1) - 1.0
+}
+
+/// Smooth value noise at pixel (x, y) on a lattice `1 / inv` pixels wide.
+fn grain_value(x: i32, y: i32, inv: f32, octave: u32) -> f32 {
+    let (fx, fy) = (x as f32 * inv, y as f32 * inv);
+    let (ix, iy) = (fx.floor(), fy.floor());
+    let s = |t: f32| t * t * (3.0 - 2.0 * t);
+    let (sx, sy) = (s(fx - ix), s(fy - iy));
+    let (ix, iy) = (ix as i32, iy as i32);
+    let a = grain_lattice(ix, iy, octave);
+    let b = grain_lattice(ix.wrapping_add(1), iy, octave);
+    let c = grain_lattice(ix, iy.wrapping_add(1), octave);
+    let d = grain_lattice(ix.wrapping_add(1), iy.wrapping_add(1), octave);
+    let top = a + (b - a) * sx;
+    let bottom = c + (d - c) * sx;
+    top + (bottom - top) * sy
+}
+
+/// The grain at document pixel (x, y), about -1..1: fine grain, with Roughness mixing in coarser
+/// clumps.
+pub fn grain_noise(g: &GrainParams, x: i32, y: i32) -> f32 {
+    let fine = grain_value(x, y, g.inv_cell, 0);
+    if g.rough <= 0.0 {
+        return fine;
+    }
+    let clump = grain_value(x, y, g.inv_clump, 1);
+    (fine + g.rough * clump) / (1.0 + 0.5 * g.rough)
+}
+
+/// Grain on one tone-encoded colour: the same offset on every channel (monochrome grain, like
+/// film's), strongest in the midtones and a third as strong in black and white. 32-bit colours
+/// keep values over 1.
+pub fn grain_px(c: [f32; 3], g: &GrainParams, x: i32, y: i32, hdr: bool) -> [f32; 3] {
+    let l = (0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]).clamp(0.0, 1.0);
+    let weight = 1.0 / 3.0 + 2.0 / 3.0 * 4.0 * l * (1.0 - l);
+    let d = g.strength * weight * grain_noise(g, x, y);
+    c.map(|v| if hdr { (v + d).max(0.0) } else { (v + d).clamp(0.0, 1.0) })
 }
 
 /// Legacy Brightness/Contrast on a 32-bit document's samples: unclipped, with contrast pivoting at
@@ -2459,5 +2555,94 @@ mod lut3d_guard_tests {
             assert_eq!(lut3d_sample(&[0.0; 3], 2, c, tetra), c);
             assert_eq!(lut3d_sample(&[0.0; 24], usize::MAX, c, tetra), c);
         }
+    }
+}
+
+#[cfg(test)]
+mod grain_tests {
+    use super::*;
+    use photocraft_color::PixelFormat;
+    use photocraft_doc::{Color, Document, Layer, LayerContent, Size};
+    use photocraft_geom::Rect;
+
+    fn grey(rect: Rect, v: f32) -> Buffer {
+        Buffer::filled(rect, [v, v, v, 1.0])
+    }
+
+    fn grain(amount: f32) -> Adjustment {
+        Adjustment::Grain { amount, size: 34.0, roughness: 50.0 }
+    }
+
+    /// The same pixels get the same grain every time, and a tile renders exactly the matching
+    /// part of the whole (the grain depends on the document position, not the buffer).
+    #[test]
+    fn grain_is_deterministic_and_tile_independent() {
+        let mut whole = grey(Rect::new(0, 0, 64, 48), 0.5);
+        apply_depth(&grain(60.0), &mut whole, Transfer::Srgb, Some(SampleType::U16));
+        let mut again = grey(Rect::new(0, 0, 64, 48), 0.5);
+        apply_depth(&grain(60.0), &mut again, Transfer::Srgb, Some(SampleType::U16));
+        assert_eq!(whole.px, again.px);
+        let mut tile = grey(Rect::new(20, 10, 52, 40), 0.5);
+        apply_depth(&grain(60.0), &mut tile, Transfer::Srgb, Some(SampleType::U16));
+        for y in 10..40 {
+            for x in 20..52 {
+                assert_eq!(tile.px[((y - 10) * 32 + (x - 20)) as usize], whole.px[(y * 64 + x) as usize], "({x}, {y})");
+            }
+        }
+        // Monochrome grain: every channel moves together; the noise is visible and roughly
+        // balanced around the original grey.
+        let moved: Vec<f32> = whole.px.iter().map(|p| p[0] - 0.5).collect();
+        assert!(whole.px.iter().all(|p| p[0] == p[1] && p[1] == p[2] && p[3] == 1.0));
+        let mean = moved.iter().sum::<f32>() / moved.len() as f32;
+        let spread = moved.iter().map(|d| d.abs()).fold(0.0f32, f32::max);
+        assert!(mean.abs() < 0.02 && spread > 0.05, "mean {mean}, spread {spread}");
+    }
+
+    /// Amount 0 (a new layer's) changes nothing; more Amount, more grain; Size coarsens it.
+    #[test]
+    fn grain_settings_shape_the_noise() {
+        let rect = Rect::new(0, 0, 96, 96);
+        let spread = |adj: &Adjustment| {
+            let mut b = grey(rect, 0.5);
+            apply_depth(adj, &mut b, Transfer::Srgb, None);
+            b.px.iter().map(|p| (p[0] - 0.5).abs()).sum::<f32>() / b.px.len() as f32
+        };
+        let mut b = grey(rect, 0.5);
+        apply_depth(&grain(0.0), &mut b, Transfer::Srgb, None);
+        assert_eq!(b.px, grey(rect, 0.5).px);
+        assert!(spread(&grain(80.0)) > 1.8 * spread(&grain(30.0)));
+        // Neighbouring pixels differ less with large grain.
+        let roughness = |size: f32| {
+            let mut b = grey(rect, 0.5);
+            apply_depth(&Adjustment::Grain { amount: 80.0, size, roughness: 0.0 }, &mut b, Transfer::Srgb, None);
+            b.px.windows(2).map(|w| (w[0][0] - w[1][0]).abs()).sum::<f32>()
+        };
+        assert!(roughness(100.0) < 0.6 * roughness(0.0));
+        // Hostile settings never panic or produce NaN.
+        for adj in [Adjustment::Grain { amount: f32::NAN, size: f32::INFINITY, roughness: -1e30 }, grain(1e9)] {
+            let mut b = grey(Rect::new(i32::MAX - 16, i32::MIN, i32::MAX, i32::MIN + 2), 0.5);
+            apply_depth(&adj, &mut b, Transfer::Srgb, None);
+            assert!(b.px.iter().all(|p| p.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v))));
+        }
+    }
+
+    /// A Grain layer renders through the whole compositor at 8, 16 and 32 bits: the same twice,
+    /// grain in the midtones, values over white kept in 32-bit.
+    #[test]
+    fn grain_layer_renders_at_every_depth() {
+        for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+            let mut d = Document::with_background("g", Size::new(48, 32), photocraft_color::ColorMode::Rgb, depth, Color::rgb(0.5, 0.5, 0.5));
+            let fmt: PixelFormat = d.pixel_format();
+            assert_eq!(fmt.sample, depth);
+            d.layers.push(Layer::new("Grain 1", LayerContent::Adjustment(grain(50.0))));
+            let a = crate::flatten(&d);
+            let b = crate::flatten(&d);
+            assert_eq!(a.px, b.px, "{depth:?}: deterministic");
+            let changed = a.px.iter().filter(|p| (p[0] - 0.5).abs() > 2.0 / 255.0).count();
+            assert!(changed > a.px.len() / 3, "{depth:?}: grain shows ({changed} of {})", a.px.len());
+        }
+        let mut b = Buffer::filled(Rect::new(0, 0, 16, 16), [1.6, 1.6, 1.6, 1.0]);
+        apply_depth(&grain(100.0), &mut b, Transfer::Gamma(1.0), Some(SampleType::F32));
+        assert!(b.px.iter().any(|p| p[0] > 1.0), "32-bit keeps over-white values");
     }
 }

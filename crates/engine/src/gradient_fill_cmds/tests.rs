@@ -60,6 +60,8 @@ fn create_masks_the_layer_with_the_selection() {
     let m = l.mask.as_ref().expect("selection becomes the mask");
     assert_eq!(m.value(5, 5), 1.0);
     assert_eq!(m.value(30, 20), 0.0);
+    // The selection is in the mask now: dropped, as in Photoshop.
+    assert!(d.doc.selection.is_none());
     // Still laid out on the canvas, not the mask's bounds.
     assert_eq!(photocraft_compose::fill_frame(l, d.doc.bounds()), d.doc.bounds());
     // The composite outside the selection is the white background.
@@ -316,17 +318,19 @@ fn commands_fail_gracefully() {
     s.execute(SET, json!({"scale": 1e30, "angle": 1e9, "offset": [1e4, -1e4]})).unwrap();
     let g = s.execute(GET, json!({})).unwrap();
     assert!(g["scale"].as_f64().unwrap().is_finite() && g["from"][0].as_f64().unwrap().is_finite());
-    // Fill layers use Photoshop's 1–1000 %, also for a handle dragged far away.
+    // A typed scale stays within Photoshop's 1–1000 %; handles reach further, up to 10 000 %.
     assert!((g["scale"].as_f64().unwrap() - 1000.0).abs() < 1e-3, "{g}");
     let g = s.execute(SET, json!({"from": [0, 0], "to": [1e6, 0]})).unwrap();
-    assert!((g["scale"].as_f64().unwrap() - 1000.0).abs() < 1e-3, "{g}");
+    assert!((g["scale"].as_f64().unwrap() - 10_000.0).abs() < 1e-2, "{g}");
     let g = s.execute(SET, json!({"scale": 0.1})).unwrap();
     assert!((g["scale"].as_f64().unwrap() - 1.0).abs() < 1e-3, "{g}");
 }
 
-/// Dragging one handle past the scale range stops it; the other handle stays put (#1243).
+/// A handle dragged close to the other makes a thin gradient: it lands where it was dropped and
+/// the other handle stays put (Photoshop's live gradient isn't held to the Scale field's 10 %).
+/// Dragged past the handle range, it stops and the other still stays (#1243).
 #[test]
-fn a_clamped_handle_drag_leaves_the_other_handle_alone() {
+fn a_short_or_clamped_handle_drag_leaves_the_other_handle_alone() {
     let pt = |g: &Value, k: &str| [g[k][0].as_f64().unwrap(), g[k][1].as_f64().unwrap()];
     let close = |a: [f64; 2], b: [f64; 2]| (a[0] - b[0]).abs() < 1e-2 && (a[1] - b[1]).abs() < 1e-2;
     for style in STYLES {
@@ -335,19 +339,28 @@ fn a_clamped_handle_drag_leaves_the_other_handle_alone() {
             let mut s = Session::new();
             s.execute("file.new", json!({"width": 480, "height": 320})).unwrap();
             s.execute(CREATE, json!({"from": from, "to": to, "style": style})).unwrap();
-            // End dragged almost onto the start: below 1 % on this larger canvas.
+            // End dragged almost onto the start: far below 10 %, and it lands there.
             let g = s.execute(SET, json!({"to": short})).unwrap();
-            assert!((g["scale"].as_f64().unwrap() - 1.0).abs() < 1e-3, "{style}: {g}");
+            assert!(g["scale"].as_f64().unwrap() < 10.0, "{style}: {g}");
             assert!(close(pt(&g, "from"), from), "{style}: start moved to {:?}", pt(&g, "from"));
-            // The end stops on the line towards the pointer.
-            let e = pt(&g, "to");
-            assert!((e[0] - from[0]) * (short[0] - from[0]) >= 0.0 && (e[1] - from[1]) * (short[1] - from[1]) >= 0.0, "{style}: {e:?}");
+            assert!(close(pt(&g, "to"), short), "{style}: end at {:?}", pt(&g, "to"));
+            // A thin gradient drawn from scratch keeps both points where the drag put them.
+            let mut s = session(8, "white");
+            s.execute(CREATE, json!({"from": from, "to": short, "style": style})).unwrap();
+            let g = s.execute(GET, json!({})).unwrap();
+            assert!(close(pt(&g, "from"), from) && close(pt(&g, "to"), short), "{style}: {g}");
             // And the same for the start handle.
             let mut s = Session::new();
             s.execute("file.new", json!({"width": 480, "height": 320})).unwrap();
             s.execute(CREATE, json!({"from": from, "to": to, "style": style})).unwrap();
             let g = s.execute(SET, json!({"from": short_start})).unwrap();
             assert!(close(pt(&g, "to"), to), "{style}: end moved: {g}");
+            // Far past the range: the end stops on the line towards the pointer, the start stays.
+            let far = [from[0] + (to[0] - from[0]) * 1e4, from[1] + (to[1] - from[1]) * 1e4];
+            let g = s.execute(SET, json!({"from": from, "to": to})).and_then(|_| s.execute(SET, json!({"to": far}))).unwrap();
+            assert!(close(pt(&g, "from"), from), "{style}: start moved to {:?}", pt(&g, "from"));
+            let e = pt(&g, "to");
+            assert!((e[0] - from[0]) * (far[0] - from[0]) >= 0.0 && (e[1] - from[1]) * (far[1] - from[1]) >= 0.0, "{style}: {e:?}");
         }
     }
 }

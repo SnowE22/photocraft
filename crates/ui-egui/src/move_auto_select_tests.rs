@@ -51,10 +51,12 @@ fn drag(app: &mut PhotocraftApp, from: [f64; 2], by: [f64; 2], mods: egui::Modif
 }
 
 #[test]
-fn auto_select_is_on_by_default_with_the_group_target() {
+fn auto_select_is_on_by_default_with_the_layer_target() {
     let o = ToolOptions::default();
     assert!(o.move_auto_select, "Photoshop ships with Auto-Select checked");
-    assert_eq!(o.move_target, "group", "Photoshop defaults Auto-Select to Group (#4056)");
+    // Layer, not Group (#4056 had Group): a click or ⌘-click inside a group picks the layer
+    // clicked, as the user's Photoshop does, not the whole group.
+    assert_eq!(o.move_target, "layer");
     // A saved tool preset that predates the option gets the default too.
     let mut v = serde_json::to_value(&o).unwrap();
     v.as_object_mut().unwrap().remove("move_auto_select");
@@ -179,6 +181,28 @@ fn every_theme_shows_the_transform_controls_toggle() {
 }
 
 #[test]
+fn every_theme_shows_the_pick_from_field() {
+    // The Pick From field was only in the Studio themes' bar, not the Pro ones.
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    for theme in crate::theme::ThemeKind::ALL {
+        let (app, _, _) = app();
+        let mut h = Harness::builder().with_size(egui::vec2(1400.0, 60.0)).build_ui_state(
+            |ui, app: &mut PhotocraftApp| {
+                if !ui.ctx().fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                    return;
+                }
+                crate::panels::options_bar(app, ui);
+            },
+            app,
+        );
+        PhotocraftApp::setup_context(&h.ctx, theme);
+        h.run_steps(4);
+        assert!(h.query_by_label_contains("Pick From").is_some(), "{theme:?}: the Move tool's bar has Pick From");
+    }
+}
+
+#[test]
 fn every_theme_shows_the_type_options() {
     // #1387: outside the Pro themes the Type tool's options bar was only the hint "Click to add
     // text", so there was no font, style or size control while typing.
@@ -234,6 +258,21 @@ fn every_theme_shows_the_gradient_options() {
             .map(|n| format!("{:?} {:?}", n.accesskit_node().label(), n.accesskit_node().value()))
             .collect();
         assert!(combos.iter().any(|c| c.contains("Normal")), "{theme:?}: the blend mode picker shows; combo boxes: {combos:?}");
+    }
+}
+
+/// ⌘-click with another tool (the temporary Move tool) selects the layer under the pointer, even
+/// with Auto-Select on, where ⌘ would turn it off for the Move tool itself.
+#[test]
+fn command_click_with_another_tool_picks_the_layer_clicked() {
+    for auto in [true, false] {
+        let (mut app, a, b) = app();
+        app.ui.tool_options.move_auto_select = auto;
+        app.ui.tool = crate::state::Tool::Brush;
+        assert_eq!(active(&app), Some(b));
+        drag(&mut app, [16.0, 16.0], [0.0, 0.0], egui::Modifiers::COMMAND);
+        assert_eq!(active(&app), Some(a), "auto-select {auto}: ⌘-click picked A");
+        assert_eq!(bounds(&app, a), Rect::new(8, 8, 24, 24), "a click moves nothing");
     }
 }
 

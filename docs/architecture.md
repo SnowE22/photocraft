@@ -133,7 +133,7 @@ photocraft/
 │  ├─ format/                  photocraft-format    native document format (.pcraft bundle): manifest + content-addressed tiles
 │  ├─ io/                      photocraft-io        import/export orchestration; doc ⇄ PSD mapping; PDF/SVG import (features)
 │  │  ── intelligence ──
-│  ├─ ml/                      photocraft-ml        model registry + InferenceBackend trait (ort native / burn|candle web); SAM2, matting, depth, sky
+│  ├─ ml/                      photocraft-ml        local models on ONNX Runtime loaded at run time (DirectML on Windows): LaMa inpainting for the Remove tool
 │  ├─ plugins/                 photocraft-plugins   sandboxed WebAssembly filter plug-ins (wasmi host, limits, ABI v1, registry)
 │  │  ── the façade every frontend talks to ──
 │  ├─ tools/                   photocraft-tools     tool state machines (move, marquee, lasso, brush, clone, gradient, crop, transform, pen, text…)

@@ -488,3 +488,118 @@ fn dual_brush_spacing_comes_from_its_tip() {
     assert!((spacing(dual(tip.clone().with("Spcn", prc(10.0)))) - 0.10).abs() < 1e-6, "the tip's 10 %, not the outer 100 %");
     assert!((spacing(dual(tip)) - 1.0).abs() < 1e-6, "no tip spacing: the outer value");
 }
+
+/// Photoshop CC writes most Texture and Dual Brush modes as long string IDs (`colorBurn`,
+/// `overlay`), older presets four-character codes (`hMix`, `lHgt`, `lbrn`, `hght` among them);
+/// the unknown ones used to fall back to Multiply, and a Color Burn dual brush then ate most of
+/// the stroke. Every spelling found in a real Photoshop 2026 library maps.
+#[test]
+fn texture_and_dual_modes_read_long_and_short_ids() {
+    let preset = |mode: &str| {
+        Descriptor::new("brushPreset")
+            .with("Nm  ", t("Modes"))
+            .with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 30.0))))
+            .with("useTexture", Value::Boolean(true))
+            .with("textureBlendMode", en("BlnM", mode))
+            .with("Txtr", Value::Descriptor(Descriptor::new("Ptrn").with("Nm  ", t("Grit")).with("Idnt", t("pat-uuid"))))
+            .with(
+                "dualBrush",
+                Value::Descriptor(
+                    Descriptor::new("dualBrush")
+                        .with("useDualBrush", Value::Boolean(true))
+                        .with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 20.0))))
+                        .with("BlnM", en("BlnM", mode)),
+                ),
+            )
+    };
+    for (codes, want) in [
+        (["multiply", "Mltp"], MaskMode::Multiply),
+        (["subtract", "Sbtr"], MaskMode::Subtract),
+        (["darken", "Drkn"], MaskMode::Darken),
+        (["overlay", "Ovrl"], MaskMode::Overlay),
+        (["colorDodge", "CDdg"], MaskMode::ColorDodge),
+        (["colorBurn", "CBrn"], MaskMode::ColorBurn),
+        (["linearBurn", "lbrn"], MaskMode::LinearBurn),
+        (["hardMix", "hMix"], MaskMode::HardMix),
+        (["linearHeight", "lHgt"], MaskMode::LinearHeight),
+        (["height", "hght"], MaskMode::Height),
+        (["Hght", "Hght"], MaskMode::Height),
+    ] {
+        for code in codes {
+            let bytes = write_v6(2, &[], &[grit_pattern()], &[preset(code)], false).unwrap();
+            let b = read_abr(&bytes, "Test").unwrap().presets[0].brush.clone();
+            assert_eq!((b.texture.mode, b.dual_brush.mode), (want, want), "{code}");
+        }
+    }
+}
+
+/// `useBrushSize` (use the tool's current size) and Include Tool Settings (a `toolOptions` object)
+/// decide what picking the preset changes, as measured in Photoshop 2026: `useBrushSize` false
+/// (most downloaded brushes) sets the preset's own size, true keeps the tool's.
+#[test]
+fn captured_size_and_tool_settings_follow_the_file() {
+    let preset = |name: &str, use_size: Option<bool>, tool: Option<Descriptor>| {
+        let mut d = Descriptor::new("brushPreset")
+            .with("Nm  ", t(name))
+            .with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 1700.0))));
+        if let Some(v) = use_size {
+            d = d.with("useBrushSize", Value::Boolean(v));
+        }
+        if let Some(to) = tool {
+            d = d.with("toolOptions", Value::Descriptor(to));
+        }
+        d
+    };
+    let multiply = Descriptor::new("currentToolOptions").with("Md  ", en("BlnM", "multiply")).with("Opct", Value::Integer(90));
+    let behind = Descriptor::new("currentToolOptions").with("Md  ", en("BlnM", "behind"));
+    let presets = [
+        preset("Loose", Some(false), None),
+        preset("Sized", Some(true), Some(multiply)),
+        preset("Older file", None, None),
+        preset("Behind", Some(false), Some(behind)),
+    ];
+    let bytes = write_v6(2, &[], &[], &presets, false).unwrap();
+    let imported = read_abr(&bytes, "Test").unwrap();
+    let p = &imported.presets;
+    assert_eq!((p[0].captures.size, p[0].captures.tool_settings), (true, false), "useBrushSize off: its own size; no tool options");
+    assert_eq!((p[1].captures.size, p[1].captures.tool_settings), (false, true), "useBrushSize on: the tool's size");
+    assert_eq!(p[1].brush.mode, photocraft_color::BlendMode::Multiply, "the tool's blend mode comes with its settings");
+    assert!((p[1].brush.opacity - 0.9).abs() < 1e-6);
+    assert_eq!((p[2].captures.size, p[2].captures.tool_settings), (true, false), "a file without the key captured the size");
+    assert_eq!(p[3].brush.mode, photocraft_color::BlendMode::Normal, "Behind has no brush mode");
+    assert!(imported.warnings.iter().any(|w| w.contains("Behind or Clear")), "{:?}", imported.warnings);
+    assert!(!imported.warnings.iter().any(|w| w.contains("useBrushSize")), "useBrushSize is mapped now: {:?}", imported.warnings);
+    // As Photoshop does: the useBrushSize-off preset brings its 1700 px, the on one keeps 40.
+    let current = BrushSettings { size: 40.0, opacity: 0.5, ..Default::default() };
+    let picked = p[0].picked_over(&current);
+    assert_eq!((picked.size, picked.opacity), (1700.0, 0.5));
+    assert_eq!(p[1].picked_over(&current).size, 40.0);
+}
+
+/// A preset saved with a tool's settings belongs to that tool (the class of its `toolOptions`):
+/// Photoshop's Eraser, Smudge and Mixer Brush presets switch to their tool when picked.
+#[test]
+fn tool_presets_remember_their_tool() {
+    let preset = |name: &str, class: Option<&str>| {
+        let mut d = Descriptor::new("brushPreset")
+            .with("Nm  ", t(name))
+            .with("Brsh", Value::Descriptor(Descriptor::new("computedBrush").with("Dmtr", u(b"#Pxl", 30.0))));
+        if let Some(c) = class {
+            d = d.with("toolOptions", Value::Descriptor(Descriptor::new(c)));
+        }
+        d
+    };
+    let presets = [
+        preset("Paint", Some("PbTl")),
+        preset("Rub out", Some("ErTl")),
+        preset("Smear", Some("SmTl")),
+        preset("Mix", Some("MixB")),
+        preset("Line", Some("PcTl")),
+        preset("Any", None),
+        preset("Clone", Some("CnTl")),
+    ];
+    let bytes = write_v6(2, &[], &[], &presets, false).unwrap();
+    let tools: Vec<Option<String>> = read_abr(&bytes, "Test").unwrap().presets.into_iter().map(|p| p.tool).collect();
+    let want = [Some("brush"), Some("eraser"), Some("smudge"), Some("mixerBrush"), Some("pencil"), None, None];
+    assert_eq!(tools, want.map(|t| t.map(str::to_string)));
+}

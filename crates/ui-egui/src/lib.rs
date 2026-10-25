@@ -15,14 +15,18 @@ macro_rules! tl {
 }
 
 pub mod actions;
+pub mod actions_dialogs;
 pub mod adjust_dialog;
 pub mod adjust_editors;
+pub mod adjust_icons;
 pub mod adjust_preview;
 pub mod adjust_ui;
 mod align_bar;
 mod alt_grab;
+pub mod alt_pick;
 pub mod analysis_ui;
 pub mod anchor_tools;
+mod ants_raster;
 mod ants;
 pub mod artboard_tool;
 pub mod artboard_ui;
@@ -34,6 +38,7 @@ pub(crate) mod blend_preview;
 pub mod blur_pins;
 mod brand;
 pub(crate) mod brush_cursor;
+pub mod brush_key_repeat;
 pub mod brush_panel;
 pub mod brush_picker;
 pub mod brush_preset_dialog;
@@ -99,6 +104,7 @@ pub mod field_wheel;
 pub mod file_dialog;
 pub mod file_open;
 pub mod file_ui;
+pub mod fill_tool_ui;
 pub mod fill_ui;
 pub mod filter_dialog;
 mod filter_preview_ui;
@@ -108,6 +114,7 @@ pub mod flick_pan;
 mod font_preview;
 pub mod frame_tool;
 pub mod gallery_ui;
+pub mod gigapixel_ui;
 pub mod gpu_canvas;
 pub mod gpu_status;
 pub mod gradient_ui;
@@ -145,6 +152,7 @@ pub mod menu_catalog;
 pub mod menu_keys;
 pub mod menu_nav;
 pub mod menus;
+mod merged_ahead;
 pub mod monitor_status;
 pub mod move_box;
 pub mod move_distance;
@@ -193,8 +201,10 @@ mod rgb_histogram;
 pub mod rotate_view;
 pub mod rulers;
 pub mod screen_picker;
+pub mod screen_sample;
 pub mod screentone_gizmo;
 pub mod screentone_panel;
+
 pub mod scrollbars;
 mod scrub_wrap;
 pub mod select_mask_view;
@@ -229,6 +239,7 @@ pub mod text_field_menu;
 pub mod theme;
 pub mod tiff_options_ui;
 mod tile_overlay;
+pub mod timelapse_ui;
 mod timeline_ui;
 mod titlebar;
 pub use titlebar::{Caption, CaptionFamily, CaptionIcon, CaptionIcons, CaptionStyle, RenderIconFn};
@@ -524,6 +535,9 @@ pub type RecoverFn = Box<dyn FnMut() -> Vec<Recoverable>>;
 /// Photoshop's own keyboard shortcut set on this machine, as (source path, `.kys` XML text):
 /// the newest install's live `Keyboard Shortcuts.psp` on the desktop, `None` without one.
 pub type PhotoshopShortcutsFn = Box<dyn FnMut() -> Option<(String, String)>>;
+/// Photoshop's Actions palette on this machine (`Actions Palette.psp`, every set of its Actions
+/// panel) as (path, bytes), or `None` without one (`actions::import_photoshop`).
+pub type PhotoshopActionsFn = Box<dyn FnMut() -> Option<(String, Vec<u8>)>>;
 /// A recovered document (by `DocId` value, once open) takes over its recovery entry (by key):
 /// its autosaves replace the entry, and saving or closing it drops the entry.
 pub type AdoptAutosaveFn = Box<dyn FnMut(u64, &str)>;
@@ -543,6 +557,9 @@ pub type AppendTextFn = Box<dyn FnMut(&str, &str) -> Result<(), String>>;
 pub type OsEventsFn = Box<dyn FnMut() -> Vec<OsEvent>>;
 /// Ends the app the platform's own way (see [`Services::quit`]).
 pub type QuitFn = Box<dyn FnMut()>;
+/// Start PhotoCraft again once this window has closed after its graphics device was lost (see
+/// [`gpu_status::DeviceLossRestart`]).
+pub type DeviceLossRestartFn = Box<dyn FnMut(gpu_status::DeviceLossRestart)>;
 /// Where the OS pointer is now, in egui points within the window; `None` when unknown.
 pub type CursorPosFn = Box<dyn FnMut(&egui::Context) -> Option<egui::Pos2>>;
 /// Whether Caps Lock is toggled on, read from the OS. `None` where the platform cannot
@@ -624,6 +641,8 @@ pub struct Services {
     pub save_prefs: Option<SaveTextFn>,
     /// Photoshop's live keyboard shortcut set, imported once at first launch (`kys_import`).
     pub photoshop_shortcuts: Option<PhotoshopShortcutsFn>,
+    /// Photoshop's Actions palette, for the Actions panel menu's Import Photoshop Actions.
+    pub photoshop_actions: Option<PhotoshopActionsFn>,
     pub system_theme: Option<SystemThemeFn>,
     /// The native window is connected directly to a Wayland compositor.
     pub is_wayland: bool,
@@ -636,7 +655,7 @@ pub struct Services {
     pub autosave_results: Option<AutosaveResultsFn>,
     /// Finish every queued crash-recovery autosave and wait for it, with outcomes like
     /// `autosave_results`. For a session that ends without asking: the window's graphics device
-    /// was lost (see `gpu_status::check_window`).
+    /// was lost (see `gpu_status`).
     pub flush_autosaves: Option<AutosaveResultsFn>,
     pub discard_autosave: Option<DiscardAutosaveFn>,
     pub recover: Option<RecoverFn>,
@@ -676,6 +695,10 @@ pub struct Services {
     /// while AppKit's run loop is still going crashes or hangs Touch Bar Macs (#1575, #1458).
     /// Without one, eframe closes the window and the app ends with it.
     pub quit: Option<QuitFn>,
+    /// The window's graphics device was lost (driver reset): the window can't draw any more, so
+    /// unsaved documents go to crash recovery and the shell starts PhotoCraft again once the
+    /// window has closed. Without one, the window stays open but blank (see `gpu_status`).
+    pub restart_after_device_loss: Option<DeviceLossRestartFn>,
 }
 
 /// A document histogram being computed off the UI thread: (document, revision, receiver of
@@ -726,6 +749,15 @@ pub struct PhotocraftApp {
     pub(crate) remove_pending: Vec<Vec<[f64; 3]>>,
     pub(crate) remove_pending_target: Option<retouch_ui::RemoveTarget>,
     pub(crate) remove_trail: Option<stroke_trail::Trail>,
+    /// A Remove stroke applied on release is running as a job on this document: its trail
+    /// (`remove_trail`, enclosed area filled) stays until the job ends.
+    pub(crate) remove_running_doc: Option<photocraft_doc::DocId>,
+    /// The foreground before the Eyedropper (or ⌥ with a painting tool) started sampling: the
+    /// sampling ring's lower half, since sampling changes the foreground as it goes (`canvas`).
+    pub(crate) ring_before: Option<[f32; 3]>,
+    /// The Remove tool's generative model as its options bar last saw it, and when (egui time).
+    /// Looked up at most once a second: finding the model touches the disk (`retouch_ui`).
+    pub(crate) generative_probe: Option<(f64, photocraft_engine::generative::State)>,
     /// The open menus' items, reused between frames (`menus::ItemCache`).
     pub(crate) menu_cache: Option<menus::ItemCache>,
     /// Move tool drag shown live (`move_ui`).
@@ -770,6 +802,10 @@ pub struct PhotocraftApp {
     /// This press began with ⌥ (Alt) held on a painting tool, so it samples colours instead of
     /// painting until it is released (`canvas::alt_eyedropper`, #417).
     pub(crate) alt_sampling: bool,
+    /// A brush key ([ ] ⇧[ ⇧]) held down, stepping on the app's clock (`brush_key_repeat`).
+    pub(crate) brush_key_held: Option<brush_key_repeat::Held>,
+    /// Alt's press with a painting tool, for the Eyedropper's Sample on Alt (`alt_pick`).
+    pub(crate) alt_pick: alt_pick::AltPick,
     /// Caps Lock toggled on, read from the OS each frame (`services.caps_lock`): painting tools
     /// show the precise crosshair whatever the cursor preference (#1758).
     pub caps_lock: bool,
@@ -825,6 +861,8 @@ pub struct PhotocraftApp {
     /// The document area each layer thumbnail in `thumbs` frames (the canvas, or the layer's
     /// bounds with Clip Thumbnails to Layer Bounds; #4281).
     thumb_frames: HashMap<photocraft_doc::LayerId, photocraft_geom::Rect>,
+    /// The layer bounds each cached Layer Bounds thumbnail shows (`layer_bounds_thumb`).
+    bounds_frames: HashMap<photocraft_doc::LayerId, photocraft_geom::Rect>,
     /// History snapshot thumbnails by (document, snapshot id): a snapshot never changes, so each
     /// is made once (`snapshot_thumb`, #2966).
     snapshot_thumbs: HashMap<(DocId, u64), egui::TextureHandle>,
@@ -859,11 +897,19 @@ pub struct PhotocraftApp {
     /// makes shortcut- and dialog-triggered commands pass the same policy as
     /// direct control calls.
     pub(crate) automation_input: bool,
+    /// An action the Actions panel is playing step by step (Playback Options), one step a frame.
+    pub(crate) action_run: Option<actions::Run>,
+    /// A Fill tool click (or Magic Wand click) being dragged on, filling each area it reaches.
+    pub(crate) fill_drag: Option<fill_tool_ui::DragFill>,
+    /// Close Gap widened by Undo after a fill that leaked (`fill_tool_ui::after_undo`).
+    pub(crate) fill_gap_retry: Option<fill_tool_ui::GapRetry>,
     /// Action playbacks paused at a step dialog, by the token in that dialog's fields
     /// ([`actions::RESUME`]): what to play next and the automation gate it paused under.
     pub(crate) paused_playbacks: actions::PausedPlaybacks,
     /// Levels/Curves histogram cache: (document, adjustment layer, revision it is valid for).
     pub(crate) tone_hist: Option<(DocId, photocraft_doc::LayerId, u64, std::sync::Arc<tone::Histograms>)>,
+    /// The Levels/Curves histogram being computed on a worker thread (`tone::histograms`).
+    pub(crate) tone_job: Option<tone::ToneJob>,
     /// Histogram panel cache: (document, revision, computed at ms, histograms).
     pub(crate) doc_hist: Option<(DocId, u64, f64, std::sync::Arc<tone::Histograms>)>,
     /// The document histogram being computed on a worker thread: (document, revision, receiver).
@@ -947,14 +993,6 @@ pub struct PhotocraftApp {
     /// GPU canvas renderer, when running on the wgpu backend (see [`Self::set_wgpu`]). Dropped
     /// for the rest of the session when the device is lost (see `gpu_status`).
     gpu: Option<gpu_canvas::GpuCanvas>,
-    /// The device the window itself draws with, and its health flag: the GPU canvas's, or one
-    /// watched for the CPU canvas (see `gpu_status::check_window`).
-    window_device: Option<(eframe::wgpu::Device, photocraft_gpu::DeviceHealth)>,
-    /// That device was lost: frames draw nothing and the app closes once its work is saved (#3438).
-    window_lost: bool,
-    /// When (in `egui::InputState::time`) to try saving unsaved work for recovery again after a
-    /// failed attempt; the app closes only once it succeeded.
-    window_recovery_retry: Option<f64>,
     /// The render state the GPU canvas was built on, kept after it is dropped so Retry GPU can
     /// build a new one on the same device (see `gpu_status::choose_recovery`, #6577).
     gpu_render_state: Option<eframe::egui_wgpu::RenderState>,
@@ -962,12 +1000,19 @@ pub struct PhotocraftApp {
     gpu_fault: Option<photocraft_gpu::Fault>,
     /// Run once the first frames have rendered (see [`Self::on_started`]).
     started: Option<gpu_status::StartedHook>,
+    /// The window's own graphics device (eframe's, shared with the GPU canvas) and whether it was
+    /// lost (see `gpu_status::WindowGpu`).
+    window_gpu: gpu_status::WindowGpu,
     /// Frame and canvas-upload timings (exposed via `ui.inspect`).
     pub perf: gpu_canvas::Perf,
     /// Per-frame stroke timings for latency reports (`PHOTOCRAFT_STROKE_TRACE`, see `stroke_trace`).
     pub stroke_trace: stroke_trace::StrokeTrace,
     /// Preferences, autosave and snapping runtime state (see `prefs_ui`, `snap_ui`).
     pub(crate) prefs_rt: prefs_ui::Runtime,
+    /// File › Automate › Topaz Gigapixel AI… waiting for Gigapixel's export (see `gigapixel_ui`).
+    pub(crate) gigapixel: Option<gigapixel_ui::Waiting>,
+    /// Window › Timelapse (see `timelapse_ui`).
+    pub(crate) timelapse: timelapse_ui::TimelapseUi,
     /// Close, Revert or Exit parked behind the unsaved-changes prompt (see `discard_ui`).
     pub(crate) discard: Option<discard_ui::Prompt>,
     /// The Open or Save dialog in progress, and the action waiting on it (see `file_dialog`).
@@ -1033,6 +1078,9 @@ impl PhotocraftApp {
             remove_pending: Vec::new(),
             remove_pending_target: None,
             remove_trail: None,
+            remove_running_doc: None,
+            ring_before: None,
+            generative_probe: None,
             menu_cache: None,
             move_preview: None,
             move_hover: None,
@@ -1053,6 +1101,8 @@ impl PhotocraftApp {
             quick_pick: false,
             brush_resize_armed: false,
             alt_sampling: false,
+            brush_key_held: None,
+            alt_pick: Default::default(),
             caps_lock: false,
             opacity_keys: None,
             control_rx: None,
@@ -1078,6 +1128,7 @@ impl PhotocraftApp {
             last_frame_time: 0.0,
             thumbs: HashMap::new(),
             thumb_frames: HashMap::new(),
+            bounds_frames: HashMap::new(),
             snapshot_thumbs: HashMap::new(),
             thumb_documents: Vec::new(),
             bounds_cache: HashMap::new(),
@@ -1095,6 +1146,9 @@ impl PhotocraftApp {
             live_adjust_preview: None,
             synthetic: Vec::new(),
             automation_input: false,
+            action_run: None,
+            fill_drag: None,
+            fill_gap_retry: None,
             paused_playbacks: Default::default(),
             channel_thumbs: None,
             channel_views: HashMap::new(),
@@ -1133,18 +1187,19 @@ impl PhotocraftApp {
             dialog_edits: Default::default(),
             pending_after_prompt: None,
             tone_hist: None,
+            tone_job: None,
             doc_hist: None,
             hist_job: None,
             gpu: None,
-            window_device: None,
-            window_lost: false,
-            window_recovery_retry: None,
             gpu_render_state: None,
             gpu_fault: None,
             started: None,
+            window_gpu: Default::default(),
             perf: Default::default(),
             stroke_trace: stroke_trace::StrokeTrace::from_env(),
             prefs_rt: Default::default(),
+            gigapixel: None,
+            timelapse: Default::default(),
             discard: None,
             file_dialog: None,
             tiff_options: None,
@@ -1189,6 +1244,8 @@ impl PhotocraftApp {
         let gpu = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| gpu_canvas::GpuCanvas::with_tile(&rs, Some(tile)))) {
             Ok(gpu) => gpu,
             Err(payload) => {
+                // The window still draws on this device: watch it for a loss (see `gpu_status`).
+                self.watch_window_render_device(&rs.device);
                 let detail = payload
                     .downcast_ref::<String>()
                     .cloned()
@@ -1197,14 +1254,24 @@ impl PhotocraftApp {
                 self.perf.gpu_info.canvas = "cpu".into();
                 self.perf.gpu_info.fallback = Some(detail.clone());
                 gpu_status::queue_fallback_notice(self, detail);
-                self.watch_window_device(&rs.device);
                 return;
             }
         };
         self.perf.gpu_info.canvas = "gpu".into();
-        self.window_device = Some((rs.device.clone(), gpu.health().clone()));
+        // The canvas shares eframe's device, so its health flag is the window's too.
+        self.window_gpu.device = Some(rs.device.clone());
+        self.watch_window_device(gpu.health().clone());
         self.gpu = Some(gpu);
         self.prefs_rt.gpu_style = None;
+    }
+
+    /// Start building the GPU canvas's layer compositor on a thread ([`gpu_canvas::GpuCanvas::warm_up`]),
+    /// so the first document opened doesn't wait seconds for its shaders: the desktop app calls it
+    /// after [`Self::set_wgpu`].
+    pub fn warm_up_gpu(&self) {
+        if let Some(g) = &self.gpu {
+            g.warm_up();
+        }
     }
 
     /// Whether the document canvas currently draws on the GPU (false on the CPU path, and after
@@ -1218,22 +1285,36 @@ impl PhotocraftApp {
         self.gpu.as_ref().map(|g| g.health().clone())
     }
 
-    /// Watch the device the window draws with when the GPU canvas doesn't (the CPU canvas), so
-    /// its loss is handled like the GPU canvas's (see `gpu_status::check_window`).
-    pub fn watch_window_device(&mut self, device: &eframe::wgpu::Device) {
-        self.window_device = Some((device.clone(), photocraft_gpu::DeviceHealth::watch(device)));
+    /// Watch the device eframe draws the window with (`cc.wgpu_render_state`): once it is lost,
+    /// the window stops drawing and PhotoCraft restarts (see `gpu_status`). [`Self::set_wgpu`]
+    /// does this itself; a CPU canvas passes `DeviceHealth::watch(&render_state.device)`.
+    pub fn watch_window_device(&mut self, health: photocraft_gpu::DeviceHealth) {
+        self.window_gpu.watch(health);
     }
 
-    /// Whether the window's graphics device was lost, so the app saves its documents for
-    /// recovery and closes once they are saved (#3438).
+    /// The window device's health flag, once watched (tests inject a loss through it; the shell
+    /// reads it after a panic).
+    pub fn window_device_health(&self) -> Option<photocraft_gpu::DeviceHealth> {
+        self.window_gpu.health()
+    }
+
+    /// Watch the device the window draws with when the GPU canvas doesn't (the CPU canvas, or a
+    /// GPU canvas that failed to start): its loss is handled like the GPU canvas's.
+    pub fn watch_window_render_device(&mut self, device: &eframe::wgpu::Device) {
+        self.window_gpu.device = Some(device.clone());
+        self.watch_window_device(gpu_canvas::DeviceHealth::watch(device));
+    }
+
+    /// Whether the window's graphics device was lost: the app draws nothing more and restarts
+    /// once unsaved work is in crash recovery (see `gpu_status`).
     pub fn window_lost(&self) -> bool {
-        self.window_lost
+        gpu_status::window_lost(self)
     }
 
     /// Destroy the window's graphics device, as a driver reset does (`ui.gpu.simulateLoss`
     /// with `destroy`, tests). Returns whether there was one.
     pub fn destroy_window_device(&mut self) -> bool {
-        self.window_device.as_ref().map(|(device, _)| device.destroy()).is_some()
+        self.window_gpu.device.as_ref().map(eframe::wgpu::Device::destroy).is_some()
     }
 
     /// Run `hook` once the app has rendered its first frames (and a document opened at launch
@@ -1262,14 +1343,35 @@ impl PhotocraftApp {
         if let Some(result) = mask_trash_prompt::intercept(self, id, &params) {
             return result;
         }
+        // A preset saved with its tool's settings (Photoshop's Eraser or Smudge presets) belongs
+        // to that tool: picking it switches there first, so it becomes that tool's brush.
+        if id == "tools.setBrush" {
+            paint_mouse::switch_to_preset_tool(self, &params);
+        }
         // Automation input also gates every step a command runs on its behalf (`actions.play`).
         let gate = if self.automation_input && self.session.authorize.is_none() { self.services.automation_authorize } else { None };
         if gate.is_some() {
             self.session.authorize = gate;
         }
+        let work_before = self.session.active().map(|st| (st.doc.id, st.doc.work_path.clone()));
+        let undone = matches!(id, "edit.undo" | "edit.stepBackward").then(|| self.session.active().and_then(|st| st.history.undo_label().map(str::to_string))).flatten();
         let result = self.run_command(id, params);
         if gate.is_some() {
             self.session.authorize = None;
+        }
+        if result.is_ok() && undone.is_some() {
+            fill_tool_ui::after_undo(self, undone.as_deref());
+        }
+        // A command that makes or changes the work path selects it in the Paths panel, as in
+        // Photoshop, so the canvas shows it (only the selected path is drawn).
+        // Opening a file that has one leaves it unselected (another document), as Photoshop does.
+        if result.is_ok()
+            && let (Some((doc, before)), Some(st)) = (&work_before, self.session.active())
+            && *doc == st.doc.id
+            && st.doc.work_path.is_some()
+            && *before != st.doc.work_path
+        {
+            self.ui.selected_path = Some("work".into());
         }
         // An explicit channel target (⌘2, ⌘\, ⌘3…) decides what the Layers panel targets too:
         // ⌘2 after the mask was targeted goes back to the layer's pixels.
@@ -1367,6 +1469,12 @@ impl PhotocraftApp {
         } else {
             jobs_ui::run(self, id, params)
         };
+        if let Ok(v) = &r
+            && id == photocraft_engine::gigapixel_cmds::ID
+        {
+            // The image went to Gigapixel's app: watch for its export.
+            gigapixel_ui::started(self, v);
+        }
         let creates_adjustment_or_fill = id.starts_with("layer.newAdjustmentLayer.") || id.starts_with("layer.newFillLayer.");
         if r.is_ok() && ADDS_LAYER_MASK.contains(&id) {
             // Adding an explicit mask targets it, as in Photoshop (#2166).
@@ -2270,6 +2378,11 @@ impl eframe::App for PhotocraftApp {
         self.sync_views();
         crate::type_font_preview::follow_hover(self, ctx);
         self.check_gpu(ctx);
+        // The window's device is gone: nothing more may run that draws or prompts (the window is
+        // closing for a restart, see `gpu_status`).
+        if gpu_status::window_lost(self) {
+            return;
+        }
         #[cfg(all(debug_assertions, not(target_arch = "wasm32")))]
         if self.live_tokens.poll(ctx, self.ui.theme) {
             self.checker = None;
@@ -2375,6 +2488,18 @@ impl eframe::App for PhotocraftApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        // After a window device loss egui-wgpu must get no meshes: it panics when it can't stage
+        // them on the lost device (see `gpu_status`).
+        if !gpu_status::window_lost(self) {
+            self.ui_frame(ui, frame);
+        }
+        gpu_status::discard_frame_if_lost(self, ui.ctx());
+    }
+}
+
+impl PhotocraftApp {
+    /// One frame of the window's interface (see [`eframe::App::ui`]).
+    fn ui_frame(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         self.hover_layer = None;
         i18n::set_current(i18n::Lang::from_pref(&self.session.prefs().interface.language));
@@ -2413,7 +2538,6 @@ impl eframe::App for PhotocraftApp {
                 }
             });
             self.automation_input = false;
-            gpu_status::check_window(self, &ctx);
             return;
         }
         if screen_picker::busy(&ctx) {
@@ -2430,28 +2554,47 @@ impl eframe::App for PhotocraftApp {
         // In Full Screen Mode, Tab shows the menu bar, options bar, toolbar and dock (#6760).
         let tabbed_in = !chrome && self.ui.panels.full_screen_chrome;
         if (chrome || tabbed_in) && self.ui.panels.menu_bar {
+            let t = gpu_canvas::now_ms();
             panels::title_bar(self, ui);
+            self.perf.span("ui: title bar", gpu_canvas::now_ms() - t);
         }
         if (chrome && self.ui.panels.options_bar) || tabbed_in {
+            let t = gpu_canvas::now_ms();
             panels::options_bar(self, ui);
-        }
-        if chrome && self.ui.panels.status_bar {
-            panels::status_bar(self, ui);
+            self.perf.span("ui: options bar", gpu_canvas::now_ms() - t);
         }
         if (chrome && self.ui.panels.toolbar) || tabbed_in {
+            let t = gpu_canvas::now_ms();
             panels::toolbar(self, ui);
+            self.perf.span("ui: toolbar", gpu_canvas::now_ms() - t);
         }
         if (chrome && self.ui.panels.dock) || tabbed_in {
+            let t = gpu_canvas::now_ms();
             panels::right_dock(self, ui);
+            self.perf.span("ui: dock", gpu_canvas::now_ms() - t);
+        } else if chrome && self.ui.panels.toolbar {
+            // With the dock hidden, a Tools panel docked at that side still shows.
+            panels::toolbar_end(self, ui);
         }
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
+            // Photoshop's status bar belongs to the document window: it spans the canvas, and the
+            // Tools panel and the docks reach the bottom of the window beside it.
+            if chrome && self.ui.panels.status_bar {
+                let t = gpu_canvas::now_ms();
+                panels::status_bar(self, ui);
+                self.perf.span("ui: status bar", gpu_canvas::now_ms() - t);
+            }
+            let t = gpu_canvas::now_ms();
             canvas::document_area(self, ui);
+            self.perf.span("ui: document", gpu_canvas::now_ms() - t);
         });
         panels::properties_window(self, &ctx);
         brush_panel::window(self, &ctx);
+        let t = gpu_canvas::now_ms();
         preset_panels::windows(self, &ctx);
+        self.perf.span("ui: floating panels", gpu_canvas::now_ms() - t);
         gradient_ui::editor_window(self, &ctx);
         type_panels_ui::windows(self, &ctx);
         analysis_ui::windows(self, &ctx);
@@ -2486,10 +2629,18 @@ impl eframe::App for PhotocraftApp {
         // remembered once the pointer is up. Here, after every panel, rather than in the
         // picker's own code: the control channel can set it while the picker is closed.
         brush_picker::persist(self, &ctx);
+        // The Brushes panel's view (collapsed groups, thumbnail size, tile parts), the same way.
+        brush_panel::persist_panel(self, &ctx);
         // The tool's brush (settings and tip references) is remembered the same way. Like the
         // picker's view, in the frame loop, so the control channel can set it with the panels
         // closed; the engine's revision counter keeps an unchanged brush free.
         last_brush::persist(self, &ctx);
+        // Topaz Gigapixel AI's export, once it is there (and the strip while waiting).
+        gigapixel_ui::frame(self, &ctx);
+        // File › Timelapse: follow edits, capture frames, and the Timelapse panel.
+        let t = gpu_canvas::now_ms();
+        timelapse_ui::frame(self, &ctx);
+        self.perf.span("ui: timelapse", gpu_canvas::now_ms() - t);
         // Tool options are remembered between launches the same way (#2814).
         tool_memory::persist(self, &ctx);
         // So are View › Extras, Show and Snap To (#3762).
@@ -2516,10 +2667,21 @@ impl eframe::App for PhotocraftApp {
             self.perf.record_gpu(t);
         }
         self.perf.frame(ui_ms);
+        fill_tool_ui::tick(self);
         if self.stroke_trace.enabled() {
             self.stroke_trace.canvas(self.perf.frame_refresh_ms);
+            // This frame's spans only: each is set again by the frame that measures it.
+            let mut spans: Vec<String> = self.perf.spans.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            // A pass egui runs again (a widget asked for a discard) costs a whole UI build more.
+            spans.push(format!("pass={}", ctx.current_pass_index()));
+            spans.extend(ctx.output(|o| o.request_discard_reasons.iter().map(|r| format!("discard={}:{} {}", r.file, r.line, r.reason)).collect::<Vec<_>>()));
+            self.stroke_trace.spans(spans.join(";"));
+            self.perf.spans.clear();
             let info = &self.perf.gpu_info;
-            self.stroke_trace.end_frame(ui_ms, self.live_stroke.is_some(), || {
+            // A Hand-tool (or Space) pan is traced like a stroke: its frames' pacing is what a
+            // fast pan looks like.
+            let panning = self.active_tool() == state::Tool::Hand && ctx.input(|i| i.pointer.primary_down());
+            self.stroke_trace.end_frame(ui_ms, self.live_stroke.is_some() || panning, || {
                 let gpu = format!("{} {}", info.backend, info.adapter).trim().to_string();
                 if info.present.is_empty() { gpu } else { format!("{gpu}, {}", info.present) }
             });
@@ -2538,8 +2700,6 @@ impl eframe::App for PhotocraftApp {
         jobs_ui::keep_polling(self, &ctx);
         // Menus and buttons in this frame may have asked for a file dialog.
         self.poll_file_dialog(&ctx, Some(frame));
-        // Last, after everything drawn this frame: a lost window device can't draw it (#3438).
-        gpu_status::check_window(self, &ctx);
     }
 }
 
@@ -2578,13 +2738,56 @@ impl PhotocraftApp {
         if !photocraft_engine::channel_cmds::follows_target(id) || params.get("target").is_some() || !self.layer_mask_targeted() {
             return params;
         }
+        // Paste makes a new layer even with a mask targeted (an adjustment layer's, a mask
+        // thumbnail clicked, or ⌘\), as in Photoshop: only a mask shown on its own (⌥-click, or
+        // alone in the Channels panel) takes the pasted pixels. Pasting into the mask by mistake
+        // looked like the paste had done nothing (user reports). Paste Into and Paste Outside
+        // always make a new layer, masked by the selection.
+        // Copy, likewise, takes the whole layer, its mask with it (user report: with the mask
+        // clicked, Copy took only the mask); the mask alone when it is shown on its own.
+        let pastes = matches!(id, "edit.paste" | "edit.pasteSpecial.pasteInPlace" | "edit.pasteSpecial.pasteInto" | "edit.pasteSpecial.pasteOutside");
+        if (pastes || id == "edit.copy") && !self.paste_goes_to_mask() {
+            // The engine sends a paste to the Channels panel's target itself: with the mask
+            // targeted there (or by ⌘\), name the layer's pixels.
+            let channel_mask = self.session.active().is_some_and(|st| st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::LayerMask);
+            return match params {
+                Value::Object(mut m) if pastes && channel_mask => {
+                    m.insert("target".into(), Value::from("pixels"));
+                    Value::Object(m)
+                }
+                Value::Null if pastes && channel_mask => serde_json::json!({ "target": "pixels" }),
+                p => p,
+            };
+        }
+        let target = self.mask_target_name();
         match params {
             Value::Object(mut m) => {
-                m.insert("target".into(), Value::from("mask"));
+                m.insert("target".into(), Value::from(target));
                 Value::Object(m)
             }
-            _ => serde_json::json!({ "target": "mask" }),
+            _ => serde_json::json!({ "target": target }),
         }
+    }
+
+    /// Whether a paste goes into the targeted mask: only when the mask is what the canvas shows,
+    /// on its own (⌥-click on its thumbnail, or the Channels panel's mask with every colour
+    /// channel hidden). Targeted only, through the Channels panel or ⌘\ as through its
+    /// thumbnail, it doesn't.
+    fn paste_goes_to_mask(&self) -> bool {
+        self.session.active().is_some_and(|st| {
+            let alone = st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::LayerMask
+                && st.channel_view.visible_colors(photocraft_engine::channel_cmds::color_count(&st.doc)) == 0;
+            photocraft_engine::mask_view_cmds::current(st).is_some() || alone
+        })
+    }
+
+    /// The `"target"` naming the targeted pixel mask: `"secondMask"` when the Layers panel
+    /// targets the active layer's second mask (and the first isn't viewed alone), else `"mask"`.
+    pub fn mask_target_name(&self) -> &'static str {
+        let Some(st) = self.session.active() else { return "mask" };
+        let viewing = photocraft_engine::mask_view_cmds::current(st).is_some();
+        let has_second = st.active_layer.and_then(|id| st.doc.layer(id)).is_some_and(|l| l.second_mask.is_some());
+        if self.ui.mask_target && self.ui.second_mask_target && !viewing && has_second { "secondMask" } else { "mask" }
     }
 
     /// The active layer's mask is what pixel commands edit: the Layers panel targets it, the layer
@@ -2624,6 +2827,9 @@ impl PhotocraftApp {
             if self.ui.mask_target && st.active_layer.and_then(|id| st.doc.layer(id)).is_none_or(|l| l.mask.is_none()) {
                 self.ui.mask_target = false;
             }
+            if self.ui.second_mask_target && (!self.ui.mask_target || st.active_layer.and_then(|id| st.doc.layer(id)).is_none_or(|l| l.second_mask.is_none())) {
+                self.ui.second_mask_target = false;
+            }
             if !self.ui.mask_target && st.channel_view.target == photocraft_engine::channel_cmds::ChannelTarget::LayerMask {
                 st.channel_view.target = photocraft_engine::channel_cmds::ChannelTarget::Composite;
             }
@@ -2649,6 +2855,7 @@ impl PhotocraftApp {
             let mut pending: Vec<_> = documents.iter().flat_map(|st| &st.doc.layers).collect();
             while let Some(layer) = pending.pop() {
                 live.insert((layer.id, mask_thumbs_ui::THUMB_LAYER));
+                live.insert((layer.id, mask_thumbs_ui::THUMB_LAYER_BOUNDS));
                 if layer.mask.is_some() {
                     live.insert((layer.id, mask_thumbs_ui::THUMB_MASK));
                 }
@@ -2665,7 +2872,10 @@ impl PhotocraftApp {
             // Native files can restore IDs: retain the union across all open documents, rather
             // than deleting an ID just because one document containing it was closed.
             self.thumbs.retain(|key, _| live.contains(key));
-            self.thumb_frames.retain(|id, _| live.contains(&(*id, mask_thumbs_ui::THUMB_LAYER)));
+            let any =
+                |id: &photocraft_doc::LayerId| live.contains(&(*id, mask_thumbs_ui::THUMB_LAYER)) || live.contains(&(*id, mask_thumbs_ui::THUMB_LAYER_BOUNDS));
+            self.thumb_frames.retain(|id, _| any(id));
+            self.bounds_frames.retain(|id, _| live.contains(&(*id, mask_thumbs_ui::THUMB_LAYER_BOUNDS)));
         }
         self.thumb_documents = documents.iter().map(|st| (st.doc.id, std::sync::Arc::downgrade(&st.doc))).collect();
     }
@@ -2741,13 +2951,45 @@ impl PhotocraftApp {
         id
     }
 
+    /// Cached Layers panel thumbnail of a pixel-ish layer, as Photoshop's default (Layers Panel
+    /// Options › Layer Bounds) shows it: just the layer's content bounds on the canvas, at their
+    /// own aspect ratio, so a wide strip gets a wide thumbnail and a tall one a tall thumbnail. An
+    /// empty layer shows the whole canvas. Returns the texture and its size in pixels (its aspect
+    /// is the bounds').
+    pub fn layer_bounds_thumb(&mut self, ctx: &egui::Context, doc: &Document, layer: &photocraft_doc::Layer) -> (egui::TextureId, [usize; 2]) {
+        let rev = layer.surface().map_or(0, surface_fingerprint) ^ (doc.size.width as u64) << 40 ^ (doc.size.height as u64) << 20;
+        let key = (layer.id, mask_thumbs_ui::THUMB_LAYER_BOUNDS);
+        if let Some((r, tex)) = self.thumbs.get(&key)
+            && *r == rev
+            && let Some(bounds) = self.bounds_frames.get(&layer.id)
+        {
+            self.thumb_frames.insert(layer.id, *bounds);
+            return (tex.id(), tex.size());
+        }
+        let canvas = photocraft_geom::Rect::from_size(doc.size);
+        let bounds = layer.surface().map(|s| s.content_bounds().intersect(&canvas)).filter(|r| !r.is_empty()).unwrap_or(canvas);
+        self.thumb_frames.insert(layer.id, bounds);
+        self.bounds_frames.insert(layer.id, bounds);
+        let mut px = [0.0f32; 8];
+        let img = bounds_thumb_image(bounds, 64, |x, y| {
+            let Some(s) = layer.surface() else { return [0.0; 4] };
+            let n = s.channels();
+            s.read_pixel(x, y, &mut px[..n]);
+            photocraft_raster::to_rgba(&s.format(), &px[..n])
+        });
+        let size = img.size;
+        (self.store_thumb(ctx, key, rev, img), size)
+    }
+
     /// The cached thumbnail of `mask`, the layer mask of layer `id`.
     pub fn mask_thumb(&mut self, ctx: &egui::Context, doc: &Document, id: photocraft_doc::LayerId, mask: &photocraft_doc::LayerMask) -> egui::TextureId {
         self.mask_thumb_kind(ctx, doc, id, mask, mask_thumbs_ui::THUMB_MASK)
     }
 
-    /// The thumbnail of `mask` under cache `kind`, re-rendered only when the mask's pixels or the document size change; Smart Filter and layer masks are cached apart.
-    pub(crate) fn mask_thumb_kind(
+    /// [`PhotocraftApp::mask_thumb`] cached under thumbnail `kind` (the second mask and Smart
+    /// Filter masks have their own), re-rendered only when the mask's pixels or the document size
+    /// change.
+    pub fn mask_thumb_kind(
         &mut self,
         ctx: &egui::Context,
         doc: &Document,
@@ -2800,6 +3042,27 @@ pub fn surface_fingerprint(s: &photocraft_raster::Surface) -> u64 {
         h = (h ^ p ^ ((c.tx as u64) << 32 | c.ty as u32 as u64)).wrapping_mul(0x100_0000_01b3);
     }
     h
+}
+
+/// Thumbnail of document area `r` at its own aspect ratio, `side` pixels along its longer edge
+/// (at least one pixel along the other), sampling `f(x, y)` in document space.
+fn bounds_thumb_image(r: photocraft_geom::Rect, side: usize, mut f: impl FnMut(i32, i32) -> [f32; 4]) -> egui::ColorImage {
+    let (w, h) = (r.width().max(1) as f32, r.height().max(1) as f32);
+    let scale = w.max(h) / side.max(1) as f32;
+    let (tw, th) = (((w / scale).round() as usize).clamp(1, side.max(1)), ((h / scale).round() as usize).clamp(1, side.max(1)));
+    let mut px = vec![egui::Color32::TRANSPARENT; tw * th];
+    let q = |v: f32| (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    for ty in 0..th {
+        for tx in 0..tw {
+            let dx = (r.x0 as f32 + (tx as f32 + 0.5) * scale).min(r.x1 as f32 - 1.0);
+            let dy = (r.y0 as f32 + (ty as f32 + 0.5) * scale).min(r.y1 as f32 - 1.0);
+            let c = f(dx as i32, dy as i32);
+            if let Some(p) = px.get_mut(ty * tw + tx) {
+                *p = egui::Color32::from_rgba_unmultiplied(q(c[0]), q(c[1]), q(c[2]), q(c[3]));
+            }
+        }
+    }
+    egui::ColorImage::new([tw, th], px)
 }
 
 /// The document area a layer thumbnail frames: the canvas, or with `clip` the layer's pixels on
@@ -2959,53 +3222,21 @@ impl PhotocraftApp {
             _ => false,
         };
         if !current {
-            let comp = photocraft_compose::thumbnail(&doc, 56);
-            let (w, h) = (comp.width as usize, comp.height as usize);
-            let side = w.max(h);
-            let make = |f: &dyn Fn(&[u8]) -> egui::Color32, name: &str| {
-                let mut px = vec![egui::Color32::TRANSPARENT; side * side];
-                let (ox, oy) = ((side - w) / 2, (side - h) / 2);
-                for y in 0..h {
-                    for x in 0..w {
-                        let o = (y * w + x) * 4;
-                        px[(y + oy) * side + x + ox] = f(&comp.pixels[o..o + 4]);
-                    }
-                }
-                (format!("chan-{name}"), egui::ColorImage::new([side, side], px))
+            // A big document builds them on a background thread (user report: switching to the
+            // Channels panel after an edit froze for its composite); until they are ready the
+            // panel keeps showing the document's previous thumbnails.
+            let built = if cfg!(target_arch = "wasm32") || doc.size.area() <= ASYNC_CHANNEL_THUMB_PIXELS {
+                Some(channel_images(&doc, show_color))
+            } else {
+                channel_thumb_job(ctx, id, &doc, show_color)
             };
-            let fmt = doc.pixel_format();
-            let colors = fmt.mode.color_channels();
-            let mut texs = vec![make(&|p| egui::Color32::from_rgb(p[0], p[1], p[2]), "composite")];
-            if colors > 1 {
-                for k in 0..colors {
-                    let cmyk = fmt.mode == photocraft_doc::ColorMode::Cmyk;
-                    texs.push(make(
-                        &|p| {
-                            let rgba = [p[0], p[1], p[2], 255].map(|v| f32::from(v) / 255.0);
-                            let x = photocraft_raster::from_rgba(&fmt, rgba)[k];
-                            let g = if cmyk { 1.0 - x } else { x };
-                            let byte = (g.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
-                            channel_tint(fmt.mode, k, byte, show_color)
-                        },
-                        &format!("c{k}"),
-                    ));
-                }
-            }
-            // Alpha channels and the Quick Mask, sampled at thumbnail resolution.
-            let (dw, dh) = (doc.size.width.max(1) as f32, doc.size.height.max(1) as f32);
-            for (i, ch) in doc.channels.iter().chain(doc.quick_mask.as_ref()).enumerate() {
-                let mut px = vec![egui::Color32::TRANSPARENT; side * side];
-                let (ox, oy) = ((side - w) / 2, (side - h) / 2);
-                for y in 0..h {
-                    for x in 0..w {
-                        let sx = ((x as f32 + 0.5) * dw / w as f32) as i32;
-                        let sy = ((y as f32 + 0.5) * dh / h as f32) as i32;
-                        let v = ch.surface.sample_channel(sx, sy, 0);
-                        px[(y + oy) * side + x + ox] = egui::Color32::from_gray((v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
-                    }
-                }
-                texs.push((format!("chan-a{i}"), egui::ColorImage::new([side, side], px)));
-            }
+            let Some(texs) = built else {
+                ctx.request_repaint_after(std::time::Duration::from_millis(30));
+                return match &self.channel_thumbs {
+                    Some((d, _, _, handles)) if *d == id => handles.iter().map(|t| t.id()).collect(),
+                    _ => Vec::new(),
+                };
+            };
             // Update the textures already uploaded rather than allocating new ones.
             let mut handles = match self.channel_thumbs.take() {
                 Some((d, _, _, h)) if d == id => h,
@@ -3033,6 +3264,119 @@ fn same_but_selection(old: &Document, new: &Document) -> bool {
     let mut o = old.clone();
     o.selection = new.selection.clone();
     o == *new
+}
+
+/// Documents larger than this (pixels) build their Channels thumbnails on a background thread.
+const ASYNC_CHANNEL_THUMB_PIXELS: u64 = 1 << 20;
+
+/// Channels thumbnail images with their texture names.
+type ChannelImages = Vec<(String, egui::ColorImage)>;
+
+/// The Channels panel's thumbnail images of `doc`, named for their textures: the composite, each
+/// colour channel (when there is more than one), each alpha channel, then the Quick Mask.
+fn channel_images(doc: &Document, show_color: bool) -> ChannelImages {
+    let comp = photocraft_compose::thumbnail(doc, 56);
+    let (w, h) = (comp.width as usize, comp.height as usize);
+    let side = w.max(h);
+    let (ox, oy) = ((side - w) / 2, (side - h) / 2);
+    let make = |f: &dyn Fn(&[u8]) -> egui::Color32, name: &str| {
+        let mut px = vec![egui::Color32::TRANSPARENT; side * side];
+        for y in 0..h {
+            for x in 0..w {
+                let o = (y * w + x) * 4;
+                if let (Some(p), Some(d)) = (comp.pixels.get(o..o + 4), px.get_mut((y + oy) * side + x + ox)) {
+                    *d = f(p);
+                }
+            }
+        }
+        (format!("chan-{name}"), egui::ColorImage::new([side, side], px))
+    };
+    let fmt = doc.pixel_format();
+    let colors = fmt.mode.color_channels();
+    let mut texs = vec![make(&|p| egui::Color32::from_rgb(p[0], p[1], p[2]), "composite")];
+    if colors > 1 {
+        let cmyk = fmt.mode == photocraft_doc::ColorMode::Cmyk;
+        for k in 0..colors {
+            texs.push(make(
+                &|p| {
+                    let rgba = [p[0], p[1], p[2], 255].map(|v| f32::from(v) / 255.0);
+                    let mut native = [0.0f32; 8];
+                    photocraft_raster::from_rgba_into(&fmt, rgba, &mut native);
+                    let x = native.get(k).copied().unwrap_or(0.0);
+                    let g = if cmyk { 1.0 - x } else { x };
+                    let byte = (g.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+                    channel_tint(fmt.mode, k, byte, show_color)
+                },
+                &format!("c{k}"),
+            ));
+        }
+    }
+    // Alpha channels and the Quick Mask, sampled at thumbnail resolution.
+    let (dw, dh) = (doc.size.width.max(1) as f32, doc.size.height.max(1) as f32);
+    for (i, ch) in doc.channels.iter().chain(doc.quick_mask.as_ref()).enumerate() {
+        let mut px = vec![egui::Color32::TRANSPARENT; side * side];
+        for y in 0..h {
+            for x in 0..w {
+                let sx = ((x as f32 + 0.5) * dw / w as f32) as i32;
+                let sy = ((y as f32 + 0.5) * dh / h as f32) as i32;
+                let v = ch.surface.sample_channel(sx, sy, 0);
+                if let Some(d) = px.get_mut((y + oy) * side + x + ox) {
+                    *d = egui::Color32::from_gray((v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8);
+                }
+            }
+        }
+        texs.push((format!("chan-a{i}"), egui::ColorImage::new([side, side], px)));
+    }
+    texs
+}
+
+/// Channels thumbnails being built on a background thread, for document `doc` as it was in
+/// `snapshot`.
+#[derive(Clone)]
+struct ChannelThumbJob {
+    doc: DocId,
+    snapshot: std::sync::Weak<Document>,
+    show_color: bool,
+    /// Filled by the thread when it is done (empty if building them panicked).
+    result: std::sync::Arc<std::sync::Mutex<Option<ChannelImages>>>,
+}
+
+fn channel_thumb_job_id() -> egui::Id {
+    egui::Id::new("pc-channel-thumbs-job")
+}
+
+/// The thumbnails of `doc` from the background thread once they are ready (`None` while it
+/// runs). One thread at a time: a document changed under a running build waits for it, then
+/// gets a build of its own.
+fn channel_thumb_job(ctx: &egui::Context, id: DocId, doc: &std::sync::Arc<Document>, show_color: bool) -> Option<ChannelImages> {
+    use std::sync::{Arc, Mutex, PoisonError};
+    let key = channel_thumb_job_id();
+    if let Some(job) = ctx.data(|d| d.get_temp::<ChannelThumbJob>(key)) {
+        let same_doc = job.doc == id && job.show_color == show_color;
+        let matches = same_doc && (job.snapshot.ptr_eq(&Arc::downgrade(doc)) || job.snapshot.upgrade().is_some_and(|prev| same_but_selection(&prev, doc)));
+        let done = job.result.lock().unwrap_or_else(PoisonError::into_inner).take();
+        match (matches, done) {
+            (true, Some(images)) => {
+                ctx.data_mut(|d| d.remove::<ChannelThumbJob>(key));
+                return Some(images);
+            }
+            // Still running (for this document as it is now, or as it was): wait for it.
+            (_, None) if same_doc => return None,
+            // Done for an older state, or another document: build again below.
+            _ => {}
+        }
+    }
+    let result = Arc::new(Mutex::new(None));
+    let (out, snap) = (result.clone(), doc.clone());
+    let spawned = std::thread::Builder::new().name("channel-thumbs".into()).spawn(move || {
+        let images = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| channel_images(&snap, show_color))).unwrap_or_default();
+        *out.lock().unwrap_or_else(PoisonError::into_inner) = Some(images);
+    });
+    if spawned.is_err() {
+        return Some(channel_images(doc, show_color));
+    }
+    ctx.data_mut(|d| d.insert_temp(key, ChannelThumbJob { doc: id, snapshot: Arc::downgrade(doc), show_color, result }));
+    None
 }
 
 /// Layer › Layer Mask commands that add a layer mask: Photoshop targets the new mask (#2166).
@@ -3192,6 +3536,12 @@ impl PhotocraftApp {
 
 #[cfg(test)]
 mod navigator_gpu_tests;
+
+#[cfg(test)]
+mod pan_bench_tests;
+
+#[cfg(test)]
+mod device_loss_tests;
 
 #[cfg(test)]
 mod color_swatch_tests;
@@ -3698,8 +4048,9 @@ mod clipboard_tests {
         assert!(h.state().session.clipboard.is_none());
     }
 
-    /// #2928: with the layer mask targeted, ⌘C copies the mask's values as grayscale, not the
-    /// layer's pixels — so ⌘V (targeting another layer's mask, #1035) moves the mask itself.
+    /// With the layer mask targeted (its thumbnail clicked), ⌘C copies the whole layer, mask
+    /// and all (user report: it took only the mask). Shown on its own (⌥-click, as for Paste,
+    /// #1035), ⌘C copies the mask's values as grayscale (#2928), to move the mask itself.
     #[test]
     fn copy_with_the_mask_targeted_copies_the_mask_not_the_pixels() {
         let (os, reads) = (OsClip::default(), Arc::default());
@@ -3714,7 +4065,14 @@ mod clipboard_tests {
         app.run("select.deselect", serde_json::json!({})).unwrap();
         app.ui.mask_target = true;
         crate::menus::invoke(&mut app, &egui::Context::default(), "edit.copy", serde_json::json!({})).unwrap();
+        let whole = app.session.clipboard.clone().expect("copied");
+        let layers = whole.layers.expect("targeted only: the whole layer");
+        assert!(layers.layers[0].mask.is_some(), "with its mask");
+        app.ui.mask_target = true;
+        app.run(photocraft_engine::mask_view_cmds::ID, serde_json::json!({})).unwrap();
+        crate::menus::invoke(&mut app, &egui::Context::default(), "edit.copy", serde_json::json!({})).unwrap();
         let clip = app.session.clipboard.clone().expect("the mask was copied");
+        assert!(clip.layers.is_none());
         let st = app.session.active().unwrap();
         let (w, h) = (st.doc.size.width as i32, st.doc.size.height as i32);
         assert_eq!(
@@ -3727,8 +4085,10 @@ mod clipboard_tests {
         assert!(clip.surface.rgba(20, 20)[0] < 0.01, "the hidden area copies as black");
     }
 
-    /// #1035: with the layer mask targeted (its thumbnail clicked), ⌘V pastes the clipboard's
-    /// luminosity into the mask instead of making a layer.
+    /// #1035: with the layer mask shown on its own (⌥-click on its thumbnail), ⌘V pastes the
+    /// clipboard's luminosity into the mask instead of making a layer. Only targeted (its
+    /// thumbnail clicked, or an adjustment layer selected), the paste is a new layer, as in
+    /// Photoshop: an image pasted into a mask by mistake looked like a paste that did nothing.
     #[test]
     fn paste_with_the_mask_targeted_goes_into_the_mask() {
         let (os, reads) = (OsClip::default(), Arc::default());
@@ -3740,11 +4100,61 @@ mod clipboard_tests {
         *os.lock().unwrap() = Some((4, 4, [128u8, 128, 128, 255].repeat(16)));
         let layers = app.session.active().unwrap().doc.layer_count();
         crate::menus::invoke(&mut app, &egui::Context::default(), "edit.paste", serde_json::json!({})).unwrap();
+        assert_eq!(app.session.active().unwrap().doc.layer_count(), layers + 1, "targeted only: a new layer");
+        app.run("edit.undo", serde_json::json!({})).unwrap();
+        app.ui.mask_target = true;
+        app.run(photocraft_engine::mask_view_cmds::ID, serde_json::json!({})).unwrap();
+        assert!(photocraft_engine::mask_view_cmds::current(app.session.active().unwrap()).is_some(), "the mask is shown");
+        crate::menus::invoke(&mut app, &egui::Context::default(), "edit.paste", serde_json::json!({})).unwrap();
         let st = app.session.active().unwrap();
         assert_eq!(st.doc.layer_count(), layers, "no new layer");
         let mask = st.doc.layer(st.active_layer.unwrap()).unwrap().mask.as_ref().unwrap();
         assert!((mask.value(32, 32) - 128.0 / 255.0).abs() < 2.0 / 255.0, "the grey, centred in the view: {}", mask.value(32, 32));
         assert_eq!(mask.value(0, 0), 0.0, "the rest of the mask is unchanged");
+    }
+
+    /// User report: with the mask targeted, some pastes still went into it. Paste Into and Paste
+    /// Outside make a new layer (masked by the selection), and a mask targeted through ⌘\ (the
+    /// Channels panel's target) is only targeted, as one whose thumbnail was clicked: Paste and
+    /// Paste in Place make a new layer too. The mask stays as it was.
+    #[test]
+    fn every_paste_with_a_targeted_mask_makes_a_new_layer() {
+        use serde_json::json;
+        let (os, reads) = (OsClip::default(), Arc::default());
+        let mut app = app_with_os_clipboard(&os, &reads);
+        let masked = app.run("layer.new.layer", json!({})).unwrap()["layer"].as_u64().unwrap();
+        app.run("layer.layerMask.hideAll", json!({})).unwrap();
+        *os.lock().unwrap() = Some((4, 4, [128u8, 128, 128, 255].repeat(16)));
+        let ctx = egui::Context::default();
+        let count = |app: &PhotocraftApp| app.session.active().unwrap().doc.layer_count();
+        let mask = |app: &PhotocraftApp| app.session.active().unwrap().doc.layer(photocraft_doc::LayerId(masked)).unwrap().mask.clone().unwrap();
+        let before = mask(&app);
+        for (how, id) in [
+            // The first paste reads the image from the system clipboard.
+            ("channel", "edit.paste"),
+            ("channel", "edit.pasteSpecial.pasteInPlace"),
+            ("channel", "edit.pasteSpecial.pasteInto"),
+            ("thumbnail", "edit.pasteSpecial.pasteInto"),
+            ("thumbnail", "edit.pasteSpecial.pasteOutside"),
+        ] {
+            app.run("layer.select", json!({"layer": masked})).unwrap();
+            app.run("select.rect", json!({"x": 10, "y": 10, "width": 20, "height": 20})).unwrap();
+            if how == "thumbnail" {
+                app.ui.mask_target = true;
+                app.sync_mask_targets();
+            } else {
+                app.run("channel.target.layerMask", json!({})).unwrap();
+            }
+            assert!(app.layer_mask_targeted(), "{how}");
+            let layers = count(&app);
+            let r = crate::menus::invoke(&mut app, &ctx, id, json!({})).unwrap();
+            assert_eq!(count(&app), layers + 1, "{how} {id}: a new layer ({r})");
+            assert!(mask(&app) == before, "{how} {id}: the mask is untouched");
+            app.run("edit.undo", json!({})).unwrap();
+            if how == "channel" {
+                app.run("channel.target.composite", json!({})).unwrap();
+            }
+        }
     }
 
     /// #2166, measured in Photoshop 25.1: adding a layer mask targets it with white/black, and

@@ -58,11 +58,16 @@ pub const SHELL_COMMANDS: &[(&str, &str, &[&str], Option<&str>)] = &[
     ("window.toggle.brushSettings", "Brush Settings", &["Window"], Some("F5")),
     ("window.toggle.brushes", "Brushes", &["Window"], None),
     ("window.toggle.navigator", "Navigator", &["Window"], None),
+    // File › Timelapse's panel (a PhotoCraft extra; not in Photoshop).
+    ("window.toggle.timelapse", "Timelapse", &["Window"], None),
     ("window.toggle.toolbar", "Tools", &["Window"], None),
     // Photoshop's Tab and ⇧Tab: all panels (Tools, options bar and the dock), or only the dock.
     ("window.togglePanels", "Show/Hide All Panels", &[], Some("Tab")),
     ("window.toggle.dock", "Show/Hide Panels", &[], Some("Shift+Tab")),
     ("window.toggle.options", "Options", &["Window"], None),
+    // The icon rail beside the dock (no Window menu item: Photoshop has none; its right-click
+    // menu closes it and Reset Workspace restores it).
+    ("window.toggle.rail", "Panel Icons", &[], None),
     // Photoshop's Ctrl+Tab and Ctrl+Shift+Tab, on macOS too (⌘Tab belongs to the system, #2340).
     ("window.nextDocument", "Next Document", &[], Some("Ctrl+Tab")),
     ("window.previousDocument", "Previous Document", &[], Some("Ctrl+Shift+Tab")),
@@ -122,6 +127,7 @@ pub const TOOLS: &[(&str, &str, Option<&str>)] = &[
     ("tools.select.magicEraser", "Magic Eraser Tool", Some("E")),
     ("tools.select.gradient", "Gradient Tool", Some("G")),
     ("tools.select.paintBucket", "Paint Bucket Tool", Some("G")),
+    ("tools.select.fill", "Fill Tool", Some("G")),
     ("tools.select.type", "Horizontal Type Tool", Some("T")),
     ("tools.select.verticalType", "Vertical Type Tool", Some("T")),
     ("tools.select.horizontalTypeMask", "Horizontal Type Mask Tool", Some("T")),

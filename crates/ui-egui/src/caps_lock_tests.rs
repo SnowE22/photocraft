@@ -142,7 +142,7 @@ fn caps_lock_swaps_the_other_cursors_between_their_icon_and_the_crosshair() {
         h.run_steps(2);
         other(&mut h, "standard");
         let standard = fp(&h);
-        assert_eq!(standard.icon, CursorIcon::None, "{tool:?}: the standard cursor is the tool's own icon, drawn");
+        assert!(crate::tool_cursor::shown_icon(&h.ctx).is_some(), "{tool:?}: the standard cursor is the tool's own icon");
         other(&mut h, "precise");
         let precise = fp(&h);
         assert_ne!(standard, precise, "{tool:?}: Standard and Precise differ");

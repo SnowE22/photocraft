@@ -34,7 +34,7 @@ fn target(tool: Tool) -> Target {
     match tool {
         Tool::Brush | Tool::Eraser => Target::Brush { flow: true },
         Tool::Pencil => Target::Brush { flow: false },
-        Tool::Gradient | Tool::PaintBucket => Target::ToolOpacity,
+        Tool::Gradient | Tool::PaintBucket | Tool::Fill => Target::ToolOpacity,
         // Their options-bar number is a strength, exposure or tolerance, not this opacity.
         t if t.is_brushlike() || t == Tool::MagicEraser => Target::None,
         _ => Target::Layer,
@@ -113,6 +113,7 @@ fn apply(app: &mut PhotocraftApp, percent: f32, shift: bool) {
         (Target::Brush { flow: true }, true) => {
             let _ = app.run("tools.setBrush", json!({ "brush": { "flow": v.max(0.01) } }));
         }
+        (Target::ToolOpacity, false) if app.ui.tool == crate::state::Tool::Fill => app.ui.tool_options.fill_tool.current_mut().opacity = percent,
         (Target::ToolOpacity, false) => app.ui.tool_options.fill_opacity = percent,
         (Target::Layer, _) => {
             // The locked Background has no opacity or fill.

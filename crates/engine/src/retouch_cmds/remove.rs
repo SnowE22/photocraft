@@ -13,11 +13,36 @@
 //! instead of sampling from an area the next stroke is about to remove. With `newLayer` the fill
 //! lands on a new layer above the target, only where the hole is, and the target stays as it was
 //! (Photoshop's *Create a new layer*; with Sample All Layers it fills from the composite).
+//!
+//! `generative` is Photoshop's *Mode*. The generative fill is LaMa (`photocraft_ml`), a local
+//! inpainting network that makes up new detail where the patch fill can only copy what is
+//! around: *Auto* uses it when it is installed and the stroke suits it (layer pixels of an RGB or
+//! Grayscale image with opaque surroundings) and the patch fill otherwise, *On* uses it or fails
+//! saying why, *Off* always uses the patch fill. Masks and channels always get the patch fill.
+//!
+//! `model` picks the generative model: `lama` (fast, a fraction of a second on a GPU) or
+//! `diffusion` (Stable Diffusion inpainting, `photocraft_ml::diffusion`: seconds, but it draws what
+//! was most likely behind, such as the rest of a face under a speech bubble). `prompt` tells the
+//! diffusion model what should be there. When the diffusion model isn't installed, Auto uses
+//! LaMa and says so. `nanoBanana` is Google's Nano Banana 2.1 (`photocraft_ml::gemini`): online and
+//! paid with the user's own API key, and the best at what lies behind; without a key Auto uses
+//! LaMa and says so. It is sent the area near the hole (`area: "near"`, sharper) or the whole page
+//! (`"page"`). Its result always goes to a new layer above the target: everything the model drew,
+//! with a layer mask showing only the hole, so painting the mask shows more of it where the edge
+//! doesn't meet; `creative: true` shows all of it (fading out at the edges of the area sent), the
+//! model's changes around the hole too.
+//!
+//! `selection: true` removes the selection itself instead of strokes: what is selected is the
+//! hole (Photoshop's way of asking Generative Fill to remove something, without a prompt).
 
 use super::content_aware_move::{Target, replace};
 use super::patch::coverage;
 use super::*;
+use photocraft_color::ColorMode;
 use photocraft_doc::Layer;
+use photocraft_ml::inpaint::{Colours, Request};
+use photocraft_ml::{Device, MlError};
+use photocraft_raster::Interrupt;
 
 const CMD: &str = "paint.remove";
 
@@ -35,6 +60,158 @@ const GROW: usize = 2;
 /// Seed of the completion, so a removal is reproducible.
 const SEED: u64 = 0x0052_e30e;
 
+/// Photoshop's Mode: whether the generative model fills the hole.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Generative {
+    /// The model when it is installed and suits the stroke, else the patch fill.
+    Auto,
+    /// The model, or an error saying why it can't.
+    On,
+    /// The patch fill.
+    Off,
+}
+
+/// `generative`: "auto" (the default), "on" or "off"; true and false mean on and off.
+fn generative(p: &Value) -> Result<Generative> {
+    let why = |v: &dyn std::fmt::Display| bad(CMD, format!("`generative` is \"auto\", \"on\" or \"off\", not {v}"));
+    match p.get("generative") {
+        None | Some(Value::Null) => Ok(Generative::Auto),
+        Some(Value::Bool(on)) => Ok(if *on { Generative::On } else { Generative::Off }),
+        Some(Value::String(v)) => match v.as_str() {
+            "auto" => Ok(Generative::Auto),
+            "on" => Ok(Generative::On),
+            "off" => Ok(Generative::Off),
+            _ => Err(why(&format!("\"{v}\""))),
+        },
+        Some(v) => Err(why(v)),
+    }
+}
+
+/// Which generative model fills the hole (`model`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AiModel {
+    /// LaMa: fast.
+    Lama,
+    /// Stable Diffusion inpainting: slow, draws what was most likely there.
+    Diffusion,
+    /// Google's Nano Banana 2.1, online: seconds, paid per image.
+    NanoBanana,
+}
+
+impl AiModel {
+    /// `model`: "lama" (the default), "diffusion" or "nanoBanana".
+    pub(crate) fn parse(p: &Value, cmd: &str) -> Result<Self> {
+        match p.get("model") {
+            None | Some(Value::Null) => Ok(AiModel::Lama),
+            Some(Value::String(v)) if v == "lama" => Ok(AiModel::Lama),
+            Some(Value::String(v)) if v == "diffusion" => Ok(AiModel::Diffusion),
+            Some(Value::String(v)) if v == "nanoBanana" => Ok(AiModel::NanoBanana),
+            Some(v) => Err(bad(cmd, format!("`model` is \"lama\", \"diffusion\" or \"nanoBanana\", not {v}"))),
+        }
+    }
+
+    /// Whether this model can run (installed, loading or loaded), else why not.
+    pub(crate) fn availability(self) -> std::result::Result<(), MlError> {
+        match self {
+            AiModel::Lama => photocraft_ml::lama::availability(),
+            AiModel::Diffusion => photocraft_ml::diffusion::availability(),
+            AiModel::NanoBanana => photocraft_ml::gemini::availability(),
+        }
+    }
+
+    pub(crate) fn ready(self) -> bool {
+        let state = match self {
+            AiModel::Lama => photocraft_ml::lama::state(),
+            AiModel::Diffusion => photocraft_ml::diffusion::state(),
+            // Nothing to load.
+            AiModel::NanoBanana => return true,
+        };
+        matches!(state, photocraft_ml::lama::State::Ready(_))
+    }
+}
+
+/// The diffusion model's settings from `prompt` and `negativePrompt` (the rest stay at their
+/// defaults). Without a prompt the fill is a removal: it starts from LaMa's fill
+/// ([`photocraft_ml::diffusion::Settings::for_removal`]); a prompt asks for something new, from noise.
+pub(crate) fn diffusion_settings(p: &Value) -> photocraft_ml::diffusion::Settings {
+    let text = |k: &str| p.get(k).and_then(Value::as_str).map(|s| s.chars().take(500).collect::<String>()).unwrap_or_default();
+    let s = photocraft_ml::diffusion::Settings { prompt: text("prompt"), negative: text("negativePrompt"), ..Default::default() };
+    if s.prompt.trim().is_empty() { s.for_removal() } else { s }
+}
+
+/// How Nano Banana is asked: `mark`, how it is shown the hole, `"paint"` (the default: the hole
+/// painted red, the Photoshop routine) or `"mask"` (the picture and a mask image); `area`, what it is
+/// sent, `"near"` (the default: the area around the hole, sharper) or `"page"` (the whole page).
+pub(crate) fn nano_options(p: &Value, cmd: &str) -> Result<photocraft_ml::gemini::Options> {
+    use photocraft_ml::gemini::{Area, Mark, Options};
+    let mark = match p.get("mark") {
+        None | Some(Value::Null) => Mark::Paint,
+        Some(Value::String(v)) if v == "mask" => Mark::Mask,
+        Some(Value::String(v)) if v == "paint" => Mark::Paint,
+        Some(v) => return Err(bad(cmd, format!("`mark` is \"mask\" or \"paint\", not {v}"))),
+    };
+    let area = match p.get("area") {
+        None | Some(Value::Null) => Area::Near,
+        Some(Value::String(v)) if v == "near" => Area::Near,
+        Some(Value::String(v)) if v == "page" => Area::Page,
+        Some(v) => return Err(bad(cmd, format!("`area` is \"near\" or \"page\", not {v}"))),
+    };
+    Ok(Options { mark, area })
+}
+
+/// `quality`: `"standard"` (the default) or `"high"`, LaMa's Quality mode
+/// ([`photocraft_ml::inpaint::LAMA_QUALITY`]: LaMa at 1024 instead of 512).
+pub(crate) fn high_quality(p: &Value, cmd: &str) -> Result<bool> {
+    match p.get("quality") {
+        None | Some(Value::Null) => Ok(false),
+        Some(Value::String(v)) if v == "standard" => Ok(false),
+        Some(Value::String(v)) if v == "high" => Ok(true),
+        Some(v) => Err(bad(cmd, format!("`quality` is \"standard\" or \"high\", not {v}"))),
+    }
+}
+
+/// Fill the hole of a [`Request`] with `model` (`read` gives the source's pixels), LaMa in its
+/// Quality mode when `high`; the device it ran on goes to `device`.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn fill_with_model(
+    model: AiModel,
+    high: bool,
+    nano: photocraft_ml::gemini::Options,
+    settings: &photocraft_ml::diffusion::Settings,
+    req: &Request,
+    read: &mut dyn FnMut(Rect) -> Vec<f32>,
+    ctl: &Interrupt,
+    device: &mut Option<Device>,
+) -> std::result::Result<Vec<f32>, MlError> {
+    match model {
+        AiModel::Lama => photocraft_ml::inpaint::fill_with(
+            req,
+            read,
+            &mut |rgb, mask, _hint| {
+                let (out, d) = photocraft_ml::lama::inpaint(rgb, mask)?;
+                *device = Some(d);
+                Ok(out)
+            },
+            ctl,
+            if high { &photocraft_ml::inpaint::LAMA_QUALITY } else { &photocraft_ml::inpaint::LAMA },
+        ),
+        AiModel::Diffusion => photocraft_ml::diffusion::fill(req, read, settings, ctl).map(|(out, d)| {
+            *device = Some(d);
+            out
+        }),
+        AiModel::NanoBanana => photocraft_ml::gemini::fill(req, read, &settings.prompt, nano, ctl).inspect(|_| *device = Some(Device::Google)),
+    }
+}
+
+/// Which fill made the result.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Filled {
+    /// The patch fill; with Auto, `note` says why the model wasn't used when it is installed.
+    Patch { note: Option<String> },
+    /// The generative model, on this device.
+    Generative(Device),
+}
+
 /// The sampling margin around the stroke: three quarters of its larger side, at least 32 pixels
 /// (in u64, so a huge extent can't overflow; a margin beyond i32 saturates).
 fn sampling_margin(area: Rect) -> i32 {
@@ -43,16 +220,29 @@ fn sampling_margin(area: Rect) -> i32 {
 }
 
 /// What a removal does, checked before any work starts.
-struct Plan {
-    id: Option<LayerId>,
-    /// One stroke (`points`), or several applied together (`strokes`).
+pub(super) struct Plan {
+    pub(super) id: Option<LayerId>,
+    /// One stroke (`points`), or several applied together (`strokes`); none with `selection`.
     strokes: Vec<Stroke>,
+    /// The selection is the hole (`selection: true`).
+    from_selection: bool,
     /// Where the fill samples from: the strokes plus a margin, on the canvas.
-    window: Rect,
+    pub(super) window: Rect,
     close_loops: bool,
     all_layers: bool,
     /// The fill goes to a new layer above the target instead of into it.
     new_layer: bool,
+    /// Whether the generative model fills the hole (Off for masks and channels).
+    pub(super) generative: Generative,
+    /// Which model, and what the diffusion model is asked for.
+    pub(super) model: AiModel,
+    /// LaMa's Quality mode (`quality: "high"`).
+    pub(super) high: bool,
+    /// How Nano Banana is asked (`mark`, `area`).
+    nano: photocraft_ml::gemini::Options,
+    /// Nano Banana's layer shows everything it drew, not only the hole (`creative`).
+    creative: bool,
+    settings: photocraft_ml::diffusion::Settings,
 }
 
 /// The stroke's bounding box (points ± the brush radius), before any coverage is rendered.
@@ -94,32 +284,67 @@ fn parse_strokes(s: &Session, p: &Value) -> Result<(Vec<Stroke>, Option<LayerId>
     Ok((strokes, id))
 }
 
-fn plan(s: &Session, p: &Value) -> Result<Plan> {
-    let (strokes, id) = parse_strokes(s, p)?;
+/// The layer `selection: true` removes from: none for a mask or channel target, else `layer` or
+/// the active one.
+fn selection_target(s: &Session, p: &Value) -> Result<Option<LayerId>> {
+    if crate::channel_cmds::is_channel_target(p) {
+        return Ok(None);
+    }
+    match p.get("layer").and_then(Value::as_u64) {
+        Some(id) => Ok(Some(LayerId(id))),
+        None => s.active().and_then(|d| d.active_layer).map(Some).ok_or(EngineError::Other("no active layer".into())),
+    }
+}
+
+pub(super) fn plan(s: &Session, p: &Value) -> Result<Plan> {
+    let mode = generative(p)?;
+    let model = AiModel::parse(p, CMD)?;
+    let high = high_quality(p, CMD)?;
+    let nano = nano_options(p, CMD)?;
+    let creative = flag(p, "creative", false);
+    let from_selection = flag(p, "selection", false);
+    let (strokes, id) = if from_selection { (Vec::new(), selection_target(s, p)?) } else { parse_strokes(s, p)? };
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let canvas = d.doc.bounds();
-    let bounds = strokes.iter().map(stroke_bounds).reduce(|a, b| a.union(&b)).ok_or_else(|| bad(CMD, "`strokes` is empty"))?;
+    let bounds = if from_selection {
+        d.doc.selection.as_ref().ok_or_else(|| bad(CMD, "`selection` needs a selection: make one first"))?.content_bounds()
+    } else {
+        strokes.iter().map(stroke_bounds).reduce(|a, b| a.union(&b)).ok_or_else(|| bad(CMD, "`strokes` is empty"))?
+    };
     let pixels = u64::from(bounds.width()) * u64::from(bounds.height());
+    let what = if from_selection { "selection" } else { "stroke" };
     if pixels > MAX_PIXELS {
-        return Err(bad(CMD, format!("the stroke is too large to remove ({pixels} pixels, at most {MAX_PIXELS})")));
+        return Err(bad(CMD, format!("the {what} is too large to remove ({pixels} pixels, at most {MAX_PIXELS})")));
     }
     let area = bounds.intersect(&canvas);
     if area.is_empty() {
-        return Err(bad(CMD, "the stroke is outside the canvas"));
+        return Err(bad(CMD, format!("the {what} is outside the canvas")));
     }
     let window = area.inflate(sampling_margin(area).min(MAX_MARGIN)).intersect(&canvas);
     let close_loops = flag(p, "closeLoops", true);
     let all_layers = flag(p, "sampleAllLayers", false) && targets_pixels(p);
     // A mask or channel has no "above": the fill goes where the stroke went.
     let new_layer = flag(p, "newLayer", false) && targets_pixels(p);
-    Ok(Plan { id, strokes, window, close_loops, all_layers, new_layer })
+    let generative = if targets_pixels(p) { mode } else { Generative::Off };
+    // On without a usable model fails now, before the job starts.
+    if generative == Generative::On
+        && let Err(e) = model.availability()
+    {
+        return Err(bad(CMD, format!("Generative AI is on, but {e}")));
+    }
+    Ok(Plan { id, strokes, from_selection, window, close_loops, all_layers, new_layer, generative, model, high, nano, creative, settings: diffusion_settings(p) })
 }
 
 /// The hole over the plan's window: the strokes' footprints, their enclosed areas and a margin,
 /// limited to the selection. Empty when nothing would change.
-fn hole(plan: &Plan, sel: Option<&Surface>) -> Result<Vec<bool>> {
+pub(super) fn hole(plan: &Plan, sel: Option<&Surface>) -> Result<Vec<bool>> {
     let win = plan.window;
     let (w, h) = (win.width() as usize, win.height() as usize);
+    if plan.from_selection {
+        // Everything selected, the soft edge too: a selection drawn around something takes it all.
+        let sel = sel.ok_or_else(|| bad(CMD, "`selection` needs a selection: make one first"))?;
+        return Ok(coverage(sel, win).iter().map(|c| *c > 0.0).collect());
+    }
     let mut m = vec![false; w * h];
     for stroke in &plan.strokes {
         let (bounds, cov) = super::coverage(CMD, stroke)?;
@@ -146,12 +371,69 @@ fn hole(plan: &Plan, sel: Option<&Surface>) -> Result<Vec<bool>> {
     Ok(m)
 }
 
-/// The filled window and the hole it fills, computed on `doc` (a snapshot). `None` when the
-/// layer's own window is fully transparent: nothing to remove and nothing to fill from.
-fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::JobCtx, label: &str) -> Result<Option<(Region, Vec<bool>)>> {
+/// The colours the model sees, for a document of `mode`: RGB or Grayscale (Indexed and Bitmap are
+/// edited as RGB and Gray); other models have no channels the model knows.
+fn model_colours(mode: ColorMode) -> std::result::Result<Colours, MlError> {
+    match mode {
+        ColorMode::Rgb | ColorMode::Indexed => Ok(Colours::Rgb),
+        ColorMode::Grayscale | ColorMode::Bitmap | ColorMode::Duotone => Ok(Colours::Gray),
+        ColorMode::Cmyk | ColorMode::Lab | ColorMode::Multichannel => Err(MlError::Unsuitable("Generative AI works on RGB and Grayscale images".into())),
+    }
+}
+
+/// What fills a [`Request`]: the request, its source and the interrupt; the window filled.
+pub(crate) type Filler<'a> = dyn FnMut(&Request, &mut dyn FnMut(Rect) -> Vec<f32>, &Interrupt) -> std::result::Result<Vec<f32>, MlError> + 'a;
+
+/// The generative fill of `hole` over the plan's window: `img` is the window as the patch fill
+/// sees it (the target, or with Sample All Layers the composite), and the model's crops around
+/// each part of the hole are read from the same source. `fill` runs the model on the request.
+pub(super) fn fill_generative(
+    doc: &mut Document,
+    plan: &Plan,
+    p: &Value,
+    img: &Region,
+    hole: &[bool],
+    ctl: &Interrupt,
+    fill: &mut Filler<'_>,
+) -> std::result::Result<Vec<f32>, MlError> {
+    let canvas = doc.bounds();
+    let (fmt, source) = {
+        let (surf, _) = crate::channel_cmds::target_surface(doc, plan.id, p).map_err(|e| MlError::BadInput(e.to_string()))?;
+        (surf.format(), (!plan.all_layers).then(|| surf.clone()))
+    };
+    let colours = model_colours(fmt.mode)?;
+    let req = Request {
+        canvas,
+        window: plan.window,
+        hole,
+        pixels: &img.data,
+        ch: img.ch,
+        colours,
+        alpha: alpha_index(&fmt),
+        // 32-bit documents hold linear light.
+        linear: fmt.sample == SampleType::F32,
+        transparent_unknown: false,
+    };
+    let doc = &*doc;
+    let mut read = |r: Rect| match &source {
+        Some(surf) => surf.read_region(r),
+        None => composite_region(doc, None, SampleLayers::All, r, fmt).data,
+    };
+    fill(&req, &mut read, ctl)
+}
+
+/// What a removal computed: the filled window, the hole it fills, which fill made it, and with
+/// Nano Banana everything the model drew (for a layer of its own).
+type Removal = (Region, Vec<bool>, Filled, Option<Vec<Region>>);
+
+/// The filled window and the hole it fills, computed on `doc` (a snapshot), and which fill made
+/// it. `None` when the layer's own window is fully transparent: nothing to remove and nothing to
+/// fill from.
+fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::JobCtx, label: &str) -> Result<Option<Removal>> {
     let hole = hole(plan, doc.selection.as_ref())?;
     if !hole.iter().any(|m| *m) {
-        return Err(bad(CMD, "the stroke doesn't cover anything that can change (check the selection)"));
+        let what = if plan.from_selection { "nothing is selected there" } else { "the stroke doesn't cover anything that can change (check the selection)" };
+        return Err(bad(CMD, what));
     }
     if hole.iter().all(|m| *m) {
         return Err(bad(CMD, "nothing is left around the stroke to fill it from"));
@@ -168,13 +450,94 @@ fn run_remove(doc: &mut Document, plan: &Plan, p: &Value, ctx: &crate::jobs::Job
     if !plan.all_layers && alpha_index(&fmt).is_some_and(|a| img.data.chunks_exact(img.ch).all(|px| px.get(a).is_none_or(|v| *v <= 0.0))) {
         return Ok(None);
     }
+    let mut note = None;
+    let mut model = plan.model;
+    // Auto with the diffusion model missing, or Nano Banana without a key: LaMa, saying so.
+    if plan.generative == Generative::Auto
+        && model != AiModel::Lama
+        && let Err(e @ (MlError::ModelMissing { .. } | MlError::RuntimeMissing { .. } | MlError::Unsupported | MlError::NotConfigured(_))) =
+            model.availability()
+    {
+        note = Some(format!("{e}; used LaMa"));
+        model = AiModel::Lama;
+    }
+    let use_model = match plan.generative {
+        Generative::Off => false,
+        Generative::On => true,
+        // Auto stays quiet when the model isn't installed, and says why when it is but failed.
+        Generative::Auto => match model.availability() {
+            Ok(()) => true,
+            Err(MlError::ModelMissing { .. } | MlError::RuntimeMissing { .. } | MlError::Unsupported) => false,
+            Err(e) => {
+                note = Some(format!("Generative AI isn't available ({e}); used the patch fill"));
+                false
+            }
+        },
+    };
+    if use_model {
+        let message = match (model, model.ready()) {
+            (AiModel::Lama, true) => "Remove (Generative AI)",
+            (AiModel::Diffusion, true) => "Remove (Generative AI, diffusion)",
+            (AiModel::Lama, false) => "Remove: loading the Generative AI model (the first time takes a few seconds)",
+            (AiModel::Diffusion, false) => "Remove: loading the diffusion model (the first time takes up to a minute)",
+            (AiModel::NanoBanana, _) => "Remove (Nano Banana 2.1): waiting for Google",
+        };
+        let mut device = None;
+        let mut drawn: Option<Vec<Region>> = None;
+        let filled = ctx.stage(0.0, 1.0, message, |ctl| {
+            fill_generative(doc, plan, p, &img, &hole, ctl, &mut |req, read, ctl| {
+                if model != AiModel::NanoBanana {
+                    return fill_with_model(model, plan.high, plan.nano, &plan.settings, req, read, ctl, &mut device);
+                }
+                // Everything the model drew, for its own layer; the window stays as it is.
+                let pieces = photocraft_ml::gemini::generate(req, read, &plan.settings.prompt, plan.nano, ctl)?;
+                device = Some(Device::Google);
+                drawn = Some(pieces.iter().map(|g| Region { rect: g.rect, ch: req.ch, data: photocraft_ml::gemini::samples(req, g) }).collect());
+                Ok(req.pixels.to_vec())
+            })
+        });
+        match filled {
+            Ok(mut data) => {
+                clamp_samples(&fmt, &mut data);
+                for piece in drawn.iter_mut().flatten() {
+                    clamp_samples(&fmt, &mut piece.data);
+                }
+                let used = Filled::Generative(device.unwrap_or(Device::Cpu));
+                return Ok(Some((Region { rect: win, ch: img.ch, data }, hole, used, drawn)));
+            }
+            Err(MlError::Cancelled) => return Err(EngineError::Cancelled),
+            // Nano Banana was asked for by name and is paid: its failure (Google's refusal, the
+            // network) is reported, not hidden behind another fill.
+            Err(e) if plan.generative == Generative::On || model == AiModel::NanoBanana => {
+                return Err(bad(CMD, format!("Generative AI couldn't fill it: {e}")));
+            }
+            Err(e) => note = Some(format!("{e}; used the patch fill")),
+        }
+    }
     let (w, h) = (win.width() as usize, win.height() as usize);
     let mut data = ctx
         .stage(0.0, 1.0, label, |ctl| photocraft_algo::remove::remove_with(w, h, img.ch, &img.data, &hole, SEED, ctl))
         .map_err(|_| EngineError::Cancelled)?;
     // The fill's seam blending can step slightly past the storable range.
     clamp_samples(&fmt, &mut data);
-    Ok(Some((Region { rect: win, ch: img.ch, data }, hole)))
+    Ok(Some((Region { rect: win, ch: img.ch, data }, hole, Filled::Patch { note }, None)))
+}
+
+/// The result fields saying which fill was used.
+fn filled_json(v: &mut Value, filled: &Filled) {
+    let Some(o) = v.as_object_mut() else { return };
+    match filled {
+        Filled::Generative(d) => {
+            o.insert("fill".into(), json!("generative"));
+            o.insert("device".into(), json!(d.name()));
+        }
+        Filled::Patch { note } => {
+            o.insert("fill".into(), json!("patch"));
+            if let Some(n) = note {
+                o.insert("note".into(), json!(n));
+            }
+        }
+    }
 }
 
 /// The fill on a new layer above `id`: the hole's pixels (opaque where the source had no alpha),
@@ -205,6 +568,72 @@ fn fill_to_new_layer(doc: &mut Document, id: Option<LayerId>, out: &Region, hole
     Ok((out.rect, nid))
 }
 
+/// How far a creative layer's mask fades out inside the edges of each area drawn, in pixels.
+const CREATIVE_FADE: i32 = 48;
+
+/// Nano Banana's pictures on a new layer above `id`: every area it drew, whole, under a layer mask
+/// that shows only the hole (over `win`), so painting the mask shows more of the picture. With
+/// `creative` the mask shows every area drawn, fading out over [`CREATIVE_FADE`] px inside its
+/// edges (not at the canvas's edges), and the hole whole. Returns the damage and the new layer.
+pub(super) fn generated_layer(
+    doc: &mut Document,
+    id: Option<LayerId>,
+    pieces: &[Region],
+    hole: &[bool],
+    win: Rect,
+    creative: bool,
+) -> Result<(Rect, LayerId)> {
+    let base = doc.pixel_format();
+    let fmt = PixelFormat::new(base.mode, base.sample, true);
+    let n = fmt.channels();
+    let colours = n.saturating_sub(1);
+    let mut l = Layer::raster(doc.next_layer_name("Nano Banana"), fmt);
+    let mut damage: Option<Rect> = None;
+    for piece in pieces {
+        if piece.ch != n && piece.ch != colours {
+            return Err(EngineError::Other("internal error: the generated picture's channels don't match the document".into()));
+        }
+        let mut data = Vec::with_capacity(piece.data.len() / piece.ch.max(1) * n);
+        for src in piece.data.chunks_exact(piece.ch.max(1)) {
+            data.extend(src.iter().take(colours));
+            data.push(if piece.ch == n { src.last().copied().unwrap_or(1.0) } else { 1.0 });
+        }
+        crate::pixels_mut(&mut l)?.write_region(piece.rect, &data);
+        damage = Some(damage.map_or(piece.rect, |d| d.union(&piece.rect)));
+    }
+    let mut mask = photocraft_doc::LayerMask::hide_all();
+    if creative {
+        let canvas = doc.bounds();
+        for piece in pieces {
+            let r = piece.rect;
+            // Distance to the nearest edge of the area that isn't the canvas's edge.
+            let fade = |v: i32, lo: i32, hi: i32, clo: i32, chi: i32| -> f32 {
+                let a = if lo <= clo { i32::MAX } else { v - lo };
+                let b = if hi >= chi { i32::MAX } else { hi - 1 - v };
+                (a.min(b) as f32 / CREATIVE_FADE as f32).clamp(0.0, 1.0)
+            };
+            let mut shown = mask.surface.read_region(r);
+            let w = r.width().max(1) as usize;
+            for (k, v) in shown.iter_mut().enumerate() {
+                let (x, y) = (r.x0 + (k % w) as i32, r.y0 + (k / w) as i32);
+                let f = fade(x, r.x0, r.x1, canvas.x0, canvas.x1).min(fade(y, r.y0, r.y1, canvas.y0, canvas.y1));
+                *v = v.max(f * f * (3.0 - 2.0 * f));
+            }
+            mask.surface.write_region(r, &shown);
+        }
+    }
+    let mut shown = mask.surface.read_region(win);
+    for (v, h) in shown.iter_mut().zip(hole) {
+        if *h {
+            *v = 1.0;
+        }
+    }
+    mask.surface.write_region(win, &shown);
+    l.mask = Some(crate::commands::mask_at_depth(mask, doc.depth)?);
+    let nid = doc.insert_above(id, l);
+    Ok((damage.unwrap_or(win), nid))
+}
+
 pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
     let plan = plan(s, p)?;
     let label = "Remove";
@@ -213,6 +642,7 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
     let p = p.clone();
     let id = plan.id;
     let new_layer = plan.new_layer;
+    let creative = plan.creative;
     crate::jobs::run(
         s,
         label,
@@ -226,7 +656,21 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
             }
         },
         move |s, filled| {
-            let Some((out, hole)) = filled else { return Ok(json!({"changed": false})) };
+            let Some((out, hole, used, drawn)) = filled else { return Ok(json!({"changed": false})) };
+            if let Some(pieces) = drawn {
+                let win = out.rect;
+                let (damage, nid) = s.edit(label, |doc, active| {
+                    let r = generated_layer(doc, id, &pieces, &hole, win, creative)?;
+                    *active = Some(r.1);
+                    Ok(r)
+                })?;
+                if let Some(st) = s.active_mut() {
+                    st.last_damage = Some(damage);
+                }
+                let mut v = json!({ "damage": damage_json(damage), "layer": nid.0 });
+                filled_json(&mut v, &used);
+                return Ok(v);
+            }
             if new_layer {
                 let (damage, nid) = s.edit(label, |doc, active| {
                     let r = fill_to_new_layer(doc, id, &out, &hole)?;
@@ -236,13 +680,17 @@ pub(super) fn remove(s: &mut Session, p: &Value) -> Result<Value> {
                 if let Some(st) = s.active_mut() {
                     st.last_damage = Some(damage);
                 }
-                return Ok(json!({ "damage": damage_json(damage), "layer": nid.0 }));
+                let mut v = json!({ "damage": damage_json(damage), "layer": nid.0 });
+                filled_json(&mut v, &used);
+                return Ok(v);
             }
             let damage = s.edit(label, |doc, _| replace(doc, Target { id, all_layers: false }, &p, &out, &hole))?;
             if let Some(st) = s.active_mut() {
                 st.last_damage = Some(damage);
             }
-            Ok(json!({ "damage": damage_json(damage) }))
+            let mut v = json!({ "damage": damage_json(damage) });
+            filled_json(&mut v, &used);
+            Ok(v)
         },
     )
 }

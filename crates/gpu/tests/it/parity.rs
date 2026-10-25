@@ -411,6 +411,43 @@ fn chunks_keep_their_own_checkpoint_after_a_partial_refresh() {
     assert_eq!(mixed.prefix_hits, mixed.chunks, "{mixed:?}");
 }
 
+/// The adjustment-layer case from a user report (2400 × 3000, 31 layers): a lower layer edited
+/// (a visibility toggle), then a layer high in the stack changed every frame (a Curves drag).
+/// The first frame above resumes from the low prefix and the cache follows the edit up, so the
+/// following frames skip the whole stack below it; partial renders keep hitting.
+#[test]
+fn repeated_edits_above_a_lower_edit_skip_the_stack_below() {
+    let Some(mut g) = gpu() else { return };
+    let mut doc = base_doc(300, 70);
+    for seed in 2..=6 {
+        doc.layers.push(alone(noise_layer("layer", PixelFormat::RGBA8, doc.bounds(), seed, 0.2)));
+    }
+    let top = doc.layers.len() - 1;
+    check(&mut g, &doc, "populate");
+    for opacity in [0.5, 0.6] {
+        doc.layers[2].opacity = opacity;
+        check(&mut g, &doc, "lower edit");
+    }
+    doc.layers[top].opacity = 0.7;
+    let first = diff_rect(&mut g, &doc, doc.bounds(), "first edit above").unwrap();
+    assert!(first.prefix_hits > 0, "{first:?}");
+    doc.layers[top].opacity = 0.4;
+    let second = diff_rect(&mut g, &doc, doc.bounds(), "second edit above").unwrap();
+    assert!(second.prefix_hits > 0 && second.prefix_passes_skipped > first.prefix_passes_skipped, "{first:?} {second:?}");
+    doc.layers[top].opacity = 0.8;
+    let third = diff_rect(&mut g, &doc, doc.bounds(), "third edit above").unwrap();
+    assert_eq!(third.prefix_passes_skipped, second.prefix_passes_skipped, "{second:?} {third:?}");
+    // Back to the lower layer: the result stays exact.
+    doc.layers[2].opacity = 0.3;
+    check(&mut g, &doc, "edit below the cache");
+    let part = Rect::new(20, 10, 120, 50);
+    for opacity in [0.5, 0.6, 0.7] {
+        doc.layers[top].opacity = opacity;
+        let stats = diff_rect(&mut g, &doc, part, "partial edits above").unwrap();
+        assert!(stats.prefix_hits > 0, "a partial render reuses the cache: {stats:?}");
+    }
+}
+
 #[test]
 fn root_checkpoints_keep_clipping_groups_and_adjustments_whole() {
     let Some(mut g) = gpu() else { return };
@@ -688,6 +725,9 @@ fn adjustments() -> Vec<Adjustment> {
         lookup(17, false, false),
         lookup(5, true, false),
         lookup(33, false, true),
+        Adjustment::Grain { amount: 60.0, size: 34.0, roughness: 50.0 },
+        Adjustment::Grain { amount: 100.0, size: 0.0, roughness: 0.0 },
+        Adjustment::Grain { amount: 40.0, size: 100.0, roughness: 100.0 },
     ]
 }
 
@@ -762,6 +802,9 @@ fn adjustment_layers() {
         // Threshold: whole 16-bit samples against the level in 16 bits, or the float luminosity.
         d.layers.push(Layer::new("th", LayerContent::Adjustment(Adjustment::Threshold { level: 0.5 })));
         check(&mut g, &d, &format!("threshold {depth:?}"));
+        // Grain: the same position hash as the CPU's, float values over white kept in 32-bit.
+        d.layers.push(Layer::new("gr", LayerContent::Adjustment(Adjustment::Grain { amount: 70.0, size: 50.0, roughness: 60.0 })));
+        check(&mut g, &d, &format!("grain {depth:?}"));
     }
     for adj in adjustments() {
         for (mode, opacity, masked) in [(BlendMode::Normal, 1.0, false), (BlendMode::Multiply, 0.7, true)] {

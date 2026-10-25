@@ -20,8 +20,10 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
 /// and (if `masks`) masks.
 pub(crate) fn for_each_surface(layers: &mut [Layer], masks: bool, f: &mut dyn FnMut(&mut Surface, bool)) {
     for l in layers {
-        if masks && let Some(m) = &mut l.mask {
-            f(&mut m.surface, true);
+        if masks {
+            for m in l.pixel_masks_mut() {
+                f(&mut m.surface, true);
+            }
         }
         if let Some(fc) = &mut l.fill_cache {
             f(&mut fc.surface, false);

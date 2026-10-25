@@ -263,6 +263,10 @@ pub struct Interface {
     /// Show the repeating dot pattern on the canvas surround (including the empty workspace).
     /// Disable for a uniform background, for example on OLED displays (#2264).
     pub show_canvas_dots: bool,
+    /// Zooming out until the whole canvas fits centres it in the window (Photoshop), once: the
+    /// view can still be panned afterwards, where Photoshop holds it there. Not for a rotated
+    /// view. The pasteboard's right-click menu toggles it.
+    pub center_when_zoomed_out: bool,
     /// List recent files on the Home screen (the empty workspace). Off hides the list; the
     /// recent files themselves are kept and File > Open Recent still shows them.
     pub show_home_recent_files: bool,
@@ -278,8 +282,10 @@ pub struct Interface {
     pub dynamic_color_sliders: bool,
     /// Draw menu item colours set with Edit › Menus.
     pub show_menu_colors: bool,
-    /// Layers panel thumbnails frame the layer's own pixels instead of the whole canvas, so small
-    /// objects in a large document stay visible (Photoshop's Clip Thumbnails to Layer Bounds; #4281).
+    /// Layers panel thumbnails frame the layer's own pixels, at their own shape, instead of the
+    /// whole canvas, so small objects in a large document stay visible (Photoshop's Clip
+    /// Thumbnails to Layer Bounds; #4281). On by default: it is how Photoshop 2026 shows them
+    /// (Layers Panel Options › Thumbnail Contents › Layer Bounds, measured on a 1:1 capture).
     pub clip_thumbnails_to_layer_bounds: bool,
     pub show_tooltips: bool,
     /// Menus, popups and collapsing sections fade and slide, and scroll areas glide to a new
@@ -314,6 +320,7 @@ impl Default for Interface {
             canvas_color: CanvasColor::Default,
             canvas_custom_color: "#282828".into(),
             show_canvas_dots: true,
+            center_when_zoomed_out: true,
             show_home_recent_files: true,
             canvas_border: CanvasBorder::DropShadow,
             ui_scale: UiScale::Auto,
@@ -322,7 +329,7 @@ impl Default for Interface {
             show_channels_in_color: false,
             dynamic_color_sliders: true,
             show_menu_colors: true,
-            clip_thumbnails_to_layer_bounds: false,
+            clip_thumbnails_to_layer_bounds: true,
             show_tooltips: true,
             enable_animations: true,
             show_bounding_box_when_dragging_layer: false,
@@ -563,7 +570,8 @@ pub struct Performance {
     pub gpu_adapter: String,
     /// Live previews of large documents (adjustment and filter dialogs, an adjustment layer's
     /// sliders while they drag) render on a reduced copy: fast, but blocky when zoomed in. Off:
-    /// they render at full resolution.
+    /// they render at full resolution. Adjustment previews the GPU canvas composites are drawn at
+    /// full resolution either way (faster than the CPU draws the reduced copy).
     pub low_resolution_previews: bool,
     /// Low-latency drawing (applies at next launch): frames reach the screen without waiting for
     /// vsync, so a stroke follows the pen about 50 ms sooner (the swap chain's wait, #1343). wgpu
@@ -1057,20 +1065,23 @@ pub struct Preferences {
     /// the footer slider's card scale, saved as the user changes them and restored at launch.
     /// JSON owned by the shell.
     pub brush_picker: Value,
+    /// The Brushes panel's remembered view: which groups and folders are collapsed, the
+    /// thumbnail size and which tile parts show, saved as the user changes them and restored at
+    /// launch. JSON owned by the shell.
+    pub brushes_panel: Value,
     /// The brush the tool was last using (settings and tip references, never the full bitmaps;
     /// shaped by `brush_cmds::remembered_brush`), restored at launch so the tool starts where it
     /// was left. Written only when `ToolState::brush_rev` moves.
     pub last_brush: Value,
+    /// Each painting tool's own brush, as Photoshop keeps the Brush's and the Eraser's apart
+    /// across restarts: `{"active": <tool>, "tools": {<tool>: <brush>}}`, where `active` is the
+    /// tool whose brush `last_brush` holds and `tools` the others', each shaped like `last_brush`
+    /// (`brush_cmds::remembered`). Tools by the shell's names. JSON owned by the shell.
+    pub tool_brushes: Value,
     /// The tools' options-bar settings (Move › Auto-Select, marquee Feather, tolerance, …) that
     /// differ from their defaults, saved as the user changes them and restored at launch, as
     /// Photoshop remembers each tool's options between sessions. JSON owned by the shell.
     pub tool_options: Value,
-    /// Each painting tool's own brush (the Brush, the Eraser, the retouching tools…; see the
-    /// shell's `paint_mouse::sync_tool_brush`), saved as the user changes them and restored at
-    /// launch, as Photoshop keeps every tool's brush between sessions (#6212): `{"owner": tool,
-    /// "brushes": {tool: brush}}`, where `owner` is the tool whose brush `last_brush` holds and
-    /// the brushes are shaped by `brush_cmds::remembered_settings`. JSON owned by the shell.
-    pub tool_brushes: Value,
     /// Last selected tool, restored at launch. A tool-name string owned and validated by the
     /// shell; null in older files. Kept separate from tool options so neither overwrites the other.
     pub selected_tool: Value,

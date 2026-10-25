@@ -19,7 +19,7 @@ use crate::dynamics::{DabGenerator, grid_cell};
 use crate::retouch::{Footprint, alpha_index, over_native};
 use crate::rng::hash2;
 use crate::tile::{Mips, PatternImage};
-use crate::{Dab, StrokePoint, dab_coverage, tip_falloff, tip_reach};
+use crate::{Dab, StrokePoint, tip_reach};
 
 /// Salt of the 8-bit dither's per-pixel noise.
 const DITHER_SALT: u64 = 0x0000_6469_7468_6572;
@@ -65,58 +65,47 @@ pub fn grid_square(x: f64, y: f64, diameter: f32) -> [f64; 4] {
     [f64::from(cx) - h, f64::from(cy) - h, f64::from(cx) + h, f64::from(cy) + h]
 }
 
-fn smoothstep(e0: f32, e1: f32, x: f32) -> f32 {
-    let t = ((x - e0) / (e1 - e0)).clamp(0.0, 1.0);
-    t * t * (3.0 - 2.0 * t)
-}
-
-/// Wet Edges: how much paint stays at a pixel whose nearest dab reaches it at `rn` (0 at a dab's
-/// centre, 1 at its rim). The interior keeps half the paint, the rim all of it.
+/// Wet Edges (measured against Photoshop 2026): a curve on the stroke's coverage, after Texture
+/// and the Dual Brush and before opacity. Up to half coverage the paint gains half again; above
+/// that it eases back to 59 % (150/255) where the stroke is solid. A soft edge rings, a hard
+/// stroke goes see-through with only its antialiased rim darker, and a dual or texture mask's
+/// own edges ring too.
 #[inline]
-fn wet_factor(rn: f32) -> f32 {
-    0.5 + 0.5 * smoothstep(0.5, 1.0, rn)
-}
-
-/// Combine brush coverage `v` with a mask value `t` (texture/dual tip) at `depth`.
-/// Every mode maps `v = 0` to 0 (a mask never adds paint where the brush has none).
-pub fn mask_combine(mode: MaskMode, v: f32, t: f32, d: f32) -> f32 {
-    if v <= 0.0 {
+pub fn wet_edges(m: f32) -> f32 {
+    if !m.is_finite() {
         return 0.0;
     }
-    let lerp = |a: f32, b: f32| a + (b - a) * d;
-    let r = match mode {
-        MaskMode::Multiply => v * (1.0 - d + d * t),
-        MaskMode::Subtract => (v - d * (1.0 - t)).max(0.0),
-        MaskMode::Darken => v.min(1.0 - d + d * t),
-        MaskMode::Overlay => {
-            let o = if v < 0.5 { 2.0 * v * t } else { 1.0 - 2.0 * (1.0 - v) * (1.0 - t) };
-            lerp(v, o)
-        }
-        MaskMode::ColorDodge => lerp(v, (v / (1.0 - t).max(1e-3)).min(1.0)),
-        MaskMode::ColorBurn => lerp(v, 1.0 - ((1.0 - v) / t.max(1e-3)).min(1.0)),
-        MaskMode::LinearBurn => lerp(v, (v + t - 1.0).max(0.0)),
-        MaskMode::HardMix => lerp(v, if v + t > 1.0 { 1.0 } else { 0.0 }),
-        MaskMode::LinearHeight => v * ((t - (1.0 - d * v)) * 4.0 + 0.5).clamp(0.0, 1.0),
-        MaskMode::Height => {
-            if t >= 1.0 - d * v {
-                v
-            } else {
-                0.0
-            }
-        }
-    };
-    r.clamp(0.0, 1.0)
+    let m = m.clamp(0.0, 1.0);
+    if m <= 0.5 { 1.5 * m } else { 0.75 - 0.65 * (m - 0.5) * (m - 0.5) }
+}
+
+/// Photoshop's Overlay of coverage `v` with a mask value `t`.
+#[inline]
+fn overlay(v: f32, t: f32) -> f32 {
+    if v < 0.5 { 2.0 * v * t } else { 1.0 - 2.0 * (1.0 - v) * (1.0 - t) }
 }
 
 /// How far a Height-mode dab at full depth and coverage reaches into the pattern, in pattern
 /// ranges (measured against Photoshop, #3340).
 const HEIGHT_REACH: f32 = 12.0;
 
+/// The share of the depth Color Dodge and Color Burn use (Photoshop 2026, 2026-10-17: fitted
+/// over single dabs at several flows and depths, Texture and Dual Brush alike; 248/255 cuts the
+/// error 2–10× against full depth, and 246/255 or 250/255 are worse).
+const DIVIDE_DEPTH: f32 = 248.0 / 255.0;
+
 /// Combine brush coverage `v` with a Texture pattern value `t` at `depth` (Brush Settings ›
-/// Texture). Where it differs from [`mask_combine`] (still used for the Dual Brush) it follows
-/// Photoshop as measured with single dabs over a grey ramp (#3340):
+/// Texture). Every mode maps `v = 0` to 0 (a mask never adds paint where the brush has none).
+/// Measured against Photoshop with single dabs at several flows and depths (#3340, and
+/// 2026-10-17 for Hard Mix and Linear Burn):
 /// - Subtract takes `depth × t` away, so a white pattern removes the most paint.
-/// - Color Dodge and Color Burn move the pattern toward their neutral colour as depth falls.
+/// - Color Dodge and Color Burn move the pattern toward their neutral colour as depth falls, and
+///   never reach the end of it: they act at 248/255 of the depth (measured 2026-10-17), so at
+///   full depth an empty pattern or dual tip still leaves paint above ~97 % (98 % keeps 73/255,
+///   99 % keeps 146/255) instead of wiping everything short of solid.
+/// - Linear Burn takes `depth × (1 − t)` away.
+/// - Hard Mix is a steep ramp, `4v − 3 + 3·depth·t`: full paint stays, half paint survives
+///   only on the pattern's light half, and lower depths need lighter pattern.
 /// - Height treats the pattern as a height field the brush presses into: the paint reaches
 ///   `12 × depth × v` and fills whatever lies below that, so a low depth paints only the dark
 ///   valleys, from about 17 % the whole pattern is under the paint, and a brighter pattern
@@ -128,18 +117,40 @@ pub fn texture_combine(mode: MaskMode, v: f32, t: f32, d: f32) -> f32 {
         return 0.0;
     }
     let r = match mode {
+        MaskMode::Multiply => v * (1.0 - d + d * t),
         MaskMode::Subtract => v - d * t,
-        MaskMode::ColorDodge => v / (1.0 - d * t).max(1e-3),
-        MaskMode::ColorBurn => 1.0 - (1.0 - v) / (1.0 - d + d * t).max(1e-3),
+        MaskMode::Darken => v.min(1.0 - d + d * t),
+        MaskMode::Overlay => v + (overlay(v, t) - v) * d,
+        MaskMode::ColorDodge => v / (1.0 - d * DIVIDE_DEPTH * t).max(1e-3),
+        MaskMode::ColorBurn => {
+            let d = d * DIVIDE_DEPTH;
+            1.0 - (1.0 - v) / (1.0 - d + d * t).max(1e-3)
+        }
+        MaskMode::LinearBurn => v - d * (1.0 - t),
+        MaskMode::HardMix => 4.0 * v - 3.0 + 3.0 * d * t,
         // Photoshop steps the depth in 1/255ths here, which shows at the lowest depths.
         MaskMode::Height => HEIGHT_REACH * (d * 255.0).round() / 255.0 * v - t,
         MaskMode::LinearHeight => {
             let reach = HEIGHT_REACH * (d * 255.0).round() / 255.0 * v;
             if reach < 1.0 { reach * (1.0 - t) } else { reach - t }
         }
-        _ => mask_combine(mode, v, t, d),
     };
     if r.is_finite() { r.clamp(0.0, 1.0) } else { 0.0 }
+}
+
+/// Combine the stroke's coverage `v` with the Dual Brush's coverage `t` (Brush Settings › Dual
+/// Brush, measured against Photoshop 2026). The modes act like Texture at full depth, with the
+/// dual stroke as the pattern: Multiply, Darken and Linear Burn keep paint only under the dual
+/// tip, while Overlay, Color Dodge, Color Burn and Hard Mix keep a solid stroke whole and only
+/// work on its partial paint. Linear Height is Overlay with the dual tip inverted.
+pub fn dual_combine(mode: MaskMode, v: f32, t: f32) -> f32 {
+    match mode {
+        MaskMode::LinearHeight if v > 0.0 => {
+            let r = overlay(v, 1.0 - t);
+            if r.is_finite() { r.clamp(0.0, 1.0) } else { 0.0 }
+        }
+        _ => texture_combine(mode, v, t, 1.0),
+    }
 }
 
 /// A stroke-ready brush: the settings plus prepared tip mips and texture.
@@ -167,6 +178,29 @@ fn prepare_pattern(b: &BrushSettings) -> Option<Arc<PatternImage>> {
         *v = t.level(*v);
     }
     Some(Arc::new(img))
+}
+
+/// A dab's pixel offset → tip-space map as a matrix: `u = m[0]·dx + m[1]·dy`,
+/// `v = m[2]·dx + m[3]·dy` (to y-up, Brush Projection, rotate by −angle, flip), the linear map
+/// `rasterize` applies to each pixel.
+fn tip_matrix(d: &Dab, dual: bool) -> [f32; 4] {
+    let (sn, cs) = d.angle.sin_cos();
+    let (fx, fy) = (if d.flip_x { -1.0 } else { 1.0 }, if d.flip_y { -1.0 } else { 1.0 });
+    let proj = (!dual && d.proj_scale < 0.999).then(|| {
+        let (ps, pc) = d.proj_angle.sin_cos();
+        (pc, ps, 1.0 / d.proj_scale.max(0.05) - 1.0)
+    });
+    let to_tip = |dx: f32, dy: f32| {
+        let (mut ux, mut uy) = (dx, -dy);
+        if let Some((ax, ay, k)) = proj {
+            let t = (ux * ax + uy * ay) * k;
+            ux += t * ax;
+            uy += t * ay;
+        }
+        ((ux * cs + uy * sn) * fx, (-ux * sn + uy * cs) * fy)
+    };
+    let ((m0, m2), (m1, m3)) = (to_tip(1.0, 0.0), to_tip(0.0, 1.0));
+    [m0, m1, m2, m3]
 }
 
 /// The pixel rectangle `reach` (plus 1 px of anti-aliasing slack) around a dab's centre. The casts
@@ -226,26 +260,70 @@ impl BrushContext {
         rect_around(d, reach)
     }
 
-    /// Rasterise a dab over `rect` into `out` (tip shape × noise × per-tip texture × wet edges × flow).
-    /// Wet Edges shapes this one dab; a stroke applies it to its accumulated coverage instead.
-    pub fn rasterize(&self, d: &Dab, dual: bool, rect: Rect, out: &mut Vec<f32>) {
-        self.rasterize_into(d, dual, rect, out, None);
+    /// [`dab_rect`](Self::dab_rect) cut down to the dab's footprint: a sampled tip's bitmap or a
+    /// computed tip's ellipse at the dab's angle and roundness, where the square around the full
+    /// radius (room for any angle) is mostly empty. Every pixel the dab paints over `dab_rect` is
+    /// inside it.
+    pub fn paint_rect(&self, d: &Dab, dual: bool) -> Rect {
+        let full = self.dab_rect(d, dual);
+        let b = &self.brush;
+        let aliased = b.aliased && !dual;
+        let mips = if dual { self.dual_tip.as_deref() } else { self.tip.as_deref() };
+        let hardness = if dual { b.dual_brush.hardness } else { b.hardness };
+        let r = d.radius;
+        let ro = d.roundness.max(0.5 / r).min(1.0);
+        let rm = (r * ro).max(0.5);
+        if aliased || !(r.is_finite() && ro.is_finite() && ro > 0.0 && d.angle.is_finite()) {
+            return full;
+        }
+        // Half extents of the footprint in tip space (u along the tip's width, v along its
+        // height), with the rasteriser's own cut-offs and a little room for rounding.
+        let (hu, hv) = match mips {
+            Some(m) => {
+                let (w0, h0, _) = &m.levels[0];
+                let (tw, th) = (*w0 as f32, *h0 as f32);
+                let inv_scale = tw.max(th) / (2.0 * r);
+                // `−1 ≤ px ≤ tw + 1` with `px = u·inv_scale + tw/2`, likewise `py` with `v / ro`.
+                ((tw / 2.0 + 1.0) / inv_scale, (th / 2.0 + 1.0) * ro / inv_scale)
+            }
+            None => {
+                let reach = crate::tip_reach(rm, hardness).max(rm);
+                // A tiny tip takes area samples a little further out (`small_reach2`).
+                let rr = reach + if rm < SMALL_TIP_RADIUS { 0.75 } else { 0.5 };
+                (rr / ro, rr)
+            }
+        };
+        // Back to pixel offsets through the inverse of the pixel → tip-space map (rotation, flips
+        // and Brush Projection, which skews a footprint that isn't round).
+        let [a, bb, c, dd] = tip_matrix(d, dual);
+        let det = a * dd - bb * c;
+        if !(det.is_finite() && det.abs() > 1e-12) {
+            return full;
+        }
+        let inv = [dd / det, -bb / det, -c / det, a / det];
+        let (hx, hy) = match mips {
+            Some(_) => (inv[0].abs() * hu + inv[1].abs() * hv, inv[2].abs() * hu + inv[3].abs() * hv),
+            None => ((inv[0] * hu).hypot(inv[1] * hv), (inv[2] * hu).hypot(inv[3] * hv)),
+        };
+        if !(hx.is_finite() && hy.is_finite()) {
+            return full;
+        }
+        let (cx, cy) = (d.center.x.floor() as i32, d.center.y.floor() as i32);
+        let (rx, ry) = ((hx.ceil() as i32).saturating_add(2), (hy.ceil() as i32).saturating_add(2));
+        Rect::new(cx.saturating_sub(rx), cy.saturating_sub(ry), cx.saturating_add(rx).saturating_add(1), cy.saturating_add(ry).saturating_add(1))
+            .intersect(&full)
     }
 
-    /// [`rasterize`](Self::rasterize); with `depth`, Wet Edges is left out of `out` and each
-    /// painted pixel's depth inside the dab (`1 − rn`) goes to `depth`, for the stroke to apply it.
-    pub fn rasterize_into(&self, d: &Dab, dual: bool, rect: Rect, out: &mut Vec<f32>, mut depth: Option<&mut Vec<f32>>) {
+    /// Rasterise a dab over `rect` into `out` (tip shape × noise × per-tip texture × flow). Wet
+    /// Edges and the stroke-level masks act on a stroke's accumulated coverage
+    /// ([`stroke_mask`](Self::stroke_mask)), never on one dab.
+    pub fn rasterize(&self, d: &Dab, dual: bool, rect: Rect, out: &mut Vec<f32>) {
         let (w, h) = (rect.width() as usize, rect.height() as usize);
         out.clear();
         out.resize(w * h, 0.0);
-        if let Some(dp) = depth.as_deref_mut() {
-            dp.clear();
-            dp.resize(w * h, 0.0);
-        }
         let b = &self.brush;
         let (hardness, mips) = if dual { (b.dual_brush.hardness, self.dual_tip.as_deref()) } else { (b.hardness, self.tip.as_deref()) };
         let aliased = b.aliased && !dual;
-        let wet = b.wet_edges && !dual && depth.is_none();
         let noise = b.noise && !dual;
         let tex_tip = !dual && b.texture.enabled && b.texture.each_tip && self.texture.is_some();
         let (cx, cy) = if aliased { grid_center(d.center.x, d.center.y, 2.0 * d.radius) } else { (d.center.x as f32, d.center.y as f32) };
@@ -287,9 +365,8 @@ impl BrushContext {
         let small = mips.is_none() && !aliased && rm < SMALL_TIP_RADIUS;
         let small_reach2 = (reach + 0.75) * (reach + 0.75);
         // Keep ordinary computed tips separate from the feature loop, so their dense rows
-        // can be vectorised without the per-pixel sampled-mask and stroke-depth branches.
-        if !(mips.is_some() || small || (aliased && b.square) || noise || tex_tip || wet)
-            && depth.is_none()
+        // can be vectorised without the per-pixel sampled-mask branches.
+        if !(mips.is_some() || small || (aliased && b.square) || noise || tex_tip)
             && proj.is_none()
             && d.angle == 0.0
             && d.radius.is_finite()
@@ -304,20 +381,53 @@ impl BrushContext {
             rasterize_round(d, rect, out, hardness, aliased);
             return;
         }
+        // The round tip's falloff, worked out once for the dab (`dab_coverage` per pixel did it
+        // for every pixel).
+        let (r0, s) = crate::tip_shape(rm, hardness);
+        let cut = crate::tip_reach(rm, hardness) + 0.5;
+        // The columns of each row the tip can reach (a large dab's square has a lot of empty
+        // corner); tiny and Block tips take the whole row.
+        let span = match mips {
+            _ if aliased && b.square => None,
+            None if small => None,
+            None => Some(Span::Ellipse { ro, r: reach + 0.5 }),
+            Some(_) => Some(Span::Rect { inv_scale, ro, tw, th }),
+        };
+        // `to_tip` is linear: its matrix, for the spans.
+        let ((m0, m2), (m1, m3)) = (to_tip(1.0, 0.0), to_tip(0.0, 1.0));
+        let map = [m0, m1, m2, m3];
+        let dx0 = rect.x0 as f32 + 0.5 - cx;
+        let slack = span_slack(cx, cy, rect);
+        // A plain sampled tip (most imported brushes): a loop of its own, without the features'
+        // per-pixel branches and divisions.
+        if let (Some(m), Some(sp)) = (mips, span)
+            && !(aliased || noise || tex_tip)
+            && map.iter().chain(&[cx, cy, inv_scale, ro, tw, th, d.alpha]).all(|v| v.is_finite())
+            && ro > 0.0
+        {
+            let tip = SampledTip { mips: m, level, map, inv_scale, ro, tw, th, x0: rect.x0, cx, alpha: d.alpha };
+            for (yy, row) in out.chunks_exact_mut(w.max(1)).enumerate().take(h) {
+                let dy = (rect.y0 + yy as i32) as f32 + 0.5 - cy;
+                let (from, to) = sp.columns(map, dx0, dy, slack, w);
+                tip.row(from, to, dy, row);
+            }
+            return;
+        }
         for yy in 0..h {
             let y = rect.y0 + yy as i32;
             let dy = y as f32 + 0.5 - cy;
-            for xx in 0..w {
+            let (from, to) = span.map_or((0, w), |sp| sp.columns(map, dx0, dy, slack, w));
+            for xx in from..to {
                 let x = rect.x0 + xx as i32;
                 let dx = x as f32 + 0.5 - cx;
                 let (u, v) = to_tip(dx, dy);
-                let (mut val, rn) = match mips {
+                let mut val = match mips {
                     // Block: the whole-pixel square, hard (the Eraser's Block mode).
                     _ if aliased && b.square => {
                         if dx.abs() >= r || dy.abs() >= r {
                             continue;
                         }
-                        (1.0, 0.0)
+                        1.0
                     }
                     None if small => {
                         let d2 = (u * ro).powi(2) + v * v;
@@ -331,10 +441,10 @@ impl BrushContext {
                                 let sd = ((su * ro).powi(2) + sv * sv).sqrt();
                                 // Each sample takes the tip's own edge, so the covered area
                                 // changes smoothly with the dab's position.
-                                sum += tip_falloff(sd, rm, hardness);
+                                sum += crate::falloff_shaped(sd, r0, s);
                             }
                         }
-                        (sum / (SUBPIXEL.len() * SUBPIXEL.len()) as f32, d2.sqrt() / rm)
+                        sum / (SUBPIXEL.len() * SUBPIXEL.len()) as f32
                     }
                     None => {
                         let d2 = (u * ro).powi(2) + v * v;
@@ -342,8 +452,14 @@ impl BrushContext {
                             continue;
                         }
                         let dd = d2.sqrt();
-                        let val = if aliased { if dd <= rm { 1.0 } else { 0.0 } } else { dab_coverage(dd, rm, hardness) };
-                        (val, dd / rm)
+                        // `dab_coverage(dd, rm, hardness)`, its shape worked out above.
+                        if aliased {
+                            if dd <= rm { 1.0 } else { 0.0 }
+                        } else if dd.is_nan() || dd >= cut {
+                            0.0
+                        } else {
+                            crate::falloff_shaped(dd, r0, s)
+                        }
                     }
                     Some(m) => {
                         let (px, py) = (u * inv_scale + tw / 2.0, -(v / ro) * inv_scale + th / 2.0);
@@ -351,8 +467,7 @@ impl BrushContext {
                             continue;
                         }
                         let s = m.sample_clamped(level, px / tw, py / th);
-                        let val = if aliased { if s >= 0.5 { 1.0 } else { 0.0 } } else { s };
-                        (val, 1.0 - s)
+                        if aliased { if s >= 0.5 { 1.0 } else { 0.0 } } else { s }
                     }
                 };
                 if val <= 0.0 {
@@ -365,12 +480,6 @@ impl BrushContext {
                 }
                 if tex_tip {
                     val = texture_combine(b.texture.mode, val, self.texture_at(x, y), d.depth);
-                }
-                if wet {
-                    val *= wet_factor(rn);
-                }
-                if let Some(slot) = depth.as_deref_mut().and_then(|dp| dp.get_mut(yy * w + xx)) {
-                    *slot = (1.0 - rn).clamp(0.0, 1.0);
                 }
                 out[yy * w + xx] = val * d.alpha;
             }
@@ -385,26 +494,21 @@ impl BrushContext {
         Footprint { dab: *d, index, rect, cov }
     }
 
-    /// Stroke-level masks applied to accumulated coverage `c` at a pixel.
+    /// The stroke-level masks on accumulated coverage `c` at a pixel (`dual`: the Dual Brush
+    /// stroke's coverage there), in Photoshop's order (measured 2026-10-17): Texture (not per
+    /// tip), then the Dual Brush, then Wet Edges. Opacity and the selection come after.
     #[inline]
     pub fn stroke_mask(&self, c: f32, dual: Option<f32>, x: i32, y: i32) -> f32 {
-        self.stroke_mask_wet(c, None, dual, x, y)
-    }
-
-    /// [`stroke_mask`](Self::stroke_mask) with Wet Edges from the stroke's depth at the pixel
-    /// (the deepest any dab reaches it, see [`CoverageMap::depth`]).
-    #[inline]
-    pub fn stroke_mask_wet(&self, c: f32, depth: Option<f32>, dual: Option<f32>, x: i32, y: i32) -> f32 {
         let b = &self.brush;
-        let mut m = match depth {
-            Some(dp) => c * wet_factor(1.0 - dp),
-            None => c,
-        };
-        if let Some(dv) = dual {
-            m = mask_combine(b.dual_brush.mode, m, dv, 1.0);
-        }
+        let mut m = c;
         if self.texture.is_some() && !b.texture.each_tip {
             m = texture_combine(b.texture.mode, m, self.texture_at(x, y), b.texture.depth.clamp(0.0, 1.0));
+        }
+        if let Some(dv) = dual {
+            m = dual_combine(b.dual_brush.mode, m, dv);
+        }
+        if b.wet_edges {
+            m = wet_edges(m);
         }
         m
     }
@@ -417,11 +521,81 @@ impl BrushContext {
 #[derive(Clone, Debug)]
 struct CovTile {
     cov: Vec<f32>,
-    /// Wet Edges: the deepest any dab reaches each pixel (`1 − rn` of the nearest dab), empty
-    /// without Wet Edges. The stroke's interior is deep, its rim shallow, whatever the dabs' overlap.
-    depth: Vec<f32>,
     /// Premultiplied native colour channels (`nc` per pixel), empty without per-dab colour.
     col: Vec<f32>,
+}
+
+/// Pixels of one coverage tile.
+const TILE_PIXELS: usize = (COV_TILE * COV_TILE) as usize;
+
+/// Dab area (pixels) from which a batch of dabs is rasterised on several threads.
+#[cfg(not(target_arch = "wasm32"))]
+const PARALLEL_AREA: u64 = 128 * 128;
+
+/// Dirty tiles from which a composite runs on several threads.
+#[cfg(not(target_arch = "wasm32"))]
+const PARALLEL_TILES: usize = 4;
+
+/// The pixels of coverage tile `key`.
+fn tile_rect((tx, ty): (i32, i32)) -> Rect {
+    Rect::new(tx * COV_TILE, ty * COV_TILE, (tx + 1) * COV_TILE, (ty + 1) * COV_TILE)
+}
+
+/// Is any value of `vals` (one per pixel of `vrect`, in rows) over `tr` (inside `vrect`) positive?
+fn any_paint(tr: Rect, vrect: Rect, vals: &[f32]) -> bool {
+    let w = vrect.width() as usize;
+    (tr.y0..tr.y1).any(|y| {
+        let row = (y - vrect.y0) as usize * w;
+        vals.get(row + (tr.x0 - vrect.x0) as usize..row + (tr.x1 - vrect.x0) as usize).is_some_and(|r| r.iter().any(|&v| v > 0.0))
+    })
+}
+
+impl CovTile {
+    /// An empty tile, with per-pixel colour for `nc` channels when given.
+    fn new(nc: Option<usize>) -> Self {
+        Self { cov: vec![0.0; TILE_PIXELS], col: nc.map_or_else(Vec::new, |nc| vec![0.0; TILE_PIXELS * nc]) }
+    }
+
+    /// Make room for colour (`nc` channels) before paint lands.
+    fn prepare(&mut self, nc: Option<usize>) {
+        if let Some(nc) = nc
+            && self.col.is_empty()
+        {
+            self.col = vec![0.0; TILE_PIXELS * nc];
+        }
+    }
+
+    /// Accumulate the values of `vals` (one per pixel of `vrect`, in rows) over `tr` (inside both
+    /// `vrect` and this tile, `key`): see [`CoverageMap::accumulate`].
+    #[allow(clippy::too_many_arguments)]
+    fn accumulate(&mut self, key: (i32, i32), tr: Rect, vrect: Rect, vals: &[f32], ceil: f32, color: Option<&[f32]>, nc: usize) {
+        let (tx, ty) = key;
+        let w = vrect.width() as usize;
+        for y in tr.y0..tr.y1 {
+            let row = (y - vrect.y0) as usize * w;
+            let trow = ((y - ty * COV_TILE) * COV_TILE) as usize;
+            for x in tr.x0..tr.x1 {
+                let vi = row + (x - vrect.x0) as usize;
+                let Some(&v) = vals.get(vi) else { continue };
+                if v <= 0.0 {
+                    continue;
+                }
+                let ti = trow + (x - tx * COV_TILE) as usize;
+                let Some(&c) = self.cov.get(ti) else { continue };
+                let nv = if ceil > c { c + v * (ceil - c) } else { c };
+                if nv <= c {
+                    continue;
+                }
+                if let (Some(col), Some(p)) = (color, self.col.get_mut(ti * nc..(ti + 1) * nc)) {
+                    let k = if c < 1.0 { (nv - c) / (1.0 - c) } else { 0.0 };
+                    for (p, col) in p.iter_mut().zip(col) {
+                        *p = col * k + *p * (1.0 - k);
+                    }
+                }
+                self.cov[ti] = nv;
+            }
+        }
+    }
 }
 
 /// A sparse tiled coverage (+ optional colour) buffer.
@@ -446,79 +620,116 @@ impl CoverageMap {
         self.tiles.get(&(tx, ty)).map_or(0.0, |t| t.cov[((y - ty * COV_TILE) * COV_TILE + (x - tx * COV_TILE)) as usize])
     }
 
-    /// Wet Edges depth at a pixel (see [`CovTile::depth`]); `None` when the stroke has none.
-    #[inline]
-    pub fn depth(&self, x: i32, y: i32) -> Option<f32> {
-        let (tx, ty) = (x.div_euclid(COV_TILE), y.div_euclid(COV_TILE));
-        self.tiles.get(&(tx, ty)).and_then(|t| t.depth.get(((y - ty * COV_TILE) * COV_TILE + (x - tx * COV_TILE)) as usize).copied())
-    }
-
     /// Accumulate dab values over `rect`: flow builds up towards the dab's opacity ceiling
-    /// (`c ← c + v·(ceil − c)`). `color` = native colour for per-dab colour. `depth` (Wet Edges, one
-    /// value per pixel of `rect`) keeps the deepest any dab reaches each pixel.
-    pub fn accumulate(&mut self, rect: Rect, vals: &[f32], ceil: f32, color: Option<&[f32]>, depth: Option<&[f32]>) {
+    /// (`c ← c + v·(ceil − c)`). `color` = native colour for per-dab colour.
+    pub fn accumulate(&mut self, rect: Rect, vals: &[f32], ceil: f32, color: Option<&[f32]>) {
         if rect.is_empty() {
             return;
         }
         self.bounds = self.bounds.union(&rect);
-        let w = rect.width() as usize;
         let nc = self.nc;
         let (t0x, t0y) = (rect.x0.div_euclid(COV_TILE), rect.y0.div_euclid(COV_TILE));
         let (t1x, t1y) = ((rect.x1 - 1).div_euclid(COV_TILE), (rect.y1 - 1).div_euclid(COV_TILE));
         let want_col = color.is_some() && nc > 0;
         for ty in t0y..=t1y {
             for tx in t0x..=t1x {
-                let tr = Rect::new(tx * COV_TILE, ty * COV_TILE, (tx + 1) * COV_TILE, (ty + 1) * COV_TILE).intersect(&rect);
+                let tr = tile_rect((tx, ty)).intersect(&rect);
+                // Skip tiles this dab doesn't touch.
+                if tr.is_empty() || !any_paint(tr, rect, vals) {
+                    continue;
+                }
+                let tile = self.tiles.entry((tx, ty)).or_insert_with(|| CovTile::new(want_col.then_some(nc)));
+                tile.prepare(want_col.then_some(nc));
+                self.dirty.insert((tx, ty));
+                tile.accumulate((tx, ty), tr, rect, vals, ceil, color.filter(|_| want_col), nc);
+            }
+        }
+    }
+
+    /// Rasterise `dabs` with `ctx` and accumulate them in order, as `rasterize` and
+    /// [`accumulate`](Self::accumulate) would one dab at a time (the same bits), but tile by tile:
+    /// each tile takes the dabs over it in order, so the tiles of a large brush go in parallel.
+    /// `rects` are the dabs' rectangles, `ceil` their opacity ceilings, `colors` their native
+    /// colours (per-dab colour).
+    fn apply_dabs(&mut self, ctx: &BrushContext, dabs: &[Dab], rects: &[Rect], ceil: &[f32], colors: Option<&[[f32; 8]]>, dual: bool) {
+        let nc = self.nc;
+        let want_col = colors.is_some() && nc > 0;
+        // (tile, dab) pairs, in dab order within each tile.
+        let mut pairs: Vec<((i32, i32), u32)> = Vec::new();
+        let mut area = 0u64;
+        for (i, r) in rects.iter().enumerate().take(dabs.len()) {
+            if r.is_empty() {
+                continue;
+            }
+            self.bounds = self.bounds.union(r);
+            area = area.saturating_add(u64::from(r.width()) * u64::from(r.height()));
+            for ty in r.y0.div_euclid(COV_TILE)..=(r.y1 - 1).div_euclid(COV_TILE) {
+                for tx in r.x0.div_euclid(COV_TILE)..=(r.x1 - 1).div_euclid(COV_TILE) {
+                    pairs.push(((tx, ty), i as u32));
+                }
+            }
+        }
+        if pairs.is_empty() {
+            return;
+        }
+        pairs.sort_unstable();
+        struct Job {
+            key: (i32, i32),
+            tile: CovTile,
+            created: bool,
+            dabs: std::ops::Range<usize>,
+            painted: bool,
+        }
+        let mut jobs = Vec::new();
+        let mut start = 0;
+        while let Some(&(key, _)) = pairs.get(start) {
+            let end = start + pairs[start..].iter().take_while(|p| p.0 == key).count();
+            let (tile, created) = match self.tiles.remove(&key) {
+                Some(t) => (t, false),
+                None => (CovTile::new(want_col.then_some(nc)), true),
+            };
+            jobs.push(Job { key, tile, created, dabs: start..end, painted: false });
+            start = end;
+        }
+        let run = |job: &mut Job, vals: &mut Vec<f32>| {
+            let whole = tile_rect(job.key);
+            for &(_, i) in &pairs[job.dabs.clone()] {
+                let i = i as usize;
+                let (Some(d), Some(r)) = (dabs.get(i), rects.get(i)) else { continue };
+                let tr = whole.intersect(r);
                 if tr.is_empty() {
                     continue;
                 }
-                // Skip tiles this dab doesn't touch.
-                let any = (tr.y0..tr.y1).any(|y| {
-                    let row = (y - rect.y0) as usize * w;
-                    vals[row + (tr.x0 - rect.x0) as usize..row + (tr.x1 - rect.x0) as usize].iter().any(|&v| v > 0.0)
-                });
-                if !any {
+                ctx.rasterize(d, dual, tr, vals);
+                if !any_paint(tr, tr, vals) {
                     continue;
                 }
-                let tile = self.tiles.entry((tx, ty)).or_insert_with(|| CovTile {
-                    cov: vec![0.0; (COV_TILE * COV_TILE) as usize],
-                    depth: Vec::new(),
-                    col: if want_col { vec![0.0; (COV_TILE * COV_TILE) as usize * nc] } else { Vec::new() },
-                });
-                if want_col && tile.col.is_empty() {
-                    tile.col = vec![0.0; (COV_TILE * COV_TILE) as usize * nc];
-                }
-                if depth.is_some() && tile.depth.is_empty() {
-                    tile.depth = vec![0.0; (COV_TILE * COV_TILE) as usize];
-                }
-                self.dirty.insert((tx, ty));
-                for y in tr.y0..tr.y1 {
-                    let row = (y - rect.y0) as usize * w;
-                    let trow = ((y - ty * COV_TILE) * COV_TILE) as usize;
-                    for x in tr.x0..tr.x1 {
-                        let v = vals[row + (x - rect.x0) as usize];
-                        if v <= 0.0 {
-                            continue;
-                        }
-                        let ti = trow + (x - tx * COV_TILE) as usize;
-                        if let (Some(dv), Some(slot)) = (depth.and_then(|dp| dp.get(row + (x - rect.x0) as usize)), tile.depth.get_mut(ti)) {
-                            *slot = slot.max(*dv);
-                        }
-                        let c = tile.cov[ti];
-                        let nv = if ceil > c { c + v * (ceil - c) } else { c };
-                        if nv <= c {
-                            continue;
-                        }
-                        if let (true, Some(col)) = (want_col, color) {
-                            let k = if c < 1.0 { (nv - c) / (1.0 - c) } else { 0.0 };
-                            let p = &mut tile.col[ti * nc..(ti + 1) * nc];
-                            for i in 0..nc {
-                                p[i] = col[i] * k + p[i] * (1.0 - k);
-                            }
-                        }
-                        tile.cov[ti] = nv;
-                    }
-                }
+                job.tile.prepare(want_col.then_some(nc));
+                job.painted = true;
+                let color = colors.and_then(|c| c.get(i)).filter(|_| want_col).map(|c| &c[..nc.min(8)]);
+                job.tile.accumulate(job.key, tr, tr, vals, ceil.get(i).copied().unwrap_or(1.0), color, nc);
+            }
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        if area >= PARALLEL_AREA && jobs.len() > 1 {
+            use rayon::prelude::*;
+            jobs.par_iter_mut().for_each_init(Vec::new, |vals, job| run(job, vals));
+        } else {
+            let mut vals = Vec::new();
+            jobs.iter_mut().for_each(|job| run(job, &mut vals));
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = area;
+            let mut vals = Vec::new();
+            jobs.iter_mut().for_each(|job| run(job, &mut vals));
+        }
+        for job in jobs {
+            if job.painted {
+                self.dirty.insert(job.key);
+            }
+            if job.painted || !job.created {
+                self.tiles.insert(job.key, job.tile);
             }
         }
     }
@@ -546,13 +757,6 @@ impl CoverageMap {
                 self.dirty.insert(key);
                 continue;
             };
-            if target.depth.is_empty() {
-                target.depth.clone_from(&source.depth);
-            } else {
-                for (dst, src) in target.depth.iter_mut().zip(&source.depth) {
-                    *dst = dst.max(*src);
-                }
-            }
             for (index, (dst, src)) in target.cov.iter_mut().zip(&source.cov).enumerate() {
                 if *src > *dst {
                     *dst = *src;
@@ -597,9 +801,6 @@ pub struct StrokeRenderer {
     fmt: Option<PixelFormat>,
     per_dab_color: bool,
     dabs_done: usize,
-    scratch: Vec<f32>,
-    /// Wet Edges depth of the dab being accumulated (see [`CovTile::depth`]).
-    depth_scratch: Vec<f32>,
     dab_buf: Vec<Dab>,
     dual_buf: Vec<Dab>,
     all_dabs: Option<Vec<Dab>>,
@@ -690,8 +891,6 @@ impl StrokeRenderer {
                         fmt: p.fmt,
                         per_dab_color: p.per_dab_color,
                         dabs_done: p.dabs_done,
-                        scratch: Vec::new(),
-                        depth_scratch: Vec::new(),
                         dab_buf: Vec::new(),
                         dual_buf: Vec::new(),
                         all_dabs: None,
@@ -741,8 +940,6 @@ impl StrokeRenderer {
             fmt,
             per_dab_color,
             dabs_done: 0,
-            scratch: Vec::new(),
-            depth_scratch: Vec::new(),
             dab_buf: Vec::new(),
             dual_buf: Vec::new(),
             all_dabs: None,
@@ -768,30 +965,26 @@ impl StrokeRenderer {
     fn raster_pending(&mut self) {
         let mut dabs = std::mem::take(&mut self.dab_buf);
         let mut duals = std::mem::take(&mut self.dual_buf);
-        let wet = self.ctx.brush.wet_edges;
-        let mut native = [0.0f32; 8];
-        for d in &dabs {
-            let rect = self.ctx.dab_rect(d, false);
-            // Wet Edges acts on the whole stroke (#2088): the dab records how deep it reaches each
-            // pixel and the stroke darkens its own rim when composited, not every dab's.
-            self.ctx.rasterize_into(d, false, rect, &mut self.scratch, wet.then_some(&mut self.depth_scratch));
-            let col = match (self.per_dab_color, self.fmt) {
-                (true, Some(f)) => {
-                    from_rgba_into(&f, d.color, &mut native);
-                    Some(&native[..f.mode.color_channels()])
-                }
-                _ => None,
-            };
-            self.cov.accumulate(rect, &self.scratch, d.opacity, col, wet.then_some(&self.depth_scratch[..]));
-            // Bounds track the full dab rectangle (even fully transparent parts), like the damage.
-            self.cov.bounds = self.cov.bounds.union(&rect);
-        }
+        // Colours convert here, on the calling thread (a CMYK document's space is thread-local).
+        let colors: Option<Vec<[f32; 8]>> = match (self.per_dab_color, self.fmt) {
+            (true, Some(f)) => Some(
+                dabs.iter()
+                    .map(|d| {
+                        let mut native = [0.0f32; 8];
+                        from_rgba_into(&f, d.color, &mut native);
+                        native
+                    })
+                    .collect(),
+            ),
+            _ => None,
+        };
+        // Bounds track the full dab rectangle (even fully transparent parts), like the damage.
+        let rects: Vec<Rect> = dabs.iter().map(|d| self.ctx.paint_rect(d, false)).collect();
+        let ceil: Vec<f32> = dabs.iter().map(|d| d.opacity).collect();
+        self.cov.apply_dabs(&self.ctx, &dabs, &rects, &ceil, colors.as_deref(), false);
         if let Some(dm) = self.dual.as_mut() {
-            for d in &duals {
-                let rect = self.ctx.dab_rect(d, true);
-                self.ctx.rasterize(d, true, rect, &mut self.scratch);
-                dm.accumulate(rect, &self.scratch, 1.0, None, None);
-            }
+            let rects: Vec<Rect> = duals.iter().map(|d| self.ctx.paint_rect(d, true)).collect();
+            dm.apply_dabs(&self.ctx, &duals, &rects, &vec![1.0; duals.len()], None, true);
         }
         self.dabs_done += dabs.len();
         if let Some(all) = self.all_dabs.as_mut() {
@@ -871,8 +1064,6 @@ impl StrokeRenderer {
             fmt: self.fmt,
             per_dab_color: self.per_dab_color,
             dabs_done: self.dabs_done,
-            scratch: Vec::new(),
-            depth_scratch: Vec::new(),
             dab_buf: dabs,
             dual_buf: duals,
             all_dabs: None,
@@ -924,7 +1115,7 @@ impl StrokeRenderer {
         if c <= 0.0 {
             return 0.0;
         }
-        self.ctx.stroke_mask_wet(c, self.cov.depth(x, y), self.dual.as_ref().map(|d| d.get(x, y)), x, y)
+        self.ctx.stroke_mask(c, self.dual.as_ref().map(|d| d.get(x, y)), x, y)
     }
 
     /// Dense final coverage over the stroke bounds.
@@ -939,8 +1130,7 @@ impl StrokeRenderer {
                     let ti = ((y - ty * COV_TILE) * COV_TILE + (x - tx * COV_TILE)) as usize;
                     let c = t.cov[ti];
                     if c > 0.0 {
-                        out[(y - b.y0) as usize * w + (x - b.x0) as usize] =
-                            self.ctx.stroke_mask_wet(c, t.depth.get(ti).copied(), self.dual.as_ref().map(|d| d.get(x, y)), x, y);
+                        out[(y - b.y0) as usize * w + (x - b.x0) as usize] = self.ctx.stroke_mask(c, self.dual.as_ref().map(|d| d.get(x, y)), x, y);
                     }
                 }
             }
@@ -953,6 +1143,20 @@ impl StrokeRenderer {
     /// `all = false` only tiles touched since the last composite are processed (interactive use).
     /// Returns the damaged rectangle.
     pub fn composite(&mut self, pre: &Surface, target: &mut Surface, selection: Option<&Surface>, lock_transparency: bool, all: bool) -> Rect {
+        self.composite_tiles(pre, target, selection, lock_transparency, all, true)
+    }
+
+    /// [`composite`](Self::composite), on several threads when `parallel` and there are enough
+    /// tiles (the same pixels either way).
+    fn composite_tiles(
+        &mut self,
+        pre: &Surface,
+        target: &mut Surface,
+        selection: Option<&Surface>,
+        lock_transparency: bool,
+        all: bool,
+        parallel: bool,
+    ) -> Rect {
         let keys: Vec<(i32, i32)> = if all {
             self.cov.dirty.clear();
             let mut k: Vec<_> = self.cov.tiles.keys().copied().collect();
@@ -988,16 +1192,20 @@ impl StrokeRenderer {
         // gradient to band and are not dithered: a Pencil line at partial opacity is one flat
         // colour, as in Photoshop, not grain that a tolerance-0 Magic Wand or Paint Bucket trips on.
         let dither = fmt.sample == SampleType::U8 && !b.aliased;
-        let mut dmg = Rect::EMPTY;
-        let mut region = Vec::new();
-        for (tx, ty) in keys {
-            let Some(tile) = self.cov.tiles.get(&(tx, ty)) else { continue };
-            let tr = Rect::new(tx * COV_TILE, ty * COV_TILE, (tx + 1) * COV_TILE, (ty + 1) * COV_TILE).intersect(&bounds);
+        let (cov, dual, ctx, per_dab_color) = (&self.cov, self.dual.as_ref(), &self.ctx, self.per_dab_color);
+        // Part `part` of one coverage tile onto the pre-stroke pixels: the region it changes
+        // (`part` within the stroke bounds) and its new pixels.
+        let tile_pixels = |(tx, ty): (i32, i32), part: Rect, region: &mut Vec<f32>| -> Option<Rect> {
+            let tile = cov.tiles.get(&(tx, ty))?;
+            let tr = tile_rect((tx, ty)).intersect(&bounds).intersect(&part);
             if tr.is_empty() {
-                continue;
+                return None;
             }
-            pre.read_region_into(tr, &mut region);
+            let mut src = src;
+            pre.read_region_into(tr, region);
             let sel = selection.map(|s| (s.channels(), s.read_region(tr)));
+            // The Dual Brush tile once, not a lookup per pixel (no tile: no dual paint there).
+            let dual_tile = dual.map(|d| d.tiles.get(&(tx, ty)));
             let w = tr.width() as usize;
             for y in tr.y0..tr.y1 {
                 for x in tr.x0..tr.x1 {
@@ -1007,7 +1215,8 @@ impl StrokeRenderer {
                         continue;
                     }
                     let i = (y - tr.y0) as usize * w + (x - tr.x0) as usize;
-                    let m = self.ctx.stroke_mask_wet(c, tile.depth.get(ti).copied(), self.dual.as_ref().map(|d| d.get(x, y)), x, y);
+                    let dv = dual_tile.map(|t| t.and_then(|t| t.cov.get(ti).copied()).unwrap_or(0.0));
+                    let m = ctx.stroke_mask(c, dv, x, y);
                     let s = sel.as_ref().map_or(1.0, |(sc, v)| v[i * sc]);
                     let mut k = (m * opacity * s).min(1.0);
                     if k <= 0.0 {
@@ -1032,7 +1241,7 @@ impl StrokeRenderer {
                     if lock_transparency && a_idx.is_some_and(|a| px[a] <= 0.0) {
                         continue;
                     }
-                    if self.per_dab_color && !tile.col.is_empty() {
+                    if per_dab_color && !tile.col.is_empty() {
                         let p = &tile.col[ti * nc..(ti + 1) * nc];
                         for ch in 0..nc {
                             src[ch] = p[ch] / c;
@@ -1057,8 +1266,53 @@ impl StrokeRenderer {
                     }
                 }
             }
-            target.write_region(tr, &region);
-            dmg = dmg.union(&tr);
+            Some(tr)
+        };
+        let mut dmg = Rect::EMPTY;
+        // A large brush dirties hundreds of tiles per frame: the layer tiles under them come out
+        // of the layer and are worked on every core, each with the coverage tiles over it (the
+        // colour conversions under the calling thread's CMYK space), then go back.
+        #[cfg(not(target_arch = "wasm32"))]
+        if parallel && keys.len() >= PARALLEL_TILES {
+            use rayon::prelude::*;
+            let cmyk = photocraft_color::convert::active_cmyk_space();
+            let mut over: std::collections::BTreeMap<photocraft_geom::TileCoord, Vec<(i32, i32)>> = std::collections::BTreeMap::new();
+            for &key in &keys {
+                if cov.tiles.contains_key(&key) {
+                    for tc in tile_rect(key).intersect(&bounds).tiles() {
+                        over.entry(tc).or_default().push(key);
+                    }
+                }
+            }
+            let mut work: Vec<_> = over.into_iter().filter_map(|(tc, ks)| target.take_tiles(tc.rect()).into_iter().next().map(|(c, t)| (c, t, ks))).collect();
+            let changed: Vec<Rect> = work
+                .par_iter_mut()
+                .map(|(tc, tile, ks)| {
+                    photocraft_color::convert::with_cmyk_space(cmyk.as_ref(), || {
+                        let tile = std::sync::Arc::make_mut(tile);
+                        let mut region = Vec::new();
+                        let mut changed = Rect::EMPTY;
+                        for &key in ks.iter() {
+                            if let Some(tr) = tile_pixels(key, tc.rect(), &mut region) {
+                                tile.write_region(&fmt, *tc, tr, &region, tr);
+                                changed = changed.union(&tr);
+                            }
+                        }
+                        changed
+                    })
+                })
+                .collect();
+            target.put_tiles(work.into_iter().map(|(c, t, _)| (c, t)));
+            let dmg = changed.iter().fold(dmg, |a, r| a.union(r));
+            return if all { bounds } else { dmg };
+        }
+        let _ = parallel;
+        let mut region = Vec::new();
+        for key in keys {
+            if let Some(tr) = tile_pixels(key, tile_rect(key), &mut region) {
+                target.write_region(tr, &region);
+                dmg = dmg.union(&tr);
+            }
         }
         if all { bounds } else { dmg }
     }
@@ -1084,6 +1338,7 @@ pub fn render_stroke(
 }
 
 // The zero-angle transform only changes signs; squaring gives the same radial distance.
+// `out` comes zeroed: only the columns each row's span can reach are written.
 #[inline(never)]
 fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased: bool) {
     let (cx, cy) = if aliased { grid_center(d.center.x, d.center.y, 2.0 * d.radius) } else { (d.center.x as f32, d.center.y as f32) };
@@ -1092,23 +1347,205 @@ fn rasterize_round(d: &Dab, rect: Rect, out: &mut [f32], hardness: f32, aliased:
     let w = rect.width() as usize;
     let reach = if aliased { rm } else { tip_reach(rm, hardness).max(rm) };
     let reach2 = (reach + 0.5) * (reach + 0.5);
+    let (r0, s) = crate::tip_shape(rm, hardness);
+    let slack = span_slack(cx, cy, rect);
+    let wide = reach + 0.5 + slack;
+    let x0 = rect.x0 as f32 + 0.5 - cx;
     for (yy, row) in out.chunks_exact_mut(w).enumerate() {
         let dy = (rect.y0 + yy as i32) as f32 + 0.5 - cy;
+        // `(dx·ro)² + dy² < reach2` only for |dx| < √(reach2 − dy²) / ro: the row's span, widened.
+        let left = wide * wide - dy * dy;
+        if left < 0.0 {
+            continue;
+        }
+        let half = left.sqrt() / ro + slack;
+        let (from, to) = clamp_columns(-half - x0, half - x0, w);
+        let Some(row) = row.get_mut(from..to) else { continue };
         if aliased {
             for (xx, dst) in row.iter_mut().enumerate() {
-                let dx = (rect.x0 + xx as i32) as f32 + 0.5 - cx;
+                let dx = (rect.x0 + (from + xx) as i32) as f32 + 0.5 - cx;
                 let d2 = (dx * ro).powi(2) + dy * dy;
                 *dst = if d2 < reach2 && d2.sqrt() <= rm { d.alpha } else { 0.0 };
             }
         } else {
             for (xx, dst) in row.iter_mut().enumerate() {
-                let dx = (rect.x0 + xx as i32) as f32 + 0.5 - cx;
+                let dx = (rect.x0 + (from + xx) as i32) as f32 + 0.5 - cx;
                 let d2 = (dx * ro).powi(2) + dy * dy;
-                let val = if d2 >= reach2 { 0.0 } else { tip_falloff(d2.sqrt(), rm, hardness) };
+                let val = if d2 >= reach2 { 0.0 } else { crate::falloff_shaped(d2.sqrt(), r0, s) };
                 *dst = if val <= 0.0 { 0.0 } else { val * d.alpha };
             }
         }
     }
+}
+
+/// A plain sampled tip mapped onto the canvas for one dab (see `rasterize`).
+struct SampledTip<'a> {
+    mips: &'a Mips,
+    level: usize,
+    /// Pixel offset → tip space: `u = map[0]·dx + map[1]·dy`, `v = map[2]·dx + map[3]·dy`.
+    map: [f32; 4],
+    inv_scale: f32,
+    ro: f32,
+    tw: f32,
+    th: f32,
+    /// The pixel column 0 of a row is, the dab centre's x and the dab's flow.
+    x0: i32,
+    cx: f32,
+    alpha: f32,
+}
+
+impl SampledTip<'_> {
+    /// Columns `from..to` of a row (`dy` from the dab centre) into `out`: the bitmap sampled
+    /// bilinearly at the mip level, times the flow. The arithmetic is the scalar loop's (which
+    /// samples through [`Mips::sample_clamped`]) with its divisions turned into
+    /// multiplications, so it agrees with it to float rounding.
+    #[inline(never)]
+    fn row(&self, from: usize, to: usize, dy: f32, out: &mut [f32]) {
+        let (x0, cx, alpha) = (self.x0, self.cx, self.alpha);
+        let Some((lw, lh, data)) = self.mips.levels.get(self.level) else { return };
+        let (lw, lh) = (*lw, *lh);
+        let [m0, m1, m2, m3] = self.map;
+        let (half_w, half_h) = (self.tw / 2.0, self.th / 2.0);
+        let k = self.inv_scale / self.ro;
+        // Level texels per level-0 texel.
+        let (sx, sy) = (lw as f32 / self.tw, lh as f32 / self.th);
+        let (hi_x, hi_y) = (self.tw + 1.0, self.th + 1.0);
+        let (u_row, v_row) = (m1 * dy, m3 * dy);
+        let Some(out) = out.get_mut(from..to) else { return };
+        for (i, dst) in out.iter_mut().enumerate() {
+            let dx = (x0 + (from + i) as i32) as f32 + 0.5 - cx;
+            let (u, v) = (m0 * dx + u_row, m2 * dx + v_row);
+            let (px, py) = (u * self.inv_scale + half_w, -v * k + half_h);
+            if px < -1.0 || py < -1.0 || px > hi_x || py > hi_y {
+                continue;
+            }
+            let (fx, fy) = (px * sx - 0.5, py * sy - 0.5);
+            let (xf, yf) = (fx.floor(), fy.floor());
+            let (tx, ty) = (fx - xf, fy - yf);
+            let (xi, yi) = (xf as i64, yf as i64);
+            let s = if xi >= 0 && yi >= 0 && xi + 1 < lw as i64 && yi + 1 < lh as i64 {
+                let j = yi as usize * lw + xi as usize;
+                match (data.get(j..j + 2), data.get(j + lw..j + lw + 2)) {
+                    (Some(&[p00, p10]), Some(&[p01, p11])) => {
+                        let a = p00 + (p10 - p00) * tx;
+                        let b = p01 + (p11 - p01) * tx;
+                        a + (b - a) * ty
+                    }
+                    _ => 0.0,
+                }
+            } else {
+                // The bitmap's edge: texels outside it are 0.
+                let get = |x: i64, y: i64| {
+                    if x < 0 || y < 0 || x >= lw as i64 || y >= lh as i64 { 0.0 } else { data.get(y as usize * lw + x as usize).copied().unwrap_or(0.0) }
+                };
+                let a = get(xi, yi) + (get(xi + 1, yi) - get(xi, yi)) * tx;
+                let b = get(xi, yi + 1) + (get(xi + 1, yi + 1) - get(xi, yi + 1)) * tx;
+                a + (b - a) * ty
+            };
+            if s > 0.0 {
+                *dst = s * alpha;
+            }
+        }
+    }
+}
+
+/// How far (in pixels) a row's span is widened beyond the footprint: two pixels, more far from
+/// the origin, where `f32` pixel coordinates lose precision (the per-pixel test still decides).
+fn span_slack(cx: f32, cy: f32, rect: Rect) -> f32 {
+    let far =
+        cx.abs().max(cy.abs()).max(rect.x0.unsigned_abs().max(rect.x1.unsigned_abs()) as f32).max(rect.y0.unsigned_abs().max(rect.y1.unsigned_abs()) as f32);
+    let s = 2.0 + far * 4e-6;
+    if s.is_finite() { s } else { f32::INFINITY }
+}
+
+/// Columns `[from, to)` of a `w`-wide row for the span `lo..hi` (column offsets, possibly
+/// infinite), widened by two columns. A NaN bound takes the whole row.
+fn clamp_columns(lo: f32, hi: f32, w: usize) -> (usize, usize) {
+    if lo > hi {
+        return (0, 0);
+    }
+    let from = if lo.is_nan() { 0.0 } else { (lo.floor() - 2.0).clamp(0.0, w as f32) };
+    let to = if hi.is_nan() { w as f32 } else { (hi.ceil() + 3.0).clamp(0.0, w as f32) };
+    let (from, to) = (from as usize, to as usize);
+    (from.min(to), to)
+}
+
+/// Which columns of a row a dab can paint, from its tip-space footprint. Only an optimisation:
+/// every column it gives is still tested pixel by pixel, and it errs wide.
+#[derive(Clone, Copy, Debug)]
+enum Span {
+    /// A computed tip: `(ro·u)² + v² < r²`.
+    Ellipse { ro: f32, r: f32 },
+    /// A sampled tip's bitmap: `−1 ≤ px ≤ tw + 1` and `−1 ≤ py ≤ th + 1`, where
+    /// `px = u·inv_scale + tw/2` and `py = −(v/ro)·inv_scale + th/2`.
+    Rect { inv_scale: f32, ro: f32, tw: f32, th: f32 },
+}
+
+impl Span {
+    /// The columns `[from, to)` of the row `dy` (pixel-centre offset from the dab centre) of a
+    /// `w`-wide rectangle whose column 0 is `dx0` from the centre, for the tip-space map `m`
+    /// (`u = m[0]·dx + m[1]·dy`, `v = m[2]·dx + m[3]·dy`), widened by `slack` pixels.
+    fn columns(self, m: [f32; 4], dx0: f32, dy: f32, slack: f32, w: usize) -> (usize, usize) {
+        let finite = m.iter().all(|v| v.is_finite())
+            && dx0.is_finite()
+            && dy.is_finite()
+            && slack.is_finite()
+            && match self {
+                Span::Ellipse { ro, r } => ro.is_finite() && ro > 0.0 && r.is_finite(),
+                Span::Rect { inv_scale, ro, tw, th } => inv_scale.is_finite() && ro.is_finite() && ro > 0.0 && tw.is_finite() && th.is_finite(),
+            };
+        if !finite {
+            // NaN or infinite inputs: the per-pixel test sorts it out (it paints NaN or nothing).
+            return (0, w);
+        }
+        // (u, v) at column t: (u0 + du·t, v0 + dv·t).
+        let (u0, du) = (m[0] * dx0 + m[1] * dy, m[0]);
+        let (v0, dv) = (m[2] * dx0 + m[3] * dy, m[2]);
+        let (lo, hi) = match self {
+            Span::Ellipse { ro, r } => {
+                let r = r + slack;
+                let (a0, a) = (ro * u0, ro * du);
+                let q = a * a + dv * dv;
+                let b = 2.0 * (a0 * a + v0 * dv);
+                let k = a0 * a0 + v0 * v0 - r * r;
+                if q.is_nan() || q <= 1e-12 {
+                    // The row is (nearly) one tip-space point: all or nothing.
+                    return if k < 0.0 || k.is_nan() { (0, w) } else { (0, 0) };
+                }
+                let disc = b * b - 4.0 * q * k;
+                if disc < 0.0 {
+                    return (0, 0);
+                }
+                let sq = disc.sqrt();
+                ((-b - sq) / (2.0 * q), (-b + sq) / (2.0 * q))
+            }
+            Span::Rect { inv_scale, ro, tw, th } => {
+                let (p0, pa) = (u0 * inv_scale + tw / 2.0, du * inv_scale);
+                let (q0, qa) = (-(v0 / ro) * inv_scale + th / 2.0, -(dv / ro) * inv_scale);
+                // `slack` pixels in texels along each axis (a pixel is `inv_scale` texels across,
+                // `inv_scale / ro` down).
+                let (mp, mq) = (slack * inv_scale.abs() + 1.0, slack * (inv_scale / ro).abs() + 1.0);
+                let (Some((a1, b1)), Some((a2, b2))) = (within(p0, pa, -1.0 - mp, tw + 1.0 + mp), within(q0, qa, -1.0 - mq, th + 1.0 + mq)) else {
+                    return (0, 0);
+                };
+                (a1.max(a2), b1.min(b2))
+            }
+        };
+        clamp_columns(lo, hi, w)
+    }
+}
+
+/// The `t` where `lo ≤ v0 + dv·t ≤ hi`: `None` for none, infinite bounds when `dv` is (nearly)
+/// zero and `v0` is in range, or anything is NaN.
+fn within(v0: f32, dv: f32, lo: f32, hi: f32) -> Option<(f32, f32)> {
+    if v0.is_nan() || dv.is_nan() || lo.is_nan() || hi.is_nan() {
+        return Some((f32::NEG_INFINITY, f32::INFINITY));
+    }
+    if dv.abs() < 1e-12 {
+        return (lo <= v0 && v0 <= hi).then_some((f32::NEG_INFINITY, f32::INFINITY));
+    }
+    let (a, b) = ((lo - v0) / dv, (hi - v0) / dv);
+    Some((a.min(b), a.max(b)))
 }
 
 #[cfg(test)]

@@ -285,10 +285,22 @@ pub fn top(app: &PhotocraftApp) -> Option<u64> {
 }
 
 /// Eyedropper: the top Color Picker's new colour becomes the image's composite colour at document
-/// point (x, y). Off the image or over transparency nothing changes.
-pub fn sample_at(app: &mut PhotocraftApp, x: f64, y: f64) {
+/// point (x, y). Off the image or over transparency nothing changes (false).
+pub fn sample_at(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
+    let Some(id) = top(app) else { return false };
+    let Some(rgb) = crate::canvas::composite_color(app, x, y) else { return false };
+    if let Some(d) = app.ui.dialog_mut(id) {
+        set_rgb(&mut d.fields, rgb, Keep::Nothing);
+    }
+    true
+}
+
+/// Eyedropper dragged from the image out over the pasteboard, a panel or another application:
+/// the top Color Picker's new colour is the screen's under the pointer, as the Eyedropper tool
+/// picks it (a solid colour layer's picker could only sample the image).
+pub fn sample_screen(app: &mut PhotocraftApp) {
     let Some(id) = top(app) else { return };
-    let Some(rgb) = crate::canvas::composite_color(app, x, y) else { return };
+    let Some(rgb) = crate::screen_sample::under_cursor(app.ui.tool_options.eyedropper_size) else { return };
     if let Some(d) = app.ui.dialog_mut(id) {
         set_rgb(&mut d.fields, rgb, Keep::Nothing);
     }
@@ -472,6 +484,7 @@ fn color_field(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     let (fx, fy, fz) = locate(&mode, hsv, rgb, lab);
     // Colour field.
     let (field, resp) = ui.allocate_exact_size(vec2(FIELD, FIELD), Sense::click_and_drag());
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, tl!("Color field")));
     let web_only = f.get("__webOnly").and_then(Value::as_bool).unwrap_or(false);
     // Only Web Colors bands the field to the 216 web-safe colours, as in Photoshop (#4107).
     let mesh = |rect: Rect, color: &dyn Fn(f32, f32) -> [f32; 3]| {
@@ -497,6 +510,7 @@ fn color_field(ui: &mut egui::Ui, f: &mut Map<String, Value>) {
     }
     // Component slider (hue runs 360° at the top to 0° at the bottom, like Photoshop).
     let (strip, sresp) = ui.allocate_exact_size(vec2(18.0, FIELD), Sense::click_and_drag());
+    sresp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, tl!("Color slider")));
     ui.painter().add(mesh(strip, &|_, y| slider_color(&mode, 1.0 - y, hsv, rgb, lab)));
     let sy = strip.top() + (1.0 - fz) * strip.height();
     for (x, dir) in [(strip.left() - 1.0, 1.0f32), (strip.right() + 1.0, -1.0)] {

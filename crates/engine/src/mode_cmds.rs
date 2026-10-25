@@ -117,7 +117,7 @@ pub(crate) fn rotate_arbitrary(s: &mut Session, p: &Value) -> Result<Value> {
                 crate::transform_cmds::composite_over(&mut base, &rotated);
                 base.prune();
                 *surf = base;
-                if let Some(m) = l.mask.as_mut() {
+                for m in l.pixel_masks_mut() {
                     m.surface = crate::transform_cmds::warp_gray(&m.surface, &h, interp)?;
                 }
             } else {

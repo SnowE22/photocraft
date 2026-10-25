@@ -1,7 +1,9 @@
 //! Canvas scrollbars (#300, #620) and Preferences › Tools › Overscroll.
 //!
-//! Like Photoshop's document window: a horizontal bar along the bottom of the view and a
-//! vertical one along the right, always shown in Standard Screen Mode. The thumb is the visible
+//! Like Photoshop's document window: a vertical bar in its own strip right of the view and a
+//! horizontal one in the status bar's free space ([`show_outside`]; over the bottom edge of the
+//! view when there is no status bar), always shown in Standard Screen Mode. Being outside the
+//! view, they never hide the image's last pixels when it is scrolled to an edge. The thumb is the visible
 //! fraction of the scrollable extent (the image, plus wherever the view has been scrolled past
 //! it); drag it to scroll, or click the track to page by one screenful. With Overscroll on, an
 //! image smaller than the window can also be scrolled from one edge of the window to the other.
@@ -72,7 +74,8 @@ impl Span {
 }
 
 /// Clamp one axis of the view centre with Overscroll off, as Photoshop 25.4 does: an image larger
-/// than the view can't leave its edges, and one smaller than the view stays inside it, where
+/// than the view can't leave its edges (by more than [`EDGE_MARGIN`]), and one smaller than the
+/// view stays inside it, where
 /// zooming put it (zooming out around the pointer doesn't re-centre it; Fit on Screen does).
 pub fn clamp_axis(center: f32, len: f32, size: f32, zoom: f32) -> f32 {
     if !(zoom.is_finite() && zoom > 0.0 && len.is_finite() && len > 0.0 && size.is_finite() && size > 0.0) {
@@ -82,9 +85,49 @@ pub fn clamp_axis(center: f32, len: f32, size: f32, zoom: f32) -> f32 {
         return len / 2.0;
     }
     let half = size / zoom / 2.0;
-    // Larger: the view stays within the image. Smaller: the image stays within the view.
-    let (a, b) = (half, len - half);
-    center.clamp(a.min(b), a.max(b))
+    // Larger: the view stays within the image and [`EDGE_MARGIN`] of pasteboard past its edges,
+    // so a drag scrolled to an edge shows that it is the edge. Smaller: the image stays within
+    // the view.
+    if len >= 2.0 * half {
+        let m = EDGE_MARGIN / zoom;
+        center.clamp(half - m, len - half + m)
+    } else {
+        center.clamp(len - half, half)
+    }
+}
+
+/// Pasteboard (screen points) the view may show past an edge of an image larger than it, with
+/// Overscroll off: scrolled or auto-scrolled to the end, the image's edge is seen, not cut off at
+/// the window's.
+pub const EDGE_MARGIN: f32 = 32.0;
+
+/// How far past the point where the image leaves the view the view may pan with Overscroll on
+/// (screen points).
+pub const OVERSCROLL_MARGIN: f32 = 48.0;
+
+/// Clamp one axis of the view centre with Overscroll on: the view may pan until the image has
+/// just left it (plus [`OVERSCROLL_MARGIN`]), never further, so the image can't be lost.
+pub fn overscroll_axis(center: f32, len: f32, size: f32, zoom: f32) -> f32 {
+    if !(zoom.is_finite() && zoom > 0.0 && len.is_finite() && len > 0.0 && size.is_finite() && size > 0.0) {
+        return center;
+    }
+    if !center.is_finite() {
+        return len / 2.0;
+    }
+    let reach = (size / 2.0 + OVERSCROLL_MARGIN) / zoom;
+    center.clamp(-reach, len + reach)
+}
+
+/// Apply Preferences › Tools › Overscroll (on) to `view`: [`overscroll_axis`] on both axes. True
+/// when the view moved.
+pub fn limit_overscroll_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32) -> bool {
+    clamp_view_by(view, size, ppp, aspect, overscroll_axis)
+}
+
+/// Apply Preferences › Tools › Overscroll to `view`: [`limit_overscroll_with_aspect`] when it is
+/// on, [`clamp_view_with_aspect`] when it is off.
+pub fn limit_view(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32, overscroll: bool) -> bool {
+    if overscroll { limit_overscroll_with_aspect(view, size, ppp, aspect) } else { clamp_view_with_aspect(view, size, ppp, aspect) }
 }
 
 /// Apply Preferences › Tools › Overscroll (off) to `view` for a canvas of `size` points on a
@@ -96,6 +139,12 @@ pub fn clamp_view(view: &mut View, size: egui::Vec2, ppp: f32) -> bool {
 /// Clamp against the displayed image bounds, so rotated tool auto-scroll is not undone by
 /// the next frame's Overscroll-off clamp. `size` is the unmodified screen-space canvas size.
 pub fn clamp_view_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32) -> bool {
+    clamp_view_by(view, size, ppp, aspect, clamp_axis)
+}
+
+/// Clamp `view`'s centre with `axis` (centre, image length, view size, zoom → centre) on each
+/// axis, in screen space when the view is rotated. True when the view moved.
+fn clamp_view_by(view: &mut View, size: egui::Vec2, ppp: f32, aspect: f32, axis: fn(f32, f32, f32, f32) -> f32) -> bool {
     let [w, h] = view.doc_size;
     if w == 0 || h == 0 {
         return false;
@@ -103,7 +152,7 @@ pub fn clamp_view_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspec
     let zoom = view.zoom / if ppp.is_finite() && ppp > 0.0 { ppp } else { 1.0 };
     let aspect = if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.0 };
     let c = if view.rotation.abs() < 1e-8 {
-        [clamp_axis(view.center[0], w as f32, size.x / aspect, zoom), clamp_axis(view.center[1], h as f32, size.y, zoom)]
+        [axis(view.center[0], w as f32, size.x / aspect, zoom), axis(view.center[1], h as f32, size.y, zoom)]
     } else {
         if !zoom.is_finite() || zoom <= 0.0 || !size.is_finite() || size.x <= 0.0 || size.y <= 0.0 {
             return false;
@@ -118,7 +167,7 @@ pub fn clamp_view_with_aspect(view: &mut View, size: egui::Vec2, ppp: f32, aspec
             return false;
         }
         let offset = xf.rect.center() - image.min;
-        let delta = vec2(clamp_axis(offset.x, image.width(), size.x, 1.0), clamp_axis(offset.y, image.height(), size.y, 1.0)) - offset;
+        let delta = vec2(axis(offset.x, image.width(), size.x, 1.0), axis(offset.y, image.height(), size.y, 1.0)) - offset;
         let d = xf.unmap_vec(delta) / zoom;
         [center[0] + d.x, center[1] + d.y]
     };
@@ -148,12 +197,89 @@ pub fn bar_rects(rect: Rect, horizontal: bool, vertical: bool) -> (Option<Rect>,
     (h, v)
 }
 
-/// Show the scrollbars of the canvas `rect` and apply their drags and page clicks to `view`.
-/// `flip` is View › Flip Horizontal (the bar then runs the other way through the image);
-/// `aspect` is the displayed pixel aspect ratio (a document pixel is that many points wider per
-/// point of height); `overscroll` is Preferences › Tools › Overscroll.
-/// Returns true when the pointer is over a bar (the canvas then leaves the pointer alone).
-pub fn show(ui: &Ui, rect: Rect, view: &mut View, flip: bool, aspect: f32, overscroll: bool, key: Id) -> bool {
+/// Show the scrollbars of the canvas `rect`, drawn over its bottom and right edges (tiled document
+/// views), and apply their drags and page clicks to `view`. `flip` is View › Flip Horizontal (the
+/// bar then runs the other way through the image); `aspect` is the displayed pixel aspect ratio (a
+/// document pixel is that many points wider per point of height); `overscroll` is Preferences ›
+/// Tools › Overscroll. Returns true when the pointer is over a bar (the canvas then leaves the
+/// pointer alone).
+pub fn show(ui: &mut Ui, rect: Rect, view: &mut View, flip: bool, aspect: f32, overscroll: bool, key: Id) -> bool {
+    let (hr, vr) = bar_rects(rect, true, true);
+    if let (Some(r), Some(_)) = (hr, vr) {
+        // The corner square where the bars meet.
+        let t = crate::theme::Tokens::get(ui.ctx());
+        ui.painter_at(rect).rect_filled(Rect::from_min_max(pos2(r.right(), r.top()), rect.max), 0.0, t.chrome);
+    }
+    bars(ui, rect, hr, vr, view, flip, aspect, overscroll, key)
+}
+
+/// Where the bars of a canvas go when they sit outside it, as in Photoshop's document window.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Outside {
+    /// The canvas the view shows (what the bars scroll through).
+    pub canvas: Rect,
+    /// The horizontal bar: the status bar's free space, or a strip under the canvas.
+    pub horizontal: Rect,
+    /// The vertical bar: a strip right of the canvas.
+    pub vertical: Rect,
+    /// The square where a strip under the canvas meets the vertical one (`None` when the
+    /// horizontal bar is in the status bar).
+    pub corner: Option<Rect>,
+}
+
+/// Split a document view's `area` for bars outside the canvas: a vertical strip on the right, and
+/// the horizontal bar in `status_track` (the status bar's free space) or else a strip at the
+/// bottom.
+pub fn outside(area: Rect, status_track: Option<Rect>) -> Outside {
+    let right = (area.right() - THICKNESS).max(area.left());
+    match status_track {
+        Some(track) => Outside {
+            canvas: Rect::from_min_max(area.min, pos2(right, area.bottom())),
+            horizontal: track,
+            vertical: Rect::from_min_max(pos2(right, area.top()), area.max),
+            corner: None,
+        },
+        None => {
+            let bottom = (area.bottom() - THICKNESS).max(area.top());
+            Outside {
+                canvas: Rect::from_min_max(area.min, pos2(right, bottom)),
+                horizontal: Rect::from_min_max(pos2(area.left(), bottom), pos2(right, area.bottom())),
+                vertical: Rect::from_min_max(pos2(right, area.top()), pos2(area.right(), bottom)),
+                corner: Some(Rect::from_min_max(pos2(right, bottom), area.max)),
+            }
+        }
+    }
+}
+
+/// Show a canvas's bars outside it ([`outside`]); as [`show`] otherwise.
+pub fn show_outside(ui: &mut Ui, o: Outside, view: &mut View, flip: bool, aspect: f32, overscroll: bool, key: Id) -> bool {
+    if let Some(c) = o.corner {
+        let t = crate::theme::Tokens::get(ui.ctx());
+        ui.ctx().layer_painter(ui.layer_id()).with_clip_rect(c).rect_filled(c, 0.0, t.chrome);
+    }
+    bars(ui, o.canvas, Some(o.horizontal), Some(o.vertical), view, flip, aspect, overscroll, key)
+}
+
+/// The status bar's free space this frame, where the active view's horizontal bar goes.
+fn track_id() -> Id {
+    Id::new("pc-status-scroll-track")
+}
+
+/// The status bar records its free space (`rect`) for the canvas drawn after it this frame.
+pub fn set_status_track(ctx: &egui::Context, rect: Rect) {
+    let frame = ctx.cumulative_pass_nr();
+    ctx.data_mut(|d| d.insert_temp(track_id(), (rect, frame)));
+}
+
+/// The status bar's free space recorded this frame (`None` without a status bar).
+pub fn status_track(ctx: &egui::Context) -> Option<Rect> {
+    let frame = ctx.cumulative_pass_nr();
+    ctx.data(|d| d.get_temp::<(Rect, u64)>(track_id())).filter(|(r, f)| *f == frame && r.width() > 1.0 && r.height() > 1.0).map(|(r, _)| r)
+}
+
+/// The two bars in `hbar` and `vbar`, scrolling the view shown in `canvas`.
+#[allow(clippy::too_many_arguments)]
+fn bars(ui: &mut Ui, canvas: Rect, hbar: Option<Rect>, vbar: Option<Rect>, view: &mut View, flip: bool, aspect: f32, overscroll: bool, key: Id) -> bool {
     let [w, h] = view.doc_size;
     // `Span` works in egui points; `View::zoom` is device pixels per document pixel.
     let ppp = ui.ctx().pixels_per_point();
@@ -162,21 +288,21 @@ pub fn show(ui: &Ui, rect: Rect, view: &mut View, flip: bool, aspect: f32, overs
     let hx = |c: f32| if flip { w as f32 - c } else { c };
     let with_extent = |s: Span| (s, s.extent(overscroll));
     let aspect = if aspect.is_finite() && aspect > 0.0 { aspect } else { 1.0 };
-    let ex = Span::of(w as f32, hx(view.center[0]), rect.width() / aspect, zoom).map(with_extent);
-    let ey = Span::of(h as f32, view.center[1], rect.height(), zoom).map(with_extent);
+    let ex = Span::of(w as f32, hx(view.center[0]), canvas.width() / aspect, zoom).map(with_extent);
+    let ey = Span::of(h as f32, view.center[1], canvas.height(), zoom).map(with_extent);
     if ex.is_none() && ey.is_none() {
         return false;
     }
-    let (hr, vr) = bar_rects(rect, ex.is_some(), ey.is_some());
     let t = crate::theme::Tokens::get(ui.ctx());
-    let painter = ui.painter_at(rect);
     let mut over = false;
-    if let (Some(r), Some(_)) = (hr, vr) {
-        // The corner square where the bars meet.
-        painter.rect_filled(Rect::from_min_max(pos2(r.right(), r.top()), rect.max), 0.0, t.chrome);
-    }
-    for (axis, bar, span) in [(0usize, hr, ex), (1usize, vr, ey)] {
+    for (axis, bar, span) in [(0usize, hbar, ex), (1usize, vbar, ey)] {
         let (Some(bar), Some((s, e))) = (bar, span) else { continue };
+        // Each bar in a child with its own clip, so a bar outside the canvas (in the status bar)
+        // still draws and takes the pointer.
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(bar));
+        child.set_clip_rect(bar);
+        let ui = &child;
+        let painter = ui.painter().clone();
         let id = key.with(("scrollbar", axis));
         let resp = ui.interact(bar, id, Sense::click_and_drag());
         over |= resp.hovered() || resp.dragged();
@@ -255,7 +381,44 @@ fn thumb_color(t: &crate::theme::Tokens) -> Color32 {
 
 #[cfg(test)]
 mod tests {
+
+    /// With Overscroll on the view may pan until the image has just left it, and no further.
+    #[test]
+    fn overscroll_stops_once_the_image_has_left_the_view() {
+        // A 1000 px image in a 500 pt view at 100 %: the centre may go 250 + 48 past either edge.
+        assert_eq!(overscroll_axis(500.0, 1000.0, 500.0, 1.0), 500.0);
+        assert_eq!(overscroll_axis(-10_000.0, 1000.0, 500.0, 1.0), -298.0);
+        assert_eq!(overscroll_axis(10_000.0, 1000.0, 500.0, 1.0), 1298.0);
+        // At 50 % the reach doubles in document pixels.
+        assert_eq!(overscroll_axis(1e9, 1000.0, 500.0, 0.5), 1000.0 + 596.0);
+        assert_eq!(overscroll_axis(f32::NAN, 1000.0, 500.0, 1.0), 500.0);
+        assert_eq!(overscroll_axis(7.0, 1000.0, 500.0, 0.0), 7.0, "nonsense zoom leaves it alone");
+        let mut v = View { doc_size: [1000, 800], zoom: 1.0, center: [99_999.0, -99_999.0], ..Default::default() };
+        assert!(limit_view(&mut v, egui::vec2(500.0, 400.0), 1.0, 1.0, true));
+        assert_eq!(v.center, [1298.0, -248.0]);
+        assert!(!limit_view(&mut v, egui::vec2(500.0, 400.0), 1.0, 1.0, true), "settled");
+    }
     use super::*;
+
+    /// The bars sit outside the canvas: a strip on the right, and the status bar's free space (or
+    /// a strip at the bottom without one), so the canvas never runs under them.
+    #[test]
+    fn outside_bars_leave_the_canvas_whole() {
+        let area = Rect::from_min_max(pos2(100.0, 50.0), pos2(900.0, 650.0));
+        let track = Rect::from_min_max(pos2(300.0, 654.0), pos2(890.0, 668.0));
+        let o = outside(area, Some(track));
+        assert_eq!(o.canvas, Rect::from_min_max(area.min, pos2(900.0 - THICKNESS, 650.0)));
+        assert_eq!(o.horizontal, track);
+        assert_eq!(o.vertical, Rect::from_min_max(pos2(900.0 - THICKNESS, 50.0), area.max));
+        assert!(o.corner.is_none());
+        let o = outside(area, None);
+        assert_eq!(o.canvas, Rect::from_min_max(area.min, pos2(900.0 - THICKNESS, 650.0 - THICKNESS)));
+        assert!(!o.canvas.intersects(o.horizontal.shrink(0.5)) && !o.canvas.intersects(o.vertical.shrink(0.5)));
+        assert_eq!(o.corner, Some(Rect::from_min_max(pos2(900.0 - THICKNESS, 650.0 - THICKNESS), area.max)));
+        // A sliver of an area never turns inside out.
+        let tiny = outside(Rect::from_min_size(pos2(0.0, 0.0), vec2(4.0, 4.0)), None);
+        assert!(tiny.canvas.width() >= 0.0 && tiny.canvas.height() >= 0.0);
+    }
 
     #[test]
     fn a_fitting_image_scrolls_edge_to_edge_with_overscroll() {
@@ -306,8 +469,10 @@ mod tests {
 
     #[test]
     fn overscroll_off_clamps() {
-        assert_eq!(clamp_axis(-400.0, 1000.0, 500.0, 1.0), 250.0);
-        assert_eq!(clamp_axis(4000.0, 1000.0, 500.0, 1.0), 750.0);
+        // Larger than the view: within the image and a strip of pasteboard (`EDGE_MARGIN`).
+        assert_eq!(clamp_axis(-400.0, 1000.0, 500.0, 1.0), 250.0 - EDGE_MARGIN);
+        assert_eq!(clamp_axis(4000.0, 1000.0, 500.0, 1.0), 750.0 + EDGE_MARGIN);
+        assert_eq!(clamp_axis(4000.0, 1000.0, 500.0, 2.0), 875.0 + EDGE_MARGIN / 2.0);
         assert_eq!(clamp_axis(600.0, 1000.0, 500.0, 1.0), 600.0);
         // Smaller than the view (2500 doc px of view for 1000 of image): it stays where it is
         // while it is inside the view, and is pushed back in at the edges.
@@ -328,7 +493,7 @@ mod tests {
             zoom_transition: None,
         };
         assert!(clamp_view(&mut v, vec2(500.0, 400.0), 1.0));
-        assert_eq!(v.center, [250.0, 200.0]);
+        assert_eq!(v.center, [250.0 - EDGE_MARGIN, 200.0 - EDGE_MARGIN]);
         assert!(!clamp_view(&mut v, vec2(500.0, 400.0), 1.0), "stable: no repaint loop");
     }
 
@@ -405,7 +570,8 @@ mod tests {
             let v = view(h);
             let s = Span::of(v.doc_size[0] as f32, v.center[0], r.width(), v.zoom).unwrap();
             let e = s.extent(h.state().session.prefs().tools.overscroll);
-            let bar = bar_rects(r, true, true).0.unwrap();
+            // Under the canvas (no status bar here): `outside`'s strip, as wide as the canvas.
+            let bar = egui::Rect::from_min_max(pos2(r.left(), r.bottom()), pos2(r.right(), r.bottom() + THICKNESS));
             let (at, len) = s.thumb(e, bar.width());
             (pos2(bar.left() + at + len / 2.0, bar.center().y), len)
         }
@@ -446,7 +612,7 @@ mod tests {
                     assert!(len < r.width() - 2.0 * THICKNESS, "the thumb leaves room: {len}");
                     assert!(c1[0] < c0[0] - 10.0, "{c0:?} -> {c1:?}");
                 } else {
-                    assert!((len - (r.width() - THICKNESS)).abs() < 1.0, "the thumb fills the track: {len}");
+                    assert!((len - r.width()).abs() < 1.0, "the thumb fills the track: {len}");
                     // Within float error: the fit zoom is not a round number for every canvas height.
                     assert!((c1[0] - c0[0]).abs() < 0.01 && (c1[1] - c0[1]).abs() < 0.01, "Overscroll off keeps a fitting image centred: {c0:?} -> {c1:?}");
                 }
@@ -512,12 +678,16 @@ mod tests {
                 let x = view(&h).center[0];
                 let w = h.state().last_canvas_rect.width();
                 if overscroll {
-                    assert_eq!(x, -3000.0, "overscroll on: the view is free");
+                    // Free until the image has just left the view, then no further.
+                    let reach = w / 2.0 + OVERSCROLL_MARGIN;
+                    assert!((x + reach).abs() < 1e-3, "overscroll on: stops at the image's edge plus the margin: {x}");
                 } else {
-                    assert!((x - w / 2.0).abs() < 1e-3, "clamped to the left edge: {x}");
+                    assert!((x - (w / 2.0 - EDGE_MARGIN)).abs() < 1e-3, "clamped a strip of pasteboard past the left edge: {x}");
                 }
-                // Zoomed out below fit (Photoshop): the image is not re-centred, it stays where it
-                // is while it fits in the view, and is pushed back in at the view's edge.
+                // Zoomed out below fit with Center When Zoomed Out off: the image is not re-centred,
+                // it stays where it is while it fits in the view, and is pushed back in at the
+                // view's edge. (On, the default, a zoom-out to a fit centres it: canvas tests.)
+                h.state_mut().run("prefs.set", json!({"path": "interface.centerWhenZoomedOut", "value": false})).unwrap();
                 set_view(&mut h, 0.1, [-50.0, 9000.0]);
                 if !overscroll {
                     let r = h.state().last_canvas_rect;

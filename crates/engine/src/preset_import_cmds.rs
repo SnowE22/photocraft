@@ -216,6 +216,7 @@ fn import_image(s: &mut Session, p: &Value) -> Result<Value> {
         group: String::new(),
         folder: Vec::new(),
         captures: Default::default(),
+        tool: None,
     });
     s.brush_presets_changed();
     if p.get("select").and_then(Value::as_bool).unwrap_or(true) {

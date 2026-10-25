@@ -9,13 +9,16 @@ use super::*;
 
 #[test]
 fn dragging_a_brush_shows_its_tip_preview() {
+    // The Brushes panel (with Brush Settings open or not) and the Brush Preset picker.
     for theme in crate::theme::ThemeKind::ALL {
-        for mode in 0..3 {
+        for mode in [0, 2] {
             let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
             app.run("prefs.set", json!({"path": "interface.theme", "value": theme.id()})).unwrap();
             app.ui.panels.brush_settings = mode != 2;
             app.ui.brush_tab = 1;
-            app.ui.brushes_panel.view = if mode == 1 { BrushesView::Grid } else { BrushesView::List };
+            app.ui.panels.brushes = true;
+            // Window › Brushes: a dock panel of its own.
+            app.ui.panels.brushes = mode != 2;
             if mode == 2 {
                 app.ui.brush_picker = Some([300.0, 120.0]);
             }
@@ -26,16 +29,24 @@ fn dragging_a_brush_shows_its_tip_preview() {
                 PhotocraftApp::setup_context(&cc.egui_ctx, theme);
                 app
             });
-            h.run_steps(4);
-            let start = h.get_by_role_and_label(Role::Button, &name).rect().center();
+            // The panel draws its stroke thumbnails a few per frame: let them all land first, so
+            // the render count below sees only the drag preview.
+            h.run_steps(40);
+            let start = h.get_by_label(&name).rect().center();
             h.hover_at(start);
             h.run_steps(1);
             h.event(egui::Event::PointerButton { pos: start, button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
             h.run_steps(1);
             let end = start + vec2(50.0, 10.0);
             h.event(egui::Event::PointerMoved(end));
+            h.run_steps(1);
+            // Held over the canvas, away from the list's edges, where a drag scrolls the list
+            // (#5741) and draws the tiles it brings into view.
+            h.event(egui::Event::PointerMoved(egui::pos2(300.0, 450.0)));
             h.run_steps(4);
-            assert!(matches!(egui::DragAndDrop::payload::<BrushDrag>(&h.ctx).as_deref(), Some(BrushDrag::Preset(n)) if n == &name));
+            assert!(
+                matches!(egui::DragAndDrop::payload::<BrushDrag>(&h.ctx).as_deref(), Some(BrushDrag(items)) if items[..] == [BrushItem::Preset(name.clone())])
+            );
             assert!(h.query_by_role_and_label(Role::Image, &name).is_some(), "dragged brush needs a real tip thumbnail, not only its name");
             let renders = brush_preview::render_count(&h.ctx);
             h.run_steps(2);
@@ -57,12 +68,12 @@ fn dragging_a_brush_shows_its_tip_preview() {
 #[test]
 fn dragging_a_brush_to_the_list_edge_scrolls_the_list() {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
-    app.ui.panels.brush_settings = true;
-    app.ui.brush_tab = 1;
-    app.ui.brushes_panel.view = BrushesView::List;
+    // The Brushes panel alone: in a short window the floating Brush Settings would cover it.
+    app.ui.panels.brush_settings = false;
+    app.ui.panels.brushes = true;
     app.ui.brushes_panel.collapsed.clear();
     let name = app.session.tools.presets[0].name.clone();
-    let (w, h_px) = (1200.0, 520.0);
+    let (w, h_px) = (1200.0, 900.0);
     let mut h = Harness::builder().with_size(vec2(w, h_px)).build_eframe(move |cc| {
         PhotocraftApp::setup_context(&cc.egui_ctx, crate::theme::ThemeKind::ALL[0]);
         app
@@ -71,10 +82,12 @@ fn dragging_a_brush_to_the_list_edge_scrolls_the_list() {
     let start = h.get_by_role_and_label(Role::Button, &name).rect();
     h.hover_at(start.center());
     h.run_steps(1);
-    h.event(egui::Event::PointerButton { pos: start.center(), button: egui::PointerButton::Primary, pressed: true, modifiers: egui::Modifiers::NONE });
+    h.drag_at(start.center());
     h.run_steps(1);
-    h.event(egui::Event::PointerMoved(start.center() + vec2(0.0, 12.0)));
-    h.run_steps(2);
+    for k in 1..=4 {
+        h.hover_at(start.center() + vec2(0.0, 10.0 * k as f32));
+        h.run_steps(1);
+    }
     assert!(egui::DragAndDrop::has_payload_of_type::<BrushDrag>(&h.ctx), "the brush is being dragged");
     // Held at the bottom of the window, below the list's last visible row.
     let bottom = egui::pos2(start.center().x, h_px - 2.0);
@@ -116,59 +129,6 @@ fn grid_columns_never_panic_or_return_no_columns() {
     }
     // Narrower than one cell: one column at the indent.
     assert_eq!(grid_columns(30.0, 44.0, 4.0, GRID_GAP), (4.0, 1));
-}
-
-/// Checks each of the first `groups` groups' rows against its header (which spans the list's
-/// width): the same left margin on every row, and on full rows the spare width split evenly.
-fn rows_are_centred(h: &Harness<'_, PhotocraftApp>, indent: f32, groups: usize) {
-    let presets = h.state().session.tools.presets.clone();
-    let grouped = grouped_presets(&presets);
-    let headers: Vec<Rect> = grouped
-        .iter()
-        .take(groups + 1)
-        .filter_map(|(label, _)| {
-            h.query_all_by_role(Role::Button)
-                .chain(h.query_all_by_label(label))
-                .find(|n| n.accesskit_node().label().as_deref() == Some(label.as_str()))
-                .map(|n| n.rect())
-        })
-        .collect();
-    assert!(headers.len() > groups, "{} group headers", headers.len());
-    let tiles: Vec<Rect> = h
-        .query_all_by_role(Role::Button)
-        .filter(|n| n.accesskit_node().label().is_some_and(|l| presets.iter().any(|p| p.name == l)))
-        .map(|n| n.rect())
-        .collect();
-    // Each group's rows of tiles, top to bottom.
-    let mut groups_rows: Vec<Vec<Vec<Rect>>> = Vec::new();
-    for (g, header) in headers.iter().take(groups).enumerate() {
-        let next = headers[g + 1].top();
-        let mut rows: Vec<Vec<Rect>> = Vec::new();
-        for r in tiles.iter().filter(|r| r.top() >= header.bottom() && r.bottom() <= next) {
-            match rows.iter_mut().find(|row| (row[0].top() - r.top()).abs() < 0.5) {
-                Some(row) => row.push(*r),
-                None => rows.push(vec![*r]),
-            }
-        }
-        assert!(!rows.is_empty(), "group {g}: no tiles");
-        groups_rows.push(rows);
-    }
-    let wrapped = groups_rows.iter().any(|rows| rows.len() > 1);
-    // A full row is as wide as the widest in any group (a short group can fill only part of one).
-    let cols = groups_rows.iter().flatten().map(Vec::len).max().unwrap_or(0);
-    let (list_left, list_right) = (headers[0].left(), headers[0].right());
-    let left = |row: &Vec<Rect>| row.iter().map(|r| r.left()).fold(f32::MAX, f32::min) - list_left;
-    let first = left(&groups_rows[0][0]);
-    for (g, rows) in groups_rows.iter().enumerate() {
-        for row in rows {
-            assert!((left(row) - first).abs() < 0.5, "group {g}: a row starts {} pt in, the first {first}", left(row));
-            if row.len() == cols {
-                let right = list_right - row.iter().map(|r| r.right()).fold(f32::MIN, f32::max);
-                assert!(((first - indent) - right).abs() <= 1.0, "group {g}: {} pt left of the grid, {right} pt right", first - indent);
-            }
-        }
-    }
-    assert!(wrapped, "no group wrapped onto a second row, so the rows weren't compared");
 }
 
 /// The picker's cards: one full-width 2 × 2 card per preset (tip and stroke on top, the name
@@ -326,25 +286,92 @@ fn brush_picker_upper_controls_stop_at_their_max_width() {
     assert_eq!(h.state().session.tools.brush.size, inside, "just past the block the click lands on nothing");
 }
 
+/// Photoshop's tiles: as many of the slider's width as fit, stretched to fill the row; never no
+/// column or a nonsense size.
 #[test]
-fn the_brushes_tab_grid_is_centred_past_its_indent() {
-    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
-    app.ui.panels.brush_settings = true;
-    app.ui.brush_tab = 1;
-    app.ui.brushes_panel.view = BrushesView::Grid;
+fn tile_columns_fill_the_row() {
+    // 3 × 96 + 2 × 2 = 292 fits in 300: three tiles, stretched to 98.
+    assert_eq!(tile_columns(300.0, 96.0), (98.0, 3));
+    // Narrower than one tile: one, as wide as the room.
+    assert_eq!(tile_columns(80.0, 96.0), (80.0, 1));
+    // The slider's smallest tiles pack many to a row.
+    assert_eq!(tile_columns(300.0, 40.0).1, 7);
+    for room in [0.0, -50.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 1e30] {
+        for want in [0.0, -1.0, f32::NAN, f32::INFINITY, 96.0, 1e-30] {
+            let (w, cols) = tile_columns(room, want);
+            assert!((1..=256).contains(&cols), "{room} {want}: {cols}");
+            assert!(w.is_finite() && w >= 1.0, "{room} {want}: {w}");
+        }
+    }
+}
+
+#[test]
+fn tile_heights_follow_the_parts_and_the_slider() {
+    let stroke_name = (true, true, false);
+    // A stroke row with the name under it: 3 + 13 + 14 + 3 at the default width (Photoshop's
+    // 33 pt tiles).
+    assert_eq!(tile_height(stroke_name, TILE_DEFAULT, 98.0), 33.0);
+    assert!(tile_height(stroke_name, 300.0, 300.0) > tile_height(stroke_name, TILE_DEFAULT, 98.0), "bigger tiles are taller");
+    // Tips alone are square; the name alone is a short row; nothing on reads as stroke and name.
+    assert_eq!(tile_height((false, false, true), TILE_DEFAULT, 98.0), 98.0);
+    assert_eq!(tile_height((true, false, false), TILE_DEFAULT, 98.0), 22.0);
+    assert_eq!(tile_height((false, false, false), TILE_DEFAULT, 98.0), 33.0);
+    for want in [f32::NAN, f32::INFINITY, -3.0] {
+        assert!(tile_height(stroke_name, want, 98.0).is_finite());
+    }
+}
+
+/// Shift- and Ctrl-clicks build the selection as in Photoshop.
+#[test]
+fn clicks_build_the_selection() {
+    let it = |n: &str| BrushItem::Preset(n.into());
+    let visible = [it("a"), BrushItem::Folder(vec!["G".into()]), it("b"), it("c")];
+    let mut st = BrushesPanelState::default();
+    click(&mut st, it("a"), false, false, &visible);
+    assert_eq!(st.selected, [it("a")]);
+    click(&mut st, it("b"), true, false, &visible);
+    assert_eq!(st.selected, [it("a"), BrushItem::Folder(vec!["G".into()]), it("b")]);
+    click(&mut st, BrushItem::Folder(vec!["G".into()]), false, true, &visible);
+    assert_eq!(st.selected, [it("a"), it("b")]);
+    // Ctrl moved the anchor to G: Ctrl+Shift adds G to c.
+    click(&mut st, it("c"), true, true, &visible);
+    assert_eq!(st.selected, [it("a"), it("b"), BrushItem::Folder(vec!["G".into()]), it("c")]);
+    click(&mut st, it("c"), false, false, &visible);
+    assert_eq!(st.selected, [it("c")]);
+    // An item not drawn (a collapsed group's) selects alone.
+    click(&mut st, it("zzz"), true, false, &visible);
+    assert_eq!(st.selected, [it("zzz")]);
+}
+
+/// The panel's tiles share their rows and fill them: at the default size several tiles sit in a
+/// row, all as wide, ending at the list's right edge.
+#[test]
+fn the_brushes_panel_tiles_fill_their_rows() {
+    let app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
     let mut h = Harness::builder().with_size(vec2(1200.0, 900.0)).build_ui_state(
         |ui, app: &mut PhotocraftApp| {
             let ctx = ui.ctx().clone();
             if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
                 return;
             }
-            crate::brush_panel::window(app, &ctx);
+            egui::Window::new("Brushes").fixed_size(vec2(320.0, 700.0)).show(&ctx, |ui| show(app, ui));
         },
         app,
     );
     PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
     h.run_steps(6);
-    rows_are_centred(&h, PANEL_LIST.indent, 2);
+    let presets = h.state().session.tools.presets.clone();
+    let tiles: Vec<Rect> = h
+        .query_all_by_role(Role::Button)
+        .filter(|n| n.accesskit_node().label().is_some_and(|l| presets.iter().any(|p| p.name == l)))
+        .map(|n| n.rect())
+        .collect();
+    let first_row: Vec<&Rect> = tiles.iter().filter(|r| (r.top() - tiles[0].top()).abs() < 0.5).collect();
+    assert!(first_row.len() >= 2, "{} tiles in the first row", first_row.len());
+    assert!(first_row.iter().all(|r| (r.width() - first_row[0].width()).abs() < 0.5), "the tiles share the row evenly");
+    let right = first_row.iter().map(|r| r.right()).fold(f32::MIN, f32::max);
+    let rows_right = tiles.iter().map(|r| r.right()).fold(f32::MIN, f32::max);
+    assert!((right - rows_right).abs() < 0.5, "full rows end at the same edge");
 }
 
 /// #4454: a card's size number sat under the tip thumbnail of any medium or large brush (the
@@ -400,38 +427,45 @@ fn card_tips_never_cover_their_size_number() {
     }
 }
 
-/// #7256: the Brushes tab's preview slider scales the grid cells and list rows; it is not the
-/// Size of the current brush.
+/// A big library in a short Brushes panel builds only the rows in view (each tile is a widget:
+/// building hundreds a frame slowed every frame, panning included), yet the list keeps them all:
+/// scrolled to the end, Shift-click selects from the first preset to the last.
 #[test]
-fn the_preview_slider_scales_the_previews_not_the_brush_size() {
-    for grid in [true, false] {
-        let mut sizes = Vec::new();
-        for scale in [0.5f32, 1.0, 2.0] {
-            let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
-            app.ui.panels.brush_settings = true;
-            app.ui.brush_tab = 1;
-            app.ui.brushes_panel.view = if grid { BrushesView::Grid } else { BrushesView::List };
-            app.ui.brushes_panel.scale = scale;
-            let size = app.session.tools.brush.size;
-            let name = app.session.tools.presets[0].name.clone();
-            let mut h = Harness::builder().with_size(vec2(1200.0, 900.0)).build_eframe(move |cc| {
-                PhotocraftApp::setup_context(&cc.egui_ctx, crate::theme::ThemeKind::ALL[0]);
-                app
-            });
-            h.run_steps(4);
-            let r = h.get_by_role_and_label(Role::Button, &name).rect();
-            sizes.push(if grid { r.width() } else { r.height() });
-            assert_eq!(h.state().session.tools.brush.size, size, "the preview slider leaves the brush size alone");
-        }
-        assert!(sizes[0] < sizes[1] && sizes[1] < sizes[2], "grid {grid}: previews grow with the slider: {sizes:?}");
+fn rows_out_of_view_are_not_built_but_stay_listed() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    let base = app.session.tools.presets[0].clone();
+    app.session.tools.presets = (0..300).map(|i| BrushPreset { name: format!("Brush {i:03}"), ..base.clone() }).collect();
+    app.ui.brushes_panel.collapsed.clear();
+    let mut h = Harness::builder().with_size(vec2(600.0, 500.0)).build_ui_state(
+        |ui, app: &mut PhotocraftApp| {
+            let ctx = ui.ctx().clone();
+            if !ctx.fonts(|f| f.families().contains(&egui::FontFamily::Name("medium".into()))) {
+                return;
+            }
+            egui::Window::new("Brushes").fixed_size(vec2(320.0, 300.0)).show(&ctx, |ui| show(app, ui));
+        },
+        app,
+    );
+    PhotocraftApp::setup_context(&h.ctx, crate::theme::ThemeKind::ALL[0]);
+    h.run_steps(6);
+    let built = |h: &Harness<'_, PhotocraftApp>| h.query_all_by_role(Role::Button).filter(|n| n.accesskit_node().label().is_some_and(|l| l.starts_with("Brush "))).count();
+    let shown = built(&h);
+    assert!(shown > 0 && shown < 100, "{shown} of 300 tiles built");
+    // Click the first, scroll to the end, Shift-click the last: all 300 are selected.
+    h.get_by_role_and_label(Role::Button, "Brush 000").click();
+    h.run_steps(2);
+    for _ in 0..40 {
+        h.event(egui::Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta: vec2(0.0, -400.0), phase: egui::TouchPhase::Move, modifiers: egui::Modifiers::NONE });
+        h.run_steps(1);
     }
-}
-
-#[test]
-fn preview_scale_is_clamped_to_its_range() {
-    assert_eq!(list_row_height(1.0), 44.0);
-    assert_eq!(list_row_height(100.0), 88.0);
-    assert_eq!(list_row_height(f32::NAN), 44.0);
-    assert_eq!(grid_cell_width(52.0, 0.0), 26.0);
-    assert_eq!(grid_cell_width(52.0, f32::INFINITY), 52.0);
+    h.run_steps(2);
+    let last = h.get_by_role_and_label(Role::Button, "Brush 299").rect().center();
+    h.event(egui::Event::PointerMoved(last));
+    let shift = egui::Modifiers::SHIFT;
+    h.event(egui::Event::ModifiersChanged(shift));
+    h.run_steps(1);
+    h.event(egui::Event::PointerButton { pos: last, button: egui::PointerButton::Primary, pressed: true, modifiers: shift });
+    h.event(egui::Event::PointerButton { pos: last, button: egui::PointerButton::Primary, pressed: false, modifiers: shift });
+    h.run_steps(3);
+    assert_eq!(h.state().ui.brushes_panel.selected.len(), 300);
 }

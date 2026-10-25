@@ -4,6 +4,14 @@
 //! device (#6577); after a loss the CPU canvas stays for the rest of the session. Also runs the desktop app's
 //! "started" hook once the first frames have rendered (the crash-safe startup marker), and
 //! provides the Help › System Info text (including the monitor profile in use).
+//!
+//! The window itself draws with eframe's wgpu device, the one the GPU canvas shares. When that
+//! device is lost (a driver reset, Windows TDR) the CPU canvas can't help: egui-wgpu 0.36 panics
+//! staging the next frame's meshes on it ("Failed to create staging buffer for index data",
+//! [OBSERVED 2026-10-18, NVIDIA TDR], the app died). So once [`WindowGpu`] sees the loss, the
+//! app draws nothing more (no meshes reach egui-wgpu), writes every unsaved document to crash
+//! recovery, hides and closes the window, and asks the shell to start PhotoCraft again
+//! ([`DeviceLossRestart`]), which reopens the saved documents and recovers the unsaved ones.
 
 use serde_json::json;
 
@@ -15,6 +23,70 @@ pub const LOST_MESSAGE: &str = "GPU device was lost; using the CPU renderer.";
 pub const ERROR_MESSAGE: &str = "GPU error; using the CPU renderer.";
 /// Frames after which startup counts as done even if a document never drew.
 const STARTED_MAX_FRAMES: u64 = 120;
+/// How long a window whose device was lost waits for crash-recovery files before it closes.
+const RECOVERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// The device eframe draws the window with, and whether it was lost.
+#[derive(Default)]
+pub(crate) struct WindowGpu {
+    health: Option<photocraft_gpu::DeviceHealth>,
+    /// The device itself, probed each frame so a loss while the app sat idle or the PC slept is
+    /// noticed before the next frame draws with it (#3438).
+    pub(crate) device: Option<eframe::wgpu::Device>,
+    /// Set once the loss was handled: the restart that was asked for.
+    lost: Option<DeviceLossRestart>,
+}
+
+impl WindowGpu {
+    pub(crate) fn watch(&mut self, health: photocraft_gpu::DeviceHealth) {
+        self.health = Some(health);
+    }
+
+    pub(crate) fn health(&self) -> Option<photocraft_gpu::DeviceHealth> {
+        self.health.clone()
+    }
+}
+
+/// What the shell needs to start PhotoCraft again after the window's device was lost.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DeviceLossRestart {
+    /// The fault, as the log and the next launch's notice name it.
+    pub reason: String,
+    /// Files of the open documents without unsaved changes, in tab order, to open again. The
+    /// unsaved ones are in crash recovery, which the next launch reopens.
+    pub reopen: Vec<String>,
+    /// Unsaved documents that could not be written to crash recovery ("name: reason").
+    pub not_saved: Vec<String>,
+}
+
+impl DeviceLossRestart {
+    /// The next launch's "Switched to CPU rendering" details (English, like the log).
+    pub fn notice(&self) -> String {
+        let mut text = format!(
+            "The graphics driver stopped responding ({}). PhotoCraft restarted, reopened your saved documents and recovered the unsaved ones from crash recovery.",
+            self.reason
+        );
+        if !self.not_saved.is_empty() {
+            text.push_str(" Could not be saved for recovery: ");
+            text.push_str(&self.not_saved.join("; "));
+            text.push('.');
+        }
+        text
+    }
+}
+
+/// Whether the window's device was lost: from then on the app draws nothing (see the module).
+pub fn window_lost(app: &PhotocraftApp) -> bool {
+    app.window_gpu.lost.is_some()
+}
+
+/// Drop everything this frame painted once the window's device is lost (the loss can be noticed
+/// at the end of a frame that drew the whole interface): egui-wgpu gets no meshes to stage.
+pub fn discard_frame_if_lost(app: &PhotocraftApp, ctx: &egui::Context) {
+    if window_lost(app) {
+        ctx.graphics_mut(|g| *g = egui::layers::GraphicLayers::default());
+    }
+}
 
 /// Hook run once the app has rendered its first frames (see [`PhotocraftApp::on_started`]).
 pub type StartedHook = Box<dyn FnOnce(&mut PhotocraftApp)>;
@@ -24,6 +96,20 @@ pub fn check(app: &mut PhotocraftApp, ctx: &egui::Context) {
     if let Some(fault) = app.gpu.as_ref().and_then(|g| g.fault()) {
         fall_back(app, &fault);
         ctx.request_repaint();
+    }
+    if let (Some(device), Some(health)) = (&app.window_gpu.device, &app.window_gpu.health) {
+        health.probe(device);
+    }
+    // An uncaptured error leaves the window drawing (the canvas fell back above); only a loss
+    // takes the window's device with it.
+    if !window_lost(app)
+        && let Some(fault) = app.window_gpu.health.as_ref().and_then(photocraft_gpu::DeviceHealth::fault).filter(photocraft_gpu::Fault::is_lost)
+    {
+        window_device_lost(app, ctx, &fault);
+        return;
+    }
+    if window_lost(app) {
+        return;
     }
     if app.started.is_some() {
         // Frames 1–2 set up fonts; by frame 3 the window has presented, and a document open at
@@ -39,94 +125,32 @@ pub fn check(app: &mut PhotocraftApp, ctx: &egui::Context) {
     }
 }
 
-/// End-of-frame check of the device the window itself draws with (#3438). Once wgpu reports it
-/// lost (a driver reset, for example after the PC slept), egui-wgpu can't draw another frame: one
-/// with shapes panics creating its staging buffers (#1215), and one without leaves a frozen window
-/// whose close button opens an unsaved-changes prompt nobody can see. So this frame and every later
-/// one draw nothing; the first writes every unsaved document to crash recovery, waits for the
-/// writes, and closes the app without asking once all of them are saved. The next launch reopens
-/// the documents. If a write fails (a full disk, say) the app stays open with the documents in
-/// memory and tries again every [`RECOVERY_RETRY_SECS`]: closing would lose them.
-pub fn check_window(app: &mut PhotocraftApp, ctx: &egui::Context) {
-    let Some((device, health)) = app.window_device.as_ref() else { return };
-    // A loss while the app sat idle or the PC slept is noticed here, before the next frame.
-    health.probe(device);
-    if !health.device_lost() {
+/// The window's device is gone: save, stop drawing, close and ask for a restart (see the module).
+/// Without a restart service (the web, tests), the window stays open and blank.
+fn window_device_lost(app: &mut PhotocraftApp, ctx: &egui::Context, fault: &photocraft_gpu::Fault) {
+    log::error!("{fault}: the window can't draw any more; saving unsaved documents to crash recovery and restarting PhotoCraft");
+    let not_saved = crate::prefs_ui::save_recovery_now(app, RECOVERY_TIMEOUT);
+    for line in &not_saved {
+        log::error!("not in crash recovery: {line}");
+    }
+    let reopen = app.session.documents().iter().filter(|d| !d.is_dirty()).filter_map(|d| d.path.clone()).collect();
+    let restart = DeviceLossRestart { reason: fault.to_string(), reopen, not_saved };
+    app.window_gpu.lost = Some(restart.clone());
+    app.ui.status = tl!(LOST_MESSAGE).to_string();
+    app.ui.status_error = true;
+    let Some(request) = app.services.restart_after_device_loss.as_mut() else {
+        log::error!("no restart service: the window stays blank (unsaved documents are in crash recovery)");
         return;
-    }
-    ctx.graphics_mut(|g| *g = Default::default());
-    let now = ctx.input(|i| i.time);
-    if !app.window_lost {
-        app.window_lost = true;
-        let reason = health.fault().map_or_else(|| "GPU device lost".to_string(), |f| f.to_string());
-        log::error!("{reason}: the window can't be drawn any more; saving unsaved documents for recovery and closing");
-    } else {
-        match app.window_recovery_retry {
-            // Saved, and the close is on its way.
-            None => return,
-            Some(at) if now < at => {
-                ctx.request_repaint_after(std::time::Duration::from_secs_f64((at - now).max(0.0)));
-                return;
-            }
-            Some(_) => {}
-        }
-    }
-    match save_for_recovery(app) {
-        Ok(()) => {
-            app.window_recovery_retry = None;
-            app.allow_close = true;
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
-        Err(e) => {
-            log::error!("{e}; keeping the documents open and trying again in {RECOVERY_RETRY_SECS} s");
-            app.window_recovery_retry = Some(now + RECOVERY_RETRY_SECS);
-            ctx.request_repaint_after(std::time::Duration::from_secs_f64(RECOVERY_RETRY_SECS));
-        }
-    }
-}
-
-/// Seconds between attempts to save unsaved work for recovery after the window's device was lost.
-pub const RECOVERY_RETRY_SECS: f64 = 2.0;
-
-/// Write every document with unsaved changes to crash recovery, whatever the autosave timer and
-/// preference, and wait until the writes finished (see `Services::flush_autosaves`). `Ok` only when
-/// each of them is known to be on disk.
-fn save_for_recovery(app: &mut PhotocraftApp) -> Result<(), String> {
-    let jobs: Vec<_> = app.session.documents().iter().filter(|d| d.is_dirty()).map(|d| (d.doc.clone(), d.revision, d.path.clone())).collect();
-    if jobs.is_empty() {
-        return Ok(());
-    }
-    // (document id, why) for each document not known to be saved.
-    let mut failed: Vec<(u64, String)> = Vec::new();
-    let Some(save) = app.services.autosave.as_mut() else { return Err("no crash-recovery autosave".into()) };
-    for (doc, revision, path) in &jobs {
-        if let Err(e) = save(doc, *revision, path.as_deref()) {
-            failed.push((doc.id.0, format!("{}: {e}", doc.name)));
-        }
-    }
-    // Without a flush, only a service whose `autosave` reports the finished write can confirm it.
-    let outcomes = match app.services.flush_autosaves.as_mut() {
-        Some(flush) => flush(),
-        None if app.services.autosave_results.is_none() => Vec::new(),
-        None => return Err("crash-recovery autosaves can't be waited for".into()),
     };
-    let confirm = app.services.flush_autosaves.is_some();
-    for (doc, revision, _) in &jobs {
-        if failed.iter().any(|(id, _)| *id == doc.id.0) {
-            continue;
-        }
-        // The writer skips to the newest queued snapshot, so a later revision confirms this one.
-        let mine: Vec<_> = outcomes.iter().filter(|(id, written, _)| *id == doc.id.0 && written >= revision).collect();
-        if let Some((.., Err(e))) = mine.iter().find(|(.., outcome)| outcome.is_err()) {
-            failed.push((doc.id.0, format!("{}: {e}", doc.name)));
-        } else if confirm && mine.is_empty() {
-            failed.push((doc.id.0, format!("{}: the write wasn't confirmed", doc.name)));
-        } else {
-            log::info!("{} (revision {revision}) saved for recovery", doc.name);
-        }
+    request(restart);
+    // eframe paints no hidden window (it runs only `logic`), so the lost device gets nothing more
+    // before the window closes. No unsaved-changes prompt: `logic` stops before it.
+    ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+    match app.services.quit.as_mut() {
+        Some(quit) => quit(),
+        None => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
     }
-    let failed: Vec<_> = failed.into_iter().map(|(_, why)| why).collect();
-    if failed.is_empty() { Ok(()) } else { Err(format!("couldn't save for recovery: {}", failed.join("; "))) }
+    ctx.request_repaint();
 }
 
 /// Drop the GPU canvas after `fault`: free its resources, send every view through the CPU

@@ -45,12 +45,9 @@ fn newly_created_layer_masks_follow_document_depth() {
                 assert_eq!(m.value(20, 20), white);
                 if selected {
                     assert_eq!(m.value(0, 0), 0.0);
-                    if command == "layer.layerMask.revealSelection" {
-                        // The selection became the mask: Photoshop drops it, as Hide Selection does.
-                        assert!(d.doc.selection.is_none(), "{command}: the selection is dropped");
-                    } else {
-                        assert_eq!(d.doc.selection, before.selection, "the selection is unchanged");
-                    }
+                    // The selection became the mask: Photoshop drops it, after Reveal Selection
+                    // (as Hide Selection does) and a new fill or adjustment layer alike.
+                    assert!(d.doc.selection.is_none(), "{command}: the selection is dropped");
                 } else {
                     assert_eq!(m.surface.tile_count(), 0, "uniform masks stay sparse");
                     assert_eq!(m.value(-300_000, 300_000), white);
@@ -72,7 +69,8 @@ fn soft_mask_edits_match_after_native_and_psd_reopen() {
         let mut s = session(depth, "rgb");
         s.execute("select.rect", json!({"x": 8, "y": 6, "width": 40, "height": 32, "antiAlias": false})).unwrap();
         s.execute("layer.newFillLayer.solidColor", json!({"color": "#000000"})).unwrap();
-        s.execute("select.deselect", json!({})).unwrap();
+        // The fill layer took the selection as its mask and dropped it.
+        assert!(s.active().unwrap().doc.selection.is_none());
         let before = s.active().unwrap().doc.clone();
         let native = photocraft_format::save_to_bytes(&before, &Default::default()).unwrap();
         let psd = photocraft_io::export(&before, "psd", &Default::default()).unwrap();
@@ -138,8 +136,9 @@ fn mask_creation_preserves_selection_coverage_and_existing_masks() {
                 before.selection.as_ref().unwrap().read_region(before.bounds()),
                 "{depth}-bit coverage is unchanged"
             );
-            let kept = if command == "layer.layerMask.revealSelection" { None } else { before.selection.clone() };
-            assert_eq!(after.selection, kept, "{command}");
+            // The selection is in the new mask: Reveal Selection and new fill or adjustment layers
+            // all drop it, as in Photoshop.
+            assert_eq!(after.selection, None, "{command}");
             assert_eq!(after.layers[0].mask, before.layers[0].mask, "creating a mask does not requantize an existing mask");
         }
     }

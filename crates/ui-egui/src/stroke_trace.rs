@@ -1,5 +1,6 @@
-//! Stroke latency trace (#1343): where each frame's time goes while a brush stroke is drawn, so
-//! a tester on any platform can report a per-stage breakdown instead of one input-to-pixel number.
+//! Stroke latency trace (#1343): where each frame's time goes while a brush stroke is drawn (or
+//! the view is panned with the Hand tool or Space), so a tester on any platform can report a
+//! per-stage breakdown instead of one input-to-pixel number.
 //!
 //! Set `PHOTOCRAFT_STROKE_TRACE` before launching: `1` prints a summary to stderr when each stroke
 //! ends; a file path also appends every frame of every stroke to that CSV. The last summary is in
@@ -31,6 +32,8 @@ pub(crate) struct Row {
     pub ui: f64,
     /// eframe's CPU time for the previous frame: UI, tessellation and GPU submission.
     pub cpu_prev: Option<f64>,
+    /// The frame's perf spans (`name=ms;…`): where the UI build went, panel by panel.
+    pub spans: String,
 }
 
 /// Percentiles of a stroke's frames, for the summary line and the control channel.
@@ -167,6 +170,13 @@ impl StrokeTrace {
         }
     }
 
+    /// The frame's perf spans, `name=ms` joined by `;`.
+    pub fn spans(&mut self, s: String) {
+        if let Some(f) = self.frame.as_mut() {
+            f.spans = s;
+        }
+    }
+
     /// Time spent refreshing the canvas this frame.
     pub fn canvas(&mut self, ms: f64) {
         if let Some(f) = self.frame.as_mut() {
@@ -226,11 +236,11 @@ impl StrokeTrace {
 pub(crate) fn csv(stroke: usize, rows: &[Row], header: bool) -> String {
     let mut s = String::new();
     if header {
-        s.push_str("stroke,t_ms,interval_ms,moves,stroke_ms,canvas_ms,ui_ms,cpu_prev_ms\n");
+        s.push_str("stroke,t_ms,interval_ms,moves,stroke_ms,canvas_ms,ui_ms,cpu_prev_ms,spans\n");
     }
     for r in rows {
         let cpu = r.cpu_prev.map_or(String::new(), |c| format!("{c:.3}"));
-        let _ = writeln!(s, "{stroke},{:.3},{:.3},{},{:.3},{:.3},{:.3},{cpu}", r.t, r.interval, r.moves, r.stroke, r.canvas, r.ui);
+        let _ = writeln!(s, "{stroke},{:.3},{:.3},{},{:.3},{:.3},{:.3},{cpu},{}", r.t, r.interval, r.moves, r.stroke, r.canvas, r.ui, r.spans);
     }
     s
 }
@@ -299,8 +309,11 @@ mod tests {
 
     #[test]
     fn csv_rows_and_odd_numbers() {
-        let rows = [Row { t: 1.0, interval: 16.5, moves: 2, stroke: 0.25, canvas: 1.0, ui: 3.0, cpu_prev: None }];
-        assert_eq!(csv(1, &rows, true), "stroke,t_ms,interval_ms,moves,stroke_ms,canvas_ms,ui_ms,cpu_prev_ms\n1,1.000,16.500,2,0.250,1.000,3.000,\n");
+        let rows = [Row { t: 1.0, interval: 16.5, moves: 2, stroke: 0.25, canvas: 1.0, ui: 3.0, cpu_prev: None, spans: "layers=0.3".into() }];
+        assert_eq!(
+            csv(1, &rows, true),
+            "stroke,t_ms,interval_ms,moves,stroke_ms,canvas_ms,ui_ms,cpu_prev_ms,spans\n1,1.000,16.500,2,0.250,1.000,3.000,,layers=0.3\n"
+        );
         assert_eq!(percentiles(vec![]), [0.0, 0.0]);
         assert_eq!(percentiles(vec![f64::NAN, 2.0, f64::INFINITY]), [2.0, 2.0]);
         assert_eq!(percentiles((1..=100).map(f64::from).collect()), [51.0, 95.0]);

@@ -85,6 +85,11 @@ pub struct PresetState {
     pub recent_documents: Vec<crate::document_preset_cmds::DocumentSettings>,
     /// File › Export › Export As: named export configurations.
     pub export_presets: Vec<crate::export_preset_cmds::ExportPreset>,
+    /// File › Automate › Topaz Gigapixel Presets: saved upscale settings.
+    pub gigapixel_presets: Vec<crate::gigapixel_cmds::presets::GigapixelPreset>,
+    /// The settings of the last upscale Gigapixel's app sent back (Save Preset from Last
+    /// Upscale); not saved.
+    pub gigapixel_last: Option<Value>,
     pub clone: clone_source::CloneSources,
     /// The user defaults "Make Default" in the Layer Style dialog saves
     /// (effect kind → param set); "Reset to Default" restores them.
@@ -110,6 +115,8 @@ impl Default for PresetState {
             documents: Vec::new(),
             recent_documents: Vec::new(),
             export_presets: Vec::new(),
+            gigapixel_presets: Vec::new(),
+            gigapixel_last: None,
             clone: Default::default(),
             layer_defaults: BTreeMap::new(),
             swatches: swatches::builtin(),
@@ -143,6 +150,8 @@ struct Persisted {
     #[serde(default)]
     export_presets: Option<Value>,
     #[serde(default)]
+    gigapixel_presets: Option<Value>,
+    #[serde(default)]
     custom_shapes: Option<Vec<crate::edit_menu_cmds::CustomShape>>,
     #[serde(default)]
     layer_defaults: Option<BTreeMap<String, Value>>,
@@ -165,6 +174,7 @@ impl PresetState {
             documents: Some(json!(self.documents)),
             recent_documents: Some(json!(self.recent_documents)),
             export_presets: Some(json!(self.export_presets)),
+            gigapixel_presets: Some(json!(self.gigapixel_presets)),
             custom_shapes: Some(s.edit_state.custom_shapes.clone()),
             layer_defaults: Some(self.layer_defaults.clone()),
             swatches: Some(self.swatches.clone()),
@@ -194,6 +204,7 @@ impl Session {
             documents: take(&mut m, "documents"),
             recent_documents: take(&mut m, "recent_documents"),
             export_presets: take(&mut m, "export_presets"),
+            gigapixel_presets: take(&mut m, "gigapixel_presets"),
             custom_shapes: take(&mut m, "custom_shapes"),
             layer_defaults: take(&mut m, "layer_defaults"),
             swatches: take(&mut m, "swatches"),
@@ -226,6 +237,9 @@ impl Session {
         }
         if let Some(e) = p.export_presets {
             st.export_presets = crate::export_preset_cmds::load(e);
+        }
+        if let Some(g) = p.gigapixel_presets {
+            st.gigapixel_presets = crate::gigapixel_cmds::presets::load(g);
         }
         if let Some(c) = p.custom_shapes {
             self.edit_state.custom_shapes = c;

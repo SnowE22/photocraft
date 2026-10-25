@@ -209,3 +209,97 @@ fn layer_reselection_commits_type_edit_and_cancel_preserves_committed_text() {
     let LayerContent::Text(t) = &st.doc.layer(LayerId(id)).unwrap().content else { panic!("text") };
     assert_eq!(t.cache.as_ref().unwrap().content_bounds(), cached.content_bounds());
 }
+
+/// The Color Picker a Solid Color layer's thumbnail opened, if any.
+fn picker_on(h: &Harness<'_, PhotocraftApp>, id: u64) -> bool {
+    h.state().ui.dialogs.iter().any(|d| d.fields.get("__params").and_then(|p| p.get("layer")) == Some(&json!(id)))
+}
+
+fn wait(h: &mut Harness<'_, PhotocraftApp>, seconds: f32) {
+    for _ in 0..(seconds * 60.0).round() as usize {
+        h.step();
+    }
+}
+
+/// User report: a double-click on a Solid Color layer's thumbnail sometimes didn't open the Color
+/// Picker. The two clicks count as Windows (and Photoshop) counts them: up to 0.5 s apart (egui's
+/// own double-click is 0.3 s), and on the same part of the same layer's row even when the row
+/// moved between them (the first click can change what the panels show).
+#[test]
+fn a_solid_color_thumbnail_double_clicked_at_windows_speed_opens_the_color_picker() {
+    let mut s = session();
+    let id = s.execute("layer.newFillLayer.solidColor", json!({"color": "#3070c0"})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.new.layer", json!({"name": "Other"})).unwrap();
+    let mut h = harness(s, 1.0);
+    wait(&mut h, 1.0);
+    // 0.4 s apart: a double-click on Windows, two clicks for egui.
+    let at = thumbnail(&h, id);
+    click(&mut h, at, PointerButton::Primary);
+    wait(&mut h, 0.3);
+    click(&mut h, at, PointerButton::Primary);
+    assert!(picker_on(&h, id), "the Color Picker opened");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+    assert!(!picker_on(&h, id));
+    // The row moves between the clicks: still the same layer's thumbnail.
+    wait(&mut h, 1.0);
+    click(&mut h, at, PointerButton::Primary);
+    h.state_mut().run("layer.new.layer", json!({"name": "Above"})).unwrap();
+    h.state_mut().run("layer.select", json!({"layer": id})).unwrap();
+    h.run_steps(2);
+    let moved = thumbnail(&h, id);
+    assert!(moved.y > at.y + 10.0, "the row moved down: {at:?} → {moved:?}");
+    click(&mut h, moved, PointerButton::Primary);
+    assert!(picker_on(&h, id), "the moved row's second click completes the double-click");
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+    // Too slow (0.7 s), or on another layer: two single clicks.
+    wait(&mut h, 1.0);
+    click(&mut h, moved, PointerButton::Primary);
+    wait(&mut h, 0.6);
+    click(&mut h, moved, PointerButton::Primary);
+    assert!(!picker_on(&h, id), "0.7 s apart is no double-click");
+}
+
+/// Double-clicking an adjustment layer's thumbnail opens Properties on its settings, expanding the
+/// panel when it is collapsed to an icon (Photoshop).
+#[test]
+fn double_clicking_an_adjustment_thumbnail_opens_properties() {
+    let mut s = session();
+    let id = s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.new.layer", json!({"name": "Other"})).unwrap();
+    let mut h = harness(s, 1.0);
+    assert!(h.state().ui.dock.collapsed.contains(&crate::dock::Group::Properties), "collapsed to start with");
+    let at = thumbnail(&h, id);
+    double_click(&mut h, at);
+    let app = h.state();
+    assert_eq!(app.session.active().unwrap().active_layer, Some(LayerId(id)));
+    assert!(app.ui.panels.properties, "Properties is shown");
+    assert!(!app.ui.dock.collapsed.contains(&crate::dock::Group::Properties), "and expanded");
+    assert!(!app.ui.mask_target, "on the adjustment's settings, not its mask");
+}
+
+/// The user's workspace: Color, Properties, Adjustments and Actions share one tab group, left on
+/// Color. Double-clicking an adjustment thumbnail brings the Properties tab to the front.
+#[test]
+fn double_clicking_an_adjustment_thumbnail_fronts_properties_in_a_shared_tab_group() {
+    let mut s = session();
+    let id = s.execute("layer.newAdjustmentLayer.curves", json!({})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.new.layer", json!({"name": "Other"})).unwrap();
+    let mut h = harness(s, 1.0);
+    for panel in ["properties", "adjustments", "actions"] {
+        h.state_mut().run("window.panel.move", json!({"panel": panel, "anchor": "color"})).unwrap();
+    }
+    h.state_mut().run("window.panel.activate", json!({"panel": "color"})).unwrap();
+    h.run_steps(4);
+    let layout = h.state().ui.docking.clone().expect("a customized workspace");
+    assert!(crate::panel_docking::panel_active(&layout, "color"), "Color is the group's front tab");
+    let at = thumbnail(&h, id);
+    double_click(&mut h, at);
+    let app = h.state();
+    assert_eq!(app.session.active().unwrap().active_layer, Some(LayerId(id)));
+    let layout = app.ui.docking.as_ref().expect("still customized");
+    assert!(crate::panel_docking::panel_active(layout, "properties"), "Properties came to the front");
+    assert!(!crate::panel_docking::panel_active(layout, "color"));
+    assert!(!app.ui.mask_target, "on the adjustment's settings, not its mask");
+}

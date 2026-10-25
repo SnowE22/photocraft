@@ -235,11 +235,11 @@ pub fn dispatch_pressed(app: &mut PhotocraftApp, ctx: &egui::Context, focus: Foc
     let table: Vec<(String, KeyboardShortcut)> =
         bindings(app).into_iter().filter(|(id, sc)| focus.allows(sc) && !(editing && TEXT_OWNED.contains(&id.as_str()))).collect();
     let command = |e: &egui::Event| match e {
-        egui::Event::Key { key, physical_key, pressed: true, modifiers, .. } => {
+        egui::Event::Key { key, physical_key, pressed: true, modifiers, repeat } => {
             let by_position = physical_key
                 .filter(|p| POSITIONAL.contains(p))
                 .and_then(|p| table.iter().find(|(_, sc)| sc.modifiers.command && sc.logical_key == p && key_matches(sc, p, *modifiers)));
-            by_position.or_else(|| table.iter().find(|(_, sc)| key_matches(sc, *key, *modifiers))).map(|(id, _)| (id.clone(), *key == Key::Tab))
+            by_position.or_else(|| table.iter().find(|(_, sc)| key_matches(sc, *key, *modifiers))).map(|(id, _)| (id.clone(), *key, *repeat))
         }
         _ => None,
     };
@@ -250,15 +250,25 @@ pub fn dispatch_pressed(app: &mut PhotocraftApp, ctx: &egui::Context, focus: Foc
             i.events.remove(at);
             Some(hit)
         });
-        let Some((id, tab)) = next else { break };
-        if tab {
+        let Some((id, key, repeat)) = next else { break };
+        // A held brush key repeats on the app's clock (`brush_key_repeat`), not the system's.
+        if crate::brush_key_repeat::swallows(app.brush_key_held.as_ref(), &id, repeat) {
+            ran = true;
+            continue;
+        }
+        if key == Key::Tab {
             // egui already read this Tab as "focus the next widget" (Photoshop's Tab hides the
             // panels instead, #1313): the shortcut took it, so cancel that move.
             ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
         }
         let id = clip_key_command(app, delete_key_command(app, id));
         let owner = key_owner(app, ctx);
-        dispatch(app, ctx, &id);
+        // A brush key during a stroke waits for it to end (`brush_key_repeat::painting`).
+        let waits = crate::brush_key_repeat::IDS.contains(&id.as_str()) && crate::brush_key_repeat::painting(app);
+        if !waits {
+            dispatch(app, ctx, &id);
+        }
+        crate::brush_key_repeat::pressed(app, ctx, &id, key, !waits);
         ran = true;
         if key_owner(app, ctx) != owner {
             break;
@@ -356,7 +366,11 @@ pub fn dispatch(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str) {
     } else if ctx.data(|d| d.get_temp::<bool>(dry_run_id())).unwrap_or(false) {
         Outcome::Ran
     } else {
-        let r = if let Some(name) = action {
+        let r = if let Some(name) = action.filter(|_| app.session.actions.prefs.playback.delay().is_some() && !app.automation_input) {
+            // Playback Options › Step by Step or Pause For: the Actions panel paces the steps.
+            crate::actions::start(app, vec![name.to_string()], 0, None);
+            Ok(serde_json::Value::Null)
+        } else if let Some(name) = action {
             // Use the normal command path: synthetic input and every nested action
             // step must still pass the automation authorizer.
             crate::menus::invoke(app, ctx, "actions.play", json!({"action": name})).and_then(|v| {

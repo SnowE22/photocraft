@@ -16,12 +16,14 @@ fn has_doc(s: &Session) -> std::result::Result<(), String> {
 
 /// Layers with visible pixels at (x, y), topmost first (hidden layers and hidden groups skipped).
 pub fn layers_at(doc: &Document, x: i32, y: i32) -> Vec<LayerId> {
-    layers_hit(doc, x, y, false)
+    layers_hit(doc, x, y, false, 0.0)
 }
 
 /// [`layers_at`], but with `type_bounds` a type layer is hit anywhere inside the bounds of its
-/// rendered text (the gaps between glyphs included), as Photoshop's Auto-Select does.
-fn layers_hit(doc: &Document, x: i32, y: i32, type_bounds: bool) -> Vec<LayerId> {
+/// rendered text (the gaps between glyphs included), as Photoshop's Auto-Select does. A layer
+/// shows at (x, y) only from `min` opacity there (0..1; 0: any at all), so a click goes through
+/// what is all but invisible: a solid colour layer whose mask is 99 % black, a faint smudge.
+fn layers_hit(doc: &Document, x: i32, y: i32, type_bounds: bool, min: f32) -> Vec<LayerId> {
     // A 1×1 read at i32::MAX would be an empty rect (huge `x` params saturate there).
     if x.checked_add(1).is_none() || y.checked_add(1).is_none() {
         return Vec::new();
@@ -47,27 +49,54 @@ fn layers_hit(doc: &Document, x: i32, y: i32, type_bounds: bool) -> Vec<LayerId>
         if matches!(l.content, LayerContent::Group(_) | LayerContent::Adjustment(_)) {
             continue;
         }
-        let alpha = match &l.content {
-            // Fill layers cover the canvas (their mask limits them).
-            LayerContent::Fill(_) => 1.0,
-            // The text's pixel bounds (in document space, so they follow the layer's transform).
-            LayerContent::Text(t) if type_bounds && t.cache.as_ref().is_some_and(|c| c.content_bounds().contains(x, y)) => 1.0,
-            _ => match l.surface() {
-                Some(s) => {
-                    let mut px = [[0.0f32; 4]; 1];
-                    s.read_rgba_into(Rect::from_xywh(x, y, 1, 1), &mut px);
-                    px[0][3]
-                }
-                None => 0.0,
-            },
-        };
-        // As the compositor sees it: density applied, all ones when the mask is disabled.
-        let mask = l.mask.as_ref().map_or(1.0, |m| m.value(x, y));
-        if alpha * mask > 0.0 {
+        // What shows of the layer there: its pixels through its mask, the masks and opacities of
+        // the groups around it, and, clipped, its clipping base's pixels. A click lands on the
+        // layer the user sees, not on pixels a group mask or the base hides.
+        let mut alpha = coverage(l, x, y, type_bounds) * l.opacity;
+        for n in 1..path.len() {
+            if let Some(g) = doc.layer_at(&path[..n]) {
+                alpha *= g.opacity * g.mask.as_ref().map_or(1.0, |m| m.value(x, y));
+            }
+        }
+        if l.clipped
+            && let Some(base) = clip_base(doc, path).filter(|b| !b.is_group())
+        {
+            alpha *= coverage(base, x, y, false);
+        }
+        if alpha > 0.0 && alpha >= min {
             out.push(l.id);
         }
     }
     out
+}
+
+/// The coverage of `l`'s own pixels at (x, y) through its mask (a type layer anywhere inside its
+/// text's bounds with `type_bounds`).
+fn coverage(l: &photocraft_doc::Layer, x: i32, y: i32, type_bounds: bool) -> f32 {
+    let alpha = match &l.content {
+        // Fill layers cover the canvas (their mask limits them).
+        LayerContent::Fill(_) => 1.0,
+        // The text's pixel bounds (in document space, so they follow the layer's transform).
+        LayerContent::Text(t) if type_bounds && t.cache.as_ref().is_some_and(|c| c.content_bounds().contains(x, y)) => 1.0,
+        _ => match l.surface() {
+            Some(s) => {
+                let mut px = [[0.0f32; 4]; 1];
+                s.read_rgba_into(Rect::from_xywh(x, y, 1, 1), &mut px);
+                px[0][3]
+            }
+            None => 0.0,
+        },
+    };
+    // As the compositor sees it: density applied, all ones when the mask is disabled.
+    alpha * l.mask.as_ref().map_or(1.0, |m| m.value(x, y))
+}
+
+/// The base of the clipping group the clipped layer at `path` belongs to: the nearest layer
+/// below it in its stack that isn't clipped.
+fn clip_base<'a>(doc: &'a Document, path: &[usize]) -> Option<&'a photocraft_doc::Layer> {
+    let (&i, parent) = path.split_last()?;
+    let siblings = if parent.is_empty() { &doc.layers[..] } else { doc.layer_at(parent)?.children()? };
+    siblings.get(..i)?.iter().rev().find(|l| !l.clipped)
 }
 
 /// The outermost group containing `id` (the layer itself when it isn't in a group). An artboard
@@ -81,25 +110,41 @@ fn top_group(doc: &Document, id: LayerId) -> LayerId {
 /// The layer an Auto-Select click at (x, y) picks (with `group`, its outermost group): the topmost
 /// hit, a type layer by its text bounds. Like Photoshop, it clicks through a fully locked layer
 /// (its own Lock All or a locked group's) to the layer under it (#1641); the right-click list
-/// still shows it. The click (`layer.pickAt`) and the Move tool's rollover highlight both ask
+/// still shows it. Lock Selection clicks through too, and leaves the list. The click (`layer.pickAt`) and the Move tool's rollover highlight both ask
 /// here, so the outline always names the layer a click takes.
 pub fn auto_select_target(doc: &Document, x: i32, y: i32, group: bool) -> Option<LayerId> {
-    let hit = layers_hit(doc, x, y, true).into_iter().find(|id| !doc.effective_locks(*id).all)?;
+    auto_select_target_at(doc, x, y, group, 0.0)
+}
+
+/// [`auto_select_target`] where a layer counts only from `min` opacity at the point (0..1).
+pub fn auto_select_target_at(doc: &Document, x: i32, y: i32, group: bool, min: f32) -> Option<LayerId> {
+    // Lock Selection (the layer's or a group's) passes the click through the same way.
+    let hit = layers_hit(doc, x, y, true, min).into_iter().find(|id| !doc.effective_locks(*id).unpickable())?;
     Some(if group { top_group(doc, hit) } else { hit })
 }
 
 fn pick(s: &mut Session, p: &Value) -> Result<Value> {
     let x = p.get("x").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: "missing `x`".into() })?.floor() as i32;
     let y = p.get("y").and_then(Value::as_f64).ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: "missing `y`".into() })?.floor() as i32;
+    let min = match p.get("minOpacity") {
+        None | Some(Value::Null) => 0.0,
+        Some(v) => v
+            .as_f64()
+            .filter(|v| (0.0..=100.0).contains(v))
+            .ok_or_else(|| EngineError::BadParams { cmd: "layer.pickAt".into(), msg: format!("`minOpacity` is a percentage 0..100, got {v}") })?
+            as f32
+            / 100.0,
+    };
     let doc = s.active().ok_or(EngineError::NoDocument)?.doc.clone();
     // The right-click list includes type layers between glyphs, like Auto-Select.
     if p.get("list").and_then(Value::as_bool).unwrap_or(false) {
-        let hits = layers_hit(&doc, x, y, true);
+        // Lock Selection keeps a layer out of the list (Lock All still shows, as in Photoshop).
+        let hits: Vec<LayerId> = layers_hit(&doc, x, y, true, min).into_iter().filter(|id| !doc.effective_locks(*id).selection).collect();
         let names: Vec<Value> = hits.iter().filter_map(|id| doc.layer(*id)).map(|l| json!({"layer": l.id.0, "name": l.name})).collect();
         return Ok(json!({ "layers": names }));
     }
     let group = p.get("target").and_then(Value::as_str) == Some("group");
-    let Some(target) = auto_select_target(&doc, x, y, group) else { return Ok(json!({ "layer": null })) };
+    let Some(target) = auto_select_target_at(&doc, x, y, group, min) else { return Ok(json!({ "layer": null })) };
     if p.get("select").and_then(Value::as_bool).unwrap_or(true) {
         let mode = p.get("mode").and_then(Value::as_str).unwrap_or("replace");
         // Like Photoshop, a plain click on one of several selected layers keeps them all
@@ -124,7 +169,7 @@ pub fn layers_in_rect(doc: &Document, r: Rect, group: bool) -> Vec<LayerId> {
     for (path, _, l) in doc.walk().iter().rev() {
         if matches!(l.content, LayerContent::Group(_) | LayerContent::Adjustment(_))
             || doc.is_background(l.id)
-            || doc.effective_locks(l.id).all
+            || doc.effective_locks(l.id).unpickable()
             || !(1..=path.len()).all(|n| doc.layer_at(&path[..n]).is_some_and(|a| a.visible))
         {
             continue;
@@ -190,7 +235,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Auto-Select Layer",
             menu: &[],
             shortcut: None,
-            params: r##"{"x":px,"y":px,"target":"layer|group"="layer","select":bool=true,"mode":"replace|toggle|add"="replace","list":bool=false (return visible layers at the point, including text bounds, topmost first)} → {layer} | {layers}"##,
+            params: r##"{"x":px,"y":px,"target":"layer|group"="layer","select":bool=true,"mode":"replace|toggle|add"="replace","list":bool=false (return visible layers at the point, including text bounds, topmost first),"minOpacity":0..100=0 (% a layer must show at the point to be hit; fainter pixels are clicked through)} → {layer} | {layers}"##,
             enabled: has_doc,
             journal: false,
             run: pick,
@@ -310,6 +355,41 @@ mod tests {
         // A hidden board is skipped with its layers.
         s.execute("layer.setProps", json!({"layer": board, "visible": false})).unwrap();
         assert_eq!(pick(&mut s, 5, 5, "layer"), bg.0);
+    }
+
+    /// Lock Selection: canvas clicks (Auto-Select, the right-click list, the Move marquee) pass
+    /// through the layer, or every layer of a locked group; the Layers panel still selects it.
+    #[test]
+    fn a_selection_locked_layer_or_group_is_clicked_through() {
+        let (mut s, a, _) = two_squares();
+        s.execute("layer.new.layer", json!({"name": "Top"})).unwrap();
+        s.execute("select.rect", json!({"x": 0, "y": 0, "width": 10, "height": 10})).unwrap();
+        s.execute("edit.fill", json!({"color": "#0000ff"})).unwrap();
+        s.execute("select.deselect", json!({})).unwrap();
+        let top = s.active().unwrap().active_layer.unwrap();
+        let pick = |s: &mut Session| s.execute("layer.pickAt", json!({"x": 5, "y": 5})).unwrap()["layer"].clone();
+        let listed = |s: &mut Session| {
+            let v = s.execute("layer.pickAt", json!({"x": 5, "y": 5, "list": true})).unwrap();
+            v["layers"].as_array().unwrap().iter().map(|l| l["layer"].as_u64().unwrap()).collect::<Vec<_>>()
+        };
+        assert_eq!(pick(&mut s), top.0);
+        s.execute("layer.setProps", json!({"layer": top.0, "locks": {"selection": true}})).unwrap();
+        assert!(s.active().unwrap().doc.layer(top).unwrap().locks.any(), "the row shows the lock");
+        assert_eq!(pick(&mut s), a.0);
+        assert!(!listed(&mut s).contains(&top.0));
+        let doc = s.active().unwrap().doc.clone();
+        assert!(!layers_in_rect(&doc, Rect::from_xywh(0, 0, 10, 10), false).contains(&top));
+        // The Layers panel's click still selects it, and its pixels still edit.
+        s.execute("layer.select", json!({"layer": top.0})).unwrap();
+        assert_eq!(s.active().unwrap().active_layer, Some(top));
+        s.execute("edit.fill", json!({"color": "#00ff00"})).unwrap();
+        // Through a group: the group's lock covers its layers.
+        s.execute("layer.lockLayers", json!({"selection": false})).unwrap();
+        let g = s.execute("layer.new.groupFromLayers", json!({"name": "G"})).unwrap()["layer"].as_u64().unwrap();
+        assert_eq!(pick(&mut s), top.0);
+        s.execute("layer.setProps", json!({"layer": g, "locks": {"selection": true}})).unwrap();
+        assert_eq!(pick(&mut s), a.0);
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 5, "y": 5, "target": "group"})).unwrap()["layer"], a.0);
     }
 
     #[test]
@@ -436,6 +516,31 @@ mod tests {
     }
 
     #[test]
+    fn min_opacity_clicks_through_what_is_all_but_invisible() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        // A solid colour layer whose mask is 99 % black at the point.
+        let fill = s.execute("layer.newFillLayer.solidColor", json!({"color": "#ff0000"})).unwrap()["layer"].as_u64().unwrap();
+        s.edit("mask", |doc, _| {
+            let l = doc.layer_mut(LayerId(fill)).unwrap();
+            let mut m = photocraft_doc::LayerMask::reveal_all();
+            m.surface.fill_rect(Rect::new(0, 0, 8, 8), &[0.01, 0.01, 0.01, 1.0]);
+            l.mask = Some(m);
+            Ok(())
+        })
+        .unwrap();
+        let bg = s.active().unwrap().doc.layers[0].id.0;
+        let hit = |s: &mut Session, p: Value| s.execute("layer.pickAt", p).unwrap()["layer"].as_u64();
+        assert_eq!(hit(&mut s, json!({"x": 4, "y": 4, "select": false})), Some(fill), "any opacity catches the click");
+        assert_eq!(hit(&mut s, json!({"x": 4, "y": 4, "select": false, "minOpacity": 5})), Some(bg), "1 % is clicked through");
+        let list = s.execute("layer.pickAt", json!({"x": 4, "y": 4, "list": true, "minOpacity": 5})).unwrap();
+        assert_eq!(list["layers"].as_array().unwrap().len(), 1);
+        for bad in [json!(-1), json!(101), json!("high")] {
+            assert!(s.execute("layer.pickAt", json!({"x": 4, "y": 4, "minOpacity": bad})).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
     fn hostile_params_are_errors_or_misses_not_panics() {
         let (mut s, _, _) = two_squares();
         assert!(s.execute("layer.pickAt", json!({})).is_err());
@@ -465,5 +570,27 @@ mod tests {
         let list = s.execute("layer.pickAt", json!({"x": 5, "y": 5, "list": true})).unwrap();
         let ids: Vec<_> = list["layers"].as_array().unwrap().iter().map(|l| l["layer"].clone()).collect();
         assert_eq!(ids, vec![json!(red.0), json!(bg.0)]);
+    }
+
+    /// A click lands on the layer that shows there: not on a layer at 0 % opacity, one a group
+    /// mask hides, or a clipped layer's pixels outside its base.
+    #[test]
+    fn picks_only_what_shows() {
+        let (mut s, a, b) = two_squares();
+        // B is clipped to A: its square (20..30) lies outside A's (0..10), so nothing of it shows.
+        s.execute("layer.setProps", json!({"layer": b.0, "clipped": true})).unwrap();
+        let bg = s.active().unwrap().doc.layers[0].id;
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 25, "y": 25, "select": false})).unwrap()["layer"], bg.0);
+        s.execute("layer.setProps", json!({"layer": b.0, "clipped": false})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 25, "y": 25, "select": false})).unwrap()["layer"], b.0);
+        // At 0 % opacity B can't be seen.
+        s.execute("layer.setProps", json!({"layer": b.0, "opacity": 0.0})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 25, "y": 25, "select": false})).unwrap()["layer"], bg.0);
+        // A group whose mask hides everything hides A too.
+        s.execute("layer.select", json!({"layer": a.0})).unwrap();
+        s.execute("layer.new.groupFromLayers", json!({"name": "G"})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 5, "y": 5, "select": false})).unwrap()["layer"], a.0);
+        s.execute("layer.layerMask.hideAll", json!({})).unwrap();
+        assert_eq!(s.execute("layer.pickAt", json!({"x": 5, "y": 5, "select": false})).unwrap()["layer"], bg.0);
     }
 }

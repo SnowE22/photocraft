@@ -31,6 +31,8 @@ photocraft-io = { workspace = true }
 photocraft-psd = { workspace = true }
 photocraft-format = { workspace = true }
 photocraft-plugins = { workspace = true }
+# The Remove tool's Generative AI mode (LaMa on ONNX Runtime, loaded at run time; see crates/ml).
+photocraft-ml = { workspace = true }
 blake3 = { version = "1.8", default-features = false, features = ["pure"] }
 photocraft-codecs = { workspace = true }
 flate2 = { workspace = true }

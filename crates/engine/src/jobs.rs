@@ -754,6 +754,8 @@ impl Session {
         if !(params.is_object() || params.is_null()) {
             return Err(EngineError::BadParams { cmd: id.to_string(), msg: "params must be a JSON object".into() });
         }
+        // A recorded step names its layers by name or as the current layer (`layer_refs`).
+        let params = crate::layer_refs::resolve(self, id, params)?;
         // Untrusted sessions gate every command, including the ones a command runs on its own
         // behalf (`file.automate.conditionalModeChange` runs `image.mode.*`), before any side
         // effect.
@@ -813,6 +815,12 @@ impl Session {
         // being recorded, nor move the recording mark past the entries it is about to replace.
         let recording = if spec.journal && crate::actions_cmds::replayable(id) { self.actions.recording.take() } else { None };
         let before = self.active().map(|st| st.doc.clone());
+        // A click on the layer already selected selects nothing new: recording leaves it out, as
+        // Photoshop does, so an action doesn't fill up with redundant Select steps.
+        let selection_before = (id == "layer.select" && (recording.is_some() || self.actions.recording.is_some())).then(|| self.active().map(|st| (st.selected_layers(), st.active_layer)));
+        // A step naming a layer by id is recorded by the current layer or the layer's name, taken
+        // before a rename changes it.
+        let recorded_layer = (recording.is_some() || self.actions.recording.is_some()).then(|| crate::layer_refs::record(self, id, &params)).flatten();
         // Last-resort guard (AGENTS.md, Never crash): a command that panics anyway fails with an
         // error instead of taking the app down. `edit` only commits a document after its closure
         // returns, so the documents are unchanged.
@@ -856,7 +864,8 @@ impl Session {
                         st.fx_collapsed.push(layer_id);
                     }
                 }
-                self.after_command(id, params, spec.journal, Some(nested_from), pre_selected.as_deref());
+                let unchanged = selection_before.is_some_and(|b| b == self.active().map(|st| (st.selected_layers(), st.active_layer)));
+                self.after_command(id, recorded_layer.unwrap_or(params), spec.journal && !unchanged, Some(nested_from), pre_selected.as_deref());
                 Ok(Started::Done(v))
             }
         }
@@ -913,6 +922,7 @@ impl Session {
                 _ if self.actions.recording.is_none() => params,
                 "layer.duplicate" => crate::artboard_cmds::recorded_duplicate(self, crate::layer_multi_cmds::recorded_step(self, id, params, pre_selected)),
                 "layerComp.apply" => crate::comps_cmds::recorded_apply(self, params),
+                "select.colorRange" => crate::selection_cmds::recorded_color_range(self, params),
                 _ => crate::layer_multi_cmds::recorded_step(self, id, params, pre_selected),
             };
             self.journal.push((id.to_string(), params));

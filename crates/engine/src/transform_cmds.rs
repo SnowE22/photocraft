@@ -191,7 +191,7 @@ pub fn lone_target<'a>(doc: &'a Document, layer: Option<LayerId>, p: &Value) -> 
         Target::Mask => {
             let id = layer.ok_or_else(|| EngineError::Other("no active layer".into()))?;
             let l = doc.layer(id).ok_or(EngineError::NoLayer(id))?;
-            let m = l.mask.as_ref().ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
+            let m = l.pixel_mask(crate::commands::is_second_mask_target(p)).ok_or_else(|| EngineError::Other("layer has no mask".into()))?;
             Ok((!m.linked).then_some(&m.surface))
         }
         Target::Alpha(i) => doc
@@ -359,9 +359,7 @@ fn check_layer_budget(doc_sel: Option<&Surface>, l: &Layer, h: &Homography) -> R
                 }
             }
         }
-        if let Some(m) = &l.mask
-            && m.linked
-        {
+        for m in [&l.mask, &l.second_mask].into_iter().flatten().filter(|m| m.linked) {
             // With a selection only its region of the mask moves (`warp_gray_selected`).
             let src = match sel.filter(|_| !moves_whole(l)) {
                 Some(sel) => sel.content_bounds(),
@@ -503,9 +501,8 @@ fn apply_transform(
     if let Some(surface) = baked_screentone {
         l.content = LayerContent::Raster(surface);
     }
-    if let Some(m) = l.mask.as_mut()
-        && m.linked
-    {
+    for m in l.pixel_masks_mut().filter(|m| m.linked) {
+
         m.surface = match mask_sel {
             Some(sel) => warp_gray_selected(&m.surface, sel, h, interp)?,
             None => warp_gray(&m.surface, h, interp)?,
@@ -1241,7 +1238,8 @@ mod tests {
         let mut s = session();
         s.execute("select.rect", json!({"x": 10, "y": 10, "width": 30, "height": 30})).unwrap();
         s.execute("layer.newFillLayer.gradient", json!({"from": "#ff0000", "to": "#0000ff", "angle": 0})).unwrap();
-        s.execute("select.deselect", json!({})).unwrap();
+        // The selection became the layer's mask and was dropped, as in Photoshop.
+        assert!(s.active().unwrap().doc.selection.is_none());
         s.edit("cache", |doc, active| {
             let (fmt, canvas) = (doc.pixel_format(), doc.bounds());
             let l = doc.layer_mut(active.unwrap()).unwrap();

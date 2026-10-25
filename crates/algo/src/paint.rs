@@ -55,11 +55,35 @@ pub fn sample_stops(stops: &[(f32, [f32; 4])], t: f32) -> [f32; 4] {
     }
 }
 
+/// How a fill lays its colour down.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FillPaint {
+    /// Blends the colour in with a blend mode.
+    Blend(BlendMode),
+    /// Clears the pixels instead (the Fill tool's transparent colour): coverage takes alpha away.
+    Erase,
+    /// Lays the colour down behind the pixels already there (Photoshop's Behind mode): a fill that
+    /// reaches in under the layer's own strokes leaves them as they are and fills their soft edges.
+    Behind,
+}
+
+/// `c` with coverage `k` composited behind `d` (straight RGBA).
+fn behind(d: [f32; 4], c: [f32; 4], k: f32) -> [f32; 4] {
+    let a = (c[3] * k).clamp(0.0, 1.0);
+    let da = d[3].clamp(0.0, 1.0);
+    let out = da + a * (1.0 - da);
+    if out <= 0.0 {
+        return [0.0; 4];
+    }
+    let ch = |i: usize| (d[i] * da + c[i] * a * (1.0 - da)) / out;
+    [ch(0), ch(1), ch(2), out]
+}
+
 /// Composites `color(i)` over `area` of the surface with per-pixel coverage.
 fn composite_area(
     s: &mut Surface,
     area: Rect,
-    blend_mode: BlendMode,
+    paint: FillPaint,
     coverage: impl Fn(i32, i32) -> f32 + Sync,
     color: impl Fn(i32, i32) -> [f32; 4] + Sync,
     lock_transparency: bool,
@@ -89,12 +113,20 @@ fn composite_area(
                 let i = ((y - r.y0) as usize * w + (x - r.x0) as usize) * n;
                 let px = &mut region[i..i + n];
                 let d = photocraft_raster::to_rgba(&fmt, px);
-                let o = if lock_transparency { blend::composite_atop(blend_mode, d, color(x, y), k) } else { blend::composite(blend_mode, d, color(x, y), k) };
+                let mut o = match paint {
+                    FillPaint::Blend(mode) if lock_transparency => blend::composite_atop(mode, d, color(x, y), k),
+                    FillPaint::Blend(mode) => blend::composite(mode, d, color(x, y), k),
+                    FillPaint::Erase => [d[0], d[1], d[2], d[3] * (1.0 - k.clamp(0.0, 1.0))],
+                    FillPaint::Behind => behind(d, color(x, y), k),
+                };
+                if lock_transparency {
+                    o[3] = d[3];
+                }
                 from_rgba_into(&fmt, o, &mut enc);
                 // A colour picked as CMYK inks replaces fully covered pixels of a CMYK target as it is.
                 if let Some(i) = inks
                     && fmt.mode == photocraft_color::ColorMode::Cmyk
-                    && blend_mode == BlendMode::Normal
+                    && paint == FillPaint::Blend(BlendMode::Normal)
                     && k >= 1.0
                 {
                     enc[..4].copy_from_slice(&i);
@@ -135,7 +167,7 @@ pub fn paint_gradient(
     composite_area(
         s,
         area,
-        blend_mode,
+        FillPaint::Blend(blend_mode),
         |x, y| opacity * selection.map_or(1.0, |m| m.sample_channel(x, y, 0)),
         |x, y| {
             let t = tool_gradient_t(shape, from, to, x as f32 + 0.5, y as f32 + 0.5);
@@ -239,12 +271,27 @@ pub fn bucket_fill_region_inks(
     src: impl Fn(i32, i32) -> [f32; 4] + Sync,
     inks: Option<[f32; 4]>,
 ) {
+    fill_region(s, region, opacity, FillPaint::Blend(BlendMode::Normal), selection, lock_transparency, src, inks);
+}
+
+/// [`bucket_fill_region_inks`] laid down with `paint`: the Fill tool's blend mode, or its
+/// transparent colour.
+#[allow(clippy::too_many_arguments)]
+pub fn fill_region(
+    s: &mut Surface,
+    region: &crate::selection::Region,
+    opacity: f32,
+    paint: FillPaint,
+    selection: Option<&Surface>,
+    lock_transparency: bool,
+    src: impl Fn(i32, i32) -> [f32; 4] + Sync,
+    inks: Option<[f32; 4]>,
+) {
     // Composite only over the filled region's box.
-    let b = region.bbox;
     composite_area(
         s,
-        b,
-        BlendMode::Normal,
+        region.bbox,
+        paint,
         |x, y| region.at(x, y) * opacity * selection.map_or(1.0, |m| m.sample_channel(x, y, 0)),
         src,
         lock_transparency,
@@ -256,6 +303,16 @@ pub fn bucket_fill_region_inks(
 mod tests {
     use super::*;
     use photocraft_color::PixelFormat;
+
+    #[test]
+    fn behind_fills_under_the_pixels_already_there() {
+        // An opaque pixel stays as it is; a soft edge gets the colour under it; nothing gets it all.
+        assert_eq!(behind([1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0], 1.0), [1.0, 0.0, 0.0, 1.0]);
+        let edge = behind([1.0, 0.0, 0.0, 0.25], [0.0, 0.0, 1.0, 1.0], 1.0);
+        assert!((edge[3] - 1.0).abs() < 1e-6 && (edge[0] - 0.25).abs() < 1e-6 && (edge[2] - 0.75).abs() < 1e-6, "{edge:?}");
+        assert_eq!(behind([0.0; 4], [0.0, 1.0, 0.0, 1.0], 0.5), [0.0, 1.0, 0.0, 0.5]);
+        assert_eq!(behind([0.0; 4], [0.0, 1.0, 0.0, 1.0], 0.0), [0.0; 4]);
+    }
 
     #[test]
     fn gradient_t_shapes() {

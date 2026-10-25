@@ -34,6 +34,7 @@ pub mod erase;
 pub mod exif;
 pub mod faces;
 pub mod features;
+pub mod fill;
 mod fxutil;
 mod gallery;
 pub mod hdr;

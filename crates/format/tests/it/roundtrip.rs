@@ -768,6 +768,20 @@ fn a_non_finite_float_is_refused_at_save_rather_than_breaking_every_later_load()
     assert_eq!(back, doc);
 }
 
+/// Photoshop 2026's Grain adjustment layer keeps its three settings in `.pcraft`.
+#[test]
+fn grain_adjustment_round_trips() {
+    for depth in [SampleType::U8, SampleType::U16, SampleType::F32] {
+        let mut doc = rich_doc(ColorMode::Rgb, depth);
+        doc.insert_above(
+            None,
+            Layer::new("Grain 1", LayerContent::Adjustment(photocraft_doc::Adjustment::Grain { amount: 32.0, size: 34.0, roughness: 50.0 })),
+        );
+        let back = load_from_bytes(&save_to_bytes(&doc, &SaveOptions::default()).unwrap()).unwrap();
+        assert_eq!(back, doc, "{depth:?}");
+    }
+}
+
 /// #4957: a directory save holds the bundle's lock for its whole transaction. While another
 /// writer holds it, a save waits, then fails without writing anything; once it is released the
 /// save goes ahead.

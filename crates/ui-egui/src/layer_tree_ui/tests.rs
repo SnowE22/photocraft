@@ -16,13 +16,16 @@ fn layered() -> photocraft_engine::Session {
     s.execute("layer.new.layer", json!({"name": "deep"})).unwrap();
     let inner = s.execute("layer.groupLayers", json!({"name": "inner"})).unwrap()["layer"].as_u64().unwrap();
     let outer = s.execute("layer.groupLayers", json!({"layer": inner, "name": "outer"})).unwrap()["layer"].as_u64().unwrap();
-    s.execute("layer.select", json!({"layer": inner})).unwrap();
-    // `layer.new.layer` lands above the active layer, inside `outer`.
-    s.execute("layer.new.layer", json!({"name": "in-outer"})).unwrap();
-    s.execute("layer.select", json!({"layer": outer})).unwrap();
-    s.execute("layer.new.layer", json!({"name": "top"})).unwrap();
-    // Group Layers creates collapsed groups (#5571); these tests start with every group open.
-    s.execute("layer.setExpanded", json!({"all": true, "expanded": true})).unwrap();
+    // A selected closed group takes a new layer above itself (an open one, inside), so each group
+    // is closed for the layer that goes beside it.
+    let beside = |s: &mut photocraft_engine::Session, group: u64, name: &str| {
+        s.execute("layer.select", json!({"layer": group})).unwrap();
+        s.execute("layer.setExpanded", json!({"layer": group, "expanded": false})).unwrap();
+        s.execute("layer.new.layer", json!({"name": name})).unwrap();
+        s.execute("layer.setExpanded", json!({"layer": group, "expanded": true})).unwrap();
+    };
+    beside(&mut s, inner, "in-outer");
+    beside(&mut s, outer, "top");
     s
 }
 
@@ -109,16 +112,26 @@ fn clicking_a_triangle_toggles_its_group_at_every_ui_scale() {
     }
 }
 
+/// Photoshop's modifier clicks: ⌥ toggles the group and every group inside it; ⌘ the groups
+/// beside it in its folder, never the folder itself.
 #[test]
-fn alt_click_toggles_every_group() {
+fn alt_click_toggles_the_group_tree_and_ctrl_click_its_siblings() {
     let mut h = harness_with(layered(), 1.0);
     let p = triangle(&mut h, "outer").unwrap();
     click(&mut h, p, Modifiers::ALT);
-    assert!(!group(&h, "outer").1 && !group(&h, "inner").1, "⌥-click closes all groups");
+    assert!(!group(&h, "outer").1 && !group(&h, "inner").1, "⌥-click closes the group and the groups inside it");
     let p = triangle(&mut h, "outer").unwrap();
     click(&mut h, p, Modifiers::ALT);
-    assert!(group(&h, "outer").1 && group(&h, "inner").1, "⌥-click opens all groups");
+    assert!(group(&h, "outer").1 && group(&h, "inner").1, "⌥-click opens them all again");
     assert!(triangle(&mut h, "inner").is_some());
+    let p = triangle(&mut h, "inner").unwrap();
+    click(&mut h, p, Modifiers::COMMAND);
+    assert!(!group(&h, "inner").1 && group(&h, "outer").1, "⌘-click stays inside inner's folder");
+    for (m, want) in
+        [(Modifiers::NONE, "group"), (Modifiers::COMMAND, "siblings"), (Modifiers::ALT, "tree"), (Modifiers::COMMAND | Modifiers::ALT, "siblingsTree")]
+    {
+        assert_eq!(super::expand_scope(m), want);
+    }
 }
 
 #[test]

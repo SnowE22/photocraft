@@ -3814,6 +3814,361 @@ curves	Smooth	Làm mượt
 	Replace	Thay thế
 	{name} was changed by another app after it was opened or saved here.	{name} đã bị một ứng dụng khác thay đổi sau khi được mở hoặc lưu ở đây.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Thay thế bằng tài liệu này, hoặc hủy và dùng Tệp › Lưu thành để giữ cả hai.
+
+	Panel Icons	Biểu tượng bảng
+	Move Tools panel	Di chuyển bảng Công cụ
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Kéo để di chuyển bảng Công cụ; thả ở cạnh canvas để gắn nó
+	New Document…	Tài liệu mới…
+	Open Document…	Mở tài liệu…
+	Delete Brushes	Xóa các cọ
+	Thumbnail size	Cỡ hình thu nhỏ
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Nhập hành động Photoshop
+	No Photoshop Actions palette was found on this computer	Không tìm thấy bảng hành động Photoshop trên máy tính này
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Đã mở trong Topaz Gigapixel AI: hãy xuất ảnh ở đó để đưa ảnh trở lại
+	Stopped waiting for Topaz Gigapixel AI	Đã ngừng chờ Topaz Gigapixel AI
+	Topaz Gigapixel AI's image could not be applied: {error}	Không thể áp dụng ảnh từ Topaz Gigapixel AI: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: đã phóng to {scale}× lên {w} × {h} px (lớp mới)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Đang chờ Topaz Gigapixel AI: hãy xuất ảnh đã phóng to ở đó để đưa ảnh trở lại.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	Đã nạp {n} hành động trong {sets} bộ từ {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	Bật AI tạo sinh
+	Generative AI Off	Tắt AI tạo sinh
+	Loading the AI model…	Đang tải mô hình AI…
+	AI model not installed	Chưa cài mô hình AI
+	AI model failed to load	Không tải được mô hình AI
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Hãy đặt lama_fp32.onnx và ONNX Runtime (onnxruntime.dll, DirectML.dll) vào một trong các thư mục sau: {folders}. Cho đến lúc đó, "Tự động" dùng cách tô thông thường.
+	Model:	Mô hình:
+	LaMa (fast)	LaMa (nhanh)
+	Diffusion (detailed)	Khuếch tán (chi tiết)
+	Prompt (optional)	Lời nhắc (tùy chọn)
+	What should be there. Empty: the model's own guess.	Thứ nên có ở đó. Để trống: mô hình tự đoán.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Đặt thư mục mô hình khuếch tán và ONNX Runtime vào một trong: {folders}. Cho đến khi đó, Tự động dùng LaMa.
+	Generative Fill…	Tô màu tạo sinh…
+	Center Canvas When Zoomed Out	Căn giữa khung vẽ khi thu nhỏ
+	High (slower)	Cao (chậm hơn)
+	Quality:	Chất lượng:
+	There is no such Topaz Gigapixel preset	Không có thiết lập sẵn Topaz Gigapixel này
+	Saved Topaz Gigapixel preset “{name}”	Đã lưu thiết lập sẵn Topaz Gigapixel “{name}”
+	New Preset	Thiết lập sẵn mới
+	Upscale:	Phóng to:
+	With these settings	Với các thiết lập này
+	With two presets	Với hai thiết lập sẵn
+	Save two presets with their own settings first; then this one can run them together.	Hãy lưu trước hai thiết lập sẵn có thiết lập riêng; sau đó thiết lập sẵn này có thể chạy chúng cùng nhau.
+	First:	Trước:
+	Then:	Sau đó:
+	Results:	Kết quả:
+	One after the other	Lần lượt
+	Each on its own layer	Mỗi cái trên một lớp riêng
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Cả hai thiết lập sẵn đều phóng to ảnh; mỗi kết quả thành một lớp, để so sánh hoặc hòa trộn.
+	The second preset upscales the first one's result.	Thiết lập sẵn thứ hai phóng to kết quả của thiết lập thứ nhất.
+	Topaz Gigapixel Presets	Thiết lập sẵn Topaz Gigapixel
+	Manage Presets…	Quản lý thiết lập sẵn…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Chạy thiết lập sẵn đã lưu từ Tệp › Tự động hóa › Thiết lập sẵn Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Tự động để Gigapixel tự chọn.
+	Denoise:	Khử nhiễu:
+	Sharpen:	Làm nét:
+	Fix Compression:	Sửa nén:
+	Face Recovery:	Khôi phục khuôn mặt:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Chọn thư mục cho các bản ghi timelapse
+	Saved {name} ({seconds} s timelapse)	Đã lưu {name} (timelapse {seconds} giây)
+	Export Timelapse	Xuất timelapse
+	Export Timelapse…	Xuất timelapse…
+	Timelapse export cancelled	Đã hủy xuất timelapse
+	Timelapse	Timelapse
+	Auto record	Tự động ghi
+	Records whatever document you're on, unless you paused it yourself.	Ghi tài liệu bạn đang làm việc, trừ khi bạn tự tạm dừng nó.
+	Open a document to record a timelapse.	Mở một tài liệu để ghi timelapse.
+	Recording (idle)	Đang ghi (nghỉ)
+	Recording	Đang ghi
+	Click to pause	Bấm để tạm dừng
+	Paused: click to resume	Đã tạm dừng: bấm để tiếp tục
+	Start recording	Bắt đầu ghi
+	Pause Recording	Tạm dừng ghi
+	Reference Layer	Lớp tham chiếu
+	Reference layer	Lớp tham chiếu
+	Recorded more since the last export	Đã ghi thêm từ lần xuất trước
+	Select a layer	Chọn một lớp
+	Not recorded: you see it, the timelapse doesn't	Không được ghi: bạn thấy nó, timelapse thì không
+	Recorded	Được ghi
+	{count} of {total} not recorded	{count}/{total} không được ghi
+	Reference	Tham chiếu
+	Adds {tag} to the layer's name	Thêm {tag} vào tên lớp
+	Export again…	Xuất lại…
+	Export video…	Xuất video…
+	Play video	Phát video
+	Show in folder	Hiện trong thư mục
+	Make:	Tạo:
+	Advanced settings	Cài đặt nâng cao
+	Show the finished drawing first	Hiện bức vẽ hoàn chỉnh trước
+	Flash before the final image	Lóe sáng trước hình cuối
+	Hold the final image	Giữ hình cuối
+	Slow down at the end	Chậm lại ở cuối
+	Remove flicker	Loại bỏ nhấp nháy
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Bỏ các khung hình chỉ lóe lên: một lớp bị ẩn trong chốc lát, một nét vẽ được hoàn tác ngay.
+	Work-time counter	Bộ đếm thời gian làm việc
+	Bars:	Dải viền:
+	Fills the edges when the canvas size changed during the recording.	Lấp viền khi kích thước canvas thay đổi trong lúc ghi.
+	Folder:	Thư mục:
+	not chosen yet	chưa chọn
+	Choose…	Chọn…
+	Remove frames with undo	Xóa khung hình khi hoàn tác
+	Reference tag:	Thẻ tham chiếu:
+	Work timer stops after:	Bộ đếm dừng sau:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Tạo tệp MP4. Tự động tìm cạnh PhotoCraft, rồi trong PATH.
+	Choose the ffmpeg program on this computer	Chọn chương trình ffmpeg trên máy này
+	Opening files isn't available here	Không thể mở tệp ở đây
+	MP4 video (ffmpeg)	Video MP4 (ffmpeg)
+	JPEG frames	Khung hình JPEG
+	Bottom right	Dưới bên phải
+	Bottom left	Dưới bên trái
+	Top right	Trên bên phải
+	Top left	Trên bên trái
+	5 seconds	5 giây
+	10 seconds	10 giây
+	15 seconds	15 giây
+	20 seconds	20 giây
+	30 seconds	30 giây
+	1 minute	1 phút
+	2 minutes	2 phút
+	5 minutes	5 phút
+@plural	{n} frame|{n} frames	{n} khung hình
+	Library	Thư viện
+	Refresh	Làm mới
+	Recordings will be listed here once you've chosen a folder.	Các bản ghi sẽ được liệt kê ở đây sau khi bạn chọn thư mục.
+	No recordings yet.	Chưa có bản ghi nào.
+	Open folder	Mở thư mục
+	Delete frames	Xóa khung hình
+	Delete folder	Xóa thư mục
+	Pause the recording first	Hãy tạm dừng ghi trước
+	REC	REC
+	EXPORTED	ĐÃ XUẤT
+	NOT EXPORTED	CHƯA XUẤT
+	{time} work	{time} làm việc
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}” chưa được xuất. Nếu bạn xóa các khung hình ({frames}), bạn sẽ không thể làm video từ bản ghi này nữa. Không thể hoàn tác thao tác này.
+	Delete the {frames} of “{name}”?	Xóa các khung hình của “{name}” ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Bạn đã ghi thêm kể từ lần xuất gần nhất, và phần đó không có trong video.
+	Your videos and the work time are kept. This can't be undone.	Video của bạn và thời gian làm việc được giữ lại. Không thể hoàn tác thao tác này.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Xóa “{name}” và thư mục của nó? Bản ghi bị gỡ khỏi thư viện, cùng với thời gian làm việc. Các video bạn đã xuất vẫn ở nơi bạn đã lưu. Không thể hoàn tác thao tác này.
+	Frames deleted.	Đã xóa khung hình.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	Đã xóa “{name}”. Thư mục còn chứa tệp khác nên được giữ lại.
+	Deleted “{name}”.	Đã xóa “{name}”.
+@plural	{n} recording|{n} recordings	{n} bản ghi
+	Save Preset from Last Upscale…	Lưu thiết lập sẵn từ lần phóng to gần nhất…
+	No upscale has come back from Topaz Gigapixel AI yet	Chưa có ảnh phóng to nào trở về từ Topaz Gigapixel AI
+	Detail:	Chi tiết:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: đã phóng to {scale}× lên {w} × {h} px (lớp mới). Giữ các thiết lập này bằng Thiết lập sẵn Topaz Gigapixel › Lưu thiết lập sẵn từ lần phóng to gần nhất
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	Đã lưu {name} (video {seconds}).
+	Export failed: {error}	Xuất thất bại: {error}
+	Export cancelled.	Đã hủy xuất.
+	just now	vừa xong
+	{n} min ago	{n} phút trước
+	{n} h ago	{n} giờ trước
+	yesterday	hôm qua
+	{n} days ago	{n} ngày trước
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Tệp nhỏ hơn và ghi nhanh nhất. Đủ cho phác thảo nhanh và xem trước.
+	Sharper video for big screens. Uses about twice the disk space.	Video sắc nét hơn cho màn hình lớn. Dùng khoảng gấp đôi dung lượng đĩa.
+	Full-HD video, good for social media. Recommended.	Video Full HD, phù hợp mạng xã hội. Khuyến nghị.
+	idle	nghỉ
+	Record	Ghi
+	Paused	Đã tạm dừng
+	Click to resume recording	Bấm để tiếp tục ghi
+	Open a document to record it.	Mở một tài liệu để ghi nó.
+	You'll be asked where to save recordings.	Bạn sẽ được hỏi lưu bản ghi ở đâu.
+	Export again	Xuất lại
+	Export video	Xuất video
+	Show the export results	Hiện kết quả xuất
+	Hide the export results	Ẩn kết quả xuất
+	≈ {seconds} video from {frames}.	≈ video {seconds} từ {frames}.
+	Confirm	Xác nhận
+	Cancel export	Hủy xuất
+	Frames	Khung hình
+	Timer	Thời gian
+	On disk	Trên đĩa
+	Hide the live preview	Ẩn xem trước trực tiếp
+	Show the newest frame	Hiện khung hình mới nhất
+	No frames yet — just start drawing	Chưa có khung hình — cứ bắt đầu vẽ
+	No frames yet	Chưa có khung hình
+	No layer selected	Chưa chọn lớp
+	{n} layers selected	Đã chọn {n} lớp
+	Not recorded	Không được ghi
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Lớp tham chiếu hoạt động như lớp thường nhưng không xuất hiện trong timelapse.
+	Back	Quay lại
+	Export settings	Cài đặt xuất
+	Make video with	Tạo video bằng
+	Bars colour	Màu dải viền
+	Bars fill the empty space when the canvas size changed during recording.	Dải viền lấp khoảng trống khi kích thước canvas thay đổi trong lúc ghi.
+	Show finished drawing first	Hiện bức vẽ hoàn chỉnh trước
+	Hold final image	Giữ hình cuối
+	Show work-time counter	Hiện bộ đếm thời gian làm việc
+	Record something in this document to see how long the video will be.	Ghi gì đó trong tài liệu này để xem video dài bao lâu.
+	≈ {seconds} video	≈ video {seconds}
+	{n} recorded frames	{n} khung hình đã ghi
+	Auto shows every frame once (at least 5 s, at most 1 min).	Tự động hiện mỗi khung hình một lần (ít nhất 5 giây, nhiều nhất 1 phút).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Kích thước canvas đã thay đổi trong lúc ghi; các khung hình trước được đặt vừa kích thước cuối.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Loại bỏ nhấp nháy bỏ các khung hình chỉ lóe lên (lớp bị ẩn chốc lát, nét vẽ được hoàn tác ngay), nên video có thể ngắn hơn một chút.
+	Recordings folder	Thư mục bản ghi
+	Not chosen yet — see Settings	Chưa chọn — xem Cài đặt
+	recorded {when}	ghi {when}
+	Recorded more since the last export.	Đã ghi thêm từ lần xuất trước.
+	Frames folder	Thư mục khung hình
+	Not chosen yet	Chưa chọn
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Nơi lưu các khung hình đã ghi. Video được lưu ở nơi bạn chọn khi xuất.
+	Choose folder…	Chọn thư mục…
+	Change folder…	Đổi thư mục…
+	Recording quality	Chất lượng ghi
+	Undoing something removes those recorded frames.	Hoàn tác sẽ xóa các khung hình đã ghi đó.
+	Reference layers	Lớp tham chiếu
+	Name tag	Thẻ tên
+	Layers with this in their name are left out of the timelapse.	Các lớp có điều này trong tên sẽ bị loại khỏi timelapse.
+	Work timer	Bộ đếm thời gian làm việc
+	Idle after	Nghỉ sau
+	The timer stops counting after this long without activity.	Bộ đếm ngừng sau khoảng thời gian không hoạt động này.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (nhanh)
+	Dark grey	Xám đậm
+	0.5 s	0,5 giây
+	1 s	1 giây
+	1.5 s	1,5 giây
+	2 s	2 giây
+	3 s	3 giây
+	4 s	4 giây
+	5 s	5 giây
+	8 s	8 giây
+	10 s	10 giây
+	1 min	1 phút
+	1.5 min	1,5 phút
+	2 min	2 phút
+	3 min	3 phút
+	5 min	5 phút
+	45 seconds	45 giây
+	Run Two Presets…	Chạy hai thiết lập sẵn…
+	Run Two Topaz Gigapixel Presets	Chạy hai thiết lập sẵn Topaz Gigapixel
+	Run	Chạy
+	Set Shortcut…	Đặt phím tắt…
+	Action Shortcut	Phím tắt thao tác
+	No shortcut.	Không có phím tắt.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} cũng là phím tắt của {commands}: thay vào đó nó sẽ chạy thao tác này.
+	Press the keys that play “{action}”.	Nhấn các phím để chạy “{action}”.
+	Shortcut:	Phím tắt:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Dùng được mọi phím, kèm Ctrl, Alt và Shift. Backspace sẽ xóa phím tắt.
+	The action no longer exists.	Thao tác không còn tồn tại.
+	Fill Tool	Công cụ Tô màu
+	Nothing to fill there	Không có gì để tô ở đó
+	No enclosed area to fill there	Không có vùng khép kín nào để tô ở đó
+	Fill: click an area	Tô màu: nhấp vào một vùng
+	Enclose and Fill: draw round the areas to fill	Bao quanh và tô: vẽ quanh các vùng cần tô
+	Paint Unfilled Area: paint over the gaps a fill left	Tô vùng chưa tô: tô lên các khe hở mà lần tô bỏ sót
+	Refer	Tham chiếu
+	Editing Layer	Lớp đang sửa
+	Selected Layers	Các lớp đã chọn
+	Layers in Folder	Các lớp trong thư mục
+	Reference Layers	Các lớp tham chiếu
+	Exclude	Loại trừ
+	Editing layer	Lớp đang sửa
+	Text layers	Lớp văn bản
+	Locked layers	Lớp bị khóa
+	Layers the fill doesn't read	Các lớp mà lần tô không đọc
+	Close Gap	Đóng khe hở
+	Treat gaps in the lines up to this wide as closed (0: off)	Coi khe hở trong nét đến độ rộng này là kín (0: tắt)
+	Area Scaling	Co giãn vùng
+	Grow the fill under the lines, or shrink it	Mở rộng vùng tô vào dưới nét, hoặc thu nhỏ
+	To Darkest Pixel	Đến điểm ảnh tối nhất
+	Follow Adjacent Pixels	Theo các điểm ảnh liền kề
+	White and Transparent	Trắng và trong suốt
+	Image Border	Viền ảnh
+	The canvas edge closes gaps as a line does	Mép canvas đóng khe hở như một nét
+	Reference layer: the Fill tool reads it	Lớp tham chiếu: công cụ Tô màu đọc lớp này
+	Set as Reference Layer	Đặt làm lớp tham chiếu
+	Clear Reference Layer	Bỏ lớp tham chiếu
+	Fill Tool Options	Tùy chọn công cụ Tô màu
+	Size Key Repeat	Lặp phím kích thước
+	Holding [ or ] to resize the brush	Giữ [ hoặc ] để đổi kích thước cọ
+	Pause before repeating	Tạm dừng trước khi lặp
+	Wait half a second before the size keeps changing, as typing does	Chờ nửa giây trước khi kích thước tiếp tục thay đổi, như khi gõ phím
+	Change every	Đổi mỗi
+	Sample on Alt	Lấy mẫu khi nhấn Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Với công cụ vẽ, nhấn Alt sẽ lấy ngay màu dưới con trỏ
+	Hold:	Giữ:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Cần giữ Alt bao lâu trước khi nó hoạt động như Ống hút màu thông thường: con trỏ ống hút, và nhấp để lấy mẫu
+	Move Layer Mask	Di chuyển mặt nạ lớp
+	Copy Layer Mask	Sao chép mặt nạ lớp
+	Move Vector Mask	Di chuyển mặt nạ vectơ
+	Copy Vector Mask	Sao chép mặt nạ vectơ
+	Save as:	Lưu thành:
+	Save Preset	Lưu thiết lập sẵn
+	Keep these two presets as one, listed with the others	Giữ hai thiết lập sẵn này thành một, liệt kê cùng các thiết lập khác
+	Stop recording first	Hãy dừng ghi trước
+	Select a step first	Hãy chọn một bước trước
+	This step has no dialog to record again	Bước này không có hộp thoại để ghi lại
+	Record Again…	Ghi lại…
+	Insert Menu Item…	Chèn mục menu…
+	Insert Conditional…	Chèn điều kiện…
+	Set Options…	Tùy chọn bộ…
+	Action Options…	Tùy chọn hành động…
+	Playback Options…	Tùy chọn phát lại…
+	Allow Tool Recording	Cho phép ghi công cụ
+	Record brush and other painting strokes, and the brush settings they use	Ghi các nét cọ và nét vẽ khác, cùng các thiết lập cọ mà chúng dùng
+	Clear All Actions	Xóa tất cả hành động
+	Replace Actions…	Thay thế hành động…
+	Create new set	Tạo bộ mới
+	Delete the set “{name}”?	Xóa bộ “{name}”?
+	Delete the action “{name}”?	Xóa hành động “{name}”?
+	Delete the selection?	Xóa vùng chọn?
+	Function Key:	Phím chức năng:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Hành động có phím tắt khác (Đặt phím tắt…); chọn phím ở đây sẽ thay thế nó.
+	Accelerated	Tăng tốc
+	Step by Step	Từng bước
+	Pause For:	Tạm dừng:
+	seconds	giây
+	None Selected	Chưa chọn
+	Menu Item:	Mục menu:
+	Type part of a menu item's name, then pick it below.	Nhập một phần tên mục menu, rồi chọn nó bên dưới.
+	If Current:	Nếu hiện tại:
+	Then Play Action:	Thì phát hành động:
+	Else Play Action:	Nếu không thì phát hành động:
+	Document Is Open	Tài liệu đang mở
+	Document Is Landscape	Tài liệu nằm ngang
+	Document Is Square	Tài liệu vuông
+	Document Is Portrait	Tài liệu thẳng đứng
+	Document Mode Is RGB	Chế độ tài liệu là RGB
+	Document Mode Is CMYK	Chế độ tài liệu là CMYK
+	Document Mode Is Grayscale	Chế độ tài liệu là Thang xám
+	Document Mode Is Lab	Chế độ tài liệu là Lab
+	Document Mode Is Bitmap	Chế độ tài liệu là Bitmap
+	Document Mode Is Indexed	Chế độ tài liệu là Màu chỉ mục
+	Document Mode Is Duotone	Chế độ tài liệu là Hai tông
+	Document Mode Is Multichannel	Chế độ tài liệu là Đa kênh
+	Document Is 8 Bits/Channel	Tài liệu 8 bit/kênh
+	Document Is 16 Bits/Channel	Tài liệu 16 bit/kênh
+	Document Is 32 Bits/Channel	Tài liệu 32 bit/kênh
+	Document Has Unsaved Changes	Tài liệu có thay đổi chưa lưu
+	Document Has a Selection	Tài liệu có vùng chọn
+	Document Has Layers	Tài liệu có lớp
+	Document Has Alpha Channels	Tài liệu có kênh alpha
+	Layer Is Background	Lớp là nền
+	Layer Is a Pixel Layer	Lớp là lớp điểm ảnh
+	Layer Is an Adjustment Layer	Lớp là lớp điều chỉnh
+	Layer Is a Shape Layer	Lớp là lớp hình
+	Layer Is a Type Layer	Lớp là lớp chữ
+	Layer Is a Smart Object	Lớp là đối tượng thông minh
+	Layer Is a Group	Lớp là nhóm
+	Layer Is Locked	Lớp bị khóa
+	Layer Is Visible	Lớp hiển thị
+	Layer Has Pixel Mask	Lớp có mặt nạ điểm ảnh
+	Layer Has Vector Mask	Lớp có mặt nạ vectơ
+	Layer Has Effects	Lớp có hiệu ứng
+	Pick a menu item first	Hãy chọn một mục menu trước
+	Find	Tìm
+	Close gaps up to {px} px	Đóng khe hở đến {px} px
+	Grow the selection under the lines, or shrink it	Mở rộng vùng chọn dưới nét vẽ, hoặc thu nhỏ
 	Decrease Brush Size	Giảm kích thước cọ
 	Increase Brush Size	Tăng kích thước cọ
 	Decrease Brush Hardness	Giảm độ cứng của cọ
@@ -3844,6 +4199,25 @@ curves	Smooth	Làm mượt
 	In Front	Phía trước
 	Behind	Phía sau
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Thêm mặt nạ thứ hai  (từ vùng chọn; {key} đảo ngược)
+	Convert to Vector Mask	Chuyển thành mặt nạ vectơ
+	Delete Second Mask	Xóa mặt nạ thứ hai
+	Disable Second Mask	Tắt mặt nạ thứ hai
+	Enable Second Mask	Bật mặt nạ thứ hai
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Khóa chọn: nhấp trên canvas sẽ xuyên qua (bảng Layers vẫn chọn được)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Đặt lớp hiện tại
+	Editing layer blocks the fill	Lớp đang sửa chặn vùng tô
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Nét vẽ trên lớp đang tô chặn vùng tô ở mọi dung sai, và vùng tô đi vào phía sau nó: vẽ qua khe hở để đóng lại
+	Undo widens Close Gap	Hoàn tác nới rộng Đóng khe hở
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Mỗi lần hoàn tác một lần tô sẽ đóng khe hở lớn hơn ở lần nhấp tiếp theo, cho đến khi bạn chọn công cụ khác
+	Close Gap widened to {px} px: click again to fill	Đã nới Đóng khe hở lên {px} px: nhấp lại để tô
+	Pick From	Chọn từ
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Độ đục cần có của lớp dưới con trỏ để Ctrl-nhấp và Tự chọn chọn nó: các điểm ảnh mờ hơn, như mặt nạ gần như đen, sẽ được nhấp xuyên qua (0: mọi điểm ảnh nhìn thấy)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Đã đặt Blend If hoặc hòa trộn nâng cao: nhấp để mở Tùy chọn hòa trộn
 # DDS Options (#1327)
 	DDS Options	Tùy chọn DDS
 	Compression	Nén
@@ -3877,6 +4251,38 @@ curves	Smooth	Làm mượt
 	End Size:	Kích thước cuối:
 	Enable	Bật
 	Save as Pattern	Lưu dưới dạng họa tiết
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, trả phí)
+	Remove Selection	Xóa vùng chọn
+	Remove what is selected ({key})	Xóa phần đã chọn ({key})
+	API Key…	Khóa API…
+	Change or remove the Google API key Nano Banana uses	Đổi hoặc gỡ khóa API Google mà Nano Banana dùng
+	Set API Key…	Đặt khóa API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana cần khóa API Google của riêng bạn; trước đó Tự động dùng LaMa
+	No API key	Không có khóa API
+	Nano Banana API Key	Khóa API Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 chạy trên máy chủ của Google và tính phí vào tài khoản Google của bạn: khoảng {small} mỗi lần xóa, {large} với vùng lớn.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Vùng quanh thứ bạn xóa được gửi tới Google, và Google được yêu cầu không lưu lại.
+	Get a key at	Lấy khóa tại
+	A key is saved in the system's credential store.	Có một khóa được lưu trong kho thông tin xác thực của hệ thống.
+	Using the {var} environment variable.	Đang dùng biến môi trường {var}.
+	Google API key	Khóa API Google
+	Remove Saved Key	Gỡ khóa đã lưu
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Hệ thống này không có kho thông tin xác thực mà PhotoCraft dùng được: hãy đặt biến môi trường {var} thay thế.
+	Mask image	Ảnh mặt nạ
+	Painted red	Tô đỏ
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana nhận ảnh nguyên trạng và một mặt nạ riêng cho vùng cần xóa
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana nhận ảnh với vùng cần xóa được tô đỏ, như cách làm trong Photoshop
+	Close up	Cận cảnh
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana nhận vùng xung quanh thứ bạn xóa, nên vẽ nó ở khoảng gấp đôi độ phân giải của trang
+	Whole page	Toàn trang
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana nhận toàn bộ trang: nhiều căn cứ hơn, nhưng kết quả mềm hơn
+	Creative	Sáng tạo
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Hiện mọi thứ Nano Banana đã vẽ, cả những gì nó thay đổi quanh vùng bạn xóa (mặt nạ lớp mờ dần ở các cạnh)
+	Grain…	Hạt phim…
+	Roughness:	Độ thô:
+	Color field	Vùng màu
+	Color slider	Thanh trượt màu
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Hãy xác nhận hoặc hủy hộp thoại bước hành động đang mở trước
 	Pro Medium Gray	Pro xám vừa
@@ -3896,3 +4302,10 @@ curves	Smooth	Làm mượt
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Mẫu: màu đã ghi
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	Xóa bằng AI
+	Remove what is selected with Nano Banana ({key})	Xóa vùng chọn bằng Nano Banana ({key})
+	Pin to Top	Ghim lên đầu
+	Unpin from Top	Bỏ ghim khỏi đầu

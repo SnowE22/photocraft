@@ -179,6 +179,7 @@ fn grabbed_alt_click(h: &mut Harness<'static, PhotocraftApp>, x: f32, y: f32, re
 
 #[test]
 fn an_alt_click_the_window_manager_took_says_so() {
+    crate::alt_grab::TEST_GRABS.with(|g| g.set(Some(true)));
     for tool in [Tool::Brush, Tool::Pencil, Tool::CloneStamp, Tool::Healing, Tool::Zoom] {
         let mut h = harness(two_colours());
         h.state_mut().ui.tool = tool;
@@ -189,7 +190,18 @@ fn an_alt_click_the_window_manager_took_says_so() {
 }
 
 #[test]
+fn windows_and_macos_never_say_the_desktop_took_an_alt_click() {
+    // No window manager there takes Alt+click: the pointer leaving with ⌥ held is something else.
+    crate::alt_grab::TEST_GRABS.with(|g| g.set(Some(false)));
+    let mut h = harness(two_colours());
+    h.state_mut().ui.tool = Tool::Brush;
+    grabbed_alt_click(&mut h, 50.0, 50.0, true);
+    assert_ne!(h.state().ui.status, crate::alt_grab::message());
+}
+
+#[test]
 fn leaving_the_window_without_a_grab_says_nothing() {
+    crate::alt_grab::TEST_GRABS.with(|g| g.set(Some(true)));
     // Alt+Tab to another window: the pointer comes back to an unfocused window.
     let mut h = harness(two_colours());
     h.state_mut().ui.tool = Tool::Brush;
@@ -243,5 +255,23 @@ fn alt_click_with_the_zoom_tool_zooms_out_held_or_latched() {
         h.state_mut().ui.shell.sticky_alt = false;
         click(&mut h, 50.0, 50.0, Modifiers::NONE);
         assert_eq!(h.state().ui.views[0].zoom, 1.0, "sticky={sticky} scrubby={scrubby}");
+    }
+}
+
+#[test]
+fn the_remove_tool_starts_on_the_press_like_the_brush() {
+    // It started only once the pointer passed the click distance, and a click painted on the
+    // release: the press itself showed nothing.
+    for tool in [Tool::Remove, Tool::SpotHealing] {
+        let mut h = harness(two_colours());
+        h.state_mut().ui.tool = tool;
+        let p = screen(&h, 50.0, 50.0);
+        h.event(egui::Event::PointerMoved(p));
+        h.run_steps(1);
+        button(&mut h, p, true, Modifiers::NONE);
+        assert!(h.state().drag.as_ref().is_some_and(|d| d.tool == tool), "{tool:?}: the stroke is under way on the press");
+        button(&mut h, p, false, Modifiers::NONE);
+        h.run_steps(2);
+        assert!(h.state().drag.is_none(), "{tool:?}");
     }
 }

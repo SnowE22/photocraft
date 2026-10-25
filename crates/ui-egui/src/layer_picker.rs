@@ -70,10 +70,22 @@ pub fn sample_at(app: &mut PhotocraftApp, x: f64, y: f64) -> bool {
 
 /// The three eyedropper buttons above the Levels or Curves editor of adjustment layer `layer`.
 pub fn controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: LayerId) {
+    ui.horizontal(|ui| buttons(app, ui, layer));
+}
+
+/// The three eyedroppers one above the other in `rect` (the Curves graph's tool column, as in
+/// Photoshop).
+pub fn controls_in(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: LayerId, rect: egui::Rect) {
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(rect).layout(egui::Layout::top_down(egui::Align::Min)));
+    child.spacing_mut().item_spacing.y = crate::adjust_editors::CURVES_TOOL_GAP;
+    buttons(app, &mut child, layer);
+}
+
+fn buttons(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: LayerId) {
     let Some(mode) = app.session.active().map(|s| s.doc.mode) else { return };
     let current = armed(app).filter(|(l, _)| *l == layer).map(|(_, p)| p.to_string());
     let mut clicked = None;
-    ui.horizontal(|ui| {
+    {
         // The swatch is the tone the picker maps the sample to, as in the dialog.
         for ((id, e), (label, tone)) in POINTS.iter().zip([(tl!("Set Black Point"), 0), (tl!("Set Neutral Gray Point"), 128), (tl!("Set White Point"), 255)]) {
             let enabled = crate::adjust_dialog::picker_supported(mode, *e);
@@ -82,7 +94,7 @@ pub fn controls(app: &mut PhotocraftApp, ui: &mut egui::Ui, layer: LayerId) {
                 clicked = Some((*id, selected));
             }
         }
-    });
+    }
     match clicked {
         Some((_, true)) => app.ui.layer_picker = None,
         Some((id, false)) => app.ui.layer_picker = Some(LayerPicker { layer: layer.0, point: id.into(), tool: app.ui.tool }),

@@ -10,6 +10,12 @@
 //! step per step that ran. Steps switched off with `actions.toggle` (the Actions panel check
 //! marks) are skipped by playback, Batch and droplets.
 //!
+//! What is recorded follows Photoshop ([`recordable`]): tool options, the presets panels,
+//! preferences and the View menu are not (Insert Menu Item adds a menu step), and painting and
+//! toning strokes only with Allow Tool Recording ([`ActionPrefs::allow_tool_recording`]).
+//! Recording into an action with a step selected inserts after that step
+//! ([`ActionState::record_at`]).
+//!
 //! An untrusted session installs [`Session::authorize`]. `actions.play` calls it for every nested
 //! step, because the outer `actions.play` id would otherwise hide a recorded `file.*` command from
 //! the top-level check.
@@ -74,11 +80,55 @@ impl Action {
     }
 }
 
-/// On-disk form of [`ActionState::list`] (`actions.json` in the preset store).
+/// On-disk form of [`ActionState::list`] and [`ActionState::prefs`] (`actions.json` in the preset
+/// store).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ActionsFile {
     pub version: u32,
     pub actions: Vec<Action>,
+    #[serde(default, flatten)]
+    pub prefs: ActionPrefs,
+}
+
+/// How the Actions panel's Playback Options pace playback in the app (headless playback is
+/// always accelerated).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "mode")]
+pub enum Playback {
+    /// Every step at once.
+    #[default]
+    Accelerated,
+    /// The document redraws after every step.
+    StepByStep,
+    /// A pause of `seconds` between steps.
+    Pause { seconds: f32 },
+}
+
+/// The longest Pause For Playback Options accepts, seconds.
+pub const MAX_PAUSE_S: f32 = 60.0;
+
+impl Playback {
+    /// The time between steps, seconds; `None` plays them all in one go.
+    pub fn delay(self) -> Option<f64> {
+        match self {
+            Playback::Accelerated => None,
+            Playback::StepByStep => Some(0.0),
+            Playback::Pause { seconds } => Some(if seconds.is_finite() { f64::from(seconds.clamp(0.0, MAX_PAUSE_S)) } else { 1.0 }),
+        }
+    }
+}
+
+/// The Actions panel's settings that persist with the list.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ActionPrefs {
+    /// The set folders in panel order, empty ones included (New Set…).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub sets: Vec<String>,
+    /// The panel menu's Allow Tool Recording: painting and toning strokes are recorded too.
+    pub allow_tool_recording: bool,
+    /// The panel menu's Playback Options.
+    pub playback: Playback,
 }
 
 pub const MAX_PLAYBACK_STEPS: u64 = 100_000;
@@ -88,9 +138,14 @@ pub const MAX_PLAYBACK_STEPS: u64 = 100_000;
 #[serde(default)]
 pub struct ActionState {
     pub list: Vec<Action>,
+    pub prefs: ActionPrefs,
     /// Journal length when recording started, and the action index being recorded into.
     #[serde(skip)]
     pub recording: Option<(usize, usize)>,
+    /// Where recorded steps go in that action: after the step that was selected when recording
+    /// started, as in Photoshop; `None` appends them.
+    #[serde(skip)]
+    pub record_at: Option<usize>,
     /// Nesting depth of `actions.play`, bounded by the playback stack limit.
     #[serde(skip)]
     pub playing: u8,
@@ -111,9 +166,32 @@ pub struct ActionState {
 
 impl ActionState {
     pub(crate) fn touch(&mut self) {
+        // Every set an action names has its folder.
+        for action in &self.list {
+            if let Some(set) = &action.set
+                && !self.prefs.sets.contains(set)
+            {
+                self.prefs.sets.push(set.clone());
+            }
+        }
         self.rev = self.rev.saturating_add(1);
     }
+
+    /// The set folders in panel order: the listed ones, then any an action names that isn't
+    /// listed yet.
+    pub fn sets(&self) -> Vec<String> {
+        let mut sets = self.prefs.sets.clone();
+        for set in self.list.iter().filter_map(|a| a.set.as_ref()) {
+            if !sets.contains(set) {
+                sets.push(set.clone());
+            }
+        }
+        sets
+    }
 }
+
+/// The set Photoshop starts with, where actions recorded outside any set go.
+pub const DEFAULT_SET: &str = "Default Actions";
 
 /// Replay commands and named action calls, excluding edits to the action definitions and the
 /// already-expanded Again wrapper.
@@ -128,6 +206,56 @@ pub fn replayable(id: &str) -> bool {
             // every script edit twice (#3057).
             && !matches!(id, "edit.transform.again" | "edit.transform.againCopy" | "file.scripts.browse")
             && (shell_view_command(id) || shell_save_command(id) || crate::commands::find(id).is_some_and(|c| c.journal)))
+}
+
+/// Tool options, the presets panels, preferences and the View menu's zoom, which Photoshop
+/// doesn't record (Insert Menu Item adds such a step).
+pub fn never_recorded(id: &str) -> bool {
+    shell_view_command(id)
+        || id.starts_with("brush.presets.")
+        || id.starts_with("document.presets.")
+        || matches!(id, "edit.keyboardShortcuts" | "edit.menus" | "edit.toolbar" | "brush.texturePattern")
+}
+
+/// Painting and toning strokes and the brush settings they use: recorded only with Allow Tool
+/// Recording, as in Photoshop.
+pub fn tool_step(id: &str) -> bool {
+    matches!(
+        id,
+        "paint.stroke"
+            | "paint.pencil"
+            | "paint.mixerBrush"
+            | "paint.colorReplacement"
+            | "paint.cloneStamp"
+            | "paint.patternStamp"
+            | "paint.healingBrush"
+            | "paint.spotHealing"
+            | "paint.remove"
+            | "paint.dodge"
+            | "paint.burn"
+            | "paint.sponge"
+            | "paint.blur"
+            | "paint.sharpen"
+            | "paint.smudge"
+            | "paint.historyBrush"
+            | "paint.backgroundEraser"
+            | "paint.setSymmetry"
+            | "paint.symmetryFromPath"
+            | "paint.symmetryDisable"
+            | "tools.setBrush"
+            | "tools.decreaseBrushSize"
+            | "tools.increaseBrushSize"
+            | "tools.decreaseBrushHardness"
+            | "tools.increaseBrushHardness"
+            | "tools.rotateBrush"
+            | "cloneSource.set"
+            | "cloneSource.select"
+    )
+}
+
+/// Whether recording keeps the journal entry `id`: a [`replayable`] command Photoshop records.
+pub fn recordable(s: &Session, id: &str) -> bool {
+    replayable(id) && !never_recorded(id) && (!tool_step(id) || s.actions.prefs.allow_tool_recording)
 }
 
 /// File › Save, Save As and Save a Copy, and File › Export › Export As, recorded by the desktop
@@ -255,6 +383,15 @@ pub(crate) fn resolve(list: &[Action], p: &Value, cmd: &str) -> Result<usize> {
     }
 }
 
+/// `p.steps`: how many steps to play (Play with Ctrl plays the selected one alone); `None` plays
+/// to the end.
+pub fn step_limit(p: &Value) -> Result<Option<usize>> {
+    match p.get("steps") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => v.as_u64().and_then(|n| usize::try_from(n).ok()).map(Some).ok_or_else(|| bad("actions.play", "\"steps\" must be a step count")),
+    }
+}
+
 fn from_step(p: &Value, len: usize) -> Result<usize> {
     let Some(v) = p.get("from") else { return Ok(0) };
     if v.is_null() {
@@ -293,6 +430,11 @@ fn record(s: &mut Session, p: &Value) -> Result<Value> {
     if s.actions.recording.is_some() {
         return Err(bad("actions.record", "already recording; stop first"));
     }
+    let set = match p.get("set") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(n)) if !n.trim().is_empty() => Some(n.trim().to_string()),
+        Some(_) => return Err(bad("actions.record", "\"set\" must be a set name")),
+    };
     let idx = if p.get("action").is_some() {
         resolve(&s.actions.list, p, "actions.record")?
     } else {
@@ -311,20 +453,44 @@ fn record(s: &mut Session, p: &Value) -> Result<Value> {
         if s.actions.list.iter().any(|action| action.name == name) {
             return Err(bad("actions.record", "an action with this name already exists"));
         }
-        s.actions.list.push(Action::new(name, Vec::new()));
+        let mut action = Action::new(name, Vec::new());
+        action.set = set;
+        // A new action goes last in its set, as Photoshop adds it.
+        let at = match &action.set {
+            Some(set) => s.actions.list.iter().rposition(|a| a.set.as_ref() == Some(set)).map_or(s.actions.list.len(), |i| i + 1),
+            None => s.actions.list.len(),
+        };
+        s.actions.list.insert(at, action);
         s.actions.touch();
-        s.actions.list.len() - 1
+        at
+    };
+    let len = s.actions.list.get(idx).map_or(0, |a| a.steps.len());
+    let at = match p.get("at") {
+        None | Some(Value::Null) => None,
+        Some(v) => match v.as_u64().and_then(|n| usize::try_from(n).ok()) {
+            Some(at) if at <= len => Some(at).filter(|at| *at < len),
+            Some(at) => return Err(bad("actions.record", format!("\"at\" {at} is past the last step ({len})"))),
+            None => return Err(bad("actions.record", "\"at\" must be a step index")),
+        },
     };
     s.actions.recording = Some((s.journal.len(), idx));
+    s.actions.record_at = at;
     s.actions.take = s.actions.take.wrapping_add(1);
     let name = s.actions.list.get(idx).map(|a| a.name.clone()).unwrap_or_default();
     Ok(json!({"action": name, "index": idx}))
 }
 
-/// Replayable journal entries not yet committed to this action while recording.
+/// Recordable journal entries not yet committed to this action while recording.
 pub fn pending_steps(s: &Session, action: usize) -> impl Iterator<Item = &(String, Value)> {
     let from = s.actions.recording.filter(|(_, i)| *i == action).map_or(s.journal.len(), |(from, _)| from);
-    s.journal.iter().skip(from).filter(|(id, _)| replayable(id))
+    s.journal.iter().skip(from).filter(|(id, _)| recordable(s, id))
+}
+
+/// Where `action`'s pending steps show and will land: after the step selected when recording
+/// started, or at the end.
+pub fn pending_at(s: &Session, action: usize) -> usize {
+    let len = s.actions.list.get(action).map_or(0, |a| a.steps.len());
+    s.actions.record_at.filter(|_| s.actions.recording.is_some_and(|(_, i)| i == action)).map_or(len, |at| at.min(len))
 }
 
 pub(crate) fn flush_recording(s: &mut Session) -> Result<()> {
@@ -333,9 +499,16 @@ pub(crate) fn flush_recording(s: &mut Session) -> Result<()> {
         return Err(bad("actions.stop", "the action being recorded no longer exists"));
     }
     let steps: Vec<_> = pending_steps(s, idx).cloned().collect();
+    let at = pending_at(s, idx);
     s.actions.recording = Some((s.journal.len(), idx));
     if !steps.is_empty() {
-        s.actions.list[idx].steps.extend(steps);
+        let n = steps.len();
+        let action = &mut s.actions.list[idx];
+        action.remap_steps(|i| Some(if i >= at { i + n } else { i }));
+        action.steps.splice(at..at, steps);
+        if let Some(r) = s.actions.record_at.as_mut() {
+            *r = at + n;
+        }
         s.actions.touch();
     }
     Ok(())
@@ -348,6 +521,7 @@ fn stop(s: &mut Session, _p: &Value) -> Result<Value> {
     };
     flush_recording(s)?;
     s.actions.recording = None;
+    s.actions.record_at = None;
     let action = &s.actions.list[idx];
     Ok(json!({"action": action.name, "steps": action.steps.len()}))
 }
@@ -358,10 +532,10 @@ fn noop_step(s: &Session, id: &str) -> bool {
     id == "select.deselect" && s.active().is_some_and(|d| d.doc.selection.is_none())
 }
 
-fn run_recorded(s: &mut Session, action: &Action, from: usize) -> (u64, Option<Value>) {
+fn run_recorded(s: &mut Session, action: &Action, from: usize, limit: Option<usize>) -> (u64, Option<Value>) {
     let mut ran = 0u64;
     let mut failed = None;
-    for (i, (id, params)) in action.enabled_steps().skip_while(|(i, _)| *i < from) {
+    for (i, (id, params)) in action.enabled_steps().skip_while(|(i, _)| *i < from).take(limit.unwrap_or(usize::MAX)) {
         if !consume_playback_step(s) {
             failed = Some(json!({"step": i, "id": id, "error": format!("action playback exceeded the {}-step limit", MAX_PLAYBACK_STEPS)}));
             break;
@@ -406,20 +580,24 @@ pub fn begin_playback(s: &mut Session, action: &Action) -> Result<Option<(usize,
     Ok(recording)
 }
 
-pub fn finish_playback(s: &mut Session, recording: Option<(usize, usize)>, action: &Action, from: usize) {
+pub fn finish_playback(s: &mut Session, recording: Option<(usize, usize)>, action: &Action, from: usize, limit: Option<usize>) {
     s.actions.playback_stack.pop();
     s.actions.playing = s.actions.playing.saturating_sub(1);
     if let Some((_, idx)) = recording {
-        restore_recording(s, idx, &action.name, from);
+        restore_recording(s, idx, &action.name, from, limit);
     }
 }
 
-/// Resume recording into action `idx` and journal the named call that suspended it.
-pub fn restore_recording(s: &mut Session, idx: usize, action: &str, from: usize) {
+/// Resume recording into action `idx` and journal the named call that suspended it (`limit`: the
+/// steps it played, Ctrl+Play).
+pub fn restore_recording(s: &mut Session, idx: usize, action: &str, from: usize, limit: Option<usize>) {
     s.actions.recording = Some((s.journal.len(), idx));
     let mut params = json!({"action": action});
     if from > 0 {
         params["from"] = json!(from);
+    }
+    if let Some(limit) = limit {
+        params["steps"] = json!(limit);
     }
     s.journal.push(("actions.play".into(), params));
 }
@@ -439,9 +617,10 @@ pub fn nested_failure(id: &str, value: &Value) -> Option<String> {
 
 fn play(s: &mut Session, p: &Value) -> Result<Value> {
     let (action, from) = playback_plan(s, p)?;
+    let limit = step_limit(p)?;
     let recording = begin_playback(s, &action)?;
-    let (ran, failed) = run_recorded(s, &action, from);
-    finish_playback(s, recording, &action, from);
+    let (ran, failed) = run_recorded(s, &action, from, limit);
+    finish_playback(s, recording, &action, from, limit);
     Ok(match failed {
         Some(f) => json!({"action": action.name, "ran": ran, "failed": f}),
         None => json!({"action": action.name, "ran": ran}),
@@ -471,6 +650,8 @@ fn move_item(s: &mut Session, p: &Value) -> Result<Value> {
         }
         if s.actions.recording.is_some_and(|(_, i)| i == idx) {
             flush_recording(s)?;
+            // Recording goes on at the end of the reordered steps.
+            s.actions.record_at = None;
         }
         let action = &mut s.actions.list[idx];
         let moved = action.steps.remove(step);
@@ -520,6 +701,11 @@ fn delete(s: &mut Session, p: &Value) -> Result<Value> {
         // journal or undo the edit that produced the deleted recording step.
         if s.actions.recording.is_some_and(|(_, i)| i == idx) {
             flush_recording(s)?;
+            if let Some(at) = s.actions.record_at.as_mut()
+                && step < *at
+            {
+                *at -= 1;
+            }
         }
         let action = &mut s.actions.list[idx];
         action.steps.remove(step);
@@ -592,6 +778,19 @@ fn toggle(s: &mut Session, p: &Value) -> Result<Value> {
 
 /// Prefix of the persisted shortcut override that plays a named action (`actions.play:<name>`).
 pub const PLAY_SHORTCUT_PREFIX: &str = "actions.play:";
+
+/// An action's key as Photoshop's Action Options set it: F1–F15 with Shift and/or Control (⌘ on
+/// the Mac), in shortcut notation (`F2`, `Shift+F2`, `Cmd+F2`, `Cmd+Shift+F2`). None for a key
+/// number outside 1–15 (0 is "no key").
+pub fn action_key(function_key: u16, shift: bool, command: bool) -> Option<String> {
+    (1..=15).contains(&function_key).then(|| crate::atn_cmds::function_key_name(function_key, shift, command))
+}
+
+/// [`action_key`] read back: the function key and its Shift and Control (⌘) flags. None for
+/// anything else (another key, Alt, a malformed string).
+pub fn parse_action_key(key: &str) -> Option<(u16, bool, bool)> {
+    crate::atn_cmds::parse_function_key(key)
+}
 
 /// Rename an action in place. Nested `actions.play` steps and `actions.conditional` branches
 /// that call it by name, and its function-key binding, follow the new name so nothing silently
@@ -697,7 +896,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Record Action",
             menu: &[],
             shortcut: None,
-            params: r##"{"name":str? (new action, default "Action N")} or {"action":name|index} (append) → {action, index}"##,
+            params: r##"{"name":str? (new action, default "Action N"), "set":name? (the set it goes last in)} or {"action":name|index, "at":step?} (record into it: at the 0-based step position, after the step selected in the panel, else at the end) → {action, index}. Records what Photoshop records: not tool options, presets panels, preferences or View commands, and painting strokes only with actions.options allowToolRecording."##,
             enabled: always,
             run: record,
             journal: false,
@@ -717,7 +916,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Play Action",
             menu: &[],
             shortcut: None,
-            params: r##"{"action":name|index, "from":step?} → {action, ran, failed?:{step, id, error}}. step and from are 0-based; steps switched off with actions.toggle are skipped. Stops at the first error (the command still returns ok, with failed set) and leaves one history step per step that ran. Nested calls are supported up to 16 levels; cycles are rejected. Recording stores a named call rather than its expanded commands. Each step is checked with Session::authorize when one is installed."##,
+            params: r##"{"action":name|index, "from":step?, "steps":count?} → {action, ran, failed?:{step, id, error}}. step and from are 0-based; steps plays only that many (Photoshop's Ctrl+Play plays the selected step alone); steps switched off with actions.toggle are skipped. Stops at the first error (the command still returns ok, with failed set) and leaves one history step per step that ran. Nested calls are supported up to 16 levels; cycles are rejected. Recording stores a named call rather than its expanded commands. Each step is checked with Session::authorize when one is installed."##,
             enabled: always,
             run: play,
             journal: false,
@@ -836,6 +1035,21 @@ mod tests {
             assert!(s.execute("actions.toggle", bad.clone()).is_err(), "{bad}");
         }
         assert_eq!(s.actions.list[0].disabled.iter().copied().collect::<Vec<_>>(), [1], "rejected toggles change nothing");
+    }
+
+    /// Photoshop's Action Options keys: F1–F15 with Shift and/or Control (⌘), both ways.
+    #[test]
+    fn action_keys_read_back_and_reject_other_keys() {
+        for (n, shift, command, key) in [(2, false, false, "F2"), (2, true, false, "Shift+F2"), (12, false, true, "Cmd+F12"), (15, true, true, "Cmd+Shift+F15")]
+        {
+            assert_eq!(super::action_key(n, shift, command).as_deref(), Some(key));
+            assert_eq!(super::parse_action_key(key), Some((n, shift, command)), "{key}");
+        }
+        assert_eq!(super::action_key(0, true, true), None, "0 is no key");
+        assert_eq!(super::action_key(16, false, false), None);
+        for bad in ["", "F", "F0", "F16", "Fx", "Alt+F2", "Cmd+Cmd+F2", "Ctrl+F2", "Shift+A", "F2+Shift", "+F2"] {
+            assert_eq!(super::parse_action_key(bad), None, "{bad}");
+        }
     }
 
     #[test]
@@ -1202,6 +1416,84 @@ mod tests {
         s.execute("actions.stop", json!({})).unwrap();
         assert_eq!(s.actions.list[0].steps, vec![("layer.duplicate".to_string(), json!({}))]);
         assert_eq!(s.actions.list[1].steps, vec![("layer.duplicate".to_string(), json!({"inPlace": true}))]);
+    }
+
+    #[test]
+    fn recording_skips_selecting_the_current_layer_and_renames_the_current_one() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("layer.new.layer", json!({"name": "A"})).unwrap();
+        let a = s.active().unwrap().active_layer.unwrap();
+        s.execute("actions.record", json!({"name": "Rename"})).unwrap();
+        // A click on the layer already selected: nothing to record.
+        s.execute("layer.select", json!({"layer": a.0, "mode": "replace"})).unwrap();
+        // The Layers panel renames by id: recorded as Set Current Layer, for the current layer.
+        s.execute("layer.setProps", json!({"layer": a.0, "name": "Ink"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        assert_eq!(s.actions.list[0].steps, vec![("layer.setProps".to_string(), json!({"name": "Ink"}))]);
+        // Played on another document whose ids differ, it renames that document's current layer.
+        let mut replay = Session::new();
+        replay.actions.list = s.actions.list.clone();
+        replay.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        replay.execute("layer.new.layer", json!({"name": "X"})).unwrap();
+        replay.execute("layer.new.layer", json!({"name": "Y"})).unwrap();
+        let y = replay.active().unwrap().active_layer.unwrap();
+        let r = replay.execute("actions.play", json!({"action": 0})).unwrap();
+        assert!(r.get("failed").is_none(), "{r}");
+        assert_eq!(replay.active().unwrap().doc.layer(y).unwrap().name, "Ink");
+        // A select that changes the selection is still recorded.
+        s.execute("layer.new.layer", json!({"name": "B"})).unwrap();
+        s.execute("actions.record", json!({"name": "Pick"})).unwrap();
+        s.execute("layer.select", json!({"layer": a.0, "mode": "replace"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        assert_eq!(s.actions.list[1].steps.len(), 1);
+    }
+
+    #[test]
+    fn recording_names_another_layer_and_leaves_out_the_current_one() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        s.execute("layer.new.layer", json!({"name": "A"})).unwrap();
+        let a = s.active().unwrap().active_layer.unwrap();
+        s.execute("layer.new.layer", json!({"name": "B"})).unwrap();
+        let b = s.active().unwrap().active_layer.unwrap();
+        s.execute("actions.record", json!({"name": "Solo"})).unwrap();
+        // ⌥-click the current layer's eye, then another layer's; rename that other layer.
+        s.execute("layer.showOnly", json!({"layer": b.0})).unwrap();
+        s.execute("layer.showOnly", json!({"layer": a.0})).unwrap();
+        s.execute("layer.setProps", json!({"layer": a.0, "name": "Ink"})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        assert_eq!(
+            s.actions.list[0].steps,
+            vec![
+                // Show Only acts on the current layer when played, whichever eye was ⌥-clicked.
+                ("layer.showOnly".to_string(), json!({})),
+                ("layer.showOnly".to_string(), json!({})),
+                // The name before the rename.
+                ("layer.setProps".to_string(), json!({"layer": {"name": "A"}, "name": "Ink"})),
+            ]
+        );
+        // Of two layers with one name, which one.
+        s.execute("layer.setProps", json!({"layer": b.0, "name": "Ink"})).unwrap();
+        s.execute("actions.record", json!({"name": "Twin"})).unwrap();
+        s.execute("layer.hideLayers", json!({"layer": a.0})).unwrap();
+        s.execute("actions.stop", json!({})).unwrap();
+        assert_eq!(s.actions.list[1].steps, vec![("layer.hideLayers".to_string(), json!({"layer": {"name": "Ink", "occurrence": 0}}))]);
+        // Played on another document, the named layer is shown alone.
+        let mut replay = Session::new();
+        replay.actions.list = s.actions.list.clone();
+        replay.execute("file.new", json!({"width": 8, "height": 8})).unwrap();
+        replay.execute("layer.new.layer", json!({"name": "A"})).unwrap();
+        let ra = replay.active().unwrap().active_layer.unwrap();
+        replay.execute("layer.new.layer", json!({"name": "B"})).unwrap();
+        let rb = replay.active().unwrap().active_layer.unwrap();
+        // One ⌥-click, recorded on A while B was current, shows the replay's current layer alone.
+        replay.actions.list[0].steps = vec![("layer.showOnly".to_string(), json!({"layer": {"name": "A"}}))];
+        let r = replay.execute("actions.play", json!({"action": 0})).unwrap();
+        assert!(r.get("failed").is_none(), "{r}");
+        let doc = &replay.active().unwrap().doc;
+        assert!(doc.walk().iter().all(|(_, _, l)| l.visible == (l.id == rb)), "an older step naming A still shows the current layer alone");
+        assert!(doc.layer(ra).is_some_and(|l| !l.visible));
     }
 
     #[test]

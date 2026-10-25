@@ -3333,6 +3333,362 @@ curves	Smooth	Lisser
 	Replace	Remplacer
 	{name} was changed by another app after it was opened or saved here.	{name} a été modifié par une autre application après avoir été ouvert ou enregistré ici.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Remplacez-le par ce document, ou annulez et utilisez Fichier › Enregistrer sous pour garder les deux.
+
+	Panel Icons	Icônes des panneaux
+	Move Tools panel	Déplacer le panneau Outils
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Faites glisser pour déplacer le panneau Outils ; déposez-le au bord du canevas pour l’ancrer
+	New Document…	Nouveau document…
+	Open Document…	Ouvrir un document…
+	Delete Brushes	Supprimer les pinceaux
+	Thumbnail size	Taille des vignettes
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Importer les actions de Photoshop
+	No Photoshop Actions palette was found on this computer	Aucune palette d'actions Photoshop trouvée sur cet ordinateur
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Ouverte dans Topaz Gigapixel AI : exportez-y l'image pour la récupérer ici
+	Stopped waiting for Topaz Gigapixel AI	Attente de Topaz Gigapixel AI arrêtée
+	Topaz Gigapixel AI's image could not be applied: {error}	Impossible d'appliquer l'image de Topaz Gigapixel AI : {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI : agrandie {scale}× à {w} × {h} px (nouveau calque)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	En attente de Topaz Gigapixel AI : exportez-y l'image agrandie pour la récupérer ici.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} action chargée dans {sets} ensembles depuis {file}|{n} actions chargées dans {sets} ensembles depuis {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	IA générative activée
+	Generative AI Off	IA générative désactivée
+	Loading the AI model…	Chargement du modèle d'IA…
+	AI model not installed	Modèle d'IA non installé
+	AI model failed to load	Échec du chargement du modèle d'IA
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Placez lama_fp32.onnx et ONNX Runtime (onnxruntime.dll, DirectML.dll) dans l'un de ces dossiers : {folders}. D'ici là, « Auto » utilise le remplissage classique.
+	Model:	Modèle :
+	LaMa (fast)	LaMa (rapide)
+	Diffusion (detailed)	Diffusion (détaillée)
+	Prompt (optional)	Invite (facultative)
+	What should be there. Empty: the model's own guess.	Ce qui devrait s'y trouver. Vide : la supposition du modèle.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Placez le dossier du modèle de diffusion et ONNX Runtime dans l'un de : {folders}. D'ici là, Auto utilise LaMa.
+	Generative Fill…	Remplissage génératif…
+	Center Canvas When Zoomed Out	Centrer la zone de travail en zoom arrière
+	High (slower)	Élevée (plus lente)
+	Quality:	Qualité :
+	There is no such Topaz Gigapixel preset	Ce paramètre prédéfini Topaz Gigapixel n’existe pas
+	Saved Topaz Gigapixel preset “{name}”	Paramètre prédéfini Topaz Gigapixel « {name} » enregistré
+	New Preset	Nouveau paramètre prédéfini
+	Upscale:	Agrandissement :
+	With these settings	Avec ces paramètres
+	With two presets	Avec deux paramètres prédéfinis
+	Save two presets with their own settings first; then this one can run them together.	Enregistrez d’abord deux paramètres prédéfinis avec leurs propres réglages ; celui-ci pourra ensuite les exécuter ensemble.
+	First:	D’abord :
+	Then:	Puis :
+	Results:	Résultats :
+	One after the other	L’un après l’autre
+	Each on its own layer	Chacun sur son propre calque
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Les deux paramètres prédéfinis agrandissent l’image ; chaque résultat devient un calque, à comparer ou à fusionner.
+	The second preset upscales the first one's result.	Le second paramètre prédéfini agrandit le résultat du premier.
+	Topaz Gigapixel Presets	Paramètres prédéfinis Topaz Gigapixel
+	Manage Presets…	Gérer les paramètres prédéfinis…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Exécutez un paramètre enregistré depuis Fichier › Automatisation › Paramètres prédéfinis Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Auto laisse Gigapixel choisir.
+	Denoise:	Débruitage :
+	Sharpen:	Netteté :
+	Fix Compression:	Corriger la compression :
+	Face Recovery:	Restauration des visages :
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Choisissez un dossier pour vos enregistrements timelapse
+	Saved {name} ({seconds} s timelapse)	{name} enregistré (timelapse de {seconds} s)
+	Export Timelapse	Exporter le timelapse
+	Export Timelapse…	Exporter le timelapse…
+	Timelapse export cancelled	Exportation du timelapse annulée
+	Timelapse	Timelapse
+	Auto record	Enregistrement automatique
+	Records whatever document you're on, unless you paused it yourself.	Enregistre le document sur lequel vous travaillez, sauf si vous l'avez mis en pause vous-même.
+	Open a document to record a timelapse.	Ouvrez un document pour enregistrer un timelapse.
+	Recording (idle)	Enregistrement (inactif)
+	Recording	Enregistrement
+	Click to pause	Cliquez pour mettre en pause
+	Paused: click to resume	En pause : cliquez pour reprendre
+	Start recording	Démarrer l'enregistrement
+	Pause Recording	Suspendre l'enregistrement
+	Reference Layer	Calque de référence
+	Reference layer	Calque de référence
+	Recorded more since the last export	Enregistré davantage depuis la dernière exportation
+	Select a layer	Sélectionnez un calque
+	Not recorded: you see it, the timelapse doesn't	Non enregistré : vous le voyez, le timelapse non
+	Recorded	Enregistré
+	{count} of {total} not recorded	{count} sur {total} non enregistrés
+	Reference	Référence
+	Adds {tag} to the layer's name	Ajoute {tag} au nom du calque
+	Export again…	Exporter à nouveau…
+	Export video…	Exporter la vidéo…
+	Play video	Lire la vidéo
+	Show in folder	Afficher dans le dossier
+	Make:	Créer :
+	Advanced settings	Paramètres avancés
+	Show the finished drawing first	Montrer d'abord le dessin terminé
+	Flash before the final image	Flash avant l'image finale
+	Hold the final image	Maintenir l'image finale
+	Slow down at the end	Ralentir à la fin
+	Remove flicker	Supprimer le scintillement
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Omet les images qui apparaissent et disparaissent : un calque masqué un instant, un trait annulé aussitôt.
+	Work-time counter	Compteur de temps de travail
+	Bars:	Bandes :
+	Fills the edges when the canvas size changed during the recording.	Remplit les bords si la taille de la zone de travail a changé pendant l'enregistrement.
+	Folder:	Dossier :
+	not chosen yet	pas encore choisi
+	Remove frames with undo	Retirer les images à l'annulation
+	Reference tag:	Balise de référence :
+	Work timer stops after:	Le chronomètre s'arrête après :
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Crée le MP4. Automatique cherche à côté de PhotoCraft, puis dans le PATH.
+	Choose the ffmpeg program on this computer	Choisissez le programme ffmpeg sur cet ordinateur
+	Opening files isn't available here	L'ouverture de fichiers n'est pas disponible ici
+	MP4 video (ffmpeg)	Vidéo MP4 (ffmpeg)
+	JPEG frames	Images JPEG
+	Bottom right	En bas à droite
+	Bottom left	En bas à gauche
+	Top right	En haut à droite
+	Top left	En haut à gauche
+	5 seconds	5 secondes
+	10 seconds	10 secondes
+	15 seconds	15 secondes
+	20 seconds	20 secondes
+	30 seconds	30 secondes
+	1 minute	1 minute
+	2 minutes	2 minutes
+	5 minutes	5 minutes
+@plural	{n} frame|{n} frames	{n} image|{n} images
+	Library	Bibliothèque
+	Refresh	Actualiser
+	Recordings will be listed here once you've chosen a folder.	Les enregistrements apparaîtront ici une fois un dossier choisi.
+	No recordings yet.	Aucun enregistrement pour l’instant.
+	Open folder	Ouvrir le dossier
+	Delete frames	Supprimer les images
+	Delete folder	Supprimer le dossier
+	Pause the recording first	Mettez d’abord l’enregistrement en pause
+	REC	REC
+	EXPORTED	EXPORTÉ
+	NOT EXPORTED	NON EXPORTÉ
+	{time} work	{time} de travail
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	« {name} » n’a pas encore été exporté. Si vous supprimez ses images ({frames}), vous ne pourrez plus en faire de vidéo. Cette action est irréversible.
+	Delete the {frames} of “{name}”?	Supprimer les images de « {name} » ({frames}) ?
+	You've recorded more since the last export, and that part isn't in the video.	Vous avez enregistré davantage depuis la dernière exportation ; cette partie n’est pas dans la vidéo.
+	Your videos and the work time are kept. This can't be undone.	Vos vidéos et le temps de travail sont conservés. Cette action est irréversible.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Supprimer « {name} » et son dossier ? Il est retiré de la bibliothèque, avec son temps de travail. Les vidéos exportées restent là où vous les avez enregistrées. Cette action est irréversible.
+	Frames deleted.	Images supprimées.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	« {name} » supprimé. Son dossier contient d’autres fichiers ; il a été conservé.
+	Deleted “{name}”.	« {name} » supprimé.
+@plural	{n} recording|{n} recordings	{n} enregistrement|{n} enregistrements
+	Save Preset from Last Upscale…	Enregistrer un paramètre prédéfini du dernier agrandissement…
+	No upscale has come back from Topaz Gigapixel AI yet	Aucun agrandissement n’est encore revenu de Topaz Gigapixel AI
+	Detail:	Détail :
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI : agrandie {scale}× à {w} × {h} px (nouveau calque). Conservez ces réglages avec Paramètres prédéfinis Topaz Gigapixel › Enregistrer un paramètre prédéfini du dernier agrandissement
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} enregistré (vidéo de {seconds}).
+	Export failed: {error}	Échec de l'exportation : {error}
+	Export cancelled.	Exportation annulée.
+	just now	à l'instant
+	{n} min ago	il y a {n} min
+	{n} h ago	il y a {n} h
+	yesterday	hier
+	{n} days ago	il y a {n} jours
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	Fichiers plus petits et capture la plus rapide. Convient aux croquis rapides et aux aperçus.
+	Sharper video for big screens. Uses about twice the disk space.	Vidéo plus nette pour les grands écrans. Utilise environ deux fois plus d'espace disque.
+	Full-HD video, good for social media. Recommended.	Vidéo Full HD, adaptée aux réseaux sociaux. Recommandé.
+	idle	inactif
+	Record	Enregistrer
+	Paused	En pause
+	Click to resume recording	Cliquez pour reprendre l'enregistrement
+	Open a document to record it.	Ouvrez un document pour l'enregistrer.
+	You'll be asked where to save recordings.	On vous demandera où enregistrer les enregistrements.
+	Export again	Exporter à nouveau
+	Export video	Exporter la vidéo
+	Show the export results	Afficher les résultats de l'exportation
+	Hide the export results	Masquer les résultats de l'exportation
+	≈ {seconds} video from {frames}.	≈ {seconds} de vidéo à partir de {frames}.
+	Confirm	Confirmer
+	Cancel export	Annuler l'exportation
+	Frames	Images
+	Timer	Durée
+	On disk	Sur le disque
+	Hide the live preview	Masquer l'aperçu en direct
+	Show the newest frame	Afficher l'image la plus récente
+	No frames yet — just start drawing	Pas encore d'images — commencez simplement à dessiner
+	No frames yet	Pas encore d'images
+	No layer selected	Aucun calque sélectionné
+	{n} layers selected	{n} calques sélectionnés
+	Not recorded	Non enregistré
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Un calque de référence fonctionne comme un calque normal, mais n'apparaît pas dans le timelapse.
+	Back	Retour
+	Export settings	Paramètres d'exportation
+	Make video with	Créer la vidéo avec
+	Bars colour	Couleur des bandes
+	Bars fill the empty space when the canvas size changed during recording.	Les bandes remplissent l'espace vide si la taille de la zone de travail a changé pendant l'enregistrement.
+	Show finished drawing first	Montrer d'abord le dessin terminé
+	Hold final image	Maintenir l'image finale
+	Show work-time counter	Afficher le compteur de temps de travail
+	Record something in this document to see how long the video will be.	Enregistrez quelque chose dans ce document pour voir la durée de la vidéo.
+	≈ {seconds} video	≈ {seconds} de vidéo
+	{n} recorded frames	{n} images enregistrées
+	Auto shows every frame once (at least 5 s, at most 1 min).	Auto montre chaque image une fois (au moins 5 s, au plus 1 min).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	La taille de la zone de travail a changé pendant l'enregistrement ; les images précédentes sont ajustées à la taille finale.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Supprimer le scintillement omet les images qui apparaissent et disparaissent (un calque masqué un instant, un trait annulé aussitôt) : la vidéo peut être un peu plus courte.
+	Recordings folder	Dossier des enregistrements
+	Not chosen yet — see Settings	Pas encore choisi — voir Paramètres
+	recorded {when}	enregistré {when}
+	Recorded more since the last export.	Enregistré davantage depuis la dernière exportation.
+	Frames folder	Dossier des images
+	Not chosen yet	Pas encore choisi
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Là où les images enregistrées sont conservées. Les vidéos sont enregistrées là où vous le choisissez à l'exportation.
+	Choose folder…	Choisir un dossier…
+	Change folder…	Changer de dossier…
+	Recording quality	Qualité d'enregistrement
+	Undoing something removes those recorded frames.	Annuler une action retire les images enregistrées correspondantes.
+	Reference layers	Calques de référence
+	Name tag	Balise du nom
+	Layers with this in their name are left out of the timelapse.	Les calques dont le nom contient ceci sont exclus du timelapse.
+	Work timer	Chronomètre de travail
+	Idle after	Inactif après
+	The timer stops counting after this long without activity.	Le chronomètre s'arrête après cette durée sans activité.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (rapide)
+	Dark grey	Gris foncé
+	0.5 s	0,5 s
+	1 s	1 s
+	1.5 s	1,5 s
+	2 s	2 s
+	3 s	3 s
+	4 s	4 s
+	5 s	5 s
+	8 s	8 s
+	10 s	10 s
+	1 min	1 min
+	1.5 min	1,5 min
+	2 min	2 min
+	3 min	3 min
+	5 min	5 min
+	45 seconds	45 secondes
+
+# Window › Timelapse panel (more)
+	Run Two Presets…	Exécuter deux paramètres prédéfinis…
+	Run Two Topaz Gigapixel Presets	Exécuter deux paramètres prédéfinis Topaz Gigapixel
+	Run	Exécuter
+	Set Shortcut…	Définir le raccourci…
+	Action Shortcut	Raccourci de l’action
+	No shortcut.	Aucun raccourci.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} est aussi le raccourci de {commands} : il exécutera plutôt cette action.
+	Press the keys that play “{action}”.	Appuyez sur les touches qui exécutent « {action} ».
+	Shortcut:	Raccourci :
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Toute touche convient, avec Ctrl, Alt et Maj. Retour arrière supprime le raccourci.
+	The action no longer exists.	L’action n’existe plus.
+	Fill Tool	Outil Remplissage
+	Nothing to fill there	Rien à remplir ici
+	No enclosed area to fill there	Aucune zone fermée à remplir ici
+	Fill: click an area	Remplissage : cliquez sur une zone
+	Enclose and Fill: draw round the areas to fill	Entourer et remplir : dessinez autour des zones à remplir
+	Paint Unfilled Area: paint over the gaps a fill left	Peindre les zones non remplies : peignez sur les trous laissés
+	Refer	Référence
+	Editing Layer	Calque modifié
+	Selected Layers	Calques sélectionnés
+	Layers in Folder	Calques du dossier
+	Reference Layers	Calques de référence
+	Exclude	Exclure
+	Editing layer	Calque modifié
+	Text layers	Calques de texte
+	Locked layers	Calques verrouillés
+	Layers the fill doesn't read	Calques que le remplissage ne lit pas
+	Close Gap	Fermer les trous
+	Treat gaps in the lines up to this wide as closed (0: off)	Traiter comme fermés les trous des traits jusqu’à cette largeur (0 : non)
+	Area Scaling	Mise à l’échelle de la zone
+	Grow the fill under the lines, or shrink it	Étendre le remplissage sous les traits, ou le réduire
+	To Darkest Pixel	Jusqu’au pixel le plus sombre
+	Follow Adjacent Pixels	Suivre les pixels adjacents
+	Target	Cible
+	White and Transparent	Blanc et transparent
+	Image Border	Bord de l’image
+	The canvas edge closes gaps as a line does	Le bord de la zone de travail ferme les trous comme un trait
+	Reference layer: the Fill tool reads it	Calque de référence : l’outil Remplissage le lit
+	Set as Reference Layer	Définir comme calque de référence
+	Clear Reference Layer	Annuler le calque de référence
+	Fill Tool Options	Options de l’outil Remplissage
+	Size Key Repeat	Répétition des touches de taille
+	Holding [ or ] to resize the brush	Maintenir [ ou ] pour redimensionner le pinceau
+	Pause before repeating	Pause avant la répétition
+	Wait half a second before the size keeps changing, as typing does	Attendre une demi-seconde avant que la taille continue de changer, comme à la frappe
+	Change every	Changer toutes les
+	Sample on Alt	Prélever avec Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Avec un outil de peinture, appuyer sur Alt prélève aussitôt la couleur sous le pointeur
+	Hold:	Maintien :
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Durée de maintien d’Alt avant qu’il agisse comme la Pipette habituelle : la pipette, et un clic pour prélever
+	Move Layer Mask	Déplacer le masque de fusion
+	Copy Layer Mask	Copier le masque de fusion
+	Move Vector Mask	Déplacer le masque vectoriel
+	Copy Vector Mask	Copier le masque vectoriel
+	Save as:	Enregistrer sous :
+	Save Preset	Enregistrer le paramètre prédéfini
+	Keep these two presets as one, listed with the others	Conserver ces deux paramètres prédéfinis en un seul, listé avec les autres
+	Stop recording first	Arrêtez d’abord l’enregistrement
+	Select a step first	Sélectionnez d’abord une étape
+	This step has no dialog to record again	Cette étape n’a pas de boîte de dialogue à réenregistrer
+	Record Again…	Enregistrer à nouveau…
+	Insert Menu Item…	Insérer une commande de menu…
+	Insert Conditional…	Insérer une condition…
+	Set Options…	Options de l’ensemble…
+	Action Options…	Options d’action…
+	Playback Options…	Options d’exécution…
+	Allow Tool Recording	Autoriser l’enregistrement des outils
+	Record brush and other painting strokes, and the brush settings they use	Enregistrer les tracés du pinceau et des autres outils de peinture, et les réglages de forme qu’ils utilisent
+	Clear All Actions	Effacer toutes les actions
+	Replace Actions…	Remplacer les actions…
+	Delete the set “{name}”?	Supprimer l’ensemble « {name} » ?
+	Delete the action “{name}”?	Supprimer l’action « {name} » ?
+	Delete the selection?	Supprimer la sélection ?
+	Function Key:	Touche de fonction :
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	L’action a un autre raccourci (Définir le raccourci…) ; choisir une touche ici le remplace.
+	Accelerated	Accélérée
+	Step by Step	Pas à pas
+	Pause For:	Pause de :
+	seconds	secondes
+	None Selected	Aucune sélection
+	Menu Item:	Commande de menu :
+	Type part of a menu item's name, then pick it below.	Tapez une partie du nom d’une commande de menu, puis choisissez-la ci-dessous.
+	If Current:	Si actuel :
+	Then Play Action:	Puis exécuter l’action :
+	Else Play Action:	Sinon exécuter l’action :
+	Document Is Open	Le document est ouvert
+	Document Is Landscape	Le document est en paysage
+	Document Is Square	Le document est carré
+	Document Is Portrait	Le document est en portrait
+	Document Mode Is RGB	Le mode du document est RVB
+	Document Mode Is CMYK	Le mode du document est CMJN
+	Document Mode Is Grayscale	Le mode du document est Niveaux de gris
+	Document Mode Is Lab	Le mode du document est Lab
+	Document Mode Is Bitmap	Le mode du document est Bitmap
+	Document Mode Is Indexed	Le mode du document est Couleurs indexées
+	Document Mode Is Duotone	Le mode du document est Bichromie
+	Document Mode Is Multichannel	Le mode du document est Multicouche
+	Document Is 8 Bits/Channel	Le document est en 8 bits/couche
+	Document Is 16 Bits/Channel	Le document est en 16 bits/couche
+	Document Is 32 Bits/Channel	Le document est en 32 bits/couche
+	Document Has Unsaved Changes	Le document a des modifications non enregistrées
+	Document Has a Selection	Le document a une sélection
+	Document Has Layers	Le document a des calques
+	Document Has Alpha Channels	Le document a des couches alpha
+	Layer Is Background	Le calque est l’arrière-plan
+	Layer Is a Pixel Layer	Le calque est un calque de pixels
+	Layer Is an Adjustment Layer	Le calque est un calque de réglage
+	Layer Is a Shape Layer	Le calque est un calque de forme
+	Layer Is a Type Layer	Le calque est un calque de texte
+	Layer Is a Smart Object	Le calque est un objet dynamique
+	Layer Is a Group	Le calque est un groupe
+	Layer Is Locked	Le calque est verrouillé
+	Layer Is Visible	Le calque est visible
+	Layer Has Pixel Mask	Le calque a un masque de pixels
+	Layer Has Vector Mask	Le calque a un masque vectoriel
+	Layer Has Effects	Le calque a des effets
+	Pick a menu item first	Choisissez d’abord une commande de menu
+	Find	Rechercher
+	Close gaps up to {px} px	Fermer les écarts jusqu’à {px} px
+	Grow the selection under the lines, or shrink it	Étendre la sélection sous les traits, ou la réduire
 	Decrease Brush Size	Réduire la taille du pinceau
 	Increase Brush Size	Augmenter la taille du pinceau
 	Decrease Brush Hardness	Réduire la dureté du pinceau
@@ -3363,6 +3719,25 @@ curves	Smooth	Lisser
 	In Front	Devant
 	Behind	Derrière
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Ajouter un second masque  (depuis la sélection ; {key} inverse)
+	Convert to Vector Mask	Convertir en masque vectoriel
+	Delete Second Mask	Supprimer le second masque
+	Disable Second Mask	Désactiver le second masque
+	Enable Second Mask	Activer le second masque
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Verrouiller la sélection : les clics sur la zone de travail la traversent (le panneau Calques la sélectionne toujours)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Définir le calque actuel
+	Editing layer blocks the fill	Le calque modifié arrête le remplissage
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	La peinture du calque rempli arrête le remplissage quelle que soit la tolérance, et le remplissage passe derrière : peignez sur un trou pour le fermer
+	Undo widens Close Gap	Annuler élargit Fermer les trous
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Chaque annulation d’un remplissage ferme des trous plus grands au clic suivant, jusqu’au choix d’un autre outil
+	Close Gap widened to {px} px: click again to fill	Fermer les trous élargi à {px} px : cliquez à nouveau pour remplir
+	Pick From	Sélectionner dès
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Opacité qu’un calque doit avoir sous le pointeur pour que Ctrl-clic et Sélection automatique le choisissent : les pixels plus faibles, comme un masque presque noir, sont traversés (0 : tout pixel visible)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Mélange si ou fusion avancée défini : cliquez pour les Options de fusion
 # DDS Options (#1327)
 	DDS Options	Options DDS
 	Compression	Compression
@@ -3396,6 +3771,38 @@ curves	Smooth	Lisser
 	Start Size:	Taille de départ :
 	End Size:	Taille de fin :
 	Save as Pattern	Enregistrer comme motif
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, payant)
+	Remove Selection	Supprimer la sélection
+	Remove what is selected ({key})	Supprimer ce qui est sélectionné ({key})
+	API Key…	Clé API…
+	Change or remove the Google API key Nano Banana uses	Modifier ou supprimer la clé d'API Google utilisée par Nano Banana
+	Set API Key…	Définir la clé API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana a besoin de votre propre clé d'API Google ; d'ici là, Auto utilise LaMa
+	No API key	Pas de clé API
+	Nano Banana API Key	Clé API de Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 fonctionne sur les serveurs de Google et est facturé sur votre compte Google : environ {small} par suppression, {large} pour les grandes.
+	The area around what you remove is sent to Google, which is asked not to keep it.	La zone autour de ce que vous supprimez est envoyée à Google, à qui il est demandé de ne pas la conserver.
+	Get a key at	Obtenez une clé sur
+	A key is saved in the system's credential store.	Une clé est enregistrée dans le gestionnaire d'identifiants du système.
+	Using the {var} environment variable.	La variable d'environnement {var} est utilisée.
+	Google API key	Clé d'API Google
+	Remove Saved Key	Supprimer la clé enregistrée
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Ce système n'a pas de magasin d'identifiants utilisable par PhotoCraft : définissez plutôt la variable d'environnement {var}.
+	Mask image	Image de masque
+	Painted red	Peint en rouge
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana reçoit l'image telle quelle et un masque séparé de la zone à supprimer
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana reçoit l'image avec la zone à supprimer peinte en rouge, comme dans la méthode Photoshop
+	Close up	Gros plan
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana reçoit la zone autour de ce que vous supprimez et la dessine ainsi à environ deux fois la résolution de la page
+	Whole page	Page entière
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana reçoit la page entière : plus de contexte, mais un résultat plus doux
+	Creative	Créatif
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Afficher tout ce que Nano Banana a dessiné, y compris ce qu'il a modifié autour de la zone supprimée (le masque du calque s'estompe sur les bords)
+	Grain…	Grain…
+	Roughness:	Rugosité :
+	Color field	Champ de couleur
+	Color slider	Curseur de couleur
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Validez ou annulez d’abord la boîte de dialogue ouverte de l’étape de l’action
 	Pro Medium Gray	Pro gris moyen
@@ -3459,7 +3866,6 @@ curves	Smooth	Lisser
 	Auto-Align Layers	Alignement automatique des calques
 	Auto-Blend Layers	Fusion automatique des calques
 	Autosave failed: {error}	Échec de l'enregistrement automatique : {error}
-	Back	Retour
 	Backend: {backend} ({type})	Moteur : {backend} ({type})
 	Background Level	Niveau d'arrière-plan
 	Bamboo	Bambou
@@ -3549,7 +3955,6 @@ curves	Smooth	Lisser
 	Commit transform	Valider la transformation
 	Compare	Comparer
 	Conditional Mode Change	Changement de mode conditionnel
-	Confirm	Confirmer
 	Constraints	Contraintes
 	Continue	Continuer
 	Contrasty	Contrasté
@@ -3704,7 +4109,6 @@ curves	Smooth	Lisser
 	Fill Path…	Remplir le tracé…
 	Film Grain	Grain de film
 	Filter Gallery	Galerie de filtres
-	Find	Rechercher
 	Find and Replace Text	Rechercher et remplacer du texte
 	Fine	Fine
 	Fine Dots	Points fins
@@ -3860,7 +4264,6 @@ curves	Smooth	Lisser
 	Lens Flare	Reflet d'objectif
 	Less	Moins
 	Level Based	Selon les niveaux
-	Library	Bibliothèque
 	Light Dark Balance	Équilibre clair/foncé
 	Light Direction	Direction de la lumière
 	Light Intensity	Intensité de la lumière
@@ -4227,7 +4630,6 @@ curves	Smooth	Lisser
 	Switch Foreground and Background Colors	Permuter les couleurs de premier plan et d'arrière-plan
 	Tablet	Tablette
 	Taper	Effilement
-	Target	Cible
 	Target X	Cible X
 	Target Y	Cible Y
 	Teal Orange	Sarcelle et orange
@@ -4445,3 +4847,10 @@ shape	Appearance	Apparence
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Échantillon : couleurs enregistrées
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	Supprimer par IA
+	Remove what is selected with Nano Banana ({key})	Supprimer la sélection avec Nano Banana ({key})
+	Pin to Top	Épingler en haut
+	Unpin from Top	Ne plus épingler en haut

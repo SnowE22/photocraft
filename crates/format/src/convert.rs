@@ -100,6 +100,10 @@ pub(crate) fn tile_len(format: &PixelFormat) -> usize {
 // Save
 // ---------------------------------------------------------------------------
 
+fn mask_m(m: &LayerMask, sink: &mut dyn Sink) -> MaskM {
+    MaskM { surface: surface_m(&m.surface, sink), enabled: m.enabled, linked: m.linked, density: m.density, feather: m.feather }
+}
+
 fn surface_m(s: &Surface, sink: &mut dyn Sink) -> SurfaceM {
     let f = s.format();
     let mut dp = vec![0u8; f.bytes_per_pixel()];
@@ -188,14 +192,9 @@ fn layer_m(l: &Layer, sink: &mut dyn Sink) -> LayerM {
         opacity: l.opacity,
         fill_opacity: l.fill_opacity,
         clipped: l.clipped,
-        mask: l.mask.as_ref().map(|m| MaskM {
-            surface: surface_m(&m.surface, sink),
-            enabled: m.enabled,
-            linked: m.linked,
-            density: m.density,
-            feather: m.feather,
-        }),
+        mask: l.mask.as_ref().map(|m| mask_m(m, sink)),
         vector_mask: l.vector_mask.clone(),
+        second_mask: l.second_mask.as_ref().map(|m| mask_m(m, sink)),
         effects: EffectsM {
             enabled: l.effects.enabled,
             items: l.effects.items.clone(),
@@ -212,6 +211,7 @@ fn layer_m(l: &Layer, sink: &mut dyn Sink) -> LayerM {
         blend_if: l.blend_if.clone(),
         advanced: l.advanced,
         video: l.video.as_ref().map(|v| video_m(v, sink)),
+        reference: l.reference,
         xmp: l.xmp.as_deref().map(str::to_string),
     }
 }
@@ -327,6 +327,10 @@ impl Loader<'_> {
         }
         let original_frames = m.original_frames.as_ref().map(|source| source.iter().map(|f| self.surface(f)).collect::<Result<Vec<_>>>()).transpose()?;
         Ok(photocraft_doc::VideoData { frames, original_frames, source: m.source.clone(), fps: m.fps, show_altered: m.show_altered })
+    }
+
+    fn mask(&mut self, mm: &MaskM) -> Result<LayerMask> {
+        Ok(LayerMask { surface: self.surface(&mm.surface)?, enabled: mm.enabled, linked: mm.linked, density: mm.density, feather: mm.feather })
     }
 
     fn surface(&mut self, m: &SurfaceM) -> Result<Surface> {
@@ -512,9 +516,11 @@ impl Loader<'_> {
             }
         };
         let mask = match &m.mask {
-            Some(mm) => {
-                Some(LayerMask { surface: self.surface(&mm.surface)?, enabled: mm.enabled, linked: mm.linked, density: mm.density, feather: mm.feather })
-            }
+            Some(mm) => Some(self.mask(mm)?),
+            None => None,
+        };
+        let second_mask = match &m.second_mask {
+            Some(mm) => Some(self.mask(mm)?),
             None => None,
         };
         let fill_cache = match &m.fill_cache {
@@ -536,6 +542,7 @@ impl Loader<'_> {
             clipped: m.clipped,
             mask,
             vector_mask: m.vector_mask.clone(),
+            second_mask,
             effects: Effects {
                 enabled: m.effects.enabled,
                 items: m.effects.items.clone(),
@@ -552,6 +559,7 @@ impl Loader<'_> {
             blend_if: m.blend_if.clone(),
             advanced: m.advanced,
             video: m.video.as_ref().map(|v| self.video(v)).transpose()?,
+            reference: m.reference,
             xmp: m.xmp.as_deref().map(Arc::from),
         })
     }

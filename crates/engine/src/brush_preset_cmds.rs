@@ -163,7 +163,9 @@ fn move_preset(s: &mut Session, p: &Value) -> Result<Value> {
         (None, None) => moving.group.clone(),
     };
     // The folder: as given, else `before`'s, else its own when it stays in its group.
+    // A loose preset (no group) sits at the panel's top level, in no folder.
     let target_folder = match (folder, before_pr) {
+        _ if target.is_empty() => Vec::new(),
         (Some(f), _) => f,
         (None, Some(b)) => b.folder.clone(),
         (None, None) if moving.group == target => moving.folder.clone(),
@@ -503,6 +505,7 @@ mod tests {
                 group: g.into(),
                 folder: Vec::new(),
                 captures: Default::default(),
+                tool: None,
             });
         }
         s
@@ -615,6 +618,7 @@ mod tests {
                 group: "Set".into(),
                 folder,
                 captures: Default::default(),
+                tool: None,
             });
         }
         s
@@ -722,6 +726,7 @@ mod tests {
                 group: "Other".into(),
                 folder,
                 captures: Default::default(),
+                tool: None,
             });
         }
         s
@@ -762,6 +767,7 @@ mod tests {
             group: "Set".into(),
             folder: deep.clone(),
             captures: Default::default(),
+            tool: None,
         });
         s.tools.presets.push(BrushPreset {
             name: "Y".into(),
@@ -770,6 +776,7 @@ mod tests {
             group: "Other".into(),
             folder: vec!["Dry".into()],
             captures: Default::default(),
+            tool: None,
         });
         let before = s.tools.presets.clone();
         let deep_json = json!(deep);
@@ -810,6 +817,7 @@ mod tests {
             group: String::new(),
             folder: Vec::new(),
             captures: Default::default(),
+            tool: None,
         });
         assert!(s.execute("brush.presets.moveGroup", json!({"group": "", "into": {"group": "Set"}})).is_err());
     }

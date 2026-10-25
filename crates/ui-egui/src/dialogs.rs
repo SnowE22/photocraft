@@ -139,6 +139,21 @@ pub fn free_press(ctx: &egui::Context, canvas: egui::Rect) -> Option<egui::Pos2>
     })
 }
 
+/// A drag with the primary button that started on the free canvas under an open dialog and is now
+/// off it (over a panel, the dialog, the pasteboard's edge or another application): where the
+/// pointer is. The Color Picker's eyedropper samples the screen there, as the Eyedropper tool does.
+pub fn drag_off_canvas(ctx: &egui::Context, canvas: egui::Rect) -> Option<egui::Pos2> {
+    if egui::Popup::is_any_open(ctx) {
+        return None;
+    }
+    let rects = rects(ctx);
+    let free = |p: egui::Pos2| canvas.contains(p) && !rects.iter().any(|r| r.contains(p));
+    ctx.input(|i| {
+        let held = !i.key_down(egui::Key::Space) && i.pointer.primary_down() && i.pointer.is_decidedly_dragging() && i.pointer.press_origin().is_some_and(free);
+        i.pointer.latest_pos().filter(|p| held && !free(*p))
+    })
+}
+
 /// Height of a dialog's title, rule, button row and frame margins (points), around a body that
 /// scrolls.
 const DIALOG_CHROME: f32 = 150.0;
@@ -408,11 +423,14 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                 DialogKind::Command if crate::disk_change_prompt::owns(&fields) => crate::disk_change_prompt::body(ui, &fields),
                 DialogKind::Command if crate::replace_prompt::owns(&fields) => crate::replace_prompt::body(ui, &fields),
                 DialogKind::Command if crate::actions::owns_insert_stop(&fields) => crate::actions::insert_stop_body(ui, &mut fields),
+                DialogKind::Command if crate::actions_dialogs::owns(&fields) => crate::actions_dialogs::body(app, ui, &mut fields),
                 DialogKind::Command if crate::new_layer_ui::owns(&fields) => crate::new_layer_ui::body(ui, &mut fields),
                 DialogKind::Command if crate::mask_trash_prompt::owns(&fields) => crate::mask_trash_prompt::body(ui, &fields),
                 DialogKind::Command if crate::rasterize_prompt::owns(&fields) => crate::rasterize_prompt::body(ui, &fields),
                 DialogKind::Command if crate::duplicate_layer_ui::owns(&fields) => crate::duplicate_layer_ui::body(app, ui, &mut fields),
                 DialogKind::Command if crate::stack_dialog::owns(&fields) => crate::stack_dialog::body(app, ui, &mut fields, d.id),
+                DialogKind::Command if crate::gigapixel_ui::owns(&fields) => crate::gigapixel_ui::body(app, ui, &mut fields),
+                DialogKind::Command if crate::actions::owns_set_shortcut(&fields) => crate::actions::set_shortcut_body(app, ui, &mut fields),
                 DialogKind::Command if crate::tool_reset::owns(&fields) => crate::tool_reset::body(ui),
                 DialogKind::Command if crate::crop_presets::owns(&fields) => crate::crop_presets::body(app, ui, &mut fields),
                 DialogKind::Command if crate::variables_ui::owns(&fields) => crate::variables_ui::body(app, ui, &mut fields),
@@ -508,11 +526,15 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                             tl!("Replace")
                         } else if d.fields.contains_key("__export") {
                             tl!("Export")
+                        } else if crate::gigapixel_ui::owns(&d.fields) {
+                            crate::gigapixel_ui::ok_label(&d.fields)
+                        } else if let Some(label) = crate::actions_dialogs::ok_label(&d.fields) {
+                            label
                         } else {
                             crate::file_ui::ok_label(&d.fields).unwrap_or(tl!("OK"))
                         };
                         // Dialogs that need an input first (a preset name, a selection) grey OK out.
-                        let can_ok = crate::crop_presets::can_confirm(app, &fields) && crate::stack_dialog::can_confirm(&fields);
+                        let can_ok = crate::crop_presets::can_confirm(app, &fields) && crate::stack_dialog::can_confirm(&fields) && crate::gigapixel_ui::can_confirm(&fields);
                         let ok = DialogButton::new(ButtonRole::Default, ok_label, 84.0).enabled(can_ok);
                         // Photoshop: holding Alt turns Cancel into Reset (the dialog stays open).
                         // Dialogs opt in via `dialog_alt_reset::supported` (per marker).
@@ -796,11 +818,14 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
         DialogKind::Command if crate::disk_change_prompt::owns(&d.fields) => crate::disk_change_prompt::confirm(app, &d.fields),
         DialogKind::Command if crate::replace_prompt::owns(&d.fields) => crate::replace_prompt::confirm(app),
         DialogKind::Command if crate::actions::owns_insert_stop(&d.fields) => crate::actions::insert_stop_confirm(app, &d.fields),
+        DialogKind::Command if crate::actions_dialogs::owns(&d.fields) => crate::actions_dialogs::confirm(app, &d.fields),
         DialogKind::Command if crate::new_layer_ui::owns(&d.fields) => crate::new_layer_ui::confirm(app, &d.fields),
         DialogKind::Command if crate::mask_trash_prompt::owns(&d.fields) => crate::mask_trash_prompt::confirm(app, &d.fields),
         DialogKind::Command if crate::rasterize_prompt::owns(&d.fields) => crate::rasterize_prompt::confirm(app, &d.fields),
         DialogKind::Command if crate::duplicate_layer_ui::owns(&d.fields) => crate::duplicate_layer_ui::confirm(app, &d.fields),
         DialogKind::Command if crate::stack_dialog::owns(&d.fields) => crate::stack_dialog::confirm(app, &d.fields),
+        DialogKind::Command if crate::gigapixel_ui::owns(&d.fields) => crate::gigapixel_ui::confirm(app, &d.fields),
+        DialogKind::Command if crate::actions::owns_set_shortcut(&d.fields) => crate::actions::set_shortcut_confirm(app, &d.fields),
         DialogKind::Command if crate::tool_reset::owns(&d.fields) => crate::tool_reset::confirm(app),
         DialogKind::Command if crate::crop_presets::owns(&d.fields) => crate::crop_presets::confirm(app, &d.fields),
         DialogKind::Command if crate::variables_ui::owns(&d.fields) => crate::variables_ui::confirm(app, &d.fields),
@@ -852,10 +877,12 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
                 _ => app.filter_preview = None,
             }
             if result.is_ok() && cmd == "view.newGuideLayout" {
-                app.ui.view.guide_layout = params;
+                app.ui.view.guide_layout = params.clone();
             }
             if result.is_ok() {
                 crate::filter_dialog::remember(app, &cmd, &d.fields);
+                // Record Again…: the step keeps the values just confirmed.
+                crate::actions::rerecorded(app, &d.fields, &params);
                 // A step dialog of a playing action: the action continues after it.
                 crate::actions::resume(app, &d.fields)?;
             } else {
@@ -872,6 +899,8 @@ pub fn confirm(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
 pub fn cancel(app: &mut PhotocraftApp, id: u64) -> Result<Value, String> {
     let closed = app.ui.close_dialog(id).ok_or_else(|| format!("no dialog {id}"))?;
     crate::actions::stopped(app, &closed.fields);
+    // A new Solid Color fill's picker takes its layer away again (Photoshop).
+    crate::solid_fill_ui::cancelled(app, &closed.fields);
     if crate::guide_layout_ui::owns(&closed.fields) {
         app.ui.dialogs.retain(|child| child.fields.get("__dialog").and_then(Value::as_u64) != Some(id));
     }

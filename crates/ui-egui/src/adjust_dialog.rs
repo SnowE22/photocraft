@@ -321,7 +321,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, fields: &mut Map<String,
                 Some(surface) => HistSource::Channel { layer: id, surface },
                 None => HistSource::Layer(id),
             };
-            Some(tone::histograms(app, source, adjust_editors::space_of(&values)))
+            Some(tone::histograms(app, ui.ctx(), source, adjust_editors::space_of(&values)))
         }
         _ => None,
     };
@@ -592,7 +592,8 @@ mod tests {
                     let window = h.ctx.memory(|m| m.area_rect(egui::Id::new(("dialog", id)))).unwrap();
                     let graph = h.ctx.data(|d| d.get_temp::<egui::Rect>(dialog_mem("curves").with("curves-graph"))).unwrap();
                     assert!(window.right() - graph.right() < 40.0, "blank right column: window {window:?}, graph {graph:?}");
-                    assert!(graph.width() > 270.0, "keep the graph usable: {graph:?}");
+                    // Photoshop's 236 pt graph (`CURVES_SIDE`), a little smaller in a small window.
+                    assert!(graph.width() > 200.0, "keep the graph usable: {graph:?}");
                     assert!(window.contains_rect(graph));
                     for label in ["Channel:", "Input:", "Output:", "Preview", "OK", "Cancel"] {
                         assert!(window.contains_rect(h.get_by_label(crate::i18n::t(label)).rect()), "{label} inside the window");

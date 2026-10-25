@@ -36,7 +36,7 @@ pub const DEFAULT_SIZE: [f32; 2] = [WIDTH, 420.0];
 pub const MIN_SIZE: [f32; 2] = [230.0, 170.0];
 /// The picker's preset list: denser than the Brushes tab's, and always the cards (its tip, stroke
 /// and name cells, set by [`BrushesPanelState::show_name`] and friends).
-pub(crate) const LIST: ListLayout = ListLayout { id: "brush-picker-presets", max_height: 300.0, cell: 44.0, indent: 4.0, cards: true };
+pub(crate) const LIST: ListLayout = ListLayout { id: "brush-picker-presets", max_height: 300.0, indent: 4.0, cards: true };
 /// The scale slider's height (the Size and Hardness sliders').
 const SLIDER_H: f32 = 18.0;
 /// The least gap between the preset list and the slider under it.
@@ -104,7 +104,8 @@ pub fn close(ui: &mut crate::state::UiState) {
 
 /// The state the picker's preset list starts from: every card part on (tip, stroke and name).
 pub fn list_state() -> BrushesPanelState {
-    BrushesPanelState::default()
+    // The picker's cards show the tip too.
+    BrushesPanelState { show_tip: true, ..BrushesPanelState::default() }
 }
 
 /// The picker's view remembered across restarts: the gear's three card parts and the footer
@@ -216,6 +217,7 @@ pub fn body(
     current: Option<&str>,
     st: &mut BrushesPanelState,
     size: egui::Vec2,
+    repeat: &mut crate::brush_key_repeat::KeyRepeat,
 ) -> Vec<Pick> {
     let t = Tokens::get(ui.ctx());
     let mut picks = Vec::new();
@@ -233,6 +235,8 @@ pub fn body(
         ui.horizontal(|ui| {
             ui.label(RichText::new(tl!("Size")).color(t.text_dim));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                // Right of the field: how holding [ / ] repeats.
+                crate::brush_key_repeat::settings_button(ui, repeat);
                 let mut size = b.size;
                 if widgets::value_field(ui, &mut size, 1.0..=MAX_BRUSH_SIZE, "px", 72.0).changed() {
                     b.size = size.round().clamp(1.0, MAX_BRUSH_SIZE);

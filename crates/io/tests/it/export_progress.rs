@@ -69,9 +69,13 @@ fn export_reports_monotonic_progress_and_writes_the_same_bytes() {
 #[test]
 fn psd_progress_moves_per_layer_before_the_composite() {
     let (_, seen) = export_recorded(&layered(SampleType::U8), "a.psd", &ExportOptions::default());
-    // 4 layer records + the composite (weighing 2) = 6 units, the bytes after 90 %.
-    let first = seen.first().copied().unwrap_or(0.0);
-    assert!((first - 0.9 / 6.0).abs() < 1e-3, "the first layer is one sixth of the conversion: {seen:?}");
+    // 4 layer records + the composite (weighing 2) = 6 units, the bytes after 90 %: the layers
+    // (their pixels encoded ahead, then the records) fill 4/6 of the conversion, reporting as each
+    // of them is done.
+    let layers_end = 0.9 * 4.0 / 6.0;
+    let layers: Vec<f32> = seen.iter().copied().filter(|f| *f <= layers_end + 1e-3).collect();
+    assert!(layers.len() >= 4, "a report per layer before the composite: {seen:?}");
+    assert!(layers.last().is_some_and(|f| (f - layers_end).abs() < 1e-3), "the layers are 4/6 of the conversion: {seen:?}");
     let distinct = seen.iter().filter(|f| **f < 1.0).count();
     assert!(distinct >= 5, "{seen:?}");
 }

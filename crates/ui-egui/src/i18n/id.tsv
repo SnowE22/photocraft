@@ -3336,6 +3336,363 @@ curves	Smooth	Haluskan
 	Replace	Ganti
 	{name} was changed by another app after it was opened or saved here.	{name} diubah oleh aplikasi lain setelah dibuka atau disimpan di sini.
 	Replace it with this document, or cancel and use File › Save As to keep both.	Ganti dengan dokumen ini, atau batalkan dan gunakan Berkas › Simpan Sebagai untuk menyimpan keduanya.
+
+	Panel Icons	Ikon Panel
+	Move Tools panel	Pindahkan Panel Alat
+	Drag to move the Tools panel; drop it at the side of the canvas to dock it	Seret untuk memindahkan panel Alat; lepaskan di tepi kanvas untuk menambatkannya
+	New Document…	Dokumen Baru…
+	Open Document…	Buka Dokumen…
+	Delete Brushes	Hapus Kuas
+	Thumbnail size	Ukuran thumbnail
+
+# Import Photoshop Actions; File › Automate › Topaz Gigapixel AI (2026-10-18)
+	Topaz Gigapixel AI…	Topaz Gigapixel AI…
+	Import Photoshop Actions	Impor Tindakan Photoshop
+	No Photoshop Actions palette was found on this computer	Palet Tindakan Photoshop tidak ditemukan di komputer ini
+	Opened in Topaz Gigapixel AI: export the image there to bring it back	Dibuka di Topaz Gigapixel AI: ekspor gambar di sana untuk membawanya kembali
+	Stopped waiting for Topaz Gigapixel AI	Berhenti menunggu Topaz Gigapixel AI
+	Topaz Gigapixel AI's image could not be applied: {error}	Gambar dari Topaz Gigapixel AI tidak dapat diterapkan: {error}
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer)	Topaz Gigapixel AI: diperbesar {scale}× menjadi {w} × {h} px (lapisan baru)
+	Waiting for Topaz Gigapixel AI: export the upscaled image there to bring it back.	Menunggu Topaz Gigapixel AI: ekspor gambar yang diperbesar di sana untuk membawanya kembali.
+@plural	Loaded {n} action in {sets} sets from {file}|Loaded {n} actions in {sets} sets from {file}	{n} tindakan dalam {sets} set dimuat dari {file}
+
+# Remove tool: Mode (Generative AI) (2026-10-18)
+	Generative AI On	AI Generatif Aktif
+	Generative AI Off	AI Generatif Nonaktif
+	Loading the AI model…	Memuat model AI…
+	AI model not installed	Model AI belum terpasang
+	AI model failed to load	Model AI gagal dimuat
+	Put lama_fp32.onnx and ONNX Runtime (onnxruntime.dll, DirectML.dll) in one of: {folders}. Until then Auto uses the patch fill.	Letakkan lama_fp32.onnx dan ONNX Runtime (onnxruntime.dll, DirectML.dll) di salah satu folder ini: {folders}. Sampai saat itu, "Otomatis" memakai isian biasa.
+	Model:	Model:
+	LaMa (fast)	LaMa (cepat)
+	Diffusion (detailed)	Difusi (detail)
+	Prompt (optional)	Prompt (opsional)
+	What should be there. Empty: the model's own guess.	Apa yang seharusnya ada di sana. Kosong: tebakan model sendiri.
+	Put the diffusion model's folder and ONNX Runtime in one of: {folders}. Until then Auto uses LaMa.	Letakkan folder model difusi dan ONNX Runtime di salah satu: {folders}. Sampai saat itu Otomatis memakai LaMa.
+	Generative Fill…	Isian Generatif…
+	Center Canvas When Zoomed Out	Tengahkan Kanvas Saat Diperkecil
+	High (slower)	Tinggi (lebih lambat)
+	Quality:	Kualitas:
+	There is no such Topaz Gigapixel preset	Prasetel Topaz Gigapixel itu tidak ada
+	Saved Topaz Gigapixel preset “{name}”	Prasetel Topaz Gigapixel “{name}” disimpan
+	New Preset	Prasetel Baru
+	Upscale:	Perbesar:
+	With these settings	Dengan pengaturan ini
+	With two presets	Dengan dua prasetel
+	Save two presets with their own settings first; then this one can run them together.	Simpan dua prasetel dengan pengaturannya sendiri terlebih dahulu; lalu prasetel ini dapat menjalankan keduanya bersama.
+	First:	Pertama:
+	Then:	Lalu:
+	Results:	Hasil:
+	One after the other	Satu demi satu
+	Each on its own layer	Masing-masing di lapisannya sendiri
+	Both presets upscale the image; each result becomes a layer, to compare or blend.	Kedua prasetel memperbesar gambar; setiap hasil menjadi lapisan, untuk dibandingkan atau dipadukan.
+	The second preset upscales the first one's result.	Prasetel kedua memperbesar hasil prasetel pertama.
+	Topaz Gigapixel Presets	Prasetel Topaz Gigapixel
+	Manage Presets…	Kelola Prasetel…
+	Run a saved preset from File › Automate › Topaz Gigapixel Presets.	Jalankan prasetel tersimpan dari Berkas › Otomatisasi › Prasetel Topaz Gigapixel.
+	Auto lets Gigapixel choose.	Otomatis membiarkan Gigapixel memilih.
+	Denoise:	Kurangi Noise:
+	Sharpen:	Pertajam:
+	Fix Compression:	Perbaiki Kompresi:
+	Face Recovery:	Pemulihan Wajah:
+
+# File › Timelapse and Window › Timelapse (the Timelapse Recorder)
+	Choose a folder for your timelapse recordings	Pilih folder untuk rekaman timelapse Anda
+	Saved {name} ({seconds} s timelapse)	{name} disimpan (timelapse {seconds} dtk)
+	Export Timelapse	Ekspor Timelapse
+	Export Timelapse…	Ekspor Timelapse…
+	Timelapse export cancelled	Ekspor timelapse dibatalkan
+	Timelapse	Timelapse
+	Auto record	Rekam otomatis
+	Records whatever document you're on, unless you paused it yourself.	Merekam dokumen yang sedang Anda kerjakan, kecuali Anda menjedanya sendiri.
+	Open a document to record a timelapse.	Buka dokumen untuk merekam timelapse.
+	Recording (idle)	Merekam (diam)
+	Recording	Merekam
+	Click to pause	Klik untuk menjeda
+	Paused: click to resume	Dijeda: klik untuk melanjutkan
+	Start recording	Mulai merekam
+	Pause Recording	Jeda Rekaman
+	Reference Layer	Lapisan Referensi
+	Reference layer	Lapisan referensi
+	Recorded more since the last export	Ada rekaman baru sejak ekspor terakhir
+	Select a layer	Pilih lapisan
+	Not recorded: you see it, the timelapse doesn't	Tidak direkam: Anda melihatnya, timelapse tidak
+	Recorded	Direkam
+	{count} of {total} not recorded	{count} dari {total} tidak direkam
+	Reference	Referensi
+	Adds {tag} to the layer's name	Menambahkan {tag} ke nama lapisan
+	Export again…	Ekspor lagi…
+	Export video…	Ekspor video…
+	Play video	Putar video
+	Show in folder	Tampilkan di folder
+	Make:	Buat:
+	Advanced settings	Pengaturan lanjutan
+	Show the finished drawing first	Tampilkan gambar jadi terlebih dahulu
+	Flash before the final image	Kilatan sebelum gambar akhir
+	Hold the final image	Tahan gambar akhir
+	Slow down at the end	Perlambat di akhir
+	Remove flicker	Hapus kedipan
+	Leaves out frames that flash in and out: a layer hidden for a moment, a stroke undone right away.	Melewati bingkai yang muncul sekejap: lapisan yang disembunyikan sebentar, goresan yang langsung dibatalkan.
+	Work-time counter	Penghitung waktu kerja
+	Bars:	Bilah:
+	Fills the edges when the canvas size changed during the recording.	Mengisi tepi jika ukuran kanvas berubah selama perekaman.
+	Folder:	Folder:
+	not chosen yet	belum dipilih
+	Remove frames with undo	Hapus bingkai saat urungkan
+	Reference tag:	Tag referensi:
+	Work timer stops after:	Penghitung waktu berhenti setelah:
+	Makes the MP4. Automatic looks next to PhotoCraft, then on PATH.	Membuat MP4. Otomatis mencari di samping PhotoCraft, lalu di PATH.
+	Choose the ffmpeg program on this computer	Pilih program ffmpeg di komputer ini
+	Opening files isn't available here	Membuka file tidak tersedia di sini
+	MP4 video (ffmpeg)	Video MP4 (ffmpeg)
+	JPEG frames	Bingkai JPEG
+	Bottom right	Kanan bawah
+	Bottom left	Kiri bawah
+	Top right	Kanan atas
+	Top left	Kiri atas
+	5 seconds	5 detik
+	10 seconds	10 detik
+	15 seconds	15 detik
+	20 seconds	20 detik
+	30 seconds	30 detik
+	1 minute	1 menit
+	2 minutes	2 menit
+	5 minutes	5 menit
+@plural	{n} frame|{n} frames	{n} bingkai
+	Library	Pustaka
+	Refresh	Segarkan
+	Recordings will be listed here once you've chosen a folder.	Rekaman akan tercantum di sini setelah Anda memilih folder.
+	No recordings yet.	Belum ada rekaman.
+	Open folder	Buka folder
+	Delete frames	Hapus bingkai
+	Delete folder	Hapus folder
+	Pause the recording first	Jeda rekaman terlebih dahulu
+	REC	REC
+	EXPORTED	SUDAH DIEKSPOR
+	NOT EXPORTED	BELUM DIEKSPOR
+	{time} work	{time} kerja
+	“{name}” hasn't been exported yet. If you delete its {frames}, you can't make a video of it anymore. This can't be undone.	“{name}” belum diekspor. Jika Anda menghapus bingkainya ({frames}), Anda tidak bisa lagi membuat video darinya. Tindakan ini tidak dapat diurungkan.
+	Delete the {frames} of “{name}”?	Hapus bingkai “{name}” ({frames})?
+	You've recorded more since the last export, and that part isn't in the video.	Anda merekam lebih banyak sejak ekspor terakhir, dan bagian itu tidak ada di video.
+	Your videos and the work time are kept. This can't be undone.	Video Anda dan waktu kerja tetap disimpan. Tindakan ini tidak dapat diurungkan.
+	Delete “{name}” and its folder? It's removed from the library, along with its work time. Videos you exported stay where you saved them. This can't be undone.	Hapus “{name}” beserta foldernya? Rekaman dihapus dari pustaka, bersama waktu kerjanya. Video yang sudah Anda ekspor tetap di tempat Anda menyimpannya. Tindakan ini tidak dapat diurungkan.
+	Frames deleted.	Bingkai dihapus.
+	Deleted “{name}”. Its folder holds other files, so it was kept.	“{name}” dihapus. Foldernya berisi file lain, jadi folder tetap disimpan.
+	Deleted “{name}”.	“{name}” dihapus.
+@plural	{n} recording|{n} recordings	{n} rekaman
+	Save Preset from Last Upscale…	Simpan Prasetel dari Perbesaran Terakhir…
+	No upscale has come back from Topaz Gigapixel AI yet	Belum ada hasil perbesaran yang kembali dari Topaz Gigapixel AI
+	Detail:	Detail:
+	Topaz Gigapixel AI: upscaled {scale}× to {w} × {h} px (new layer). Keep these settings with Topaz Gigapixel Presets › Save Preset from Last Upscale	Topaz Gigapixel AI: diperbesar {scale}× menjadi {w} × {h} px (lapisan baru). Simpan pengaturan ini dengan Prasetel Topaz Gigapixel › Simpan Prasetel dari Perbesaran Terakhir
+
+# Window › Timelapse as a dock panel, laid out like the Photoshop plug-in
+	Saved {name} ({seconds} video).	{name} disimpan (video {seconds}).
+	Export failed: {error}	Ekspor gagal: {error}
+	Export cancelled.	Ekspor dibatalkan.
+	just now	baru saja
+	{n} min ago	{n} mnt lalu
+	{n} h ago	{n} jam lalu
+	yesterday	kemarin
+	{n} days ago	{n} hari lalu
+	Smaller files and the quickest capturing. Fine for quick sketches and previews.	File lebih kecil dan perekaman tercepat. Cukup untuk sketsa cepat dan pratinjau.
+	Sharper video for big screens. Uses about twice the disk space.	Video lebih tajam untuk layar besar. Memakai sekitar dua kali ruang disk.
+	Full-HD video, good for social media. Recommended.	Video Full HD, cocok untuk media sosial. Disarankan.
+	idle	diam
+	Record	Rekam
+	Paused	Dijeda
+	Click to resume recording	Klik untuk melanjutkan rekaman
+	Open a document to record it.	Buka dokumen untuk merekamnya.
+	You'll be asked where to save recordings.	Anda akan ditanya di mana rekaman disimpan.
+	Export again	Ekspor lagi
+	Export video	Ekspor video
+	Show the export results	Tampilkan hasil ekspor
+	Hide the export results	Sembunyikan hasil ekspor
+	≈ {seconds} video from {frames}.	≈ video {seconds} dari {frames}.
+	Confirm	Konfirmasi
+	Cancel export	Batalkan ekspor
+	Frames	Bingkai
+	Timer	Waktu
+	On disk	Di disk
+	Hide the live preview	Sembunyikan pratinjau langsung
+	Show the newest frame	Tampilkan bingkai terbaru
+	No frames yet — just start drawing	Belum ada bingkai — mulai saja menggambar
+	No frames yet	Belum ada bingkai
+	No layer selected	Tidak ada lapisan dipilih
+	{n} layers selected	{n} lapisan dipilih
+	Not recorded	Tidak direkam
+	A reference layer works like a normal layer, but won't show up in the timelapse.	Lapisan referensi berfungsi seperti lapisan biasa, tetapi tidak muncul di timelapse.
+	Back	Kembali
+	Export settings	Pengaturan ekspor
+	Make video with	Buat video dengan
+	Bars colour	Warna bilah
+	Bars fill the empty space when the canvas size changed during recording.	Bilah mengisi ruang kosong jika ukuran kanvas berubah selama perekaman.
+	Show finished drawing first	Tampilkan gambar jadi dulu
+	Hold final image	Tahan gambar akhir
+	Show work-time counter	Tampilkan penghitung waktu kerja
+	Record something in this document to see how long the video will be.	Rekam sesuatu di dokumen ini untuk melihat durasi videonya.
+	≈ {seconds} video	≈ video {seconds}
+	{n} recorded frames	{n} bingkai terekam
+	Auto shows every frame once (at least 5 s, at most 1 min).	Otomatis menampilkan setiap bingkai sekali (minimal 5 dtk, maksimal 1 mnt).
+	The canvas size changed during recording; earlier frames are fitted inside the final size.	Ukuran kanvas berubah selama perekaman; bingkai sebelumnya dimuat ke ukuran akhir.
+	Remove flicker leaves out frames that flash in and out (a layer hidden for a moment, a stroke undone right away), so the video can be a bit shorter.	Hapus kedipan melewati bingkai yang muncul sekejap (lapisan yang disembunyikan sebentar, goresan yang langsung dibatalkan), jadi video bisa sedikit lebih pendek.
+	Recordings folder	Folder rekaman
+	Not chosen yet — see Settings	Belum dipilih — lihat Pengaturan
+	recorded {when}	direkam {when}
+	Recorded more since the last export.	Ada rekaman baru sejak ekspor terakhir.
+	Frames folder	Folder bingkai
+	Not chosen yet	Belum dipilih
+	Where the recorded frames are kept. Videos are saved wherever you choose when you export.	Tempat bingkai rekaman disimpan. Video disimpan di mana pun Anda pilih saat mengekspor.
+	Choose folder…	Pilih folder…
+	Change folder…	Ubah folder…
+	Recording quality	Kualitas rekaman
+	Undoing something removes those recorded frames.	Mengurungkan sesuatu menghapus bingkai rekaman tersebut.
+	Reference layers	Lapisan referensi
+	Name tag	Tag nama
+	Layers with this in their name are left out of the timelapse.	Lapisan yang namanya memuat ini tidak masuk ke timelapse.
+	Work timer	Penghitung waktu kerja
+	Idle after	Diam setelah
+	The timer stops counting after this long without activity.	Penghitung berhenti setelah selama ini tanpa aktivitas.
+	Timelapse Recorder · PhotoCraft	Timelapse Recorder · PhotoCraft
+	ffmpeg (fast)	ffmpeg (cepat)
+	Dark grey	Abu-abu gelap
+	0.5 s	0,5 dtk
+	1 s	1 dtk
+	1.5 s	1,5 dtk
+	2 s	2 dtk
+	3 s	3 dtk
+	4 s	4 dtk
+	5 s	5 dtk
+	8 s	8 dtk
+	10 s	10 dtk
+	1 min	1 mnt
+	1.5 min	1,5 mnt
+	2 min	2 mnt
+	3 min	3 mnt
+	5 min	5 mnt
+	45 seconds	45 detik
+
+# Window › Timelapse panel (more)
+	Length	Durasi
+	Run Two Presets…	Jalankan Dua Prasetel…
+	Run Two Topaz Gigapixel Presets	Jalankan Dua Prasetel Topaz Gigapixel
+	Run	Jalankan
+	Set Shortcut…	Atur Pintasan…
+	Action Shortcut	Pintasan Aksi
+	No shortcut.	Tanpa pintasan.
+	{shortcut} is also the shortcut of {commands}: it will play this action instead.	{shortcut} juga pintasan untuk {commands}: pintasan ini akan menjalankan aksi ini sebagai gantinya.
+	Press the keys that play “{action}”.	Tekan tombol yang menjalankan “{action}”.
+	Shortcut:	Pintasan:
+	Any key works, with Ctrl, Alt and Shift. Backspace removes the shortcut.	Tombol apa pun bisa, dengan Ctrl, Alt, dan Shift. Backspace menghapus pintasan.
+	The action no longer exists.	Aksi tersebut sudah tidak ada.
+	Fill Tool	Alat Isian
+	Nothing to fill there	Tidak ada yang bisa diisi di sana
+	No enclosed area to fill there	Tidak ada area tertutup untuk diisi di sana
+	Fill: click an area	Isian: klik sebuah area
+	Enclose and Fill: draw round the areas to fill	Lingkupi dan Isi: gambar di sekeliling area yang akan diisi
+	Paint Unfilled Area: paint over the gaps a fill left	Lukis Area Belum Terisi: lukis di atas celah yang terlewat
+	Refer	Rujukan
+	Editing Layer	Layer yang Diedit
+	Selected Layers	Layer Terpilih
+	Layers in Folder	Layer dalam Folder
+	Reference Layers	Layer Referensi
+	Exclude	Kecualikan
+	Editing layer	Layer yang diedit
+	Text layers	Layer teks
+	Locked layers	Layer terkunci
+	Layers the fill doesn't read	Layer yang tidak dibaca isian
+	Close Gap	Tutup Celah
+	Treat gaps in the lines up to this wide as closed (0: off)	Anggap celah garis hingga selebar ini tertutup (0: mati)
+	Area Scaling	Penskalaan Area
+	Grow the fill under the lines, or shrink it	Perluas isian ke bawah garis, atau perkecil
+	To Darkest Pixel	Ke Piksel Tergelap
+	Follow Adjacent Pixels	Ikuti Piksel Berdekatan
+	Target	Target
+	White and Transparent	Putih dan Transparan
+	Image Border	Batas Gambar
+	The canvas edge closes gaps as a line does	Tepi kanvas menutup celah seperti garis
+	Reference layer: the Fill tool reads it	Layer referensi: dibaca oleh Alat Isian
+	Set as Reference Layer	Atur sebagai Layer Referensi
+	Clear Reference Layer	Hapus Layer Referensi
+	Fill Tool Options	Opsi Alat Isian
+	Size Key Repeat	Pengulangan Tombol Ukuran
+	Holding [ or ] to resize the brush	Menahan [ atau ] untuk mengubah ukuran kuas
+	Pause before repeating	Jeda sebelum mengulang
+	Wait half a second before the size keeps changing, as typing does	Tunggu setengah detik sebelum ukuran terus berubah, seperti saat mengetik
+	Change every	Ubah setiap
+	Sample on Alt	Ambil Sampel saat Alt
+	With a painting tool, pressing Alt picks the colour under the pointer at once	Dengan alat lukis, menekan Alt langsung mengambil warna di bawah penunjuk
+	Hold:	Tahan:
+	How long Alt must be held before it works as the usual Eyedropper: the pipette, and click to sample	Berapa lama Alt harus ditahan sebelum berfungsi sebagai Penetes biasa: pipet, dan klik untuk mengambil sampel
+	Move Layer Mask	Pindahkan Mask Layer
+	Copy Layer Mask	Salin Mask Layer
+	Move Vector Mask	Pindahkan Mask Vektor
+	Copy Vector Mask	Salin Mask Vektor
+	Save as:	Simpan sebagai:
+	Save Preset	Simpan Prasetel
+	Keep these two presets as one, listed with the others	Simpan kedua prasetel ini sebagai satu, tercantum bersama yang lain
+	Stop recording first	Hentikan perekaman terlebih dahulu
+	Select a step first	Pilih langkah terlebih dahulu
+	This step has no dialog to record again	Langkah ini tidak memiliki dialog untuk direkam ulang
+	Record Again…	Rekam Ulang…
+	Insert Menu Item…	Sisipkan Item Menu…
+	Insert Conditional…	Sisipkan Kondisi…
+	Set Options…	Opsi Set…
+	Action Options…	Opsi Aksi…
+	Playback Options…	Opsi Pemutaran…
+	Allow Tool Recording	Izinkan Perekaman Alat
+	Record brush and other painting strokes, and the brush settings they use	Rekam goresan kuas dan goresan lukis lainnya, beserta pengaturan kuas yang digunakan
+	Clear All Actions	Hapus Semua Aksi
+	Replace Actions…	Ganti Aksi…
+	Delete the set “{name}”?	Hapus set “{name}”?
+	Delete the action “{name}”?	Hapus aksi “{name}”?
+	Delete the selection?	Hapus pilihan?
+	Function Key:	Tombol Fungsi:
+	The action has another shortcut (Set Shortcut…); picking a key here replaces it.	Aksi ini memiliki pintasan lain (Atur Pintasan…); memilih tombol di sini akan menggantinya.
+	Accelerated	Dipercepat
+	Step by Step	Langkah demi Langkah
+	Pause For:	Jeda Selama:
+	seconds	detik
+	None Selected	Tidak Ada yang Dipilih
+	Menu Item:	Item Menu:
+	Type part of a menu item's name, then pick it below.	Ketik sebagian nama item menu, lalu pilih di bawah.
+	If Current:	Jika Saat Ini:
+	Then Play Action:	Lalu Putar Aksi:
+	Else Play Action:	Jika Tidak, Putar Aksi:
+	Document Is Open	Dokumen Terbuka
+	Document Is Landscape	Dokumen Lanskap
+	Document Is Square	Dokumen Persegi
+	Document Is Portrait	Dokumen Potret
+	Document Mode Is RGB	Mode Dokumen RGB
+	Document Mode Is CMYK	Mode Dokumen CMYK
+	Document Mode Is Grayscale	Mode Dokumen Skala Abu-abu
+	Document Mode Is Lab	Mode Dokumen Lab
+	Document Mode Is Bitmap	Mode Dokumen Bitmap
+	Document Mode Is Indexed	Mode Dokumen Warna Terindeks
+	Document Mode Is Duotone	Mode Dokumen Duotone
+	Document Mode Is Multichannel	Mode Dokumen Multisaluran
+	Document Is 8 Bits/Channel	Dokumen 8 Bit/Saluran
+	Document Is 16 Bits/Channel	Dokumen 16 Bit/Saluran
+	Document Is 32 Bits/Channel	Dokumen 32 Bit/Saluran
+	Document Has Unsaved Changes	Dokumen Memiliki Perubahan yang Belum Disimpan
+	Document Has a Selection	Dokumen Memiliki Seleksi
+	Document Has Layers	Dokumen Memiliki Lapisan
+	Document Has Alpha Channels	Dokumen Memiliki Saluran Alfa
+	Layer Is Background	Lapisan Adalah Latar Belakang
+	Layer Is a Pixel Layer	Lapisan Adalah Lapisan Piksel
+	Layer Is an Adjustment Layer	Lapisan Adalah Lapisan Penyesuaian
+	Layer Is a Shape Layer	Lapisan Adalah Lapisan Bentuk
+	Layer Is a Type Layer	Lapisan Adalah Lapisan Teks
+	Layer Is a Smart Object	Lapisan Adalah Objek Cerdas
+	Layer Is a Group	Lapisan Adalah Grup
+	Layer Is Locked	Lapisan Terkunci
+	Layer Is Visible	Lapisan Terlihat
+	Layer Has Pixel Mask	Lapisan Memiliki Masker Piksel
+	Layer Has Vector Mask	Lapisan Memiliki Masker Vektor
+	Layer Has Effects	Lapisan Memiliki Efek
+	Pick a menu item first	Pilih item menu terlebih dahulu
+	Find	Cari
+	Close gaps up to {px} px	Tutup celah hingga {px} px
+	Grow the selection under the lines, or shrink it	Perluas seleksi di bawah garis, atau perkecil
 	Decrease Brush Size	Perkecil ukuran kuas
 	Increase Brush Size	Perbesar ukuran kuas
 	Decrease Brush Hardness	Kurangi kekerasan kuas
@@ -3366,6 +3723,25 @@ curves	Smooth	Haluskan
 	In Front	Di Depan
 	Behind	Di Belakang
 
+# Second layer mask, Lock Selection (2026-10-21)
+	Add a second mask  (from the selection; {key} inverts)	Tambah masker kedua  (dari seleksi; {key} membalik)
+	Convert to Vector Mask	Ubah ke Masker Vektor
+	Delete Second Mask	Hapus Masker Kedua
+	Disable Second Mask	Nonaktifkan Masker Kedua
+	Enable Second Mask	Aktifkan Masker Kedua
+	Lock selection: clicks on the canvas pass through (the Layers panel still selects)	Kunci seleksi: klik di kanvas menembusnya (panel Layer tetap memilihnya)
+
+# Fill tool layer block and Undo widening, Move tool Pick From, Set Current Layer (2026-10-21)
+	Set Current Layer	Atur Layer Saat Ini
+	Editing layer blocks the fill	Layer yang diedit menahan isian
+	Paint on the layer being filled stops the fill at any tolerance, and the fill goes in behind it: draw over a gap to close it	Cat di layer yang diisi menahan isian pada toleransi berapa pun, dan isian masuk di belakangnya: gambar di atas celah untuk menutupnya
+	Undo widens Close Gap	Urungkan memperlebar Tutup Celah
+	Each Undo of a fill closes bigger gaps for the next click, until you pick another tool	Setiap Urungkan isian menutup celah yang lebih besar pada klik berikutnya, sampai Anda memilih alat lain
+	Close Gap widened to {px} px: click again to fill	Tutup Celah diperlebar ke {px} px: klik lagi untuk mengisi
+	Pick From	Pilih Mulai
+	How opaque a layer must be under the pointer for Ctrl-click and Auto-Select to pick it: fainter pixels, like a mask that is almost black, are clicked through (0: any visible pixel)	Seberapa buram layer di bawah penunjuk agar Ctrl-klik dan Pilih Otomatis memilihnya: piksel yang lebih samar, seperti masker yang hampir hitam, diklik tembus (0: piksel terlihat apa pun)
+# Layers panel Blend If mark (2026-10-22)
+	Blend If or advanced blending is set: click for Blending Options	Blend If atau pembauran lanjutan diatur: klik untuk Opsi Pembauran
 # DDS Options (#1327)
 	DDS Options	Opsi DDS
 	Compression	Kompresi
@@ -3399,6 +3775,38 @@ curves	Smooth	Haluskan
 	Start Size:	Ukuran awal:
 	End Size:	Ukuran akhir:
 	Save as Pattern	Simpan sebagai Pola
+# Remove tool: Nano Banana 2.1 and Remove Selection (2026-10-22)
+	Nano Banana 2.1 (Google, paid)	Nano Banana 2.1 (Google, berbayar)
+	Remove Selection	Hapus Seleksi
+	Remove what is selected ({key})	Hapus yang diseleksi ({key})
+	API Key…	Kunci API…
+	Change or remove the Google API key Nano Banana uses	Ubah atau hapus kunci API Google yang dipakai Nano Banana
+	Set API Key…	Atur Kunci API…
+	Nano Banana needs your own Google API key; until then Auto uses LaMa	Nano Banana memerlukan kunci API Google Anda sendiri; sampai saat itu Otomatis memakai LaMa
+	No API key	Tidak ada kunci API
+	Nano Banana API Key	Kunci API Nano Banana
+	Nano Banana 2.1 runs on Google's servers and is billed to your Google account: about {small} per removal, {large} for large ones.	Nano Banana 2.1 berjalan di server Google dan ditagihkan ke akun Google Anda: sekitar {small} per penghapusan, {large} untuk yang besar.
+	The area around what you remove is sent to Google, which is asked not to keep it.	Area di sekitar yang Anda hapus dikirim ke Google, yang diminta untuk tidak menyimpannya.
+	Get a key at	Dapatkan kunci di
+	A key is saved in the system's credential store.	Sebuah kunci tersimpan di penyimpanan kredensial sistem.
+	Using the {var} environment variable.	Memakai variabel lingkungan {var}.
+	Google API key	Kunci API Google
+	Remove Saved Key	Hapus Kunci Tersimpan
+	This system has no credential store PhotoCraft can use: set the {var} environment variable instead.	Sistem ini tidak punya penyimpanan kredensial yang bisa dipakai PhotoCraft: atur variabel lingkungan {var} sebagai gantinya.
+	Mask image	Gambar mask
+	Painted red	Dicat merah
+	Nano Banana gets the picture as it is and a separate mask of the area to remove	Nano Banana menerima gambar apa adanya dan mask terpisah untuk area yang dihapus
+	Nano Banana gets the picture with the area to remove painted red, as in the Photoshop routine	Nano Banana menerima gambar dengan area yang dihapus dicat merah, seperti cara di Photoshop
+	Close up	Jarak dekat
+	Nano Banana gets the area around what you remove, so it draws it at about twice the page's resolution	Nano Banana menerima area di sekitar yang Anda hapus, sehingga menggambarnya sekitar dua kali resolusi halaman
+	Whole page	Seluruh halaman
+	Nano Banana gets the whole page: more to go on, but a softer result	Nano Banana menerima seluruh halaman: lebih banyak acuan, tetapi hasilnya lebih lembut
+	Creative	Kreatif
+	Show everything Nano Banana drew, also what it changed around the area you remove (its layer mask fades out at the edges)	Tampilkan semua yang digambar Nano Banana, juga yang diubahnya di sekitar area yang Anda hapus (mask layer memudar di tepinya)
+	Grain…	Grain…
+	Roughness:	Kekasaran:
+	Color field	Bidang warna
+	Color slider	Penggeser warna
 # Actions: a step dialog holds a suspended recording (#7365)
 	Confirm or cancel the open action step dialog first	Konfirmasi atau batalkan dulu dialog langkah tindakan yang terbuka
 	Pro Medium Gray	Pro Abu-abu Sedang
@@ -3418,3 +3826,10 @@ curves	Smooth	Haluskan
 
 # Print preview image (#8236)
 	Print preview image	Print preview image
+# Color Range recorded in an action: the sampled colours (2026-10-23)
+	Sample: recorded colours	Sampel: warna yang direkam
+# Remove tool AI Remove; pinned brush group (2026-10-23)
+	AI Remove	Hapus AI
+	Remove what is selected with Nano Banana ({key})	Hapus yang dipilih dengan Nano Banana ({key})
+	Pin to Top	Sematkan di Atas
+	Unpin from Top	Lepas Sematan

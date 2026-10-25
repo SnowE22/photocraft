@@ -375,9 +375,30 @@ fn preferences_may_grant_ambient_paths(id: &str, params: &Value) -> bool {
     if id != "prefs.set" {
         return false;
     }
-    let direct = params.get("path").and_then(Value::as_str).is_some_and(preference_uses_ambient_filesystem);
-    let batch = params.get("values").and_then(Value::as_object).is_some_and(|values| values.keys().any(|path| preference_uses_ambient_filesystem(path)));
+    let direct = params.get("path").and_then(Value::as_str).is_some_and(|path| {
+        preference_uses_ambient_filesystem(path) || remembered_dialog_grants_paths(path, params.get("value").unwrap_or(&Value::Null))
+    });
+    let batch = params
+        .get("values")
+        .and_then(Value::as_object)
+        .is_some_and(|values| values.iter().any(|(path, value)| preference_uses_ambient_filesystem(path) || remembered_dialog_grants_paths(path, value)));
     direct || batch
+}
+
+/// File › Timelapse keeps its recordings folder and the ffmpeg it runs among the remembered dialog
+/// settings (`dialogs["file.timelapse"]`): setting those would let automation pick where frames
+/// are written and which program an export starts.
+fn remembered_dialog_grants_paths(path: &str, value: &Value) -> bool {
+    const KEY: &str = photocraft_engine::timelapse_cmds::recorder::SETTINGS_KEY;
+    let mut segments = path.split('.').filter(|s| !s.is_empty());
+    if segments.next() != Some("dialogs") {
+        return false;
+    }
+    let rest: Vec<&str> = segments.collect();
+    if rest.is_empty() {
+        return value.get(KEY).is_some() || !value.is_object();
+    }
+    rest.join(".").starts_with(KEY) || path.contains("timelapse")
 }
 
 fn preference_uses_ambient_filesystem(path: &str) -> bool {
@@ -965,7 +986,28 @@ mod tests {
             // New fill and adjustment layers take a vector path as their vector mask (#1419).
             return false;
         }
+        // A folder's path in the brush library: a list of folder names, not a host file.
+        if matches!(id, "brush.presets.moveItems" | "brush.presets.deleteItems") {
+            return false;
+        }
         params.to_ascii_lowercase().contains("path")
+    }
+
+    #[test]
+    fn automation_cannot_choose_the_timelapse_folder_or_ffmpeg() {
+        let denied = [
+            serde_json::json!({"path": "dialogs.file.timelapse", "value": {"ffmpeg": "/outside/evil"}}),
+            serde_json::json!({"path": "dialogs.file.timelapse.folder", "value": "/outside"}),
+            serde_json::json!({"path": "dialogs", "value": {"file.timelapse": {"folder": "/outside"}}}),
+            serde_json::json!({"values": {"dialogs.file.timelapse": {"ffmpeg": "/outside/evil"}}}),
+        ];
+        for p in denied {
+            assert!(authorize_engine_command("prefs.set", &p).is_err(), "{p}");
+        }
+        assert!(authorize_engine_command("prefs.set", &serde_json::json!({"path": "dialogs.edit.fill", "value": {"contents": "color"}})).is_ok());
+        for id in ["file.timelapse.settings", "file.timelapse.export", "file.timelapse.record"] {
+            assert!(authorize_engine_command(id, &serde_json::json!({})).is_err(), "{id}");
+        }
     }
 
     #[test]

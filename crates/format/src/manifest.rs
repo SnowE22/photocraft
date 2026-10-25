@@ -220,6 +220,9 @@ pub struct LayerM {
     pub mask: Option<MaskM>,
     #[serde(default)]
     pub vector_mask: Option<VectorMask>,
+    /// The second pixel mask (`Layer::second_mask`).
+    #[serde(default)]
+    pub second_mask: Option<MaskM>,
     pub effects: EffectsM,
     pub label: LabelColor,
     pub content: ContentM,
@@ -242,6 +245,9 @@ pub struct LayerM {
     pub advanced: photocraft_doc::AdvancedBlending,
     #[serde(default)]
     pub video: Option<VideoDataM>,
+    /// A reference layer for the Fill tool (missing in older files = not one).
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reference: bool,
     /// The layer's own XMP packet (missing in older files = none).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub xmp: Option<String>,
@@ -361,6 +367,10 @@ pub struct ChannelM {
     pub opacity: f32,
     #[serde(default)]
     pub indicates: photocraft_doc::ColorIndicates,
+}
+
+fn is_false(v: &bool) -> bool {
+    !v
 }
 
 fn is_zero_u32(v: &u32) -> bool {

@@ -210,9 +210,7 @@ fn warp_layer(
             }
         }
     }
-    if let Some(m) = l.mask.as_mut()
-        && m.linked
-    {
+    for m in l.pixel_masks_mut().filter(|m| m.linked) {
         let whole = |m: &Surface| Ok(warp_mesh_gray(m, &map, interp));
         m.surface = match mask_sel {
             Some(sel) => crate::transform_cmds::move_gray_selected(

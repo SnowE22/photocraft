@@ -7,9 +7,10 @@
 //! Each one is `edit.fill` with the colour and Preserve Transparency fixed: one "Fill" history
 //! step, the Channels panel target (alpha channel, Quick Mask) honoured, locked layers refused.
 //! When targeting a vector shape layer, the fill keys recolor the shape's fill; on a type layer
-//! they recolor the text (#4580), and the layer stays type.
+//! they recolor the text (#4580), and the layer stays type; on a Solid Color fill layer they set
+//! its colour (Photoshop).
 
-use photocraft_doc::{LayerContent, LayerId};
+use photocraft_doc::{Fill, LayerContent, LayerId};
 use serde_json::{Map, Value, json};
 
 use crate::commands::CommandSpec;
@@ -20,7 +21,8 @@ pub const IDS: [&str; 5] = ["edit.fillForeground", "edit.fillBackground", "edit.
 
 const PARAMS: &str = r##"{"layer":id?,"target":"pixels"|"mask"|"quickMask"|{"channel":i}?}"##;
 
-/// The shape or type layer the colour fill keys recolor instead of filling pixels.
+/// The shape, type or Solid Color fill layer the colour fill keys recolor instead of filling
+/// pixels.
 fn target_live_layer(s: &Session, p: &Value) -> Option<LayerId> {
     if let Some(t) = p.get("target")
         && (t.as_str() == Some("mask") || t.as_str() == Some("quickMask") || t.get("channel").is_some())
@@ -33,7 +35,7 @@ fn target_live_layer(s: &Session, p: &Value) -> Option<LayerId> {
     }
     let id = if let Some(v) = p.get("layer") { LayerId(v.as_u64()?) } else { st.active_layer? };
     let layer = st.doc.layer(id)?;
-    if matches!(layer.content, LayerContent::Shape(_) | LayerContent::Text(_)) { Some(id) } else { None }
+    if matches!(layer.content, LayerContent::Shape(_) | LayerContent::Text(_) | LayerContent::Fill(Fill::Solid(_))) { Some(id) } else { None }
 }
 
 /// The colour fill keys also recolor a targeted shape layer's fill or type layer's text.
@@ -61,6 +63,11 @@ fn fill(s: &mut Session, p: &Value, cmd: &str, background: bool, preserve: bool)
 
     if let Some(id) = target_live_layer(s, p) {
         let c = if background { s.tools.background } else { s.tools.foreground };
+        if s.active().and_then(|st| st.doc.layer(id)).is_some_and(|l| matches!(l.content, LayerContent::Fill(_))) {
+            // Three components: the fill keeps its own alpha.
+            let set = crate::commands::find(crate::solid_fill_cmds::SET).ok_or_else(|| EngineError::Other("Solid Color is unavailable".into()))?;
+            return (set.run)(s, &json!({ "layer": id.0, "color": [c[0], c[1], c[2]] }));
+        }
         if s.active().and_then(|st| st.doc.layer(id)).is_some_and(|l| matches!(l.content, LayerContent::Text(_))) {
             // type.setStyle doesn't check locks itself; refuse like the pixel fill does.
             crate::commands::check_pixels_unlocked(&s.active().ok_or(EngineError::NoDocument)?.doc, id)?;
@@ -410,5 +417,28 @@ mod tests {
             assert!(err.contains("locked"), "{id}: {err}");
         }
         assert_eq!(type_colors(&s), [[1.0, 0.0, 0.0]]);
+    }
+
+    /// ⌥⌫ / ⌘⌫ on a Solid Color fill layer set its colour to the foreground / background colour
+    /// (its alpha kept), rather than filling pixels it doesn't have.
+    #[test]
+    fn fill_keys_recolor_a_solid_color_fill_layer() {
+        let mut s = session();
+        let id = LayerId(s.execute("layer.newFillLayer.solidColor", json!({"color": "#00ff0080"})).unwrap()["layer"].as_u64().unwrap());
+        let color = |s: &Session| match &s.active().unwrap().doc.layer(id).unwrap().content {
+            LayerContent::Fill(Fill::Solid(c)) => c.to_rgb().map(|v| (v * 255.0).round() as u8),
+            other => panic!("not a solid fill: {other:?}"),
+        };
+        let alpha = |s: &Session| match &s.active().unwrap().doc.layer(id).unwrap().content {
+            LayerContent::Fill(Fill::Solid(c)) => c.alpha,
+            _ => f32::NAN,
+        };
+        let a0 = alpha(&s);
+        s.execute("edit.fillForeground", json!({})).unwrap();
+        assert_eq!(color(&s), [255, 0, 0]);
+        s.execute("edit.fillBackground", json!({})).unwrap();
+        assert_eq!(color(&s), [0, 0, 255]);
+        assert_eq!(alpha(&s), a0, "the fill keeps its alpha");
+        assert!(matches!(s.active().unwrap().doc.layer(id).unwrap().content, LayerContent::Fill(Fill::Solid(_))), "still a fill layer");
     }
 }

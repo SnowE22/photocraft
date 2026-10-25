@@ -372,6 +372,27 @@ fn shift_click_disables_a_mask() {
     assert!(!l.mask.unwrap().enabled && !l.vector_mask.unwrap().enabled);
 }
 
+/// A plain click on a disabled mask's thumbnail turns it back on, and targets it.
+#[test]
+fn clicking_a_disabled_mask_enables_it() {
+    let (mut s, masked, _) = session();
+    s.execute("layer.layerMask.enabled", json!({"layer": masked, "enabled": false})).unwrap();
+    s.execute("layer.vectorMask.enabled", json!({"layer": masked, "enabled": false})).unwrap();
+    let mut h = harness(s, 0, 1.0, 290.0);
+    for kind in [MaskKind::Pixel, MaskKind::Vector] {
+        let r = recorded(&h.ctx, masked).unwrap().0.into_iter().find(|(k, _)| *k == kind).unwrap().1;
+        click_with(&mut h, r.center(), Modifiers::NONE);
+        h.run_steps(2);
+    }
+    let l = layer(&h, masked);
+    assert!(l.mask.unwrap().enabled && l.vector_mask.unwrap().enabled);
+    assert!(h.state().ui.vector_mask_target, "the last click targeted the vector mask");
+    // Clicking an enabled mask leaves it on (Shift-click is the toggle).
+    let r = recorded(&h.ctx, masked).unwrap().0.into_iter().find(|(k, _)| *k == MaskKind::Pixel).unwrap().1;
+    click_with(&mut h, r.center(), Modifiers::NONE);
+    assert!(layer(&h, masked).mask.unwrap().enabled);
+}
+
 #[test]
 fn vector_thumbnail_is_white_inside_grey_outside_at_the_document_aspect() {
     let (s, masked, _) = session();
@@ -778,10 +799,11 @@ fn a_new_adjustment_or_fill_layer_shows_its_settings_until_the_mask_thumbnail_is
         if let Some(label) = settings {
             assert!(h.query_all_by_label(label).next().is_some(), "{command}: its settings show");
         }
-        // Clicking the row (not a thumbnail) keeps the settings.
+        // Clicking the row (not a thumbnail) selects the adjustment or fill layer itself: its
+        // settings stay, and the mask is no longer the target.
         let row = h.get_by_label(&layer(&h, id).name).rect().center();
         click_with(&mut h, row, Modifiers::NONE);
-        assert!(h.state().ui.mask_target);
+        assert!(!h.state().ui.mask_target, "{command}: a row click targets the layer, not its mask");
         assert!(h.query_all_by_label("Density").next().is_none(), "{command}: a row click keeps the settings");
         // The mask thumbnail switches Properties to the mask.
         let r = mask_rect(&h, id, MaskKind::Pixel);
@@ -812,4 +834,55 @@ fn a_new_adjustment_layer_brings_properties_to_the_front() {
     assert_eq!(h.state().ui.dock_tabs.properties, 0, "Properties is the group's tab");
     assert!(!h.state().ui.dock.is_collapsed(crate::dock::Group::Properties), "the group is expanded");
     assert!(h.query_all_by_label("Reset to defaults").next().is_some(), "the Curves settings show");
+}
+
+/// The second mask gets its own chain and thumbnail between the layer mask and the vector mask;
+/// clicking it targets it (painting then edits it), ⇧-click turns it off, and its menu converts it.
+#[test]
+fn the_second_mask_has_a_thumbnail_that_targets_it() {
+    let (mut s, masked, _) = session();
+    s.execute("layer.vectorMask.delete", json!({"layer": masked})).unwrap();
+    s.execute(photocraft_engine::second_mask_cmds::ADD, json!({"layer": masked})).unwrap();
+    let mut h = harness(s, 0, 1.0, 290.0);
+    let (thumbs, chains) = recorded(&h.ctx, masked).expect("mask thumbnails drawn");
+    assert_eq!(thumbs.iter().map(|(k, _)| *k).collect::<Vec<_>>(), [MaskKind::Pixel, MaskKind::Second]);
+    assert_eq!(chains.len(), 2);
+    let r = thumbs[1].1;
+    click_with(&mut h, r.center(), Modifiers::NONE);
+    assert!(h.state().ui.mask_target && h.state().ui.second_mask_target);
+    assert_eq!(crate::canvas::paint_target(h.state()), json!("secondMask"));
+    // Also with the Channels panel's layer-mask row targeted (the app does that whenever a mask
+    // is): painting and ⌘I (Invert) edit the second mask, not the first (a user report).
+    h.state_mut().session.active_mut().unwrap().channel_view.target = photocraft_engine::channel_cmds::ChannelTarget::LayerMask;
+    assert_eq!(crate::canvas::paint_target(h.state()), json!("secondMask"));
+    let p = h.state().with_mask_target("image.adjustments.invert", json!({}));
+    assert_eq!(p["target"], "secondMask");
+    let before = layer(&h, masked);
+    h.state_mut().run("image.adjustments.invert", p).unwrap();
+    let after = layer(&h, masked);
+    assert_eq!(after.mask, before.mask, "the first mask is untouched");
+    assert!((after.second_mask.as_ref().unwrap().value(150, 50) - (1.0 - before.second_mask.as_ref().unwrap().value(150, 50))).abs() < 1e-3);
+    h.state_mut().run("edit.undo", json!({})).unwrap();
+    // The layer mask's thumbnail targets the first again.
+    let first = recorded(&h.ctx, masked).unwrap().0[0].1;
+    click_with(&mut h, first.center(), Modifiers::NONE);
+    assert!(h.state().ui.mask_target && !h.state().ui.second_mask_target);
+    assert_eq!(crate::canvas::paint_target(h.state()), json!("mask"));
+    // ⇧-click: off; a plain click: on again.
+    click_with(&mut h, r.center(), Modifiers::SHIFT);
+    h.run_steps(2);
+    assert!(!layer(&h, masked).second_mask.unwrap().enabled);
+    click_with(&mut h, r.center(), Modifiers::NONE);
+    h.run_steps(2);
+    assert!(layer(&h, masked).second_mask.unwrap().enabled);
+    // Its menu turns it into the vector mask.
+    h.hover_at(r.center());
+    h.event(egui::Event::PointerButton { pos: r.center(), button: PointerButton::Secondary, pressed: true, modifiers: Modifiers::NONE });
+    h.event(egui::Event::PointerButton { pos: r.center(), button: PointerButton::Secondary, pressed: false, modifiers: Modifiers::NONE });
+    h.run_steps(3);
+    let at = h.get_by_label("Convert to Vector Mask").rect().center();
+    click_with(&mut h, at, Modifiers::NONE);
+    h.run_steps(2);
+    let l = layer(&h, masked);
+    assert!(l.second_mask.is_none() && l.vector_mask.is_some());
 }

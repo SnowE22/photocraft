@@ -156,6 +156,30 @@ fn tool_shortcuts_work_after_another_layer_is_selected() {
     assert_eq!(text_of(h.state(), 0, text).as_deref(), Some("Hello"), "and types nothing");
 }
 
+/// User request: C on a rotated view resets the rotation instead of picking the Crop tool; on
+/// a view that isn't rotated it picks the Crop tool as before.
+#[test]
+fn the_crop_key_straightens_a_rotated_view() {
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 400, "height": 300})).unwrap();
+    let mut h = Harness::builder().with_size(egui::vec2(1440.0, 900.0)).with_max_steps(64).build_eframe(move |cc| {
+        PhotocraftApp::setup_context(&cc.egui_ctx, Default::default());
+        PhotocraftApp::new(s, crate::Services::default())
+    });
+    h.run_steps(8);
+    let ctx = h.ctx.clone();
+    crate::menus::invoke(h.state_mut(), &ctx, "view.rotateView", json!({"angle": 30})).unwrap();
+    h.state_mut().ui.tool = crate::state::Tool::Brush;
+    h.run_steps(2);
+    h.key_press(egui::Key::C);
+    h.run_steps(2);
+    assert_eq!(h.state().ui.views[0].rotation, 0.0, "the rotation is reset");
+    assert_eq!(h.state().ui.tool, crate::state::Tool::Brush, "and the tool stays");
+    h.key_press(egui::Key::C);
+    h.run_steps(2);
+    assert_eq!(h.state().ui.tool, crate::state::Tool::Crop, "unrotated, C picks the Crop tool");
+}
+
 /// Ending an empty Type Mask undoes its session, and undo restores the layer selection from
 /// before it: the layer just selected (or Deselect Layers) must stand. So must it when a Type
 /// Mask with text becomes the selection and its working layer goes.

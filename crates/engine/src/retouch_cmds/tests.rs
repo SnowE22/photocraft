@@ -1834,7 +1834,8 @@ fn remove_a_ring_around_an_object_removes_it_in_one_undo_step() {
         let bg = rgba(&s, 10, 10);
         assert!(!near(rgba(&s, 46, 30), bg, 0.05), "{mode}/{depth}: the square is there");
         let past = s.active().unwrap().history.past_len();
-        let r = s.execute("paint.remove", json!({"points": ring(), "size": 4})).unwrap();
+        // The patch fill's values (the generative fill has its own tests).
+        let r = s.execute("paint.remove", json!({"points": ring(), "size": 4, "generative": "off"})).unwrap();
         assert!(r["damage"].is_array(), "{r}");
         for (x, y) in [(46, 30), (40, 24), (51, 35)] {
             assert!(near(rgba(&s, x, y), bg, 0.03), "{mode}/{depth} ({x}, {y}): {:?} vs {bg:?}", rgba(&s, x, y));
@@ -1880,7 +1881,7 @@ fn remove_on_an_empty_layer_is_a_no_op_without_a_history_step() {
 fn remove_thin_scratches_take_their_surroundings() {
     let mut s = session(80, 40, 16, "rgb");
     paint_layer(&mut s, |x, y| if y == 20 { [1.0, 1.0, 1.0, 1.0] } else { [x as f32 / 80.0, 0.4, 0.6, 1.0] });
-    s.execute("paint.remove", json!({"points": [[5, 20], [75, 20]], "size": 2})).unwrap();
+    s.execute("paint.remove", json!({"points": [[5, 20], [75, 20]], "size": 2, "generative": "off"})).unwrap();
     for x in [10, 40, 70] {
         assert!(near(rgba(&s, x, 20), [x as f32 / 80.0, 0.4, 0.6, 1.0], 0.02), "x {x}: {:?}", rgba(&s, x, 20));
     }
@@ -1906,6 +1907,13 @@ fn remove_bad_params_are_errors() {
     assert!(err.contains("too large"), "{err}");
     let err = s.execute("paint.remove", json!({"points": [[48, 32]], "size": 3000})).unwrap_err().to_string();
     assert!(err.contains("nothing is left"), "{err}");
+    // LaMa's Quality mode: "standard" or "high", anything else is refused before any work.
+    for q in [json!("ultra"), json!(3), json!(true)] {
+        let err = s.execute("paint.remove", json!({"points": [[4, 4]], "size": 2, "quality": q})).unwrap_err().to_string();
+        assert!(err.contains("`quality`"), "{q}: {err}");
+    }
+    assert!(remove::high_quality(&json!({"quality": "high"}), "paint.remove").unwrap());
+    assert!(!remove::high_quality(&json!({"quality": null}), "paint.remove").unwrap());
 }
 
 /// Flat (150, 120, 100) with Gaussian film grain of σ 12 levels (the #2104 test image).
@@ -2032,6 +2040,151 @@ fn remove_several_strokes_apply_as_one_job_and_one_undo_step() {
     ] {
         assert!(s.execute("paint.remove", p).is_err());
     }
+}
+
+/// The generative model's stand-in: every masked cell gets the mean colour of what it can see.
+fn mean_model(rgb: &[f32], mask: &[f32], _hint: Option<&[f32]>) -> std::result::Result<Vec<f32>, photocraft_ml::MlError> {
+    let n = mask.len();
+    let mut out = rgb.to_vec();
+    for c in 0..3 {
+        let seen: Vec<f64> = (0..n).filter(|p| mask[*p] == 0.0).map(|p| f64::from(rgb[c * n + p])).collect();
+        let mean = (seen.iter().sum::<f64>() / seen.len().max(1) as f64) as f32;
+        for p in (0..n).filter(|p| mask[*p] > 0.0) {
+            out[c * n + p] = mean;
+        }
+    }
+    Ok(out)
+}
+
+/// The generative fill of a stroke over the square, with the stand-in model: the window as
+/// filled, the window before, and the hole.
+fn generative_fill(s: &Session, p: &Value) -> (std::result::Result<Vec<f32>, photocraft_ml::MlError>, Region, Vec<bool>) {
+    let plan = remove::plan(s, p).unwrap();
+    let mut doc = (*s.active().unwrap().doc).clone();
+    let hole = remove::hole(&plan, doc.selection.as_ref()).unwrap();
+    let img = {
+        let (surf, _) = crate::channel_cmds::target_surface(&mut doc, plan.id, p).unwrap();
+        Region::read(surf, plan.window)
+    };
+    let out = remove::fill_generative(&mut doc, &plan, p, &img, &hole, &photocraft_raster::Interrupt::NONE, &mut |req, read, ctl| {
+        photocraft_ml::inpaint::fill(req, read, &mut mean_model, ctl)
+    });
+    (out, img, hole)
+}
+
+#[test]
+fn remove_generative_fill_changes_only_the_hole_at_every_depth() {
+    let p = json!({"points": [[38, 30], [54, 30]], "size": 16, "generative": "off"});
+    for (depth, mode) in [(8, "rgb"), (16, "rgb"), (32, "rgb"), (8, "gray"), (16, "gray")] {
+        let s = square_session(depth, mode);
+        let bg = rgba(&s, 10, 10);
+        let (out, img, hole) = generative_fill(&s, &p);
+        let out = out.unwrap();
+        let ch = img.ch;
+        assert!(hole.iter().any(|m| *m));
+        for (k, m) in hole.iter().enumerate() {
+            let (before, after) = (&img.data[k * ch..(k + 1) * ch], &out[k * ch..(k + 1) * ch]);
+            if *m {
+                // The square is gone: the model saw only the grey around it (32-bit grey is linear).
+                let want = if ch >= 3 { &bg[..3] } else { &bg[..1] };
+                let got = &after[..want.len()];
+                let tol = if depth == 32 { 0.02 } else { 0.01 };
+                if mode == "gray" {
+                    assert!((got[0] - before_grey(&s)).abs() < tol, "{mode}/{depth}: {got:?}");
+                } else {
+                    assert!(got.iter().zip(want).all(|(a, b)| (a - b).abs() < tol), "{mode}/{depth}: {got:?} vs {want:?}");
+                }
+                assert_eq!(after.last(), Some(&1.0), "{mode}/{depth}: opaque");
+            } else {
+                assert_eq!(before, after, "{mode}/{depth}: only the hole changes");
+            }
+        }
+    }
+}
+
+/// The grey of a gray document's background as stored (native, not RGBA).
+fn before_grey(s: &Session) -> f32 {
+    let d = s.active().unwrap();
+    let surf = d.doc.layer(d.active_layer.unwrap()).unwrap().surface().unwrap();
+    surf.read_region(Rect::new(10, 10, 11, 11))[0]
+}
+
+#[test]
+fn remove_generative_fill_needs_opaque_surroundings_and_rgb_or_gray() {
+    let p = json!({"points": [[38, 30], [54, 30]], "size": 16});
+    // An empty layer has nothing around the stroke to give the model.
+    let mut s = square_session(8, "rgb");
+    s.execute("layer.new.layer", json!({})).unwrap();
+    let (out, _, _) = generative_fill(&s, &p);
+    assert!(matches!(out, Err(photocraft_ml::MlError::Unsuitable(_))), "{out:?}");
+    // CMYK and Lab have no channels the model knows.
+    for mode in ["cmyk", "lab"] {
+        let (out, _, _) = generative_fill(&square_session(8, mode), &p);
+        assert!(matches!(&out, Err(photocraft_ml::MlError::Unsuitable(m)) if m.contains("RGB and Grayscale")), "{mode}: {out:?}");
+    }
+}
+
+#[test]
+fn remove_generative_mode_falls_back_to_the_patch_fill_without_the_model() {
+    let installed = photocraft_ml::lama::availability().is_ok();
+    let mut s = square_session(8, "rgb");
+    let bg = rgba(&s, 10, 10);
+    let stroke = json!({"points": [[38, 30], [54, 30]], "size": 16});
+    // Off is always the patch fill.
+    let mut p = stroke.clone();
+    p["generative"] = json!("off");
+    let r = s.execute("paint.remove", p).unwrap();
+    assert_eq!(r["fill"], "patch", "{r}");
+    assert!(near(rgba(&s, 46, 30), bg, 0.03));
+    s.execute("edit.undo", json!({})).unwrap();
+    if installed {
+        return;
+    }
+    // Auto (the default) without the model: the patch fill, quietly.
+    let r = s.execute("paint.remove", stroke.clone()).unwrap();
+    assert_eq!((r["fill"].as_str(), r.get("note")), (Some("patch"), None), "{r}");
+    assert!(near(rgba(&s, 46, 30), bg, 0.03));
+    s.execute("edit.undo", json!({})).unwrap();
+    // On without the model fails before anything changes, saying what is missing and where.
+    let mut p = stroke.clone();
+    p["generative"] = json!("on");
+    let past = s.active().unwrap().history.past_len();
+    let err = s.execute("paint.remove", p.clone()).unwrap_err().to_string();
+    assert!(err.contains("Generative AI is on, but") && err.contains("lama_fp32.onnx"), "{err}");
+    assert_eq!(s.active().unwrap().history.past_len(), past);
+    // A mask target always gets the patch fill, so On doesn't stop it.
+    s.execute("layer.layerMask.revealAll", json!({})).unwrap();
+    p["target"] = json!("mask");
+    let r = s.execute("paint.remove", p).unwrap();
+    assert_eq!(r["fill"], "patch", "{r}");
+}
+
+/// The real model through the command, when `PHOTOCRAFT_MODEL_DIR` holds it and ONNX Runtime:
+/// `cargo test -p photocraft-engine --lib remove_with_the_installed_model -- --ignored`.
+#[test]
+#[ignore = "needs the LaMa model and ONNX Runtime"]
+fn remove_with_the_installed_model_fills_from_the_surroundings() {
+    for (depth, mode) in [(8, "rgb"), (16, "gray"), (32, "rgb")] {
+        let mut s = square_session(depth, mode);
+        let bg = rgba(&s, 10, 10);
+        let r = s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "generative": "on"})).unwrap();
+        assert_eq!(r["fill"], "generative", "{mode}/{depth}: {r}");
+        for (x, y) in [(46, 30), (41, 25), (50, 34)] {
+            assert!(near(rgba(&s, x, y), bg, 0.06), "{mode}/{depth} ({x}, {y}): {:?} vs {bg:?} on {}", rgba(&s, x, y), r["device"]);
+        }
+    }
+}
+
+#[test]
+fn remove_generative_bad_values_are_errors() {
+    let mut s = square_session(8, "rgb");
+    for v in [json!("maybe"), json!(5), json!(["on"]), json!({"on": true})] {
+        let err = s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "generative": v})).unwrap_err().to_string();
+        assert!(err.contains("`generative` is \"auto\", \"on\" or \"off\""), "{err}");
+    }
+    // true and false are on and off.
+    let r = s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "generative": false})).unwrap();
+    assert_eq!(r["fill"], "patch");
 }
 
 #[test]
@@ -2290,4 +2443,148 @@ fn periodic_clone_interior_matches_ordinary_brush_masks_and_transparency() {
             assert!(error <= tolerance, "depth={depth}, brush={brush}, max native-channel error={error}");
         }
     }
+}
+
+#[test]
+fn remove_model_and_prompt_are_checked() {
+    let mut s = square_session(8, "rgb");
+    let p = |extra: Value| {
+        let mut base = json!({"points": [[38, 30], [54, 30]], "size": 16, "generative": "off"});
+        if let (Some(b), Some(e)) = (base.as_object_mut(), extra.as_object()) {
+            b.extend(e.clone());
+        }
+        base
+    };
+    for bad_model in [json!("sdxl"), json!(3), json!(true)] {
+        assert!(s.execute("paint.remove", p(json!({"model": bad_model}))).is_err());
+    }
+    // Off ignores the model: the patch fill runs whatever it is.
+    let r = s.execute("paint.remove", p(json!({"model": "diffusion", "prompt": "x".repeat(10_000)}))).unwrap();
+    assert_eq!(r["fill"], "patch", "{r}");
+    // On with a model that isn't installed fails before the job, saying why.
+    if std::env::var_os("PHOTOCRAFT_MODEL_DIR").is_none() {
+        let e = s.execute("paint.remove", p(json!({"model": "diffusion", "generative": "on"}))).unwrap_err().to_string();
+        assert!(e.contains("Generative AI is on") && e.contains("isn't installed"), "{e}");
+        // Auto falls back to the patch fill, no error.
+        let r = s.execute("paint.remove", p(json!({"model": "diffusion", "generative": "auto"}))).unwrap();
+        assert_eq!(r["fill"], "patch", "{r}");
+    }
+}
+
+#[test]
+fn generative_fill_needs_a_selection_and_a_model_and_never_panics() {
+    let mut s = square_session(8, "rgb");
+    // No selection.
+    assert!(s.execute("edit.generativeFill", json!({})).is_err());
+    s.execute("select.rect", json!({"x": 30, "y": 20, "width": 30, "height": 20})).unwrap();
+    for p in [json!({"model": "nope"}), json!({"model": 1}), json!({"prompt": 5, "model": []})] {
+        assert!(s.execute("edit.generativeFill", p).is_err());
+    }
+    if std::env::var_os("PHOTOCRAFT_MODEL_DIR").is_none() {
+        let e = s.execute("edit.generativeFill", json!({"prompt": "a cat"})).unwrap_err().to_string();
+        assert!(e.contains("can't use that model"), "{e}");
+    }
+    // A selection off the canvas, and a CMYK document.
+    s.execute("select.rect", json!({"x": 500, "y": 500, "width": 10, "height": 10})).ok();
+    assert!(s.execute("edit.generativeFill", json!({})).is_err());
+    let mut c = square_session(8, "cmyk");
+    c.execute("select.all", json!({})).unwrap();
+    assert!(c.execute("edit.generativeFill", json!({})).is_err());
+}
+
+#[test]
+fn a_fill_without_a_prompt_starts_from_lama_and_a_prompt_from_noise() {
+    // SDXL inpainting from noise drew soft grey mush where a manga page's title was removed.
+    let removal = remove::diffusion_settings(&json!({}));
+    assert!(removal.lama_start.is_some() && removal.guided_steps.is_some());
+    assert_eq!(remove::diffusion_settings(&json!({"prompt": "  "})).lama_start, removal.lama_start);
+    let asked = remove::diffusion_settings(&json!({"prompt": "a cat"}));
+    assert_eq!((asked.lama_start, asked.guided_steps), (None, None));
+    assert_eq!(asked.prompt, "a cat");
+}
+
+#[test]
+fn remove_selection_removes_what_is_selected_and_nothing_else() {
+    let mut s = square_session(8, "rgb");
+    let bg = rgba(&s, 10, 10);
+    let far = rgba(&s, 80, 50);
+    // No selection: an error saying to make one.
+    let err = s.execute("paint.remove", json!({"selection": true, "generative": "off"})).unwrap_err().to_string();
+    assert!(err.contains("make one first"), "{err}");
+    // A selection drawn loosely around the square removes it, in one undo step.
+    s.execute("select.rect", json!({"x": 36, "y": 20, "width": 20, "height": 20})).unwrap();
+    let past = s.active().unwrap().history.past_len();
+    let r = s.execute("paint.remove", json!({"selection": true, "generative": "off"})).unwrap();
+    assert_eq!(r["fill"], "patch", "{r}");
+    for (x, y) in [(46, 30), (40, 24), (51, 35)] {
+        assert!(near(rgba(&s, x, y), bg, 0.03), "({x}, {y}): {:?}", rgba(&s, x, y));
+    }
+    assert_eq!(rgba(&s, 80, 50), far, "outside the selection nothing changes");
+    assert_eq!(s.active().unwrap().history.past_len(), past + 1);
+}
+
+#[test]
+fn nano_banana_without_a_key_says_so_or_uses_lama() {
+    assert_eq!(remove::AiModel::parse(&json!({"model": "nanoBanana"}), "paint.remove").unwrap(), remove::AiModel::NanoBanana);
+    let err = remove::AiModel::parse(&json!({"model": "gemini"}), "paint.remove").unwrap_err().to_string();
+    assert!(err.contains("nanoBanana"), "{err}");
+    use photocraft_ml::gemini::{Area, Mark, Options};
+    assert_eq!(remove::nano_options(&json!({}), "paint.remove").unwrap(), Options { mark: Mark::Paint, area: Area::Near }, "the area near the hole, painted red, by default");
+    assert_eq!(remove::nano_options(&json!({"mark": "mask", "area": "page"}), "paint.remove").unwrap(), Options { mark: Mark::Mask, area: Area::Page });
+    assert!(remove::nano_options(&json!({"mark": "red"}), "paint.remove").is_err());
+    assert!(remove::nano_options(&json!({"area": 3}), "paint.remove").is_err());
+    // Only meaningful where no key is set (this machine's credential store or GEMINI_API_KEY).
+    if photocraft_ml::gemini::key_source().is_some() {
+        return;
+    }
+    let mut s = square_session(8, "rgb");
+    let err =
+        s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "model": "nanoBanana", "generative": "on"})).unwrap_err().to_string();
+    assert!(err.contains("Google API key"), "{err}");
+    let r = s.execute("paint.remove", json!({"points": [[38, 30], [54, 30]], "size": 16, "model": "nanoBanana"})).unwrap();
+    assert!(r["note"].as_str().is_some_and(|n| n.contains("Google API key")), "Auto says why it didn't use Nano Banana: {r}");
+}
+
+#[test]
+fn nano_banana_keeps_everything_it_drew_on_a_layer_masked_to_the_hole() {
+    let s = square_session(8, "rgb");
+    let before = rgba(&s, 10, 10);
+    let id = s.active().unwrap().active_layer;
+    let canvas = Rect::new(0, 0, 96, 64);
+    let win = Rect::new(30, 15, 66, 45);
+    // The model's picture of the whole page: flat 0.25 grey (RGB, no alpha: the Background).
+    let picture = Region { rect: canvas, ch: 3, data: vec![0.25; 96 * 64 * 3] };
+    let hole: Vec<bool> = (0..36 * 30).map(|k| (10..26).contains(&(k % 36)) && (9..21).contains(&(k / 36))).collect();
+    let mut doc = (*s.active().unwrap().doc).clone();
+    let (damage, nid) = remove::generated_layer(&mut doc, id, &[picture], &hole, win, false).unwrap();
+    assert_eq!(damage, canvas);
+    let l = doc.layer(nid).unwrap();
+    assert!(l.name.starts_with("Nano Banana"), "{}", l.name);
+    let px = l.surface().unwrap().rgba(5, 5);
+    assert!((px[0] - 0.25).abs() < 0.01 && px[3] == 1.0, "the whole picture is on the layer: {px:?}");
+    let mask = l.mask.as_ref().unwrap();
+    assert_eq!((mask.value(46, 30), mask.value(10, 10), mask.value(31, 16)), (1.0, 0.0, 0.0), "the mask shows only the hole");
+    // Above the target: the composite changes only in the hole.
+    assert_eq!(doc.layers.iter().position(|l| l.id == nid), Some(doc.layers.len() - 1));
+    let flat = photocraft_compose::flatten(&doc);
+    let at = |x: usize, y: usize| flat.px[y * 96 + x];
+    assert!((at(10, 10)[0] - before[0]).abs() < 0.01 && (at(46, 30)[0] - 0.25).abs() < 0.02, "{:?} {:?}", at(10, 10), at(46, 30));
+}
+
+#[test]
+fn a_creative_nano_banana_layer_shows_all_it_drew_fading_at_the_inner_edges() {
+    let s = square_session(8, "rgb");
+    let id = s.active().unwrap().active_layer;
+    let win = Rect::new(30, 15, 66, 45);
+    let hole: Vec<bool> = (0..36 * 30).map(|k| (10..26).contains(&(k % 36)) && (9..21).contains(&(k / 36))).collect();
+    // The area sent: from the canvas's left edge to x 80, rows 0–64 (the canvas is 96 × 64).
+    let drawn = Rect::new(0, 0, 80, 64);
+    let picture = Region { rect: drawn, ch: 3, data: vec![0.25; 80 * 64 * 3] };
+    let mut doc = (*s.active().unwrap().doc).clone();
+    let (_, nid) = remove::generated_layer(&mut doc, id, &[picture], &hole, win, true).unwrap();
+    let mask = doc.layer(nid).unwrap().mask.as_ref().unwrap();
+    let v = |x, y| mask.value(x, y);
+    assert_eq!((v(46, 30), v(10, 10), v(0, 0), v(20, 63)), (1.0, 1.0, 1.0, 1.0), "the hole and all of the area, the canvas's edges too");
+    assert!(v(79, 30) < 0.05 && v(70, 30) > 0.0 && v(70, 30) < 1.0, "fading out at the area's inner edge: {} {}", v(79, 30), v(70, 30));
+    assert_eq!(v(85, 30), 0.0, "nothing past the area drawn");
 }

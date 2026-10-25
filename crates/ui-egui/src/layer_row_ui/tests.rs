@@ -127,16 +127,21 @@ fn a_groups_layers_indent_past_the_group() {
     let mut s = photocraft_engine::Session::new();
     s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
     let child = s.execute("layer.new.layer", json!({"name": "Child"})).unwrap()["layer"].as_u64().unwrap();
+    // Made before the grouping: a new layer for the (open, selected) group would go inside it.
+    let top = s.execute("layer.new.layer", json!({"name": "Top"})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.select", json!({"layer": child})).unwrap();
     let group = s.execute("layer.groupLayers", json!({"name": "Group"})).unwrap()["layer"].as_u64().unwrap();
     // Group Layers creates the group collapsed; open it so the panel lists its layers.
     s.execute("layer.setExpanded", json!({"layer": group, "expanded": true})).unwrap();
-    let top = s.execute("layer.new.layer", json!({"name": "Top"})).unwrap()["layer"].as_u64().unwrap();
     let h = harness(s, 1.0, "promedium", 290.0);
     let rows = recorded(&h.ctx);
     let left = |id: u64| rows.iter().find(|r| r.layer == id).and_then(|r| r.name).map(|n| n.left()).unwrap_or_else(|| panic!("layer {id} drawn"));
     let step = crate::layer_tree_ui::TRIANGLE_W;
-    assert!((left(child) - left(group) - step).abs() < 0.5, "child {} vs group {}", left(child), left(group));
-    assert!((left(group) - left(top) - step).abs() < 0.5, "a top-level layer keeps its place: {} vs group {}", left(top), left(group));
+    // Layer rows (a thumbnail each): the child two steps right of a top-level layer, its depth
+    // and the group's triangle column. The group's row, a folder glyph in Photoshop's themes,
+    // starts left of its child's.
+    assert!((left(child) - left(top) - 2.0 * step).abs() < 0.5, "child {} vs top {}", left(child), left(top));
+    assert!(left(child) > left(group), "child {} vs group {}", left(child), left(group));
 }
 
 /// A primary click at `at`: hover, press and release a frame apart, then let the panel settle.
@@ -512,7 +517,7 @@ fn press_drag_release_on_the_adjustment_button_adds_that_layer() {
     h.event(egui::Event::PointerMoved(button));
     h.run_steps(1);
     press(&mut h, button, true);
-    let curves = h.get_by_label("Curves").rect().center();
+    let curves = h.get_by_label("Curves…").rect().center();
     drag(&mut h, button, curves);
     press(&mut h, curves, false);
     h.run_steps(2);
@@ -520,17 +525,17 @@ fn press_drag_release_on_the_adjustment_button_adds_that_layer() {
     let doc = &h.state().session.active().unwrap().doc;
     let top = doc.layers.last().unwrap();
     assert!(matches!(top.content, LayerContent::Adjustment(_)), "an adjustment layer: {:?}", top.name);
-    assert!(h.query_by_label("Curves").is_none(), "and the menu closed");
+    assert!(h.query_by_label("Curves…").is_none(), "and the menu closed");
 
     // A plain click opens the menu and leaves it open; releasing off the items adds nothing.
     drag(&mut h, curves, button);
     press(&mut h, button, true);
     press(&mut h, button, false);
     h.run_steps(2);
-    assert!(h.query_by_label("Curves").is_some(), "a click leaves the menu open");
+    assert!(h.query_by_label("Curves…").is_some(), "a click leaves the menu open");
     h.key_press(egui::Key::Escape);
     h.run_steps(2);
-    assert!(h.query_by_label("Curves").is_none(), "Esc closed it");
+    assert!(h.query_by_label("Curves…").is_none(), "Esc closed it");
 
     // Press, drag off the button to an empty spot, release: nothing is added, the menu stays open.
     press(&mut h, button, true);
@@ -539,7 +544,7 @@ fn press_drag_release_on_the_adjustment_button_adds_that_layer() {
     press(&mut h, away, false);
     h.run_steps(2);
     assert_eq!(count(&h), before + 1, "a release on nothing adds no layer");
-    assert!(h.query_by_label("Curves").is_some(), "and keeps the menu open");
+    assert!(h.query_by_label("Curves…").is_some(), "and keeps the menu open");
 }
 
 /// #2071: the fx (Add a layer style) footer button is the same kind of menu, and runs after the
@@ -585,7 +590,8 @@ fn panel_thumbnail_sizes_change_real_row_geometry() {
     for (size, expected_thumb, expected_row) in [
         (LayerThumbnailSize::None, 0.0, 23.0),
         (LayerThumbnailSize::Small, 18.0, 32.0),
-        (LayerThumbnailSize::Medium, 24.0, 32.0),
+        // Medium, the default: Photoshop's measured 32 pt thumbnails in 41 pt rows.
+        (LayerThumbnailSize::Medium, 32.0, 41.0),
         (LayerThumbnailSize::Large, 48.0, 56.0),
     ] {
         h.state_mut().ui.layers_panel_options.thumbnail_size = size;
@@ -669,4 +675,24 @@ fn clicking_the_lock_icon_on_a_row_unlocks_the_layer() {
     let doc = &h.state().session.active().unwrap().doc;
     assert!(doc.background().is_none(), "the Background became a normal layer");
     assert!(!doc.layer(bg).unwrap().locks.any());
+}
+
+#[test]
+fn a_layer_with_blend_if_shows_its_mark_and_the_mark_opens_blending_options() {
+    // User request: a symbol on layers with Blend If, as Photoshop's overlapping squares.
+    let mut s = photocraft_engine::Session::new();
+    s.execute("file.new", json!({"width": 64, "height": 48})).unwrap();
+    let plain = s.execute("layer.new.layer", json!({"name": "plain"})).unwrap()["layer"].as_u64().unwrap();
+    let blended = s.execute("layer.new.layer", json!({"name": "blended"})).unwrap()["layer"].as_u64().unwrap();
+    s.execute("layer.layerStyle.blendingOptions", json!({"blendIf": {"channel": "gray", "thisLayer": [50, 255]}})).unwrap();
+    s.execute("layer.select", json!({"layer": plain})).unwrap();
+    let mut h = harness(s, 1.0, "promedium", 290.0);
+    let rows = recorded(&h.ctx);
+    let mark = |id: u64| rows.iter().find(|r| r.layer == id).unwrap().indicators.iter().find(|(k, _)| *k == Indicator::BlendIf).map(|(_, r)| r.center());
+    assert!(mark(plain).is_none(), "no mark without Blend If");
+    let at = mark(blended).expect("the Blend If mark");
+    click(&mut h, at);
+    h.run_steps(2);
+    assert_eq!(h.state().session.active().unwrap().active_layer.map(|l| l.0), Some(blended), "its layer selected");
+    assert!(h.state().ui.dialogs.iter().any(|d| d.kind == crate::state::DialogKind::LayerStyle), "Blending Options opened");
 }

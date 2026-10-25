@@ -97,10 +97,16 @@ pub struct Locks {
     pub position: bool,
     pub artboard: bool,
     pub all: bool,
+    /// PhotoCraft's Lock Selection: clicks on the canvas (Move tool Auto-Select, ⌘-click, the
+    /// right-click layer list, the Move tool's marquee) pass through the layer, or a group's
+    /// layers, to what is below; the Layers panel still selects it. Photoshop has no such lock.
+    #[serde(default)]
+    pub selection: bool,
 }
 
 impl Locks {
-    /// Set the lock a command names (`transparency`, `pixels`, `position`, `artboard`, `all`);
+    /// Set the lock a command names (`transparency`, `pixels`, `position`, `artboard`, `all`,
+    /// `selection`);
     /// false for an unknown name. Lock Image Pixels includes Lock Transparent Pixels, so, as in
     /// Photoshop, locking the pixels clears the transparency lock, and that one stays off while the
     /// pixels are locked (#4892).
@@ -116,6 +122,7 @@ impl Locks {
             "position" => self.position = on,
             "artboard" => self.artboard = on,
             "all" => self.all = on,
+            "selection" => self.selection = on,
             _ => return false,
         }
         true
@@ -123,7 +130,12 @@ impl Locks {
 
     /// Whether any lock is set: Photoshop then shows the lock icon on the layer's row.
     pub fn any(self) -> bool {
-        self.transparency || self.pixels || self.position || self.artboard || self.all
+        self.transparency || self.pixels || self.position || self.artboard || self.all || self.selection
+    }
+
+    /// Whether canvas clicks pass through the layer: Lock All or Lock Selection.
+    pub fn unpickable(self) -> bool {
+        self.all || self.selection
     }
 
     pub fn union(self, o: Locks) -> Locks {
@@ -133,6 +145,7 @@ impl Locks {
             position: self.position || o.position,
             artboard: self.artboard || o.artboard,
             all: self.all || o.all,
+            selection: self.selection || o.selection,
         }
     }
 }
@@ -657,6 +670,11 @@ pub struct Layer {
     /// Vector mask (Layer › Vector Mask), applied together with `mask`. Shape layers keep their
     /// outline in [`ShapeLayer::path`] instead.
     pub vector_mask: Option<VectorMask>,
+    /// PhotoCraft's second layer mask (Add Mask on a layer that has one): a pixel mask applied
+    /// together with `mask` and `vector_mask`, edited when targeted like the first. Photoshop has
+    /// one pixel mask a layer: a PSD stores the two multiplied as its layer mask, and each in a
+    /// private block PhotoCraft reads back (`io`).
+    pub second_mask: Option<LayerMask>,
     pub effects: Effects,
     pub label: LabelColor,
     pub content: LayerContent,
@@ -688,6 +706,9 @@ pub struct Layer {
     pub advanced: AdvancedBlending,
     /// Layer › Video Layers frame stack (None for a normal layer).
     pub video: Option<VideoData>,
+    /// A reference layer, as in Clip Studio Paint: the line art the Fill tool reads when its
+    /// Reference is Reference Layers. Saved in `.pcraft`; PSD has no place for it.
+    pub reference: bool,
     /// The layer's own XMP packet (Photoshop's `layer.xmpMetadata.rawData`), where scripts and
     /// embedding apps keep data about the layer under their own namespaces. Copied by
     /// [`Layer::duplicate`], as in Photoshop. PSD `shmd` › `cust` › `layerXMP`.
@@ -702,6 +723,22 @@ impl Layer {
         self.locks.transparency && self.locks.position && !self.clipped && matches!(self.content, LayerContent::Raster(_))
     }
 
+    /// The layer mask, or with `second` the second pixel mask.
+    pub fn pixel_mask(&self, second: bool) -> Option<&LayerMask> {
+        if second { self.second_mask.as_ref() } else { self.mask.as_ref() }
+    }
+
+    /// The layer's pixel masks (the layer mask, then the second one): what moves, resizes and
+    /// turns with it.
+    pub fn pixel_masks_mut(&mut self) -> impl Iterator<Item = &mut LayerMask> {
+        self.mask.iter_mut().chain(self.second_mask.iter_mut())
+    }
+
+    /// [`Layer::pixel_mask`], mutably.
+    pub fn pixel_mask_mut(&mut self, second: bool) -> Option<&mut LayerMask> {
+        if second { self.second_mask.as_mut() } else { self.mask.as_mut() }
+    }
+
     pub fn new(name: impl Into<String>, content: LayerContent) -> Self {
         Layer {
             id: LayerId::fresh(),
@@ -714,6 +751,7 @@ impl Layer {
             clipped: false,
             mask: None,
             vector_mask: None,
+            second_mask: None,
             effects: Effects { enabled: true, ..Default::default() },
             label: LabelColor::None,
             content,
@@ -725,6 +763,7 @@ impl Layer {
             blend_if: BlendIf::default(),
             advanced: AdvancedBlending::default(),
             video: None,
+            reference: false,
             xmp: None,
         }
     }
@@ -1220,6 +1259,26 @@ impl Document {
         id
     }
 
+    /// Insert a new `layer` where Photoshop puts one for the selected layer `active`: at the top of
+    /// `active`'s children when it is a group shown open in the Layers panel, otherwise directly
+    /// above it (or at the top of the root if None). A group too deep to take the layer without
+    /// passing [`MAX_GROUP_DEPTH`] gets it above itself instead.
+    pub fn insert_new(&mut self, active: Option<LayerId>, layer: Layer) -> LayerId {
+        let into = active.filter(|&a| {
+            let open = matches!(self.layer(a).map(|l| &l.content), Some(LayerContent::Group(g)) if g.expanded);
+            // The group's children list sits as deep as the group's path is long.
+            open && self.path_of(a).is_some_and(|p| p.len().saturating_add(nested_depth(&layer)) <= MAX_GROUP_DEPTH)
+        });
+        match into.and_then(|a| self.layer_mut(a)).and_then(Layer::children_mut) {
+            Some(children) => {
+                let id = layer.id;
+                children.push(layer);
+                id
+            }
+            None => self.insert_above(active, layer),
+        }
+    }
+
     /// Insert `layer` directly below the layer `below` (or at the bottom of the root if None).
     pub fn insert_below(&mut self, below: Option<LayerId>, layer: Layer) -> LayerId {
         let id = layer.id;
@@ -1277,6 +1336,21 @@ impl Document {
     pub fn top_layer(&self) -> Option<LayerId> {
         self.layers.last().map(|l| l.id)
     }
+}
+
+/// How many levels of non-empty child lists `layer` holds, as [`Document::max_group_depth`]
+/// counts them: 0 for a layer or an empty group, 1 for a group of layers, and so on.
+fn nested_depth(layer: &Layer) -> usize {
+    let mut max = 0;
+    let mut stack: Vec<(&[Layer], usize)> = layer.children().map(|c| vec![(c, 1)]).unwrap_or_default();
+    while let Some((layers, depth)) = stack.pop() {
+        if layers.is_empty() {
+            continue;
+        }
+        max = max.max(depth);
+        stack.extend(layers.iter().filter_map(|l| l.children()).map(|c| (c, depth + 1)));
+    }
+    max
 }
 
 #[cfg(test)]
@@ -1436,6 +1510,51 @@ mod tests {
         let names: Vec<_> = d.layers.iter().map(|l| l.name.as_str()).collect();
         assert_eq!(names, ["Background", "B", "A"]);
         assert_eq!(d.layers[1].id, b);
+    }
+
+    /// A new layer for a selected open group lands at the top inside it, as in Photoshop; a closed
+    /// group, or any other layer, gets it directly above.
+    #[test]
+    fn a_new_layer_goes_into_a_selected_open_group() {
+        let mut d = doc();
+        let inner = Layer::raster("inner", d.pixel_format());
+        let g = d.insert_above(None, Layer::group("G", vec![inner]));
+        let a = d.insert_new(Some(g), Layer::raster("A", d.pixel_format()));
+        let names = |d: &Document, id| d.layer(id).and_then(Layer::children).map(|c| c.iter().map(|l| l.name.clone()).collect::<Vec<_>>());
+        assert_eq!(names(&d, g).unwrap(), ["inner", "A"]);
+        assert_eq!(d.path_of(a).map(|p| p.len()), Some(2));
+        // An empty open group takes it too.
+        let empty = d.insert_new(Some(g), Layer::group("Empty", vec![]));
+        let b = d.insert_new(Some(empty), Layer::raster("B", d.pixel_format()));
+        assert_eq!(names(&d, empty).unwrap(), ["B"]);
+        // Closed: above the group, beside it.
+        if let Some(LayerContent::Group(gr)) = d.layer_mut(g).map(|l| &mut l.content) {
+            gr.expanded = false;
+        }
+        let c = d.insert_new(Some(g), Layer::raster("C", d.pixel_format()));
+        let root: Vec<_> = d.layers.iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(root, ["Background", "G", "C"]);
+        // A layer that isn't a group: directly above it.
+        let e = d.insert_new(Some(b), Layer::raster("E", d.pixel_format()));
+        assert_eq!(names(&d, empty).unwrap(), ["B", "E"]);
+        assert!(d.layer(c).is_some() && d.layer(e).is_some());
+    }
+
+    /// Inside a group as deep as the nesting limit allows, a new group (or a group of layers)
+    /// goes above it instead of nesting past the limit; a plain layer still goes in.
+    #[test]
+    fn a_new_layer_never_nests_past_the_group_limit() {
+        let mut d = doc();
+        let mut top = d.insert_above(None, Layer::group("G0", vec![]));
+        for i in 1..MAX_GROUP_DEPTH {
+            top = d.insert_new(Some(top), Layer::group(format!("G{i}"), vec![]));
+        }
+        assert_eq!(d.path_of(top).map(|p| p.len()), Some(MAX_GROUP_DEPTH));
+        let deep = d.insert_new(Some(top), Layer::group("too deep", vec![Layer::raster("x", d.pixel_format())]));
+        assert_eq!(d.path_of(deep).map(|p| p.len()), Some(MAX_GROUP_DEPTH), "beside the deepest group");
+        let plain = d.insert_new(Some(top), Layer::raster("plain", d.pixel_format()));
+        assert_eq!(d.path_of(plain).map(|p| p.len()), Some(MAX_GROUP_DEPTH + 1));
+        assert!(d.max_group_depth() <= MAX_GROUP_DEPTH);
     }
 
     #[test]

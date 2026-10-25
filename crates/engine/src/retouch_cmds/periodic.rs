@@ -90,10 +90,9 @@ impl Composite<'_> {
                     for py in dst.y0..dst.y1 {
                         for px in dst.x0..dst.x1 {
                             let i = stroke.paint.index(px, py);
-                            let depth = brush.wet_edges.then(|| stroke.depth.get(i).copied().unwrap_or(0.0));
                             let dual = brush.dual_brush.enabled.then(|| dual_stroke.coverage.get(i).copied().unwrap_or(0.0));
                             if let Some(c) = stroke.coverage.get_mut(i) {
-                                *c = ctx.stroke_mask_wet(*c, depth, dual, px, py);
+                                *c = ctx.stroke_mask(*c, dual, px, py);
                             }
                         }
                     }
@@ -125,8 +124,7 @@ impl Composite<'_> {
         let nx1 = (i64::from(bounds.x1) - 1 - i64::from(dst.x0)).div_euclid(w);
         let ny0 = (i64::from(bounds.y0) - i64::from(dst.y1)).div_euclid(h) + 1;
         let ny1 = (i64::from(bounds.y1) - 1 - i64::from(dst.y0)).div_euclid(h);
-        let (mut values, mut depths) = (Vec::new(), Vec::new());
-        let wet = ctx.brush.wet_edges && !dual;
+        let mut values = Vec::new();
         for ny in ny0..=ny1 {
             for nx in nx0..=nx1 {
                 let (dx, dy) = (nx * w, ny * h);
@@ -140,7 +138,7 @@ impl Composite<'_> {
                 if *work > 64 * 1024 * 1024 {
                     return Err(bad("paint.cloneStamp", "wrapped stroke exceeds its coverage budget"));
                 }
-                ctx.rasterize_into(dab, dual, r, &mut values, wet.then_some(&mut depths));
+                ctx.rasterize(dab, dual, r, &mut values);
                 let mut sampled = None;
                 for sy in r.y0..r.y1 {
                     for sx in r.x0..r.x1 {
@@ -151,9 +149,6 @@ impl Composite<'_> {
                         }
                         let (tx, ty) = ((i64::from(sx) - dx) as i32, (i64::from(sy) - dy) as i32);
                         let i = result.paint.index(tx, ty);
-                        if let Some(depth) = result.depth.get_mut(i) {
-                            *depth = depth.max(depths.get(source_index).copied().unwrap_or(0.0));
-                        }
                         let Some(previous) = result.coverage.get_mut(i) else { continue };
                         if value <= *previous {
                             continue;
@@ -177,7 +172,6 @@ impl Composite<'_> {
 
 struct PatchStroke {
     coverage: Vec<f32>,
-    depth: Vec<f32>,
     // Native colours weighted by coverage and source alpha; alpha weighted by coverage.
     paint: Region,
 }
@@ -185,7 +179,7 @@ struct PatchStroke {
 impl PatchStroke {
     fn new(rect: Rect, channels: usize) -> Self {
         let len = rect.width() as usize * rect.height() as usize;
-        Self { coverage: vec![0.0; len], depth: vec![0.0; len], paint: Region::new(rect, channels) }
+        Self { coverage: vec![0.0; len], paint: Region::new(rect, channels) }
     }
 
     fn accumulate(&mut self, dab: &photocraft_paint::Dab, footprint: &PatchStroke, alpha: Option<usize>) {
@@ -197,9 +191,6 @@ impl PatchStroke {
                 let value = footprint.coverage.get(i).copied().unwrap_or(0.0);
                 if value <= 0.0 {
                     continue;
-                }
-                if let Some(depth) = self.depth.get_mut(i) {
-                    *depth = depth.max(footprint.depth.get(i).copied().unwrap_or(0.0));
                 }
                 if dab.opacity <= *c {
                     continue;

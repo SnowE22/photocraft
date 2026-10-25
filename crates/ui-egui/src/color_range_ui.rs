@@ -11,7 +11,8 @@
 //! Cancel never touches the document, so the previous selection stays as it was.
 
 use std::hash::{Hash, Hasher};
-use std::sync::Arc;
+use std::sync::mpsc::{Receiver, TryRecvError};
+use std::sync::{Arc, OnceLock};
 
 use egui::{Color32, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use photocraft_doc::{DocId, Document};
@@ -86,7 +87,7 @@ pub fn controls(f: &Map<String, Value>) -> Controls {
 }
 
 /// Open the dialog with Photoshop's defaults (Sampled Colors, Fuzziness 40, the foreground colour
-/// as the sample until the eyedropper picks one).
+/// as the sample until the eyedropper picks one) and the Selection Preview chosen last time.
 pub fn open(app: &mut PhotocraftApp) -> u64 {
     let label = photocraft_engine::commands::find(COMMAND).map_or(tl!("Color Range…"), |c| c.label);
     let mut f = Map::new();
@@ -107,9 +108,23 @@ pub fn open(app: &mut PhotocraftApp) -> u64 {
     f.insert("__order".into(), json!([]));
     f.insert("__tool".into(), json!("sample"));
     f.insert("__view".into(), json!("selection"));
-    f.insert("__selectionPreview".into(), json!("none"));
+    f.insert("__selectionPreview".into(), json!(remembered_preview(app)));
     app.color_range = None;
     app.ui.open_dialog(DialogKind::Command, f)
+}
+
+/// The Selection Preview the dialog last had (a known mode, else None).
+fn remembered_preview(app: &PhotocraftApp) -> &'static str {
+    PREVIEWS.iter().map(|(id, _)| *id).find(|id| *id == app.ui.color_range.selection_preview).unwrap_or("none")
+}
+
+/// Keep the dialog's Selection Preview for its next opening, however it changed (the menu,
+/// `ui.dialog.set`), as Photoshop does.
+fn remember_preview(app: &mut PhotocraftApp, f: &Map<String, Value>) {
+    let mode = s(f, "__selectionPreview", "none");
+    if PREVIEWS.iter().any(|(id, _)| *id == mode) && app.ui.color_range.selection_preview != mode {
+        app.ui.color_range.selection_preview = mode.to_string();
+    }
 }
 
 pub fn owns(f: &Map<String, Value>) -> bool {
@@ -127,6 +142,11 @@ pub fn params(f: &Map<String, Value>) -> Value {
         p.insert("fuzziness".into(), json!(num(f, "fuzziness", 40.0)));
         let (add, sub) = (points(f, "points"), points(f, "subtractPoints"));
         let picked = !add.is_empty() || !sub.is_empty();
+        // The colours an action step recorded (opened from the Actions panel): Add to Sample
+        // grows them; a plain eyedropper click or Clear Samples drops them.
+        if let Some(r) = f.get("labRange").filter(|r| r.is_object()) {
+            p.insert("labRange".into(), r.clone());
+        }
         if !add.is_empty() {
             p.insert("points".into(), json!(add));
         }
@@ -171,15 +191,18 @@ pub struct Preview {
     /// Proxy scale: proxy pixel = `k` document pixels.
     k: u32,
     proxy: Arc<Document>,
+    composite: Composite,
     image: Option<egui::TextureHandle>,
     /// Hash of the params the mask texture shows.
     mask_key: u64,
     mask: Option<egui::TextureHandle>,
+    mask_job: Option<Job>,
     /// Why the preview couldn't be drawn (shown in the dialog and logged, never silent: #145).
     error: Option<String>,
-    canvas_proxy: Option<(u32, Arc<Document>)>,
+    canvas_proxy: Option<(u32, Arc<Document>, Composite)>,
     overlay: Option<egui::TextureHandle>,
     overlay_key: u64,
+    overlay_job: Option<Job>,
 }
 
 fn hash(text: &str) -> u64 {
@@ -218,10 +241,27 @@ fn scope_preview(proxy: &Document, params: &Value, mask: &mut [f32]) {
     }
 }
 
+/// The proxy's composite, rendered once per proxy by the first mask job that needs it: a
+/// Fuzziness drag then only recomputes the coverage, not the whole document.
+type Composite = Arc<OnceLock<Vec<[f32; 4]>>>;
+
+/// The heavy part of a preview mask, run off the UI thread (see [`Job`]).
+type MaskFn = Box<dyn FnOnce() -> Result<Vec<f32>, String> + Send>;
+
 /// The selection mask `params` would make, on the proxy: the engine command run on a scratch
 /// session (Out Of Gamut uses the document's own proof setup).
+#[cfg(test)]
 fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> Result<Vec<f32>, String> {
+    mask_job(app, Arc::new(proxy.clone()), k, params, Composite::default())?()
+}
+
+/// The preview mask in two halves: what reads the session runs now, on the UI thread (it is quick:
+/// the eyedropper samples, the proof setup); the returned closure does the per-pixel work and
+/// owns everything it needs, so it can run on a worker.
+fn mask_job(app: &PhotocraftApp, proxy: Arc<Document>, k: u32, params: &Value, composite: Composite) -> Result<MaskFn, String> {
     let area = proxy.bounds();
+    let invert = params.get("invert").and_then(Value::as_bool).unwrap_or(false);
+    let scope = params.clone();
     if params.get("select").and_then(Value::as_str).unwrap_or("sampledColors") == "sampledColors" {
         // Pick on the original document, not the thumbnail's nearest retained pixel. The
         // prepared Lab query is the same one the command uses at full resolution.
@@ -229,35 +269,39 @@ fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> 
         // Like the command (and OK): `sampleAllLayers: false` judges the active layer's own
         // pixels, otherwise the composite.
         let all_layers = params.get("sampleAllLayers").and_then(Value::as_bool).unwrap_or(true);
-        let layer = app.session.active().and_then(|d| d.active_layer).and_then(|id| proxy.layer(id)).and_then(|l| l.surface());
-        let px = match (all_layers, layer) {
-            (false, Some(surf)) => {
-                let mut px = vec![[0.0f32; 4]; area.width() as usize * area.height() as usize];
-                surf.read_rgba_into(area, &mut px);
-                px
-            }
-            _ => photocraft_compose::render(proxy, area).px,
-        };
-        let invert = params.get("invert").and_then(Value::as_bool).unwrap_or(false);
-        let mut mask: Vec<f32> = query
-            .coverage(&px, area.width() as usize, k as f32, [0.0, 0.0])
-            .into_iter()
-            .map(|v| {
-                let v = if invert { 1.0 - v } else { v };
-                // Match the command's GRAY8 mask rounding, before display interpolation.
-                (v.clamp(0.0, 1.0) * 255.0 + 0.5).floor() / 255.0
-            })
-            .collect();
-        scope_preview(proxy, params, &mut mask);
-        return Ok(mask);
+        let layer = app.session.active().and_then(|d| d.active_layer).and_then(|id| proxy.layer(id)).and_then(|l| l.surface()).cloned();
+        return Ok(Box::new(move || {
+            let own;
+            let px: &[[f32; 4]] = match (all_layers, layer) {
+                (false, Some(surf)) => {
+                    let mut px = vec![[0.0f32; 4]; area.width() as usize * area.height() as usize];
+                    surf.read_rgba_into(area, &mut px);
+                    own = px;
+                    &own
+                }
+                _ => composite.get_or_init(|| photocraft_compose::render(&proxy, area).px),
+            };
+            let mut mask: Vec<f32> = query
+                .coverage(px, area.width() as usize, k as f32, [0.0, 0.0])
+                .into_iter()
+                .map(|v| {
+                    let v = if invert { 1.0 - v } else { v };
+                    // Match the command's GRAY8 mask rounding, before display interpolation.
+                    (v.clamp(0.0, 1.0) * 255.0 + 0.5).floor() / 255.0
+                })
+                .collect();
+            scope_preview(&proxy, &scope, &mut mask);
+            Ok(mask)
+        }));
     }
     if params.get("select").and_then(Value::as_str) == Some("outOfGamut") {
         let pv = app.session.color.proof(proxy.id);
-        let (m, _) = photocraft_engine::color_cmds::gamut_mask(proxy, &pv.setup, pv.gamut_threshold).map_err(|e| e.to_string())?;
-        let invert = params.get("invert").and_then(Value::as_bool).unwrap_or(false);
-        let mut mask: Vec<f32> = m.iter().map(|v| f32::from(*v) / 255.0).map(|v| if invert { 1.0 - v } else { v }).collect();
-        scope_preview(proxy, params, &mut mask);
-        return Ok(mask);
+        return Ok(Box::new(move || {
+            let (m, _) = photocraft_engine::color_cmds::gamut_mask(&proxy, &pv.setup, pv.gamut_threshold).map_err(|e| e.to_string())?;
+            let mut mask: Vec<f32> = m.iter().map(|v| f32::from(*v) / 255.0).map(|v| if invert { 1.0 - v } else { v }).collect();
+            scope_preview(&proxy, &scope, &mut mask);
+            Ok(mask)
+        }));
     }
     let mut p = params.clone();
     // Eyedropper points are in document pixels; the proxy is 1/k the size.
@@ -276,16 +320,84 @@ fn proxy_mask(app: &PhotocraftApp, proxy: &Document, k: u32, params: &Value) -> 
             }
         }
     }
-    let mut s = photocraft_engine::Session::new();
-    s.tools = app.session.tools.clone();
-    // Preserve the proxy's pre-existing selection so preview and OK use the same scope.
-    s.add_document(proxy.clone(), None);
-    if let Some(id) = app.session.active().and_then(|d| d.active_layer) {
-        let _ = s.select_layer(id);
+    let tools = app.session.tools.clone();
+    let active = app.session.active().and_then(|d| d.active_layer);
+    Ok(Box::new(move || {
+        let mut s = photocraft_engine::Session::new();
+        s.tools = tools;
+        // Preserve the proxy's pre-existing selection so preview and OK use the same scope.
+        s.add_document(Arc::unwrap_or_clone(proxy), None);
+        if let Some(id) = active {
+            let _ = s.select_layer(id);
+        }
+        s.execute(COMMAND, p).map_err(|e| e.to_string())?;
+        let d = s.active().ok_or("no preview document")?;
+        Ok(photocraft_algo::selection::mask_from_surface(d.doc.selection.as_ref(), area))
+    }))
+}
+
+/// A preview mask computing on a worker thread for the params hashed to `key`.
+struct Job {
+    key: u64,
+    rx: Receiver<Result<Vec<f32>, String>>,
+}
+
+/// What a preview mask slot does this frame: show a finished mask, or nothing new.
+enum Step {
+    Show(u64, Result<Vec<f32>, String>),
+    Wait,
+}
+
+/// One preview mask (the dialog's thumbnail or the canvas overlay), never waiting on its
+/// computation: the newest finished mask is shown while the next one computes, one job at a
+/// time, always for the latest params, so a Fuzziness drag stays as smooth as the slider. The
+/// first mask (nothing shown yet) and wasm (no threads) compute at once.
+fn step_mask(job: &mut Option<Job>, shown: u64, first: bool, key: u64, ctx: &egui::Context, start: impl FnOnce() -> Result<MaskFn, String>) -> Step {
+    if let Some(j) = job {
+        match j.rx.try_recv() {
+            Ok(mask) => {
+                let done = j.key;
+                *job = None;
+                if done != key {
+                    // Stale: show it, and start the latest on the next frame.
+                    ctx.request_repaint();
+                }
+                return Step::Show(done, mask);
+            }
+            Err(TryRecvError::Empty) => return Step::Wait,
+            Err(TryRecvError::Disconnected) => *job = None,
+        }
     }
-    s.execute(COMMAND, p).map_err(|e| e.to_string())?;
-    let d = s.active().ok_or("no preview document")?;
-    Ok(photocraft_algo::selection::mask_from_surface(d.doc.selection.as_ref(), area))
+    if shown == key && !first {
+        return Step::Wait;
+    }
+    let work = match start() {
+        Ok(work) => work,
+        Err(e) => return Step::Show(key, Err(e)),
+    };
+    if first || cfg!(target_arch = "wasm32") {
+        return Step::Show(key, work());
+    }
+    let (tx, rx) = std::sync::mpsc::sync_channel(1);
+    let repaint = ctx.clone();
+    let spawned = std::thread::Builder::new().name("color-range-preview".into()).spawn(move || {
+        let mask = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).unwrap_or_else(|_| Err("the preview computation failed".into()));
+        let _ = tx.send(mask);
+        repaint.request_repaint();
+    });
+    match spawned {
+        Ok(_) => {
+            *job = Some(Job { key, rx });
+            Step::Wait
+        }
+        Err(e) => Step::Show(key, Err(format!("could not start the preview: {e}"))),
+    }
+}
+
+/// Whether a preview mask is still computing.
+#[cfg(test)]
+fn busy(app: &PhotocraftApp) -> bool {
+    app.color_range.as_ref().is_some_and(|p| p.mask_job.is_some() || p.overlay_job.is_some())
 }
 
 /// Record why the preview failed (logged once per new reason), or clear it.
@@ -315,21 +427,24 @@ fn preview(app: &mut PhotocraftApp, ctx: &egui::Context, f: &Map<String, Value>)
             revision,
             k,
             proxy,
+            composite: Composite::default(),
             image: None,
             mask_key: 0,
             mask: None,
+            mask_job: None,
             error: None,
             canvas_proxy: None,
             overlay: None,
             overlay_key: 0,
+            overlay_job: None,
         });
     }
     let image_view = (s(f, "__view", "selection") == "image") ^ ctx.input(|i| i.modifiers.command || (!cfg!(target_os = "macos") && i.modifiers.ctrl));
     let params = params(f);
     let key = query_key(app, &params);
-    let (proxy, k) = {
+    let (proxy, k, composite) = {
         let p = app.color_range.as_ref()?;
-        (p.proxy.clone(), p.k)
+        (p.proxy.clone(), p.k, p.composite.clone())
     };
     let (w, h) = (proxy.size.width as usize, proxy.size.height as usize);
     if image_view {
@@ -355,8 +470,16 @@ fn preview(app: &mut PhotocraftApp, ctx: &egui::Context, f: &Map<String, Value>)
         }
         return app.color_range.as_ref()?.image.as_ref().map(|t| (t.id(), [w, h], k));
     }
-    if app.color_range.as_ref().is_some_and(|p| p.mask_key != key || p.mask.is_none()) {
-        let mask = match proxy_mask(app, &proxy, k, &params) {
+    let step = {
+        let shown = app.color_range.as_ref().map_or(0, |p| p.mask_key);
+        let first = app.color_range.as_ref().is_some_and(|p| p.mask.is_none());
+        let mut job = app.color_range.as_mut().and_then(|p| p.mask_job.take());
+        let step = step_mask(&mut job, shown, first, key, ctx, || mask_job(app, proxy.clone(), k, &params, composite));
+        app.color_range.as_mut()?.mask_job = job;
+        step
+    };
+    if let Step::Show(shown, mask) = step {
+        let mask = match mask {
             Ok(m) => {
                 report(app, None);
                 m
@@ -377,7 +500,7 @@ fn preview(app: &mut PhotocraftApp, ctx: &egui::Context, f: &Map<String, Value>)
             Some(t) => t.set(img, egui::TextureOptions::LINEAR),
             None => p.mask = Some(ctx.load_texture("color-range-mask", img, egui::TextureOptions::LINEAR)),
         }
-        p.mask_key = key;
+        p.mask_key = shown;
     }
     app.color_range.as_ref()?.mask.as_ref().map(|t| (t.id(), [w, h], k))
 }
@@ -527,7 +650,9 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
                     }
                 });
                 let (add, sub) = (points(f, "points").len(), points(f, "subtractPoints").len());
+                let recorded = f.get("labRange").is_some_and(Value::is_object);
                 let what = match (add, sub) {
+                    (0, 0) if recorded => tl!("Sample: recorded colours").to_string(),
                     (0, 0) => tl!("Sample: foreground colour").to_string(),
                     (a, 0) => crate::i18n::trn(crate::i18n::current(), a as u64, "{n} sample", "{n} samples"),
                     (a, s) => crate::i18n::fmt(
@@ -536,7 +661,8 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
                     ),
                 };
                 ui.label(egui::RichText::new(what).size(11.0).color(t.text_faint));
-                if add + sub > 0 && widgets::secondary_button(ui, tl!("Clear Samples"), 0.0).clicked() {
+                if (add + sub > 0 || recorded) && widgets::secondary_button(ui, tl!("Clear Samples"), 0.0).clicked() {
+                    f.remove("labRange");
                     set_points(f, "points", &[]);
                     set_points(f, "subtractPoints", &[]);
                     f.insert("__order".into(), json!([]));
@@ -570,6 +696,7 @@ pub fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, f: &mut Map<String, Valu
             f.insert("__selectionPreview".into(), json!(chosen));
         }
     });
+    remember_preview(app, f);
     if app.session.active().is_none() {
         ui.label(egui::RichText::new(tl!("Open a document to select a colour range.")).color(t.text_faint));
     }
@@ -604,14 +731,24 @@ pub(crate) fn paint_selection_preview(app: &mut PhotocraftApp, ctx: &egui::Conte
         let k = original.size.width.max(original.size.height).max(1).div_ceil(CANVAS_PREVIEW);
         let proxy = Arc::new(crate::proxy::proxy_document(&original, k));
         if let Some(p) = app.color_range.as_mut() {
-            p.canvas_proxy = Some((k, proxy));
+            p.canvas_proxy = Some((k, proxy, Composite::default()));
         }
     }
     let params = params(&fields);
     let key = (query_key(app, &params) ^ hash(mode)).max(1);
-    if app.color_range.as_ref().is_some_and(|p| p.overlay_key != key || p.overlay.is_none()) {
-        let Some((k, proxy)) = app.color_range.as_ref().and_then(|p| p.canvas_proxy.clone()) else { return };
-        let mask = match proxy_mask(app, &proxy, k, &params) {
+    let Some((k, proxy, composite)) = app.color_range.as_ref().and_then(|p| p.canvas_proxy.clone()) else { return };
+    let step = {
+        let Some(p) = app.color_range.as_mut() else { return };
+        let (shown, first) = (p.overlay_key, p.overlay.is_none());
+        let mut job = p.overlay_job.take();
+        let step = step_mask(&mut job, shown, first, key, ctx, || mask_job(app, proxy.clone(), k, &params, composite));
+        if let Some(p) = app.color_range.as_mut() {
+            p.overlay_job = job;
+        }
+        step
+    };
+    if let Step::Show(shown, mask) = step {
+        let mask = match mask {
             Ok(mask) => mask,
             Err(e) => {
                 report(app, Some(e));
@@ -619,6 +756,10 @@ pub(crate) fn paint_selection_preview(app: &mut PhotocraftApp, ctx: &egui::Conte
             }
         };
         let size = [proxy.size.width as usize, proxy.size.height as usize];
+        if mask.len() != size[0] * size[1] {
+            report(app, Some(format!("the selection preview has {} pixels, expected {}", mask.len(), size[0] * size[1])));
+            return;
+        }
         let pixels = mask.into_iter().map(|v| overlay_pixel(mode, v)).collect();
         let img = egui::ColorImage::new(size, pixels);
         if let Some(p) = app.color_range.as_mut() {
@@ -626,7 +767,7 @@ pub(crate) fn paint_selection_preview(app: &mut PhotocraftApp, ctx: &egui::Conte
                 Some(t) => t.set(img, egui::TextureOptions::LINEAR),
                 None => p.overlay = Some(ctx.load_texture("color-range-canvas-preview", img, egui::TextureOptions::LINEAR)),
             }
-            p.overlay_key = key;
+            p.overlay_key = shown;
         }
     }
     if let Some(tex) = app.color_range.as_ref().and_then(|p| p.overlay.as_ref()) {
@@ -676,7 +817,7 @@ pub fn canvas_eyedropper(app: &mut PhotocraftApp, ctx: &egui::Context, over: egu
         ctx.set_cursor_icon(egui::CursorIcon::Crosshair);
     } else {
         // The tip of the icon's pipette is at (2, 22) of its 24-unit box (as the Color Picker's).
-        crate::icons::cursor(ctx, "pipette", over, vec2(2.0, 22.0) / 24.0, 20.0);
+        crate::icons::cursor(ctx, "pipette", over, vec2(2.0, 22.0) / 24.0, 20.0, false);
         ctx.set_cursor_icon(egui::CursorIcon::None);
     }
     let badge = match tool {
@@ -728,6 +869,7 @@ pub fn pick(app: &PhotocraftApp, f: &mut Map<String, Value>, at: [f64; 2], mods:
             order.push(json!("-"));
         }
         _ => {
+            f.remove("labRange");
             set_points(f, "points", &[at]);
             set_points(f, "subtractPoints", &[]);
             order = vec![json!("+")];
@@ -791,6 +933,126 @@ mod tests {
         let id = dialog_id(h.state());
         h.state_mut().ui.dialog_mut(id).unwrap().fields.insert(key.into(), v);
         h.run_steps(3);
+        settle(h);
+    }
+
+    /// Let the preview workers finish (a preview never holds up the frame that wants it).
+    fn settle(h: &mut Harness<'static, PhotocraftApp>) {
+        for _ in 0..1000 {
+            h.run_steps(1);
+            if !busy(h.state()) {
+                h.run_steps(1);
+                if !busy(h.state()) {
+                    return;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        panic!("the Color Range preview never finished");
+    }
+
+    /// Poll a mask slot until it shows a result.
+    fn shown(job: &mut Option<Job>, shown: u64, key: u64, ctx: &egui::Context) -> (u64, Result<Vec<f32>, String>) {
+        for _ in 0..5000 {
+            match step_mask(job, shown, false, key, ctx, || -> Result<MaskFn, String> { panic!("no second job while one runs") }) {
+                Step::Show(k, mask) => return (k, mask),
+                Step::Wait => std::thread::sleep(std::time::Duration::from_millis(1)),
+            }
+        }
+        panic!("the mask never arrived");
+    }
+
+    /// A slow mask never blocks the frame: one job at a time, the finished one shows even if the
+    /// params moved on meanwhile, then the latest params start; a failed job says why.
+    #[test]
+    fn a_slow_mask_never_blocks_and_the_latest_params_win() {
+        let ctx = egui::Context::default();
+        let (release, wait) = std::sync::mpsc::channel::<()>();
+        let slow: MaskFn = Box::new(move || {
+            let _ = wait.recv();
+            Ok(vec![0.25])
+        });
+        let mut job = None;
+        let started = std::time::Instant::now();
+        assert!(matches!(step_mask(&mut job, 1, false, 2, &ctx, || Ok(slow)), Step::Wait));
+        assert!(job.is_some() && started.elapsed() < std::time::Duration::from_secs(1), "the frame didn't wait for the mask");
+        // The slider moves on while it computes: no second job.
+        assert!(matches!(step_mask(&mut job, 1, false, 3, &ctx, || -> Result<MaskFn, String> { panic!("one job at a time") }), Step::Wait));
+        release.send(()).unwrap();
+        let (key, mask) = shown(&mut job, 1, 3, &ctx);
+        assert_eq!((key, mask), (2, Ok(vec![0.25])), "the finished mask shows at once");
+        assert!(matches!(step_mask(&mut job, 2, false, 3, &ctx, || Ok(Box::new(|| -> Result<Vec<f32>, String> { Ok(vec![0.75]) }))), Step::Wait));
+        assert_eq!(shown(&mut job, 2, 3, &ctx), (3, Ok(vec![0.75])), "then the latest params");
+        assert!(matches!(step_mask(&mut job, 3, false, 3, &ctx, || -> Result<MaskFn, String> { panic!("nothing to do") }), Step::Wait));
+        // The first mask, with nothing to show yet, computes at once.
+        assert!(matches!(step_mask(&mut None, 0, true, 4, &ctx, || Ok(Box::new(|| -> Result<Vec<f32>, String> { Ok(vec![1.0]) }))), Step::Show(4, Ok(_))));
+        // Failures are shown, never a crash.
+        assert!(matches!(step_mask(&mut None, 3, false, 5, &ctx, || Err("bad params".into())), Step::Show(5, Err(_))));
+        assert!(matches!(step_mask(&mut job, 3, false, 6, &ctx, || Ok(Box::new(|| -> Result<Vec<f32>, String> { panic!("boom") }))), Step::Wait));
+        assert!(matches!(shown(&mut job, 3, 6, &ctx), (6, Err(_))));
+    }
+
+    /// Dragging Fuzziness: the frame keeps the last mask while the new one computes off the UI
+    /// thread, and the new one replaces it once ready.
+    #[test]
+    fn fuzziness_preview_computes_off_the_ui_thread() {
+        let mut h = harness(app_with_doc());
+        let id = open(h.state_mut());
+        h.run_steps(3);
+        set(&mut h, "fuzziness", json!(0.0));
+        let before = h.state().color_range.as_ref().unwrap().mask_key;
+        h.state_mut().ui.dialog_mut(id).unwrap().fields.insert("fuzziness".into(), json!(150.0));
+        let f = h.state().ui.dialogs.iter().find(|d| d.id == id).unwrap().fields.clone();
+        let ctx = h.ctx.clone();
+        assert!(preview(h.state_mut(), &ctx, &f).is_some(), "the last mask is still drawn");
+        let p = h.state().color_range.as_ref().unwrap();
+        assert_eq!(p.mask_key, before, "the frame didn't compute the new mask itself");
+        assert!(p.mask_job.is_some(), "the new mask computes on a worker");
+        settle(&mut h);
+        let want = query_key(h.state(), &params(&f));
+        assert_eq!(h.state().color_range.as_ref().unwrap().mask_key, want, "and shows once ready");
+    }
+
+    /// An action step's recorded colours (`labRange`, opened from the Actions panel) stay in the
+    /// query, Add to Sample grows them, and a plain eyedropper click or Clear Samples drops them.
+    #[test]
+    fn recorded_colours_stay_until_a_new_sample_replaces_them() {
+        let app = app_with_doc();
+        let range = json!({"min": [50, 60, 40], "max": [55, 70, 50]});
+        let mut f: Map<String, Value> = serde_json::from_value(json!({"select": "sampledColors", "fuzziness": 30, "labRange": range.clone()})).unwrap();
+        assert_eq!(params(&f)["labRange"], range);
+        pick(&app, &mut f, [5.0, 5.0], egui::Modifiers::SHIFT);
+        assert_eq!((params(&f)["labRange"].clone(), params(&f)["points"].clone()), (range, json!([[5.0, 5.0]])), "Add to Sample");
+        pick(&app, &mut f, [6.0, 6.0], egui::Modifiers::NONE);
+        assert!(params(&f).get("labRange").is_none(), "a new sample replaces them");
+        assert_eq!(params(&f)["points"], json!([[6.0, 6.0]]));
+    }
+
+    /// Photoshop keeps the Selection Preview choice between openings (user report), across
+    /// launches too (the UI state is saved).
+    #[test]
+    fn selection_preview_is_remembered_between_openings() {
+        let mut h = harness(app_with_doc());
+        open(h.state_mut());
+        h.run_steps(3);
+        assert_eq!(h.state().ui.dialogs.last().unwrap().fields["__selectionPreview"], "none", "None the first time");
+        set(&mut h, "__selectionPreview", json!("blackMatte"));
+        h.key_press(egui::Key::Escape);
+        h.run_steps(2);
+        assert!(h.state().ui.dialogs.is_empty());
+        assert_eq!(h.state().ui.color_range.selection_preview, "blackMatte");
+        let id = open(h.state_mut());
+        assert_eq!(h.state_mut().ui.dialog_mut(id).unwrap().fields["__selectionPreview"], "blackMatte");
+        let saved = serde_json::to_value(&h.state().ui).unwrap();
+        let back: crate::state::UiState = serde_json::from_value(saved).unwrap();
+        assert_eq!(back.color_range.selection_preview, "blackMatte");
+        // Choosing again in the dialog replaces it; an unknown stored mode opens as None.
+        set(&mut h, "__selectionPreview", json!("quickMask"));
+        assert_eq!(h.state().ui.color_range.selection_preview, "quickMask");
+        h.state_mut().ui.close_dialog(id);
+        h.state_mut().ui.color_range.selection_preview = "bogus".into();
+        let id = open(h.state_mut());
+        assert_eq!(h.state_mut().ui.dialog_mut(id).unwrap().fields["__selectionPreview"], "none");
     }
 
     /// OK / Cancel are painted buttons without accessibility labels; the dialog's keys do the same.
@@ -1098,7 +1360,9 @@ mod tests {
         let id = open(h.state_mut());
         h.run_steps(3);
         for (mode, _) in PREVIEWS {
-            set(&mut h, "__selectionPreview", json!(mode));
+            // Not `set`: this harness has no canvas to poll the overlay's worker, so don't wait on it.
+            h.state_mut().ui.dialog_mut(id).unwrap().fields.insert("__selectionPreview".into(), json!(mode));
+            h.run_steps(3);
             let f = &h.state().ui.dialogs.last().unwrap().fields;
             assert!(params(f).get("__selectionPreview").is_none());
             let painter = h.ctx.layer_painter(egui::LayerId::background());
@@ -1296,6 +1560,7 @@ mod tests {
         let id = dialog_id(h.state());
         h.state_mut().ui.dialog_mut(id).unwrap().fields.insert("select".into(), json!("noSuchMode"));
         h.run_steps(3);
+        settle(&mut h);
         let err = h.state().color_range.as_ref().and_then(|p| p.error.clone());
         assert!(err.is_some(), "the failure is recorded");
         assert!(h.query_by_label_contains("Color Range preview unavailable").is_some(), "and shown");

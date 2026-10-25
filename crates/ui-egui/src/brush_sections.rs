@@ -278,7 +278,7 @@ fn tip_grid(ui: &mut egui::Ui, id: &str, presets: &[BrushPreset], highlight: Opt
                         ui.painter().rect_filled(cell, 3.0, t.hover);
                     }
                     let (tip, size, hard, angle, round, _) = preset_tip(p);
-                    let tex = brush_preview::tip_texture(ui.ctx(), &format!("{id}:{}", p.name), tip, (hard, angle, round), 34, t.text);
+                    let tex = brush_preview::tip_texture(ui.ctx(), &brush_preview::preset_slot(id, p), tip, (hard, angle, round), 34, t.text);
                     let ir = egui::Rect::from_center_size(pos2(cell.center().x, cell.top() + 20.0), vec2(34.0, 34.0) * thumb_scale(size));
                     ui.painter().image(tex.id(), ir, egui::Rect::from_min_max(egui::Pos2::ZERO, pos2(1.0, 1.0)), Color32::WHITE);
                     ui.painter().text(

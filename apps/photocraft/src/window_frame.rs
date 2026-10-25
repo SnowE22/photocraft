@@ -20,10 +20,13 @@
 //! the work area plus its own frame, clear of the taskbar. winit pins the client area to the work
 //! area either way (`WM_NCCALCSIZE`), so the app's pixels do not move.
 //!
-//! An auto-hidden taskbar reserves no work area, so that trim leaves the maximize covering the
-//! whole monitor, and the shell, taking it for a full-screen app, no longer reveals the taskbar
-//! when the pointer reaches its edge (#4845). On each edge with an auto-hidden taskbar the guard
-//! instead stops the window one pixel short of the monitor, as other custom-frame apps do.
+//! An auto-hiding taskbar reserves no work area, so a maximize still covers the whole monitor and
+//! the shell, reading it as a full-screen app, never slides the taskbar up. On each edge with such
+//! a taskbar the guard stops the window's rect (its invisible sizing frame included: a rect that
+//! still reaches past the edge counts as covering it) one pixel short of the monitor, as other
+//! custom-frame apps do, so the pointer at that edge reveals the taskbar again. Measured on a
+//! 2560 × 1440 monitor with a bottom auto-hide taskbar: a maximize parked at
+//! `(-8, -8, 2568, 1447)` kept the taskbar down, `(-8, -8, 2568, 1439)` lets it up.
 //!
 //! The Windows calls go through safe `winsafe` wrappers; the workspace forbids `unsafe`, and
 //! winsafe can't wrap a raw handle without it, so the window is found by its handle instead.
@@ -34,20 +37,7 @@ pub use platform::service;
 mod platform {
     use eframe::wgpu::rwh::{HasWindowHandle, RawWindowHandle};
     use photocraft_ui_egui::WindowFrameFn;
-    use winsafe::prelude::Handle;
-    use winsafe::{AtomStr, HWND, HwndPlace, POINT, SIZE, co};
-
-    /// A rect in desktop coordinates: `(left, top, right, bottom)`, right and bottom exclusive.
-    type Rect = (i32, i32, i32, i32);
-
-    /// A monitor edge.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    enum Edge {
-        Left,
-        Top,
-        Right,
-        Bottom,
-    }
+    use winsafe::{HWND, HwndPlace, POINT, SIZE, co};
 
     /// A guard that keeps the window borderless each frame, or `None` when the app uses the
     /// system title bar (the window is decorated) or its handle can't be found.
@@ -108,7 +98,21 @@ mod platform {
     /// parked but being dragged or snapped, and is left alone.
     const FRAME: i32 = 32;
 
-    /// Keep a parked maximize inside all four work-area edges, including a top taskbar.
+    /// A rect in desktop coordinates: `(left, top, right, bottom)`, right and bottom exclusive.
+    type Rect = (i32, i32, i32, i32);
+
+    /// A monitor edge a taskbar can sit on.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum Edge {
+        Left,
+        Top,
+        Right,
+        Bottom,
+    }
+
+    /// Keep a parked maximize inside all four work-area edges, including a top taskbar, and stop a
+    /// maximize that covers its whole monitor a pixel short of each auto-hiding taskbar's edge, so
+    /// the shell doesn't take it for a full-screen app and still slides the taskbar up there.
     fn keep_clear_of_the_taskbar(hwnd: &HWND) {
         if !hwnd.IsZoomed() {
             return;
@@ -117,12 +121,17 @@ mod platform {
             return;
         };
         let (m, w) = (mi.rcMonitor, mi.rcWork);
-        let (rect, monitor, work) = ((r.left, r.top, r.right, r.bottom), (m.left, m.top, m.right, m.bottom), (w.left, w.top, w.right, w.bottom));
-        // The taskbars (a couple of `FindWindowEx` calls) are only looked up while the window
-        // covers the whole monitor, which a trimmed maximize no longer does.
-        let Some((left, top, right, bottom)) = clamped_rect(rect, monitor, work)
-            .or_else(|| covers(rect, monitor).then(|| short_of_autohide_taskbars(rect, monitor, work, &taskbar_edges(monitor))).flatten())
-        else {
+        let rect = (r.left, r.top, r.right, r.bottom);
+        let monitor = (m.left, m.top, m.right, m.bottom);
+        let work = (w.left, w.top, w.right, w.bottom);
+        let target = match clamped_rect(rect, monitor, work) {
+            Some(clamped) => Some(clamped),
+            // The taskbars are only looked up while the window covers its whole monitor, which a
+            // clamped maximize no longer does.
+            None if covers(rect, monitor) => short_of_autohide_taskbars(rect, monitor, work, &taskbar_edges(monitor)),
+            None => None,
+        };
+        let Some((left, top, right, bottom)) = target else {
             return;
         };
         let (Some(width), Some(height)) = (right.checked_sub(left), bottom.checked_sub(top)) else {
@@ -137,6 +146,78 @@ mod platform {
             co::SWP::FRAMECHANGED | co::SWP::NOCOPYBITS | co::SWP::NOZORDER | co::SWP::NOACTIVATE,
         );
         let _ = hwnd.InvalidateRect(None, false);
+    }
+
+    /// How long a look for the taskbars holds before the windows are listed again.
+    const TASKBAR_RECHECK: std::time::Duration = std::time::Duration::from_secs(2);
+
+    /// The edges of `monitor` with a taskbar on them (the primary `Shell_TrayWnd` or a secondary
+    /// monitor's `Shell_SecondaryTrayWnd`), shown or hidden. Cached per monitor for
+    /// [`TASKBAR_RECHECK`]: it lists every top-level window.
+    fn taskbar_edges(monitor: Rect) -> Vec<Edge> {
+        type Seen = Option<(std::time::Instant, Rect, Vec<Edge>)>;
+        static SEEN: std::sync::Mutex<Seen> = std::sync::Mutex::new(None);
+        let mut seen = SEEN.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((at, m, edges)) = seen.as_ref()
+            && *m == monitor
+            && at.elapsed() < TASKBAR_RECHECK
+        {
+            return edges.clone();
+        }
+        let mut edges = Vec::new();
+        let _ = winsafe::EnumWindows(|hwnd| {
+            let taskbar = hwnd.GetClassName().is_ok_and(|c| c == "Shell_TrayWnd" || c == "Shell_SecondaryTrayWnd");
+            if taskbar && let Ok(r) = hwnd.GetWindowRect() {
+                edges.extend(taskbar_edge((r.left, r.top, r.right, r.bottom), monitor));
+            }
+            true
+        });
+        *seen = Some((std::time::Instant::now(), monitor, edges.clone()));
+        edges
+    }
+
+    /// The edge of `monitor` taskbar window `bar` sits on: the one nearest its centre, or `None`
+    /// when it is on another monitor. A hidden taskbar is slid (mostly) past its edge with a sliver
+    /// left on the monitor, so its centre may lie outside it.
+    fn taskbar_edge(bar: Rect, monitor: Rect) -> Option<Edge> {
+        let (bl, bt, br, bb) = (i64::from(bar.0), i64::from(bar.1), i64::from(bar.2), i64::from(bar.3));
+        let (ml, mt, mr, mb) = (i64::from(monitor.0), i64::from(monitor.1), i64::from(monitor.2), i64::from(monitor.3));
+        if bl >= br || bt >= bb || ml >= mr || mt >= mb || br <= ml || bl >= mr || bb <= mt || bt >= mb {
+            return None;
+        }
+        // Doubled centre and distances, so nothing rounds.
+        let (cx, cy) = (bl + br, bt + bb);
+        [(Edge::Left, cx - 2 * ml), (Edge::Top, cy - 2 * mt), (Edge::Right, 2 * mr - cx), (Edge::Bottom, 2 * mb - cy)]
+            .into_iter()
+            .min_by_key(|&(_, distance)| distance)
+            .map(|(edge, _)| edge)
+    }
+
+    /// Whether `rect` reaches every edge of `monitor`: what the shell takes for a full-screen app
+    /// when the window has no caption.
+    fn covers(rect: Rect, monitor: Rect) -> bool {
+        rect.0 <= monitor.0 && rect.1 <= monitor.1 && rect.2 >= monitor.2 && rect.3 >= monitor.3
+    }
+
+    /// A maximize covering its monitor, trimmed to stop one pixel short of each edge where a
+    /// taskbar reserves no work area (it auto-hides), so the shell still reveals it there. `None`
+    /// when there is nothing to trim.
+    fn short_of_autohide_taskbars(rect: Rect, monitor: Rect, work: Rect, taskbars: &[Edge]) -> Option<Rect> {
+        if !covers(rect, monitor) {
+            return None;
+        }
+        let (mut l, mut t, mut r, mut b) = rect;
+        for edge in taskbars {
+            match edge {
+                Edge::Left if work.0 == monitor.0 => l = monitor.0.checked_add(1)?,
+                Edge::Top if work.1 == monitor.1 => t = monitor.1.checked_add(1)?,
+                Edge::Right if work.2 == monitor.2 => r = monitor.2.checked_sub(1)?,
+                Edge::Bottom if work.3 == monitor.3 => b = monitor.3.checked_sub(1)?,
+                _ => {}
+            }
+        }
+        let trimmed = (l, t, r, b);
+        (l < r && t < b && trimmed != rect).then_some(trimmed)
     }
 
     /// Return the corrected outer rect in desktop coordinates, preserving the resize border.
@@ -174,69 +255,6 @@ mod platform {
         (corrected != rect).then_some(corrected)
     }
 
-    /// Whether `rect` reaches every edge of `monitor`: what the shell takes for a full-screen app.
-    fn covers(rect: Rect, monitor: Rect) -> bool {
-        rect.0 <= monitor.0 && rect.1 <= monitor.1 && rect.2 >= monitor.2 && rect.3 >= monitor.3
-    }
-
-    /// The edges of `monitor` that have a taskbar (the primary `Shell_TrayWnd` or a secondary
-    /// monitor's `Shell_SecondaryTrayWnd`), shown or hidden.
-    fn taskbar_edges(monitor: Rect) -> Vec<Edge> {
-        let mut edges = Vec::new();
-        for class in ["Shell_TrayWnd", "Shell_SecondaryTrayWnd"] {
-            let mut after: Option<HWND> = None;
-            // One taskbar per monitor; the bound only guards against a misbehaving shell.
-            for _ in 0..64 {
-                let Ok(Some(tray)) = HWND::NULL.FindWindowEx(after.as_ref(), AtomStr::from_str(class), None) else {
-                    break;
-                };
-                if let Ok(r) = tray.GetWindowRect() {
-                    edges.extend(taskbar_edge((r.left, r.top, r.right, r.bottom), monitor));
-                }
-                after = Some(tray);
-            }
-        }
-        edges
-    }
-
-    /// The edge of `monitor` a taskbar with rect `taskbar` sits on: the one nearest its centre,
-    /// or `None` when it is on another monitor. An auto-hidden taskbar is parked mostly past its
-    /// edge with a sliver left on screen, so its centre may lie outside the monitor.
-    fn taskbar_edge(taskbar: Rect, monitor: Rect) -> Option<Edge> {
-        let (tl, tt, tr, tb) = (i64::from(taskbar.0), i64::from(taskbar.1), i64::from(taskbar.2), i64::from(taskbar.3));
-        let (ml, mt, mr, mb) = (i64::from(monitor.0), i64::from(monitor.1), i64::from(monitor.2), i64::from(monitor.3));
-        if tl >= tr || tt >= tb || ml >= mr || mt >= mb || tr <= ml || tl >= mr || tb <= mt || tt >= mb {
-            return None;
-        }
-        // Doubled centre and distances, so nothing rounds.
-        let (cx, cy) = (tl + tr, tt + tb);
-        [(Edge::Left, cx - 2 * ml), (Edge::Top, cy - 2 * mt), (Edge::Right, 2 * mr - cx), (Edge::Bottom, 2 * mb - cy)]
-            .into_iter()
-            .min_by_key(|&(_, distance)| distance)
-            .map(|(edge, _)| edge)
-    }
-
-    /// A maximize covering its monitor, trimmed to stop one pixel short of each edge where a
-    /// taskbar reserves no work area (it auto-hides), so the shell still reveals it there.
-    /// `None` when there is nothing to trim.
-    fn short_of_autohide_taskbars(rect: Rect, monitor: Rect, work: Rect, taskbars: &[Edge]) -> Option<Rect> {
-        if !covers(rect, monitor) {
-            return None;
-        }
-        let (mut l, mut t, mut r, mut b) = rect;
-        for edge in taskbars {
-            match edge {
-                Edge::Left if work.0 == monitor.0 => l = monitor.0.checked_add(1)?,
-                Edge::Top if work.1 == monitor.1 => t = monitor.1.checked_add(1)?,
-                Edge::Right if work.2 == monitor.2 => r = monitor.2.checked_sub(1)?,
-                Edge::Bottom if work.3 == monitor.3 => b = monitor.3.checked_sub(1)?,
-                _ => {}
-            }
-        }
-        let trimmed = (l, t, r, b);
-        (l < r && t < b && trimmed != rect).then_some(trimmed)
-    }
-
     /// `style` without the OS title bar and frame (`WS_CAPTION`, which already includes
     /// `WS_BORDER`). The sizing border (`WS_THICKFRAME`) stays, so edge resizing and Aero snap
     /// keep working, as they did with winit 0.27's undecorated windows.
@@ -246,7 +264,7 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::{Edge, borderless, clamped_rect, short_of_autohide_taskbars, taskbar_edge};
+        use super::{Edge, borderless, clamped_rect, covers, short_of_autohide_taskbars, taskbar_edge};
         use winsafe::co;
 
         #[test]
@@ -297,6 +315,44 @@ mod platform {
             assert_eq!(clamped_rect((-8, -8, 1928, 1088), monitor, monitor), None);
         }
 
+        /// An auto-hiding taskbar leaves the work area whole, so the maximize covers the monitor
+        /// (frame included) and the shell takes it for full screen. It is trimmed to stop a pixel
+        /// short of that edge instead; measured on a 2560 × 1440 monitor, where the old trim to
+        /// `(-8, -8, 2568, 1447)` still kept the taskbar down.
+        #[test]
+        fn a_maximize_leaves_a_pixel_strip_on_an_auto_hidden_taskbar_edge() {
+            let monitor = (0, 0, 2560, 1440);
+            let rect = (-8, -8, 2568, 1448);
+            assert_eq!(clamped_rect(rect, monitor, monitor), None, "no reserved area to clamp to");
+            for (edge, expected) in
+                [(Edge::Bottom, (-8, -8, 2568, 1439)), (Edge::Top, (-8, 1, 2568, 1448)), (Edge::Left, (1, -8, 2568, 1448)), (Edge::Right, (-8, -8, 2559, 1448))]
+            {
+                assert_eq!(short_of_autohide_taskbars(rect, monitor, monitor, &[edge]), Some(expected), "{edge:?}");
+                assert!(!covers(expected, monitor), "{edge:?} no longer reads as full screen");
+                assert_eq!(short_of_autohide_taskbars(expected, monitor, monitor, &[edge]), None, "{edge:?} already trimmed");
+            }
+            assert!(covers((-8, -8, 2568, 1447), monitor), "the old trim still covered the monitor");
+            assert_eq!(short_of_autohide_taskbars(rect, monitor, monitor, &[]), None, "no taskbar");
+            // A taskbar that reserves its work area is the clamp's job.
+            assert_eq!(short_of_autohide_taskbars(rect, monitor, (0, 0, 2560, 1392), &[Edge::Bottom]), None);
+            assert_eq!(short_of_autohide_taskbars((0, 0, 1280, 1440), monitor, monitor, &[Edge::Bottom]), None, "half-screen");
+        }
+
+        /// Taskbar rects as a three-monitor desktop reports them, shown and hidden.
+        #[test]
+        fn a_taskbar_sits_on_the_monitor_edge_nearest_its_centre() {
+            let monitor = (0, 0, 2560, 1440);
+            assert_eq!(taskbar_edge((0, 1392, 2560, 1440), monitor), Some(Edge::Bottom), "shown");
+            assert_eq!(taskbar_edge((0, 1438, 2560, 1486), monitor), Some(Edge::Bottom), "auto-hidden");
+            assert_eq!(taskbar_edge((0, -46, 2560, 2), monitor), Some(Edge::Top));
+            assert_eq!(taskbar_edge((-60, 0, 2, 1440), monitor), Some(Edge::Left));
+            assert_eq!(taskbar_edge((2558, 0, 2620, 1440), monitor), Some(Edge::Right));
+            assert_eq!(taskbar_edge((2560, 1438, 5120, 1486), monitor), None, "the right-hand monitor's");
+            assert_eq!(taskbar_edge((-2560, 1598, 0, 1658), monitor), None, "the left-hand monitor's");
+            assert_eq!(taskbar_edge((-2560, 1598, 0, 1658), (-2560, 0, 0, 1600)), Some(Edge::Bottom));
+            assert!(taskbar_edge((i32::MIN, i32::MIN, i32::MAX, i32::MAX), monitor).is_some(), "no overflow");
+        }
+
         #[test]
         fn a_maximize_being_dragged_or_snapped_is_left_alone() {
             let monitor = (0, 0, 1920, 1080);
@@ -304,35 +360,6 @@ mod platform {
             assert_eq!(clamped_rect((100, 200, 1100, 900), monitor, work), None, "moved");
             assert_eq!(clamped_rect((-500, -8, 1428, 1088), monitor, work), None, "dragged");
             assert_eq!(clamped_rect((0, 48, 960, 1080), monitor, work), None, "half-screen");
-        }
-
-        #[test]
-        fn a_maximize_leaves_a_pixel_strip_on_an_auto_hidden_taskbar_edge() {
-            // #4845: an auto-hidden taskbar reserves no work area.
-            let monitor = (0, 0, 1920, 1080);
-            let rect = (-8, -8, 1928, 1088);
-            for (edge, expected) in
-                [(Edge::Bottom, (-8, -8, 1928, 1079)), (Edge::Top, (-8, 1, 1928, 1088)), (Edge::Left, (1, -8, 1928, 1088)), (Edge::Right, (-8, -8, 1919, 1088))]
-            {
-                assert_eq!(short_of_autohide_taskbars(rect, monitor, monitor, &[edge]), Some(expected));
-                assert_eq!(short_of_autohide_taskbars(expected, monitor, monitor, &[edge]), None, "already trimmed");
-            }
-            assert_eq!(short_of_autohide_taskbars(rect, monitor, monitor, &[]), None, "no taskbar");
-            // A taskbar that reserves its work area is the clamp's job.
-            assert_eq!(short_of_autohide_taskbars(rect, monitor, (0, 0, 1920, 1032), &[Edge::Bottom]), None);
-            assert_eq!(short_of_autohide_taskbars((0, 0, 960, 1080), monitor, monitor, &[Edge::Bottom]), None, "half-screen");
-        }
-
-        #[test]
-        fn a_taskbar_sits_on_the_monitor_edge_nearest_its_centre() {
-            let monitor = (0, 0, 1920, 1080);
-            assert_eq!(taskbar_edge((0, 1032, 1920, 1080), monitor), Some(Edge::Bottom), "shown");
-            assert_eq!(taskbar_edge((0, 1078, 1920, 1126), monitor), Some(Edge::Bottom), "auto-hidden");
-            assert_eq!(taskbar_edge((0, -46, 1920, 2), monitor), Some(Edge::Top));
-            assert_eq!(taskbar_edge((-60, 0, 2, 1080), monitor), Some(Edge::Left));
-            assert_eq!(taskbar_edge((1918, 0, 1980, 1080), monitor), Some(Edge::Right));
-            assert_eq!(taskbar_edge((1920, 1032, 3840, 1080), monitor), None, "other monitor");
-            assert!(taskbar_edge((i32::MIN, i32::MIN, i32::MAX, i32::MAX), monitor).is_some(), "no overflow");
         }
     }
 }
