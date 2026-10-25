@@ -27,7 +27,7 @@ const SHAPES: [&str; 4] = ["circle", "square", "diamond", "hexagon"];
 const GRADIENTS: [&str; 3] = ["none", "linear", "radial"];
 
 /// Panel state (serde, so the control channel can read and drive it).
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ScreentoneUi {
     /// The generator's settings; picking a preset replaces them wholesale.
@@ -36,6 +36,28 @@ pub struct ScreentoneUi {
     pub preset: String,
     /// The new layer's name; empty = the preset's name, or "Screentone".
     pub name: String,
+}
+
+impl Default for ScreentoneUi {
+    fn default() -> Self {
+        Self {
+            spec: ScreentoneSpec {
+                mode: ScreentoneMode::Shading,
+                use_source_luminance: true,
+                dot_size: 4.5,
+                spacing_x: 8.0,
+                spacing_y: 8.0,
+                density: 0.75,
+                background: [1.0, 1.0, 1.0, 1.0],
+                preserve_lines: true,
+                line_threshold: 0.24,
+                line_thickness: 1.0,
+                ..ScreentoneSpec::default()
+            },
+            preset: String::new(),
+            name: String::new(),
+        }
+    }
 }
 
 /// The enum's notation id, from its serde name (the commands' notation): `Dots` → `"dots"`.
@@ -141,7 +163,6 @@ pub(crate) fn freeze_active_layer(app: &mut PhotocraftApp) -> bool {
 /// Draws the tab body: the dock's own scrolling wraps it in both the native and shared docks.
 pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     crate::screentone_gizmo::sync_active_layer(app);
-    let spec_before = app.ui.screentone_ui.spec.clone();
     let t = Tokens::get(ui.ctx());
     let label = crate::filter_dialog::label;
     let mut st = std::mem::take(&mut app.ui.screentone_ui);
@@ -159,6 +180,7 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         {
             st.spec.mode = ScreentoneMode::Shading;
             st.spec.use_source_luminance = true;
+            st.spec.background[3] = 1.0;
         }
         if ui
             .selectable_label(st.spec.mode == ScreentoneMode::Sheet, tl!("Sheet / Pattern"))
@@ -166,6 +188,7 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         {
             st.spec.mode = ScreentoneMode::Sheet;
             st.spec.use_source_luminance = false;
+            st.spec.background[3] = 0.0;
         }
     });
     ui.add_space(4.0);
@@ -181,15 +204,27 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             st.preset = cur.clone();
             if let Some(p) = presets.iter().find(|p| p.id == cur) {
                 let prev_mode = st.spec.mode;
+                let prev_bg_alpha = st.spec.background[3];
+                let prev_brightness = st.spec.brightness;
+                let prev_contrast = st.spec.contrast;
                 let prev_white = st.spec.white_threshold;
                 let prev_black = st.spec.black_threshold;
                 let prev_gamma = st.spec.tone_gamma;
+                let prev_lines = st.spec.preserve_lines;
+                let prev_line_thresh = st.spec.line_threshold;
+                let prev_line_thick = st.spec.line_thickness;
                 st.spec = p.spec.clone();
                 st.spec.mode = prev_mode;
                 st.spec.use_source_luminance = prev_mode == ScreentoneMode::Shading;
+                st.spec.background[3] = prev_bg_alpha;
+                st.spec.brightness = prev_brightness;
+                st.spec.contrast = prev_contrast;
                 st.spec.white_threshold = prev_white;
                 st.spec.black_threshold = prev_black;
                 st.spec.tone_gamma = prev_gamma;
+                st.spec.preserve_lines = prev_lines;
+                st.spec.line_threshold = prev_line_thresh;
+                st.spec.line_thickness = prev_line_thick;
             }
         }
         ui.end_row();
@@ -264,7 +299,22 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         });
         ui.end_row();
 
+        row(ui, "");
+        let mut opaque_paper = st.spec.background[3] >= 0.5;
+        if crate::widgets::checkbox(ui, &mut opaque_paper, tl!("Opaque Paper")).changed() {
+            st.spec.background[3] = if opaque_paper { 1.0 } else { 0.0 };
+        }
+        ui.end_row();
+
         if st.spec.mode == ScreentoneMode::Shading {
+            row(ui, tl!("Brightness:"));
+            crate::widgets::value_field(ui, &mut st.spec.brightness, -1.0..=1.0, "", 76.0);
+            ui.end_row();
+
+            row(ui, tl!("Contrast:"));
+            crate::widgets::value_field(ui, &mut st.spec.contrast, 0.0..=4.0, "", 76.0);
+            ui.end_row();
+
             row(ui, tl!("White Cutoff:"));
             crate::widgets::value_field(ui, &mut st.spec.white_threshold, 0.0..=1.0, "", 76.0);
             ui.end_row();
@@ -276,18 +326,21 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             row(ui, tl!("Tone Gamma:"));
             crate::widgets::value_field(ui, &mut st.spec.tone_gamma, 0.1..=5.0, "", 76.0);
             ui.end_row();
-        }
 
-        // The filter halves the tone by the layer's own darkness; a generated sheet has none.
-        row(ui, "");
-        if crate::widgets::checkbox(ui, &mut st.spec.use_source_luminance, &label("useSourceLuminance")).changed() {
-            st.spec.mode = if st.spec.use_source_luminance {
-                ScreentoneMode::Shading
-            } else {
-                ScreentoneMode::Sheet
-            };
+            row(ui, "");
+            crate::widgets::checkbox(ui, &mut st.spec.preserve_lines, tl!("Preserve Lines"));
+            ui.end_row();
+
+            if st.spec.preserve_lines {
+                row(ui, tl!("Line Threshold:"));
+                crate::widgets::value_field(ui, &mut st.spec.line_threshold, 0.0..=1.0, "", 76.0);
+                ui.end_row();
+
+                row(ui, tl!("Line Thickness:"));
+                crate::widgets::value_field(ui, &mut st.spec.line_thickness, 0.5..=5.0, "px", 76.0);
+                ui.end_row();
+            }
         }
-        ui.end_row();
 
         row(ui, tl!("Name:"));
         ui.add(egui::TextEdit::singleline(&mut st.name).desired_width(176.0));
@@ -436,7 +489,6 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if ui.button(tl!("Save as Pattern")).clicked() {
         action = Some(photocraft_engine::screentone_cmds::PATTERN);
     }
-    let spec_changed = st.spec != spec_before;
     app.ui.screentone_ui = st;
     if freeze_clicked {
         freeze_active_layer(app);
@@ -446,8 +498,13 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         // A New Layer run's result binds the gizmo to the generated sheet: the drags restyle
         // that layer in place (see `screentone_gizmo`).
         crate::screentone_gizmo::bind_layer_result(app, command, &result);
-    } else if spec_changed {
-        sync_spec_to_active_layer(app);
+    } else {
+        // Defer full-canvas CPU restyle while the pointer is actively dragging a slider so
+        // slider movement stays at 60–144 FPS; commit as soon as the pointer releases.
+        let pointer_down = ui.ctx().input(|i| i.pointer.any_down());
+        if !pointer_down {
+            sync_spec_to_active_layer(app);
+        }
     }
 }
 
@@ -469,7 +526,7 @@ mod tests {
         let (mut app, ctx) = app(8);
         // The tab lives in the Color dock group after Patterns, in both pro and Studio orders.
         for pro in [false, true] {
-            assert_eq!(crate::dock::Group::Color.tabs(pro).get(COLOR_TAB), Some(&"Screentones (GenTonik)"), "pro {pro}");
+            assert_eq!(crate::dock::Group::Color.tabs(pro).get(COLOR_TAB), Some(&"GenTonik"), "pro {pro}");
         }
         assert!(crate::menus::is_live(PANEL), "{PANEL}");
         crate::menus::invoke(&mut app, &ctx, PANEL, Value::Null).unwrap();

@@ -121,6 +121,10 @@ pub struct ScreentoneSpec {
     /// Generation mode: `Shading` modulates dot/satellite sizes by underlying luminance with paper
     /// and shadow thresholds; `Sheet` fills the frame uniformly.
     pub mode: ScreentoneMode,
+    /// Pre-halftone brightness offset (-1.0..=1.0, default 0.0).
+    pub brightness: f32,
+    /// Pre-halftone contrast multiplier around midpoint 0.5 (0.0..=4.0, default 1.0).
+    pub contrast: f32,
     /// Luminance cutoff for clean white paper (pixels with adjusted luma >= `white_threshold`
     /// draw 0% ink).
     pub white_threshold: f32,
@@ -129,6 +133,12 @@ pub struct ScreentoneSpec {
     pub black_threshold: f32,
     /// Gamma curve applied to underlying luminance before threshold mapping.
     pub tone_gamma: f32,
+    /// Preserve dark high-contrast line art as solid ink instead of breaking lines into dots.
+    pub preserve_lines: bool,
+    /// Luminance threshold below which detected edges are preserved as solid ink (0.0..=1.0).
+    pub line_threshold: f32,
+    /// Line art thickness / dilation radius in pixels (0.5..=5.0, default 1.0).
+    pub line_thickness: f32,
     /// Modulate dot size by underlying layer darkness (halftone manga shading mode).
     pub use_source_luminance: bool,
     /// Edge smoothness: 1.0 = smooth antialiased, 0.0 = pure 1-bit manga threshold.
@@ -185,9 +195,14 @@ impl Default for ScreentoneSpec {
             rot_pattern: 0.0,
 
             mode: ScreentoneMode::Shading,
+            brightness: 0.0,
+            contrast: 1.0,
             white_threshold: 0.85,
             black_threshold: 0.08,
             tone_gamma: 1.0,
+            preserve_lines: false,
+            line_threshold: 0.24,
+            line_thickness: 1.0,
             use_source_luminance: true,
             smoothness: 1.0,
             seed: 42,
@@ -200,7 +215,8 @@ impl ScreentoneSpec {
     pub fn halo_radius(&self) -> i32 {
         if self.use_source_luminance && self.mode == ScreentoneMode::Shading {
             let max_spacing = self.spacing_x.max(self.spacing_y).clamp(1.0, 256.0);
-            (max_spacing * 0.5).ceil() as i32 + 2
+            let line_pad = if self.preserve_lines { self.line_thickness.ceil() as i32 + 2 } else { 0 };
+            ((max_spacing * 0.5).ceil() as i32 + 2).max(line_pad)
         } else {
             0
         }

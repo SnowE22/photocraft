@@ -555,9 +555,16 @@ struct ShapeXform {
 }
 
 /// Evaluates Signed Distance to a specific shape at `(px, py)` with stretch and rotation.
+#[inline]
 fn eval_shape_sdf(px: f32, py: f32, shape: DotShape, size: f32, xf: ShapeXform) -> f32 {
     if size <= 0.05 {
         return 1e6;
+    }
+    if (shape == DotShape::Circle || xf.roundness >= 0.95)
+        && (xf.stretch_x - 1.0).abs() <= 1e-4
+        && (xf.stretch_y - 1.0).abs() <= 1e-4
+    {
+        return px.hypot(py) - size;
     }
     let (sin_p, cos_p) = xf.rot_pattern_rad.sin_cos();
     let rx = px * cos_p + py * sin_p;
@@ -642,29 +649,80 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
     let bg = spec.background;
 
     let use_shading = spec.use_source_luminance && spec.mode == ScreentoneMode::Shading && !src.rect.is_empty();
+    let brightness = spec.brightness.clamp(-1.0, 1.0);
+    let contrast = spec.contrast.clamp(0.0, 4.0);
     let white_thresh = spec.white_threshold.clamp(0.0, 1.0);
     let black_thresh = spec.black_threshold.clamp(0.0, white_thresh);
     let gamma = spec.tone_gamma.clamp(0.01, 10.0);
+    let line_thresh = spec.line_threshold.clamp(0.0, 1.0);
+    let line_thick = spec.line_thickness.clamp(0.5, 5.0);
 
-    // Sample gamma-adjusted luminance composited over white paper (transparent = 1.0 white paper).
-    let sample_luma_adj = |doc_x: f32, doc_y: f32| -> f32 {
+    // Raw luminance at integer pixel `(ix, iy)` composited over white paper.
+    let raw_paper_luma = |ix: i32, iy: i32| -> f32 {
         if src.rect.is_empty() {
             return 0.5;
         }
-        let ix = (doc_x.floor() as i32).clamp(src.rect.x0, src.rect.x1.saturating_sub(1));
-        let iy = (doc_y.floor() as i32).clamp(src.rect.y0, src.rect.y1.saturating_sub(1));
-        if src.rect.contains(ix, iy) {
-            let px = src.px(ix, iy);
+        let cx = ix.clamp(src.rect.x0, src.rect.x1.saturating_sub(1));
+        let cy = iy.clamp(src.rect.y0, src.rect.y1.saturating_sub(1));
+        if src.rect.contains(cx, cy) {
+            let px = src.px(cx, cy);
             let a = if ctx.alpha { px.last().copied().unwrap_or(1.0).clamp(0.0, 1.0) } else { 1.0 };
             if a <= 1e-3 {
                 return 1.0;
             }
             let raw_luma = luma(ctx, px).clamp(0.0, 1.0);
-            let luma_eff = (raw_luma * a + (1.0 - a)).clamp(0.0, 1.0);
-            luma_eff.powf(gamma)
+            (raw_luma * a + (1.0 - a)).clamp(0.0, 1.0)
         } else {
             1.0
         }
+    };
+
+    // Sample brightness-, gamma-, and contrast-adjusted luminance composited over white paper.
+    let sample_luma_adj = |doc_x: f32, doc_y: f32| -> f32 {
+        if src.rect.is_empty() {
+            return 0.5;
+        }
+        let luma_eff = raw_paper_luma(doc_x.floor() as i32, doc_y.floor() as i32);
+        let g = (luma_eff + brightness).clamp(0.0, 1.0);
+        let g = g.powf(gamma);
+        ((g - 0.5) * contrast + 0.5).clamp(0.0, 1.0)
+    };
+
+    // Whether integer coordinate `(ix, iy)` is a sharp dark ink line edge (Halftone Studio GT /
+    // Vayce line-art detector, including 1px symmetric ink strokes where `l_l == l_r`).
+    let is_line_edge_at = |ix: i32, iy: i32| -> bool {
+        let l_c = raw_paper_luma(ix, iy);
+        if l_c >= 0.72 {
+            return false;
+        }
+        let l_l = raw_paper_luma(ix - 1, iy);
+        let l_r = raw_paper_luma(ix + 1, iy);
+        let l_u = raw_paper_luma(ix, iy - 1);
+        let l_d = raw_paper_luma(ix, iy + 1);
+        let contrast_nb = (l_l - l_c).max(l_r - l_c).max(l_u - l_c).max(l_d - l_c).max(0.0);
+        let edge_mag = (l_r - l_l).hypot(l_d - l_u).max(contrast_nb);
+        (edge_mag > 0.12 && l_c <= line_thresh.max(0.55)) || (edge_mag > 0.06 && l_c <= line_thresh)
+    };
+
+    // Dilates preserved line-art edges by `line_thickness` radius (0.5..=5.0 px).
+    let is_preserved_line = |x: i32, y: i32| -> bool {
+        if !spec.preserve_lines {
+            return false;
+        }
+        let r_px = (line_thick - 0.5).max(0.0);
+        let rad = r_px.ceil() as i32;
+        if rad <= 0 {
+            return is_line_edge_at(x, y);
+        }
+        let r_sq = r_px * r_px + 0.25;
+        for dy in -rad..=rad {
+            for dx in -rad..=rad {
+                if (dx * dx + dy * dy) as f32 <= r_sq && is_line_edge_at(x + dx, y + dy) {
+                    return true;
+                }
+            }
+        }
+        false
     };
 
     // Normalized ink density in [0.0, 1.0] between `white_threshold` (clean paper = 0.0) and
@@ -1002,11 +1060,11 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
             }
         }
 
-        // Deep shadows below `black_threshold` fill with solid 100% beta ink; highlights above
-        // `white_threshold` stay clean paper.
+        // Deep shadows below `black_threshold` and preserved line-art contours fill with solid
+        // 100% ink; highlights above `white_threshold` stay clean paper.
         if use_shading {
             let pixel_luma = sample_luma_adj(doc_x, doc_y);
-            if pixel_luma <= black_thresh {
+            if pixel_luma <= black_thresh || is_preserved_line(x, y) {
                 cov = 1.0;
             } else if pixel_luma >= white_thresh {
                 cov = 0.0;
@@ -1372,5 +1430,44 @@ mod tests {
         let sheet_slice = sheet_px.as_slice();
         let sheet_right_ink: f32 = (0..32usize).flat_map(|y| (72..96usize).map(move |x| sheet_slice[(y * 96 + x) * 4 + 3])).sum();
         assert!(sheet_right_ink > 20.0, "Sheet mode renders uniform dots + satellites across white paper (got {sheet_right_ink})");
+    }
+
+    #[test]
+    fn test_brightness_contrast_and_preserve_lines_with_thickness() {
+        let bounds = Rect::new(0, 0, 64, 32);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: true };
+        let mut data = vec![1.0f32; (64 * 32 * 4) as usize];
+        // Draw a 1px vertical dark line at x = 32 (luma = 0.20, above black_threshold = 0.08 so
+        // without preserve_lines it would be broken into sparse halftone dots).
+        for y in 0..32usize {
+            let idx = (y * 64 + 32) * 4;
+            data[idx..idx + 4].copy_from_slice(&[0.20, 0.20, 0.20, 1.0]);
+        }
+        let img = Image { rect: bounds, ch: 4, data };
+        let base_spec = ScreentoneSpec {
+            mode: ScreentoneMode::Shading,
+            use_source_luminance: true,
+            dot_size: 2.0,
+            spacing_x: 16.0,
+            spacing_y: 16.0,
+            white_threshold: 0.85,
+            black_threshold: 0.08,
+            preserve_lines: false,
+            line_threshold: 0.30,
+            line_thickness: 1.0,
+            ..Default::default()
+        };
+        let without_lines = screentone(&img, bounds, &ctx, &base_spec);
+        let line_ink_off: f32 = (0..32usize).map(|y| without_lines[(y * 64 + 32) * 4 + 3]).sum();
+        assert!(line_ink_off < 28.0, "without preserve_lines, the 0.20 line is broken by the 16px dot grid (got {line_ink_off})");
+
+        let with_lines = screentone(&img, bounds, &ctx, &ScreentoneSpec { preserve_lines: true, ..base_spec.clone() });
+        let line_ink_on: f32 = (0..32usize).map(|y| with_lines[(y * 64 + 32) * 4 + 3]).sum();
+        assert!((line_ink_on - 32.0).abs() < 1e-4, "with preserve_lines, every pixel of the vertical line at x=32 is 1.0 solid ink");
+
+        // Increasing `line_thickness` to 2.5 dilates the preserved line into x=31 and x=33 as well.
+        let thick_lines = screentone(&img, bounds, &ctx, &ScreentoneSpec { preserve_lines: true, line_thickness: 2.5, ..base_spec.clone() });
+        let neighbor_ink: f32 = (0..32usize).map(|y| thick_lines[(y * 64 + 31) * 4 + 3] + thick_lines[(y * 64 + 33) * 4 + 3]).sum();
+        assert!((neighbor_ink - 64.0).abs() < 1e-4, "line_thickness=2.5 dilates the preserved line to adjacent columns");
     }
 }

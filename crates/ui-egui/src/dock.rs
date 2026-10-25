@@ -109,8 +109,8 @@ impl Group {
         match self {
             // Photoshop Essentials: Color | Swatches | Gradients | Patterns, plus the
             // GenTonik screentone panel the integration adds.
-            Group::Color if pro => &["Color", "Swatches", "Gradients", "Patterns", "Screentones (GenTonik)"],
-            Group::Color => &["Swatches", "Color", "Gradients", "Patterns", "Screentones (GenTonik)"],
+            Group::Color if pro => &["Color", "Swatches", "Gradients", "Patterns", "GenTonik"],
+            Group::Color => &["Swatches", "Color", "Gradients", "Patterns", "GenTonik"],
             Group::Properties => &["Properties", "Adjustments"],
             Group::Character => &["Character", "Paragraph"],
             Group::Navigator => &["Navigator", "Histogram", "Info"],

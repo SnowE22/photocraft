@@ -595,8 +595,8 @@ fn closing_tabs_keeps_stable_names_across_themes_and_workspace_round_trips() {
     let mut dock = DockLayout::default();
     // In Pro the first Color group tab is Color; in Studio it is Swatches.
     dock.hide_tab(Group::Color, 0, true);
-    assert_eq!(dock.visible_tabs(Group::Color, true).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns", "Screentones (GenTonik)"]);
-    assert_eq!(dock.visible_tabs(Group::Color, false).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns", "Screentones (GenTonik)"]);
+    assert_eq!(dock.visible_tabs(Group::Color, true).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns", "GenTonik"]);
+    assert_eq!(dock.visible_tabs(Group::Color, false).iter().map(|(_, n)| *n).collect::<Vec<_>>(), vec!["Swatches", "Gradients", "Patterns", "GenTonik"]);
     dock.hide_tab(Group::Color, 999, true);
     assert_eq!(dock.hidden_tabs[&Group::Color], vec!["Color"]);
     let saved = serde_json::to_value(&dock).unwrap();
@@ -1108,11 +1108,11 @@ fn move_tab_reorders_by_name_and_bad_saved_orders_fall_back() {
     }
     // Names, not positions: the order survives the Pro/Studio swap of Color and Swatches.
     l.move_tab(Group::Color, 3, Some(0), true);
-    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Swatches", "Gradients", "Screentones (GenTonik)"]);
-    assert_eq!(names(&l, Group::Color, false), ["Patterns", "Color", "Swatches", "Gradients", "Screentones (GenTonik)"]);
+    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Swatches", "Gradients", "GenTonik"]);
+    assert_eq!(names(&l, Group::Color, false), ["Patterns", "Color", "Swatches", "Gradients", "GenTonik"]);
     // Hidden tabs keep their place for when they come back.
     l.hide_tab(Group::Color, 1, true);
-    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Gradients", "Screentones (GenTonik)"]);
+    assert_eq!(names(&l, Group::Color, true), ["Patterns", "Color", "Gradients", "GenTonik"]);
     // Garbage in a saved layout falls back per group, and never loses the rest of the layout.
     for bad in [
         json!(5),

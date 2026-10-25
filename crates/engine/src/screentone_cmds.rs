@@ -37,11 +37,14 @@ const SHAPES: &str = "circle|square|diamond|hexagon";
 const GRADIENTS: &str = "none|linear|radial";
 const MODES: &str = "shading|sheet";
 
-/// The flat parameter notation shared by both commands (Photoshop-style dialog units).
-const PARAMS: &str = r##"{"preset":text,"mode":"shading|sheet","patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"whiteThreshold":0..1=0.85,"blackThreshold":0..1=0.08,"toneGamma":0.01..10=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"layer":id?,"name":text?} → {layer,bounds}"##;
+/// The flat parameter notation for [`FILTER`] (Photoshop-style dialog units).
+const FILTER_PARAMS: &str = r##"{"mode":"shading|sheet","patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"brightness":-1..1=0,"contrast":0..4=1,"whiteThreshold":0..1=0.85,"blackThreshold":0..1=0.08,"toneGamma":0.01..10=1,"preserveLines":bool,"lineThreshold":0..1=0.24,"lineThickness":0.5..5=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42}"##;
+
+/// The flat parameter notation for [`LAYER`].
+const PARAMS: &str = r##"{"preset":text,"mode":"shading|sheet","patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"brightness":-1..1=0,"contrast":0..4=1,"whiteThreshold":0..1=0.85,"blackThreshold":0..1=0.08,"toneGamma":0.01..10=1,"preserveLines":bool,"lineThreshold":0..1=0.24,"lineThickness":0.5..5=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"layer":id?,"name":text?} → {layer,bounds}"##;
 
 /// [PATTERN]'s notation: the same dialog fields, but the pattern library is the target.
-const PATTERN_PARAMS: &str = r##"{"preset":text,"mode":"shading|sheet","patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"whiteThreshold":0..1=0.85,"blackThreshold":0..1=0.08,"toneGamma":0.01..10=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"name":text?} → {pattern,bounds}"##;
+const PATTERN_PARAMS: &str = r##"{"preset":text,"mode":"shading|sheet","patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"brightness":-1..1=0,"contrast":0..4=1,"whiteThreshold":0..1=0.85,"blackThreshold":0..1=0.08,"toneGamma":0.01..10=1,"preserveLines":bool,"lineThreshold":0..1=0.24,"lineThickness":0.5..5=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"name":text?} → {pattern,bounds}"##;
 
 fn f_any(p: &Value, keys: &[&str], d: f32) -> f32 {
     for &k in keys {
@@ -209,9 +212,14 @@ pub fn spec(p: &Value) -> ScreentoneSpec {
         rot_canvas: f_any(p, &["rotateCanvas", "rotCanvas"], base.rot_canvas).clamp(-360.0, 360.0),
         rot_pattern: f_any(p, &["rotatePattern", "rotPattern"], base.rot_pattern).clamp(-360.0, 360.0),
         mode: parsed_mode,
+        brightness: f_any(p, &["brightness"], base.brightness).clamp(-1.0, 1.0),
+        contrast: f_any(p, &["contrast"], base.contrast).clamp(0.0, 4.0),
         white_threshold: f_any(p, &["whiteThreshold"], base.white_threshold).clamp(0.0, 1.0),
         black_threshold: f_any(p, &["blackThreshold"], base.black_threshold).clamp(0.0, 1.0),
         tone_gamma: f_any(p, &["toneGamma"], base.tone_gamma).clamp(0.01, 10.0),
+        preserve_lines: b_any(p, &["preserveLines"], base.preserve_lines),
+        line_threshold: f_any(p, &["lineThreshold"], base.line_threshold).clamp(0.0, 1.0),
+        line_thickness: f_any(p, &["lineThickness"], base.line_thickness).clamp(0.5, 5.0),
         use_source_luminance,
         smoothness: f_any(p, &["smoothness"], base.smoothness).clamp(0.0, 1.0),
         seed: whole(p, "seed", base.seed),
@@ -471,12 +479,18 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
         mask.surface.prune();
         mask
     });
+    let opaque_paper = spec.background[3] >= 0.99;
     let content = ScreentoneLayer::new(spec, origin, rendered);
     let id = s.edit("Screentone", |doc, active| {
         let mut l = Layer::new(doc.next_layer_name(&name), LayerContent::Screentone(content));
         l.mask = mask;
-        // Manga tones darken the artwork below them; the panel and gizmo expect Multiply.
-        l.blend = photocraft_color::BlendMode::Multiply;
+        // Opaque paper shading layers sit in Normal blend mode so clean white paper covers the
+        // reference drawing underneath; transparent film sheets darken via Multiply.
+        l.blend = if opaque_paper {
+            photocraft_color::BlendMode::Normal
+        } else {
+            photocraft_color::BlendMode::Multiply
+        };
         let id = doc.insert_above(*active, l);
         *active = Some(id);
         Ok(id)
@@ -578,6 +592,15 @@ fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: Filte
             .layer_mut(id)
             .ok_or_else(|| EngineError::Other("the layer to restyle is gone".into()))?;
         if let LayerContent::Screentone(previous) = &mut layer.content {
+            let was_opaque = previous.spec.background[3] >= 0.99;
+            let now_opaque = spec.background[3] >= 0.99;
+            if was_opaque != now_opaque {
+                layer.blend = if now_opaque {
+                    photocraft_color::BlendMode::Normal
+                } else {
+                    photocraft_color::BlendMode::Multiply
+                };
+            }
             previous.spec = spec;
             previous.origin = origin;
             previous.surface = rendered;
@@ -644,7 +667,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Screentone…",
             menu: &["Filter", "Pixelate"],
             shortcut: None,
-            params: PARAMS,
+            params: FILTER_PARAMS,
             enabled: crate::filters::has_filterable_layer,
             run: |s, p| crate::filters::run_filter(s, FILTER, p),
             journal: true,

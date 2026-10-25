@@ -1,4 +1,4 @@
-﻿//! Filter dialogs generated from engine command parameter specs, with live on-canvas preview and an
+//! Filter dialogs generated from engine command parameter specs, with live on-canvas preview and an
 //! in-dialog preview window (#3769).
 //!
 //! The preview runs the *same engine command* on the downsampled proxy document (pixel-sized
@@ -106,7 +106,7 @@ pub fn parse_spec(spec: &str) -> Vec<Param> {
             Kind::Choice { options, default }
         } else if let Some(rest) = v.strip_prefix("bool") {
             Kind::Bool(rest.trim_start_matches('=').trim() == "true")
-        } else if v == "text" {
+        } else if v.trim_end_matches('?') == "text" {
             Kind::Text
         } else if v == "color" {
             Kind::Color(None)
