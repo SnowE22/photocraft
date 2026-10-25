@@ -1228,8 +1228,10 @@ mod tests {
         let px_shading = read_layer(&s, id);
         let sh_slice = px_shading.as_slice();
         let beta_ink: f32 = (0..72usize).flat_map(|y| (0..24usize).map(move |x| sh_slice[(y * 96 + x) * 4 + 3])).sum();
+        let mid_ink: f32 = (0..72usize).flat_map(|y| (36..60usize).map(move |x| sh_slice[(y * 96 + x) * 4 + 3])).sum();
         let paper_ink: f32 = (0..72usize).flat_map(|y| (72..96usize).map(move |x| sh_slice[(y * 96 + x) * 4 + 3])).sum();
-        assert!((beta_ink - (24 * 72) as f32).abs() < 1.0, "deep shadow band gets 100% beta fill (got {beta_ink})");
+        assert!(beta_ink > mid_ink, "deep shadow band gets maximum ink dots without binary flat clipping (got {beta_ink} vs midtone {mid_ink})");
+        assert!(beta_ink > 500.0, "deep shadow renders full-density halftone dots (got {beta_ink})");
         assert_eq!(paper_ink, 0.0, "highlight paper band above whiteThreshold stays 100% clean");
 
         // Switching the same layer to `mode: "sheet"` restyles it as a uniform sheet over the paper band too.

@@ -691,7 +691,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
     };
 
     // Whether integer coordinate `(ix, iy)` is a sharp dark ink line edge (Halftone Studio GT /
-    // Vayce line-art detector, using raw unadjusted luminance and 2px local contrast so 1..4px
+    // Vayce-like line-art detector, using raw unadjusted luminance and 2px local contrast so 1..4px
     // strokes stay solid without hollow centers while flat shadows stay halftoned).
     let is_line_edge_at = |ix: i32, iy: i32| -> bool {
         let l_c = raw_paper_luma(ix, iy);
@@ -1087,15 +1087,12 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
             }
         }
 
-        // Deep shadows below `black_threshold` and preserved line-art contours fill with solid
-        // 100% ink; highlights above `white_threshold` stay clean paper.
-        if use_shading {
-            let pixel_luma = sample_luma_adj(doc_x, doc_y);
-            if pixel_luma <= black_thresh || is_preserved_line(x, y) {
-                cov = 1.0;
-            } else if pixel_luma >= white_thresh {
-                cov = 0.0;
-            }
+        // When `preserve_lines` is enabled, the line-art detector overlays solid 100% ink along
+        // detected contours dilated by `line_thickness`. When disabled, the entire image (fills,
+        // hatching, and ink lines) is rendered as pure smooth halftone dots sized by `sample_ink`,
+        // with no per-pixel binary threshold clipping.
+        if use_shading && is_preserved_line(x, y) {
+            cov = 1.0;
         }
 
         cov = cov.clamp(0.0, 1.0);
@@ -1437,19 +1434,17 @@ mod tests {
             ..Default::default()
         };
         let out_px = screentone(&img, bounds, &ctx, &spec);
+        let out_slice = out_px.as_slice();
         for y in 0..32usize {
-            for x in 0..24usize {
-                let a = out_px[(y * 96 + x) * 4 + 3];
-                assert!((a - 1.0).abs() < 1e-5, "deep shadow at ({x}, {y}) must be 1.0 beta fill, got {a}");
-            }
             for x in 72..96usize {
                 let a = out_px[(y * 96 + x) * 4 + 3];
                 assert_eq!(a, 0.0, "highlight paper at ({x}, {y}) must be 0.0, got {a}");
             }
         }
-        let out_slice = out_px.as_slice();
+        let deep_ink: f32 = (0..32usize).flat_map(|y| (0..24usize).map(move |x| out_slice[(y * 96 + x) * 4 + 3])).sum();
         let mid_ink: f32 = (0..32usize).flat_map(|y| (38..58usize).map(move |x| out_slice[(y * 96 + x) * 4 + 3])).sum();
-        assert!(mid_ink > 20.0 && mid_ink < (20 * 32) as f32, "midtone region renders partial halftone + satellites (got {mid_ink})");
+        assert!(deep_ink > mid_ink, "deep shadow region (ink=1.0) renders higher ink coverage ({deep_ink}) than midtone ({mid_ink}) without binary flat clipping");
+        assert!(mid_ink > 20.0, "midtone region renders partial halftone + satellites (got {mid_ink})");
 
         // In Sheet mode, the same image renders uniform pattern even over the 0.92 highlight zone.
         let sheet_spec = ScreentoneSpec { mode: ScreentoneMode::Sheet, use_source_luminance: false, ..spec };
@@ -1464,11 +1459,13 @@ mod tests {
         let bounds = Rect::new(0, 0, 64, 32);
         let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: true };
         let mut data = vec![1.0f32; (64 * 32 * 4) as usize];
-        // Draw a 1px vertical dark line at x = 32 (luma = 0.20, above black_threshold = 0.08 so
-        // without preserve_lines it would be broken into sparse halftone dots).
+        // Draw a 1px vertical pure black line at x = 32 (luma = 0.0 <= black_threshold = 0.08).
+        // With preserve_lines = false, there is no forced cov=1.0 per-pixel clip: it is rendered
+        // purely as smooth halftone dots sized by sample_ink.
+        // With preserve_lines = true, the line-art detector triggers and preserves it as solid ink.
         for y in 0..32usize {
             let idx = (y * 64 + 32) * 4;
-            data[idx..idx + 4].copy_from_slice(&[0.20, 0.20, 0.20, 1.0]);
+            data[idx..idx + 4].copy_from_slice(&[0.0, 0.0, 0.0, 1.0]);
         }
         let img = Image { rect: bounds, ch: 4, data };
         let base_spec = ScreentoneSpec {
