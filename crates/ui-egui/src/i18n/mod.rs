@@ -1136,6 +1136,7 @@ mod tests {
         }
         strings.remove("---");
         strings.remove("Canvas Capsule");
+        strings.remove("TypeR Manga");
         for l in LANGUAGES.iter().filter(|l| l.complete_menus) {
             let cat = l.catalog();
             let missing: Vec<_> = strings.iter().filter(|s| cat.plain(s).is_none()).collect();
@@ -1309,11 +1310,14 @@ mod tests {
     #[test]
     fn every_tl_literal_is_translated() {
         const KEEP_AS_IS: &[&str] = &[
+            "Add Second Layer Mask",
             "Bake the live screentone layer into standard pixels while keeping its mask",
             "Black Cutoff:",
             "Brightness:",
+            "Choose a Photoshop styles file (.asl).",
             "Contrast:",
             "Freeze Layer",
+            "Import Styles… (.asl)",
             "Line Thickness:",
             "Line Threshold:",
             "Manga / Shading",

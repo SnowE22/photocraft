@@ -2706,7 +2706,14 @@ impl PhotocraftApp {
             // With the dock hidden, a Tools panel docked at that side still shows.
             panels::toolbar_end(self, ui);
         }
-        let typesetter_action = self.typesetter.show(ui);
+        let typesetter_action = if self.ui.panels.typesetter {
+            self.typesetter.is_open = true;
+            let act = self.typesetter.show(ui);
+            self.ui.panels.typesetter = self.typesetter.is_open;
+            act
+        } else {
+            None
+        };
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {

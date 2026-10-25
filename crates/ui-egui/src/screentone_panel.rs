@@ -269,7 +269,9 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         ui.end_row();
 
         row(ui, &label("angle"));
-        crate::widgets::value_field(ui, &mut st.spec.angle, -180.0..=180.0, "°", 76.0);
+        if crate::widgets::value_field(ui, &mut st.spec.angle, 0.0..=360.0, "°", 76.0).changed() {
+            st.spec.angle = st.spec.angle.rem_euclid(360.0);
+        }
         ui.end_row();
 
         row(ui, &label("density"));

@@ -527,6 +527,9 @@ pub struct Panels {
     /// Window > Canvas Capsule: floating contextual bar on the canvas.
     #[serde(default = "yes")]
     pub canvas_capsule: bool,
+    /// Window > TypeR Manga: manga typesetter and dialogue style presets.
+    #[serde(default = "yes")]
+    pub typesetter: bool,
 }
 
 impl Default for Panels {
@@ -554,6 +557,7 @@ impl Default for Panels {
             menu_bar: true,
             gradient_editor: false,
             canvas_capsule: true,
+            typesetter: true,
         }
     }
 }

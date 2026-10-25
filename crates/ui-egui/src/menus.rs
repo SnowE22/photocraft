@@ -41,6 +41,7 @@ pub(crate) fn panel_alias(id: &str) -> Option<&'static str> {
         "brushSettings" => "window.toggle.brushSettings",
         "brushes" => "window.toggle.brushes",
         "canvasCapsule" => "window.toggle.canvasCapsule",
+        "typesetter" => "window.toggle.typesetter",
         "timelapse" => "window.toggle.timelapse",
 
         _ => return None,
@@ -674,11 +675,13 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 "timelapse" => &mut p.timelapse,
                 "dock" => &mut p.dock,
                 "canvasCapsule" => &mut p.canvas_capsule,
+                "typesetter" => &mut p.typesetter,
                 "rail" => &mut p.rail_closed,
 
                 _ => return Err(format!("unknown panel in {t}")),
             };
             *slot = !*slot;
+            app.typesetter.is_open = app.ui.panels.typesetter;
             if let Some(g) = crate::dock::Group::from_key(&t["window.toggle.".len()..]).filter(|g| g.shown(&app.ui.panels)) {
                 crate::dock::reveal(app, g);
             }
@@ -894,6 +897,7 @@ pub(crate) fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
         "window.toggle.brushSettings" => p.brush_settings,
         "window.toggle.brushes" => p.brushes,
         "window.toggle.canvasCapsule" => p.canvas_capsule,
+        "window.toggle.typesetter" => p.typesetter,
         "window.toggle.timelapse" => p.timelapse,
 
         _ => return None,
