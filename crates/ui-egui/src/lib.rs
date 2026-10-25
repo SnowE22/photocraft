@@ -224,6 +224,7 @@ pub(crate) mod solid_fill_ui;
 pub mod spring_tools;
 pub mod stack_dialog;
 pub mod state;
+pub mod typesetter_ui;
 pub mod stroke_constraint;
 pub mod stroke_trace;
 pub mod stroke_trail;
@@ -709,6 +710,7 @@ pub(crate) type HistJob = (DocId, u64, std::sync::mpsc::Receiver<(DocId, f64, st
 type InfoSampleKey = (i32, i32, u64, u32);
 
 pub struct PhotocraftApp {
+    pub typesetter: typesetter_ui::TypesetterUi,
     pub session: Session,
     pub ui: UiState,
     pub services: Services,
@@ -1058,6 +1060,7 @@ pub struct PhotocraftApp {
 impl PhotocraftApp {
     pub fn new(session: Session, services: Services) -> Self {
         let mut app = Self {
+            typesetter: typesetter_ui::TypesetterUi::new(),
             session,
             ui: UiState::default(),
             services,
@@ -1333,6 +1336,133 @@ impl PhotocraftApp {
     pub fn with_control(mut self, rx: Receiver<ControlRequest>) -> Self {
         self.control_rx = Some(rx);
         self
+    }
+
+    /// Обработка действий тайпсеттера: создание текстового слоя на активном холсте.
+    pub(crate) fn handle_typesetter_action(&mut self, action: typesetter_ui::TypesetterAction) {
+        let Some(st) = self.session.active() else {
+            self.ui.status = "Откройте или создайте документ для вставки текста".into();
+            self.ui.status_error = true;
+            return;
+        };
+
+        // 1. Приоритет: оптический центр выделенной области
+        let selection_center = st.doc.selection.as_ref().and_then(|sel| {
+            let bounds = sel.content_bounds();
+            if !bounds.is_empty() {
+                let cx = bounds.x0 as f32 + bounds.width() as f32 * 0.5;
+                // Сдвиг базовой линии вниз на ~0.35 размера шрифта для точной вертикальной центровки
+                let cy = bounds.y0 as f32 + bounds.height() as f32 * 0.5 + (action.preset.font_size * 0.35);
+                Some((cx, cy))
+            } else {
+                None
+            }
+        });
+
+        // 2. Если выделения нет: курсор мыши
+        // 3. Если курсор вне холста: геометрический центр документа
+        let (x, y) = if let Some(center) = selection_center {
+            center
+        } else if let Some([hx, hy]) = self.hover_doc {
+            (hx as f32, hy as f32)
+        } else {
+            (st.doc.size.width as f32 * 0.5, st.doc.size.height as f32 * 0.5)
+        };
+
+        // Готовим финальный текст (применяем ALL_CAPS если задано в стиле TypeR)
+        let final_text = if action.preset.all_caps {
+            action.text.to_uppercase()
+        } else {
+            action.text
+        };
+
+        // Разрешаем семейство шрифта: проверяем наличие на машине, иначе пробуем разрешить через PostScript
+        let resolved_family = {
+            let mut shared = photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner());
+            if !action.preset.font_family.is_empty() && shared.fonts.has_family(&action.preset.font_family) {
+                action.preset.font_family.clone()
+            } else if !action.preset.font_postscript.is_empty() {
+                let r = shared.fonts.resolve_postscript(&action.preset.font_postscript);
+                if shared.fonts.has_family(&r.family) {
+                    r.family
+                } else if !action.preset.font_family.is_empty() {
+                    action.preset.font_family.clone()
+                } else {
+                    "Kurai Voice 2".to_string()
+                }
+            } else if !action.preset.font_family.is_empty() {
+                action.preset.font_family.clone()
+            } else {
+                "Kurai Voice 2".to_string()
+            }
+        };
+
+        let is_bold_style = action.preset.font_style.to_lowercase().contains("bold");
+        let is_italic_style = action.preset.font_style.to_lowercase().contains("italic")
+            || action.preset.font_style.to_lowercase().contains("oblique");
+
+        let style_name = if !action.preset.font_style.is_empty() && action.preset.font_style != "Regular" {
+            action.preset.font_style.clone()
+        } else if action.preset.bold && action.preset.italic {
+            "Bold Italic".to_string()
+        } else if action.preset.bold {
+            "Bold".to_string()
+        } else if action.preset.italic {
+            "Italic".to_string()
+        } else {
+            "Regular".to_string()
+        };
+
+        let faux_bold = action.preset.bold && !is_bold_style;
+        let faux_italic = action.preset.italic && !is_italic_style;
+        let weight = if action.preset.bold { 700 } else { 400 };
+
+        let mut type_params = serde_json::json!({
+            "x": x,
+            "y": y,
+            "text": final_text,
+            "size": action.preset.font_size,
+            "font": resolved_family,
+            "fontStyle": style_name,
+            "weight": weight,
+            "italic": action.preset.italic,
+            "fauxBold": faux_bold,
+            "fauxItalic": faux_italic,
+            "align": "center",
+            "tracking": action.preset.tracking,
+            "leading": action.preset.leading
+        });
+
+        if !action.preset.font_postscript.is_empty() {
+            type_params["postscriptName"] = serde_json::Value::String(action.preset.font_postscript.clone());
+        }
+
+        let res = self.run("type.create", type_params);
+
+        if let Ok(v) = res {
+            if let Some(layer_id) = v.get("layer").and_then(serde_json::Value::as_u64) {
+                if action.preset.stroke_width > 0.0 {
+                    let hex_color = format!(
+                        "#{:02x}{:02x}{:02x}",
+                        action.preset.stroke_color[0],
+                        action.preset.stroke_color[1],
+                        action.preset.stroke_color[2]
+                    );
+                    let _ = self.run(
+                        "layer.layerStyle.stroke",
+                        serde_json::json!({
+                            "layer": layer_id,
+                            "size": action.preset.stroke_width,
+                            "position": "outside",
+                            "color": hex_color,
+                            "opacity": (action.preset.stroke_color[3] as f32 / 2.55).round() as u32
+                        }),
+                    );
+                }
+            }
+            // Снимаем активное выделение (Deselect / Ctrl+D), чтобы сразу можно было выделить следующий баббл
+            let _ = self.run("select.deselect", serde_json::json!({}));
+        }
     }
 
     /// Run an engine command, reporting errors in the status bar.
@@ -2576,6 +2706,7 @@ impl PhotocraftApp {
             // With the dock hidden, a Tools panel docked at that side still shows.
             panels::toolbar_end(self, ui);
         }
+        let typesetter_action = self.typesetter.show(ui);
         let t = theme::Tokens::get(&ctx);
         let backdrop = if chrome { prefs_ui::pasteboard_color(self).unwrap_or(t.canvas) } else { egui::Color32::BLACK };
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(backdrop)).show(ui, |ui| {
@@ -2597,6 +2728,9 @@ impl PhotocraftApp {
         self.perf.span("ui: floating panels", gpu_canvas::now_ms() - t);
         gradient_ui::editor_window(self, &ctx);
         type_panels_ui::windows(self, &ctx);
+        if let Some(action) = typesetter_action {
+            self.handle_typesetter_action(action);
+        }
         analysis_ui::windows(self, &ctx);
         timeline_ui::windows(self, &ctx);
         workspace_ui::windows(self, &ctx);

@@ -31,6 +31,7 @@ mod clip_group;
 pub mod color_cmds;
 pub mod color_to_alpha_cmds;
 pub mod commands;
+pub mod typesetter;
 pub mod comps_cmds;
 pub mod contour_lib_cmds;
 mod crop_fill;

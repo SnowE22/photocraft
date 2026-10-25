@@ -1,0 +1,44 @@
+# PhotoCraft & TypeR Module Task Plan
+
+## Goal
+Implement and maintain full feature and visual parity with TypeR (Photoshop CEP extension) inside PhotoCraft, following strict Rust architecture guidelines (`#![deny(clippy::unwrap_used)]`, no WebViews, native egui UI, modular engine logic).
+
+## Principles & Active Skills
+- **`verify-typesetter`**: Continuous automated validation via `cargo test -p photocraft-engine --lib typesetter` and `cargo check -p photocraft-ui-egui`.
+- **`impeccable`**: Professional UI/UX standards in "Operate" mode: scanability, precise hierarchy, native look-and-feel, no visual clutter.
+- **`planning-with-files`**: Persistent working memory on disk (`task_plan.md`, `findings.md`, `progress.md`).
+- **`graphify`**: Deep code navigation and cross-module relationship awareness.
+
+## Phases
+
+### Phase 1: Core TypeR Parity (COMPLETED)
+- [x] Page grouping & auto header detection (`Page 1`, `P02`, etc.) in script loader
+- [x] Line Spacing Sync (`sync_leading_with_size`)
+- [x] Folder & preset duplication in engine
+- [x] TypeR CEP JSON export (`export_styles_json`)
+- [x] Recreate TypeR UI in egui: Live Preview card, A-/A+ buttons, queue list, styles catalog, folder tabs, settings panel
+- [x] Push commits `6424a300` and `f50132d3`
+
+### Phase 2: Font Style & TypeR Import Accuracy (COMPLETED)
+- [x] Fix font family vs PostScript name lookup in `handle_typesetter_action`
+- [x] Support natural Bold/Italic faces when `syntheticBold` / `syntheticItalic` is `false`
+- [x] Support `autoLeadingPercentage` for leading calculation
+- [x] Parse stroke objects (`enabled`, `size`, `color`, `opacity`) without defaulting to unwanted 2.0px stroke
+- [x] Pass real family, `fontStyle`, `weight`, `fauxBold`, `fauxItalic`, and `postscriptName` to `type.create`
+- [x] Commit & push `e9d4825e`
+
+### Phase 3: Photoshop Docking, Auto-Persistence & Enhanced Script Navigation (COMPLETED)
+- [x] Dockable panel layout: `Floating`, `DockRight`, `DockLeft`, `DockBottom` using `egui::Panel`
+- [x] Auto-persistence of presets, active script, queue position, options, and dock mode (`%APPDATA%/Photocraft/typesetter_state.json`)
+- [x] Full text script window with scroll, pagination, search filter, read-ahead counter, and quick-jump
+- [x] Individual font style buttons grid with instant selection and modal typography settings (`⚙`)
+- [x] Panel ordering integration before `CentralPanel` in `PhotocraftApp::ui`
+- [x] Fix styles tab window width expansion bug (bound `Window` width to 450px and wrap button grid within container)
+- [x] Bound dock panel sizes and frame styling to prevent layout conflicts
+- [x] Auto-deselect bubble selection (`select.deselect`) after typesetting for fast sequential workflow
+
+### Phase 4: Extended Typesetting Workflow (UPCOMING)
+- [ ] Font picker dropdown from system font database in style editor
+- [ ] Direct text replacement / queue advancement hotkeys (Ctrl+Enter / F4)
+- [ ] Batch bubble assignment and selection bounds auto-positioning verification
+- [ ] Localization and i18n support for typesetter UI (RU / EN)

@@ -823,6 +823,17 @@ pub fn windows(app: &mut PhotocraftApp, ctx: &egui::Context) {
 // ------------------------------------------------------------------ Styles
 
 pub fn styles_panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let mut import_styles = false;
+    ui.horizontal(|ui| {
+        import_styles = crate::icons::button(ui, "folder-open", 24.0, false, tl!("Import Styles… (.asl)")).clicked();
+    });
+    if import_styles
+        && let Err(error) = crate::preset_files_ui::import_styles(app)
+        && error != crate::file_dialog::CANCELLED
+    {
+        app.ui.status = error;
+        app.ui.status_error = true;
+    }
     let src = app.session.presets.styles.clone();
     let groups: Vec<GroupView> = src
         .iter()
