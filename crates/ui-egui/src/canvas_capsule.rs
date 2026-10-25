@@ -241,14 +241,15 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                             .changed();
 
                         ui.label("Angle:");
-                        changed |= ui
-                            .add(
-                                DragValue::new(&mut app.ui.screentone_ui.spec.angle)
-                                    .speed(1.0)
-                                    .range(0.0..=90.0)
-                                    .suffix("°"),
-                            )
-                            .changed();
+                        let angle_resp = ui.add(
+                            DragValue::new(&mut app.ui.screentone_ui.spec.angle)
+                                .speed(1.0)
+                                .suffix("°"),
+                        );
+                        if angle_resp.changed() {
+                            app.ui.screentone_ui.spec.angle = app.ui.screentone_ui.spec.angle.rem_euclid(360.0);
+                            changed = true;
+                        }
 
                         changed |= ui
                             .checkbox(&mut app.ui.screentone_ui.spec.preserve_lines, "LineArt")
