@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use photocraft_algo::ScreentoneSpec;
+use photocraft_algo::{ScreentoneMode, ScreentoneSpec};
 
 use crate::PhotocraftApp;
 use crate::theme::Tokens;
@@ -122,6 +122,22 @@ pub(crate) fn sync_spec_to_active_layer(app: &mut PhotocraftApp) -> bool {
     true
 }
 
+/// Freezes (rasterizes) the active `LayerContent::Screentone` layer into a regular pixel layer,
+/// preserving its layer mask and detaching the on-canvas gizmo so the next screentone can be
+/// created independently.
+pub(crate) fn freeze_active_layer(app: &mut PhotocraftApp) -> bool {
+    let Some(id) = app
+        .session
+        .active()
+        .and_then(|s| s.active_layer.filter(|&id| s.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone)))
+    else {
+        return false;
+    };
+    let _ = crate::preset_panels::run(app, "layer.rasterize.layer", json!({"layer": id.0}));
+    crate::screentone_gizmo::detach(app);
+    true
+}
+
 /// Draws the tab body: the dock's own scrolling wraps it in both the native and shared docks.
 pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     crate::screentone_gizmo::sync_active_layer(app);
@@ -130,9 +146,29 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let label = crate::filter_dialog::label;
     let mut st = std::mem::take(&mut app.ui.screentone_ui);
     let mut action: Option<&'static str> = None;
+    let mut freeze_clicked = false;
     let row = |ui: &mut egui::Ui, text: &str| {
         ui.label(egui::RichText::new(text).color(t.text_dim).size(11.5));
     };
+
+    ui.horizontal(|ui| {
+        row(ui, tl!("Mode:"));
+        if ui
+            .selectable_label(st.spec.mode == ScreentoneMode::Shading, tl!("Manga / Shading"))
+            .clicked()
+        {
+            st.spec.mode = ScreentoneMode::Shading;
+            st.spec.use_source_luminance = true;
+        }
+        if ui
+            .selectable_label(st.spec.mode == ScreentoneMode::Sheet, tl!("Sheet / Pattern"))
+            .clicked()
+        {
+            st.spec.mode = ScreentoneMode::Sheet;
+            st.spec.use_source_luminance = false;
+        }
+    });
+    ui.add_space(4.0);
 
     egui::Grid::new("screentone-grid").num_columns(2).spacing(egui::vec2(8.0, 4.0)).show(ui, |ui| {
         // The built-in presets seed the whole spec; "Custom" keeps what the panel has.
@@ -144,7 +180,16 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         if crate::widgets::dropdown_literal(ui, "screentone-preset", &mut cur, &opts, 176.0) && cur != st.preset {
             st.preset = cur.clone();
             if let Some(p) = presets.iter().find(|p| p.id == cur) {
+                let prev_mode = st.spec.mode;
+                let prev_white = st.spec.white_threshold;
+                let prev_black = st.spec.black_threshold;
+                let prev_gamma = st.spec.tone_gamma;
                 st.spec = p.spec.clone();
+                st.spec.mode = prev_mode;
+                st.spec.use_source_luminance = prev_mode == ScreentoneMode::Shading;
+                st.spec.white_threshold = prev_white;
+                st.spec.black_threshold = prev_black;
+                st.spec.tone_gamma = prev_gamma;
             }
         }
         ui.end_row();
@@ -219,9 +264,29 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         });
         ui.end_row();
 
+        if st.spec.mode == ScreentoneMode::Shading {
+            row(ui, tl!("White Cutoff:"));
+            crate::widgets::value_field(ui, &mut st.spec.white_threshold, 0.0..=1.0, "", 76.0);
+            ui.end_row();
+
+            row(ui, tl!("Black Cutoff:"));
+            crate::widgets::value_field(ui, &mut st.spec.black_threshold, 0.0..=1.0, "", 76.0);
+            ui.end_row();
+
+            row(ui, tl!("Tone Gamma:"));
+            crate::widgets::value_field(ui, &mut st.spec.tone_gamma, 0.1..=5.0, "", 76.0);
+            ui.end_row();
+        }
+
         // The filter halves the tone by the layer's own darkness; a generated sheet has none.
         row(ui, "");
-        crate::widgets::checkbox(ui, &mut st.spec.use_source_luminance, &label("useSourceLuminance"));
+        if crate::widgets::checkbox(ui, &mut st.spec.use_source_luminance, &label("useSourceLuminance")).changed() {
+            st.spec.mode = if st.spec.use_source_luminance {
+                ScreentoneMode::Shading
+            } else {
+                ScreentoneMode::Sheet
+            };
+        }
         ui.end_row();
 
         row(ui, tl!("Name:"));
@@ -348,12 +413,23 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     ui.add_space(6.0);
     crate::widgets::hairline(ui);
     ui.add_space(4.0);
+    let can_freeze = app
+        .session
+        .active()
+        .is_some_and(|s| s.active_layer.is_some_and(|id| s.doc.layer(id).is_some_and(photocraft_doc::Layer::is_screentone)));
     ui.horizontal(|ui| {
         if ui.button(tl!("New Layer")).clicked() {
             action = Some(photocraft_engine::screentone_cmds::LAYER);
         }
         if ui.button(tl!("Apply")).clicked() {
             action = Some(photocraft_engine::screentone_cmds::FILTER);
+        }
+        if ui
+            .add_enabled(can_freeze, egui::Button::new(tl!("Freeze Layer")))
+            .on_hover_text(tl!("Bake the live screentone layer into standard pixels while keeping its mask"))
+            .clicked()
+        {
+            freeze_clicked = true;
         }
     });
     ui.add_space(2.0);
@@ -362,7 +438,9 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
     let spec_changed = st.spec != spec_before;
     app.ui.screentone_ui = st;
-    if let Some(command) = action {
+    if freeze_clicked {
+        freeze_active_layer(app);
+    } else if let Some(command) = action {
         let params = params(&app.ui.screentone_ui);
         let result = crate::preset_panels::run(app, command, params);
         // A New Layer run's result binds the gizmo to the generated sheet: the drags restyle
@@ -459,5 +537,29 @@ mod tests {
         let p = params(&app.ui.screentone_ui);
         crate::menus::invoke(&mut app, &ctx, photocraft_engine::screentone_cmds::LAYER, p).unwrap_err();
         assert!(app.session.active().is_none(), "no document was opened");
+    }
+
+    #[test]
+    fn freeze_active_layer_bakes_screentone_keeps_mask_and_detaches_gizmo() {
+        let (mut app, ctx) = app(8);
+        crate::menus::invoke(&mut app, &ctx, PANEL, Value::Null).unwrap();
+        app.run("select.rect", json!({"x": 10, "y": 10, "width": 30, "height": 20})).unwrap();
+        let p = params(&app.ui.screentone_ui);
+        let res = crate::preset_panels::run(&mut app, photocraft_engine::screentone_cmds::LAYER, p);
+        crate::screentone_gizmo::bind_layer_result(&mut app, photocraft_engine::screentone_cmds::LAYER, &res);
+
+        let id = app.session.active().unwrap().active_layer.unwrap();
+        assert!(app.session.active().unwrap().doc.layer(id).unwrap().is_screentone());
+        assert!(crate::screentone_gizmo::showing(&app), "gizmo shows while live screentone layer is active");
+
+        assert!(freeze_active_layer(&mut app));
+        let layer = app.session.active().unwrap().doc.layer(id).unwrap();
+        assert!(!layer.is_screentone(), "frozen layer is now standard raster pixels");
+        assert!(layer.mask.is_some(), "selection mask is preserved after freezing");
+        assert!(!crate::screentone_gizmo::showing(&app), "gizmo hides immediately once frozen");
+
+        // Changing panel sliders after freezing must not modify the frozen layer.
+        app.ui.screentone_ui.spec.spacing_x = 32.0;
+        assert!(!sync_spec_to_active_layer(&mut app));
     }
 }

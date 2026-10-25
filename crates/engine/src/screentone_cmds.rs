@@ -16,7 +16,7 @@
 //! the app-level pattern library (the panel's `Save as Pattern`), so a favourite tone survives
 //! restarts and can fill layers and brush textures like any other library pattern.
 
-use photocraft_algo::{self as algo, DotShape, FilterParams, PatternType, ScreentoneGradientType, ScreentoneSpec};
+use photocraft_algo::{self as algo, DotShape, FilterParams, PatternType, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
 use photocraft_color::PixelFormat;
 use photocraft_doc::{Layer, LayerContent, LayerMask, Pattern, Rect, ScreentoneLayer};
 use photocraft_raster::Surface;
@@ -35,12 +35,13 @@ pub const PATTERN: &str = "pattern.screentone";
 const PATTERNS: &str = "dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles";
 const SHAPES: &str = "circle|square|diamond|hexagon";
 const GRADIENTS: &str = "none|linear|radial";
+const MODES: &str = "shading|sheet";
 
 /// The flat parameter notation shared by both commands (Photoshop-style dialog units).
-const PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"layer":id?,"name":text?} → {layer,bounds}"##;
+const PARAMS: &str = r##"{"preset":text,"mode":"shading|sheet","patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"whiteThreshold":0..1=0.85,"blackThreshold":0..1=0.08,"toneGamma":0.01..10=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"layer":id?,"name":text?} → {layer,bounds}"##;
 
 /// [PATTERN]'s notation: the same dialog fields, but the pattern library is the target.
-const PATTERN_PARAMS: &str = r##"{"preset":text,"patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"name":text?} → {pattern,bounds}"##;
+const PATTERN_PARAMS: &str = r##"{"preset":text,"mode":"shading|sheet","patternType":"dots|lines|crosshatch|noise|gaussianNoise|stipple|hexgrid|checker|concentric|stars|hearts|triangles","dotShape":"circle|square|diamond|hexagon","dotSize":0..500=6,"spacingX":1..2000=16,"spacingY":1..2000=16,"density":0..1=0.5,"angle":-360..360=0,"lineWidth":0..200=1.5,"crossAngle":-360..360=45,"originX":-100000..100000=0,"originY":-100000..100000=0,"roundness":0..1=0,"smoothness":0..1=1,"whiteThreshold":0..1=0.85,"blackThreshold":0..1=0.08,"toneGamma":0.01..10=1,"useSourceLuminance":bool=true,"satelliteEnabled":bool,"satelliteSize":0..500=4,"satelliteDistance":0..2000=18,"satelliteCount":1..4=4,"satelliteAngle":-360..360=0,"satelliteShape":"circle|square|diamond|hexagon","satelliteStretch":0..10=0,"aspectX":0.05..20=1,"aspectY":0.05..20=1,"rowOffset":-1..1=0,"mergeFactor":0..1=0,"jitterPosition":0..100=0,"jitterSize":0..100=0,"gradientType":"none|linear|radial","gradientAngle":-360..360=90,"gradientReverse":bool,"gradientMidpoint":0..1=0.5,"gradientSizeStart":0..10=1,"gradientSizeEnd":0..10=0,"gradientStretchStart":0..10=1,"gradientStretchEnd":0..10=1,"gradientColorTransition":bool,"foreground":color=#000000,"background":color,"rotateCanvas":-360..360=0,"rotatePattern":-360..360=0,"seed":u32=42,"name":text?} → {pattern,bounds}"##;
 
 fn f_any(p: &Value, keys: &[&str], d: f32) -> f32 {
     for &k in keys {
@@ -138,6 +139,14 @@ fn gradient_any(p: &Value, keys: &[&str], base: ScreentoneGradientType) -> Scree
     base
 }
 
+fn mode_from(p: &Value, base: ScreentoneMode) -> ScreentoneMode {
+    match p.get("mode").and_then(Value::as_str) {
+        Some("shading") => ScreentoneMode::Shading,
+        Some("sheet") => ScreentoneMode::Sheet,
+        _ => base,
+    }
+}
+
 /// The screentone parameters for `p`, clamped into the ranges [`PARAMS`] documents. A named
 /// `preset` seeds every field the call does not set explicitly.
 pub fn spec(p: &Value) -> ScreentoneSpec {
@@ -146,6 +155,20 @@ pub fn spec(p: &Value) -> ScreentoneSpec {
         .and_then(Value::as_str)
         .and_then(|id| algo::screentone::built_in_presets().into_iter().find(|pr| pr.id == id))
         .map_or_else(ScreentoneSpec::default, |pr| pr.spec);
+    let parsed_mode = if p.get("mode").is_some() {
+        mode_from(p, base.mode)
+    } else if let Some(use_luma) = p.get("useSourceLuminance").and_then(Value::as_bool) {
+        if use_luma { ScreentoneMode::Shading } else { ScreentoneMode::Sheet }
+    } else {
+        base.mode
+    };
+    let use_source_luminance = if p.get("useSourceLuminance").is_some() {
+        b_any(p, &["useSourceLuminance"], base.use_source_luminance)
+    } else if p.get("mode").is_some() {
+        parsed_mode == ScreentoneMode::Shading
+    } else {
+        base.use_source_luminance
+    };
     ScreentoneSpec {
         pattern_type: pattern(p, base.pattern_type),
         dot_shape: shape(p, "dotShape", base.dot_shape),
@@ -185,7 +208,11 @@ pub fn spec(p: &Value) -> ScreentoneSpec {
         background: colour(p, "background", base.background),
         rot_canvas: f_any(p, &["rotateCanvas", "rotCanvas"], base.rot_canvas).clamp(-360.0, 360.0),
         rot_pattern: f_any(p, &["rotatePattern", "rotPattern"], base.rot_pattern).clamp(-360.0, 360.0),
-        use_source_luminance: b_any(p, &["useSourceLuminance"], base.use_source_luminance),
+        mode: parsed_mode,
+        white_threshold: f_any(p, &["whiteThreshold"], base.white_threshold).clamp(0.0, 1.0),
+        black_threshold: f_any(p, &["blackThreshold"], base.black_threshold).clamp(0.0, 1.0),
+        tone_gamma: f_any(p, &["toneGamma"], base.tone_gamma).clamp(0.01, 10.0),
+        use_source_luminance,
         smoothness: f_any(p, &["smoothness"], base.smoothness).clamp(0.0, 1.0),
         seed: whole(p, "seed", base.seed),
     }
@@ -199,6 +226,7 @@ pub fn params_for(id: &str, p: &Value) -> Option<FilterParams> {
 /// The choices of the enumerated parameters.
 fn choices(key: &str) -> Option<&'static str> {
     match key {
+        "mode" => Some(MODES),
         "patternType" => Some(PATTERNS),
         "dotShape" | "satelliteShape" => Some(SHAPES),
         "gradientType" => Some(GRADIENTS),
@@ -390,12 +418,14 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
 
     if let Some(id) = p.get("layer").and_then(Value::as_u64) {
         if p.get("useSourceLuminance").is_none()
+            && p.get("mode").is_none()
             && p.get("preset").is_none()
             && let Some(st) = s.active()
             && let Some(layer) = st.doc.layer(photocraft_doc::LayerId(id))
             && let LayerContent::Screentone(prev) = &layer.content
         {
             spec.use_source_luminance = prev.spec.use_source_luminance;
+            spec.mode = prev.spec.mode;
         }
         return restyle_layer(s, photocraft_doc::LayerId(id), FilterParams::Screentone { spec });
     }
@@ -412,7 +442,7 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     // equivalent document-space anchor so its lattice stays put when the frame changes.
     let origin = algo::screentone::origin_doc(&spec, bounds);
     let sample_rect = bounds.inflate(spec.halo_radius()).intersect(&doc_bounds);
-    let mut rendered = if spec.use_source_luminance {
+    let mut rendered = if spec.mode == ScreentoneMode::Shading && spec.use_source_luminance {
         if let Some(src) = sample_source_surface(&st.doc, st.active_layer, None, sample_rect, st.doc.pixel_format()) {
             src
         } else {
@@ -420,6 +450,7 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
             Surface::new(st.doc.pixel_format())
         }
     } else {
+        spec.use_source_luminance = false;
         Surface::new(st.doc.pixel_format())
     };
     let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, &spec, origin);
@@ -523,7 +554,7 @@ fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: Filte
     };
     let origin = algo::screentone::origin_doc(spec, bounds);
     let sample_rect = bounds.inflate(spec.halo_radius()).intersect(&st.doc.bounds());
-    let mut rendered = if spec.use_source_luminance {
+    let mut rendered = if spec.mode == ScreentoneMode::Shading && spec.use_source_luminance {
         if let Some(src) = sample_source_surface(&st.doc, None, Some(id), sample_rect, surface.format()) {
             src
         } else {
@@ -531,6 +562,7 @@ fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: Filte
             Surface::new(surface.format())
         }
     } else {
+        spec.use_source_luminance = false;
         Surface::new(surface.format())
     };
     let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, spec, origin);
@@ -567,6 +599,7 @@ fn create_pattern(s: &mut Session, p: &Value) -> Result<Value> {
     validate_params(PATTERN, p)?;
     let mut spec = spec(p);
     // A generated sheet has no source luminance to modulate by: always procedural.
+    spec.mode = ScreentoneMode::Sheet;
     spec.use_source_luminance = false;
     let params = FilterParams::Screentone { spec };
 
@@ -1128,5 +1161,73 @@ mod tests {
         }
         assert!(left_alpha > 50.0, "smart filter modulated halftone dots over the painted left half");
         assert_eq!(right_alpha, 0.0, "transparent right half stays clear");
+    }
+
+    #[test]
+    fn test_shading_mode_vs_sheet_mode_on_artwork() {
+        let mut s = session(8);
+        let active_id = s.active().unwrap().active_layer.unwrap();
+        // Paint 3 vertical bands: beta black (0.02), midtone (0.45), and paper highlight (0.95).
+        s.edit("Paint Bands", |doc, _| {
+            let surf = doc.layer_mut(active_id).unwrap().surface_mut().unwrap();
+            let mut px = vec![0.0f32; 96 * 72 * 4];
+            for y in 0..72usize {
+                for x in 0..96usize {
+                    let v = if x < 32 { 0.02 } else if x < 64 { 0.45 } else { 0.95 };
+                    let idx = (y * 96 + x) * 4;
+                    px[idx..idx + 4].copy_from_slice(&[v, v, v, 1.0]);
+                }
+            }
+            surf.write_region(Rect::new(0, 0, 96, 72), &px);
+            Ok(())
+        })
+        .unwrap();
+
+        let r = s
+            .execute(
+                LAYER,
+                json!({
+                    "mode": "shading",
+                    "patternType": "dots",
+                    "dotSize": 5.0,
+                    "spacingX": 10.0,
+                    "spacingY": 10.0,
+                    "whiteThreshold": 0.85,
+                    "blackThreshold": 0.08,
+                    "toneGamma": 1.0,
+                    "satelliteEnabled": true,
+                    "satelliteSize": 3.0,
+                    "satelliteDistance": 4.0
+                }),
+            )
+            .unwrap();
+        let id = r["layer"].as_u64().unwrap();
+        let px_shading = read_layer(&s, id);
+        let sh_slice = px_shading.as_slice();
+        let beta_ink: f32 = (0..72usize).flat_map(|y| (0..24usize).map(move |x| sh_slice[(y * 96 + x) * 4 + 3])).sum();
+        let paper_ink: f32 = (0..72usize).flat_map(|y| (72..96usize).map(move |x| sh_slice[(y * 96 + x) * 4 + 3])).sum();
+        assert!((beta_ink - (24 * 72) as f32).abs() < 1.0, "deep shadow band gets 100% beta fill (got {beta_ink})");
+        assert_eq!(paper_ink, 0.0, "highlight paper band above whiteThreshold stays 100% clean");
+
+        // Switching the same layer to `mode: "sheet"` restyles it as a uniform sheet over the paper band too.
+        s.execute(
+            LAYER,
+            json!({
+                "layer": id,
+                "mode": "sheet",
+                "patternType": "dots",
+                "dotSize": 5.0,
+                "spacingX": 10.0,
+                "spacingY": 10.0,
+                "satelliteEnabled": true,
+                "satelliteSize": 3.0,
+                "satelliteDistance": 4.0
+            }),
+        )
+        .unwrap();
+        let px_sheet = read_layer(&s, id);
+        let sheet_slice = px_sheet.as_slice();
+        let sheet_paper_ink: f32 = (0..72usize).flat_map(|y| (72..96usize).map(move |x| sheet_slice[(y * 96 + x) * 4 + 3])).sum();
+        assert!(sheet_paper_ink > 50.0, "Sheet mode draws uniform pattern over paper highlights too (got {sheet_paper_ink})");
     }
 }

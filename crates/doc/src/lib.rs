@@ -40,7 +40,7 @@ pub use pattern::Pattern;
 pub use photocraft_color::{BlendMode, Color, ColorMode, PixelFormat, SampleType};
 pub use photocraft_geom::{Affine, Rect, Size};
 pub use photocraft_raster::Surface;
-pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneSpec};
+pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
 use serde::{Deserialize, Serialize};
 pub use slices::{Slice, SliceKind, SliceOrigin, Slices};
 pub use text_styles::TextStyles;

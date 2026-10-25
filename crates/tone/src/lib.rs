@@ -48,6 +48,16 @@ pub enum ScreentoneGradientType {
     Radial,
 }
 
+/// Screentone generation mode: halftone shading from underlying artwork (`Shading`) or a uniform
+/// procedural sheet (`Sheet`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ScreentoneMode {
+    #[default]
+    Shading,
+    Sheet,
+}
+
 /// Parameters for procedural screentone generation.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -108,6 +118,17 @@ pub struct ScreentoneSpec {
     pub rot_pattern: f32,
 
     // ---- Manga Shading & Antialiasing ----
+    /// Generation mode: `Shading` modulates dot/satellite sizes by underlying luminance with paper
+    /// and shadow thresholds; `Sheet` fills the frame uniformly.
+    pub mode: ScreentoneMode,
+    /// Luminance cutoff for clean white paper (pixels with adjusted luma >= `white_threshold`
+    /// draw 0% ink).
+    pub white_threshold: f32,
+    /// Luminance cutoff for deep shadow beta fill (pixels with adjusted luma <= `black_threshold`
+    /// fill with 100% solid foreground ink).
+    pub black_threshold: f32,
+    /// Gamma curve applied to underlying luminance before threshold mapping.
+    pub tone_gamma: f32,
     /// Modulate dot size by underlying layer darkness (halftone manga shading mode).
     pub use_source_luminance: bool,
     /// Edge smoothness: 1.0 = smooth antialiased, 0.0 = pure 1-bit manga threshold.
@@ -163,6 +184,10 @@ impl Default for ScreentoneSpec {
             rot_canvas: 0.0,
             rot_pattern: 0.0,
 
+            mode: ScreentoneMode::Shading,
+            white_threshold: 0.85,
+            black_threshold: 0.08,
+            tone_gamma: 1.0,
             use_source_luminance: true,
             smoothness: 1.0,
             seed: 42,
@@ -173,7 +198,7 @@ impl Default for ScreentoneSpec {
 impl ScreentoneSpec {
     /// Pixels a tile reads outside itself when source luminance is modulated.
     pub fn halo_radius(&self) -> i32 {
-        if self.use_source_luminance {
+        if self.use_source_luminance && self.mode == ScreentoneMode::Shading {
             let max_spacing = self.spacing_x.max(self.spacing_y).clamp(1.0, 256.0);
             (max_spacing * 0.5).ceil() as i32 + 2
         } else {

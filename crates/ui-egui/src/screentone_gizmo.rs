@@ -338,6 +338,17 @@ pub(crate) fn bind_layer_result(app: &mut PhotocraftApp, command: &str, result: 
     gizmo.synced_layer = Some((doc_id, id));
 }
 
+/// Detaches the gizmo from any previously bound screentone layer (e.g. after freezing/rasterizing
+/// the active screentone layer so the next edit does not target a baked layer).
+pub(crate) fn detach(app: &mut PhotocraftApp) {
+    let gizmo = &mut app.screentone_gizmo;
+    gizmo.target = None;
+    gizmo.target_doc = None;
+    gizmo.synced_layer = None;
+    gizmo.drag = None;
+    gizmo.preview = None;
+}
+
 /// Escape (hooked in `canvas_view`, where the egui context is at hand) cancels the running
 /// drag and restores the spec it started from — no render, no journal entry.
 pub(crate) fn escape(app: &mut PhotocraftApp, ctx: &egui::Context) {
@@ -443,6 +454,7 @@ pub(crate) fn refresh_preview(app: &mut PhotocraftApp, ctx: &egui::Context, xf: 
 /// panel's modulate checkbox holds for filter runs).
 fn spec_with(mut spec: ScreentoneSpec) -> ScreentoneSpec {
     spec.use_source_luminance = false;
+    spec.mode = photocraft_algo::ScreentoneMode::Sheet;
     spec
 }
 

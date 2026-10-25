@@ -89,7 +89,7 @@ pub mod wideangle;
 pub use artistic::{GALLERY_CATEGORIES, GalleryEffect, GalleryFilter, GalleryParam, GalleryParamKind};
 pub use image::{Edge, Image};
 pub use params_ext::*;
-pub use screentone::{DotShape, PatternType, ScreentoneGradientType, ScreentonePreset, ScreentoneSpec};
+pub use screentone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneMode, ScreentonePreset, ScreentoneSpec};
 
 mod params_ext;
 

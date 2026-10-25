@@ -13,7 +13,7 @@
 
 use photocraft_geom::Rect;
 use photocraft_raster::Surface;
-pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneSpec};
+pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
 
 use crate::Ctx;
 use crate::fxutil::{luma, rgba, set_rgba, xy};
@@ -333,7 +333,7 @@ pub fn sheet_spec(spec: &ScreentoneSpec, bounds: Rect, origin: (f32, f32)) -> Sc
 /// uniform procedural sheet.
 pub fn render_screentone_to_surface(surface: &mut Surface, bounds: Rect, spec: &ScreentoneSpec, origin: (f32, f32)) -> Rect {
     let mut s = sheet_spec(spec, bounds, origin);
-    if surface.content_bounds().is_empty() {
+    if surface.content_bounds().is_empty() || s.mode == ScreentoneMode::Sheet {
         s.use_source_luminance = false;
     }
     let params = crate::FilterParams::Screentone { spec: s };
@@ -641,8 +641,13 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
     let fg = spec.foreground;
     let bg = spec.background;
 
-    // Fast-path helper to read ink (1.0 - luminance, weighted by alpha) from source image
-    let sample_ink = |doc_x: f32, doc_y: f32| -> f32 {
+    let use_shading = spec.use_source_luminance && spec.mode == ScreentoneMode::Shading && !src.rect.is_empty();
+    let white_thresh = spec.white_threshold.clamp(0.0, 1.0);
+    let black_thresh = spec.black_threshold.clamp(0.0, white_thresh);
+    let gamma = spec.tone_gamma.clamp(0.01, 10.0);
+
+    // Sample gamma-adjusted luminance composited over white paper (transparent = 1.0 white paper).
+    let sample_luma_adj = |doc_x: f32, doc_y: f32| -> f32 {
         if src.rect.is_empty() {
             return 0.5;
         }
@@ -651,9 +656,27 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
         if src.rect.contains(ix, iy) {
             let px = src.px(ix, iy);
             let a = if ctx.alpha { px.last().copied().unwrap_or(1.0).clamp(0.0, 1.0) } else { 1.0 };
-            ((1.0 - luma(ctx, px)) * a).clamp(0.0, 1.0)
+            if a <= 1e-3 {
+                return 1.0;
+            }
+            let raw_luma = luma(ctx, px).clamp(0.0, 1.0);
+            let luma_eff = (raw_luma * a + (1.0 - a)).clamp(0.0, 1.0);
+            luma_eff.powf(gamma)
         } else {
-            0.5
+            1.0
+        }
+    };
+
+    // Normalized ink density in [0.0, 1.0] between `white_threshold` (clean paper = 0.0) and
+    // `black_threshold` (deep shadow = 1.0).
+    let sample_ink = |doc_x: f32, doc_y: f32| -> f32 {
+        let luma_adj = sample_luma_adj(doc_x, doc_y);
+        if luma_adj >= white_thresh {
+            0.0
+        } else if luma_adj <= black_thresh {
+            1.0
+        } else {
+            ((white_thresh - luma_adj) / (white_thresh - black_thresh).max(1e-5)).clamp(0.0, 1.0)
         }
     };
 
@@ -706,11 +729,13 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                 let angle_rad = spec.angle.to_radians();
                 let (sin_l, cos_l) = angle_rad.sin_cos();
                 let ly = -local_x * sin_l + local_y * cos_l;
-                let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                 let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
-                let sp = spacing_y.max(1.0);
-                let dist = (((ly % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                cov = coverage_from_sdf(dist, spec.smoothness);
+                if ink > 1e-5 && width > 1e-4 {
+                    let sp = spacing_y.max(1.0);
+                    let dist = (((ly % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                    cov = coverage_from_sdf(dist, spec.smoothness);
+                }
             }
             PatternType::Crosshatch => {
                 let a1_rad = spec.angle.to_radians();
@@ -719,22 +744,26 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                 let (sin2, cos2) = a2_rad.sin_cos();
                 let ly1 = -local_x * sin1 + local_y * cos1;
                 let ly2 = -local_x * sin2 + local_y * cos2;
-                let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                 let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
-                let sp = spacing_y.max(1.0);
-                let d1 = (((ly1 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                let d2 = (((ly2 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                let c1 = coverage_from_sdf(d1, spec.smoothness);
-                let c2 = coverage_from_sdf(d2, spec.smoothness);
-                cov = c1.max(c2);
+                if ink > 1e-5 && width > 1e-4 {
+                    let sp = spacing_y.max(1.0);
+                    let d1 = (((ly1 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                    let d2 = (((ly2 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                    let c1 = coverage_from_sdf(d1, spec.smoothness);
+                    let c2 = coverage_from_sdf(d2, spec.smoothness);
+                    cov = c1.max(c2);
+                }
             }
             PatternType::Concentric => {
                 let r = local_x.hypot(local_y);
-                let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                 let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
-                let sp = spacing_x.max(1.0);
-                let dist = (((r % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                cov = coverage_from_sdf(dist, spec.smoothness);
+                if ink > 1e-5 && width > 1e-4 {
+                    let sp = spacing_x.max(1.0);
+                    let dist = (((r % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                    cov = coverage_from_sdf(dist, spec.smoothness);
+                }
             }
             PatternType::Checker => {
                 let ix = (local_x / spacing_x).floor() as i32;
@@ -742,10 +771,12 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                 if ((ix.wrapping_add(iy)) & 1) == 0 {
                     let cell_cx = (ix as f32 + 0.5) * spacing_x;
                     let cell_cy = (iy as f32 + 0.5) * spacing_y;
-                    let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                    let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
                     let size = (spacing_x * 0.45 * mod_size * spec.density * ink).max(0.0);
-                    let dist = eval_shape_sdf(local_x - cell_cx, local_y - cell_cy, DotShape::Square, size, xf);
-                    cov = coverage_from_sdf(dist, spec.smoothness);
+                    if ink > 1e-5 && size > 1e-4 {
+                        let dist = eval_shape_sdf(local_x - cell_cx, local_y - cell_cy, DotShape::Square, size, xf);
+                        cov = coverage_from_sdf(dist, spec.smoothness);
+                    }
                 }
             }
             PatternType::Hexgrid => {
@@ -759,7 +790,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                     for dx in -1..=1 {
                         let ix = cx_idx + dx;
                         let cell_x = ix as f32 * spacing_x + row_shift;
-                        let ink = if spec.use_source_luminance {
+                        let ink = if use_shading {
                             // The cell's lattice coordinate is phase-shifted by the origin;
                             // sample the canvas at the dot's true position (undo the shift).
                             let doc_dot_x = cx + (cell_x + spec.origin_x) * cos_canvas - (cell_y + spec.origin_y) * sin_canvas;
@@ -768,6 +799,9 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         } else {
                             1.0
                         };
+                        if ink <= 1e-5 {
+                            continue;
+                        }
                         let size = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
                         let dist = eval_shape_sdf(local_x - cell_x, local_y - cell_y, DotShape::Hexagon, size, xf);
                         let cell_cov = coverage_from_sdf(dist, spec.smoothness);
@@ -793,7 +827,10 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         let jy = (h3 - 0.5) * spacing_y * (spec.jitter_pos * 0.01 + 0.8);
                         let dot_cx = (ix as f32 + 0.5) * spacing_x + jx;
                         let dot_cy = (iy as f32 + 0.5) * spacing_y + jy;
-                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        if ink <= 1e-5 {
+                            continue;
+                        }
                         let sz = (spec.dot_size * (1.0 + (h2 - 0.5) * spec.jitter_size * 0.02) * mod_size * ink).max(0.0);
                         let dist = (local_x - dot_cx).hypot(local_y - dot_cy) - sz;
                         cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
@@ -815,7 +852,10 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         let (gx, gy) = hash_gaussian(ix, iy, seed);
                         let dot_cx = (ix as f32 + 0.5) * spacing_x + gx * spacing_x * 0.4;
                         let dot_cy = (iy as f32 + 0.5) * spacing_y + gy * spacing_y * 0.4;
-                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        if ink <= 1e-5 {
+                            continue;
+                        }
                         let sz = (spec.dot_size * (0.6 + h1 * 0.8) * mod_size * ink).max(0.0);
                         let dist = (local_x - dot_cx).hypot(local_y - dot_cy) - sz;
                         cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
@@ -841,8 +881,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             dot_cx += spacing_x * spec.row_offset;
                         }
 
-                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
-                        if h_keep > spec.density * ink {
+                        let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        if ink <= 1e-5 || h_keep > spec.density * ink {
                             continue;
                         }
                         let sz = (spec.dot_size * (0.5 + h_sz * 0.5) * mod_size).max(0.0);
@@ -867,7 +907,10 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             dot_cx += (hash_coord(ix, iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
                             dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
                         }
-                        let ink = if spec.use_source_luminance { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                        if ink <= 1e-5 {
+                            continue;
+                        }
                         let sz = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
                         let dist = eval_special_shape_sdf(local_x - dot_cx, local_y - dot_cy, spec.pattern_type, sz, xf);
                         cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
@@ -894,7 +937,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                             dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
                         }
 
-                        let ink = if spec.use_source_luminance {
+                        let ink = if use_shading {
                             // The dot's lattice coordinate is phase-shifted by the origin;
                             // sample the canvas at the dot's true position (undo the shift).
                             let doc_dot_x = cx + (dot_cx + spec.origin_x) * cos_canvas - (dot_cy + spec.origin_y) * sin_canvas;
@@ -903,6 +946,9 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         } else {
                             1.0
                         };
+                        if ink <= 1e-5 {
+                            continue;
+                        }
 
                         let merged_size = spec.dot_size + spec.merge_factor * spacing_x * 0.2;
                         let psize = (merged_size * mod_size * spec.density * ink).max(0.0);
@@ -953,6 +999,17 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         }
                     }
                 }
+            }
+        }
+
+        // Deep shadows below `black_threshold` fill with solid 100% beta ink; highlights above
+        // `white_threshold` stay clean paper.
+        if use_shading {
+            let pixel_luma = sample_luma_adj(doc_x, doc_y);
+            if pixel_luma <= black_thresh {
+                cov = 1.0;
+            } else if pixel_luma >= white_thresh {
+                cov = 0.0;
             }
         }
 
@@ -1253,5 +1310,67 @@ mod tests {
         assert!((back.1 - origin.1).abs() < 0.001, "{back:?} vs {origin:?}");
         // The phase itself is frame-relative, so the two specs differ while anchoring the same point.
         assert_ne!((rerendered.origin_x, rerendered.origin_y), (spec.origin_x, spec.origin_y));
+    }
+
+    #[test]
+    fn test_manga_shading_thresholds_beta_fill_and_satellites() {
+        let bounds = Rect::new(0, 0, 96, 32);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: true };
+        let mut data = vec![0.0f32; (96 * 32 * 4) as usize];
+        for y in 0..32usize {
+            for x in 0..96usize {
+                let idx = (y * 96 + x) * 4;
+                if x < 32 {
+                    // Deep shadow below black_threshold (0.04 <= 0.08): beta fill
+                    data[idx..idx + 4].copy_from_slice(&[0.04, 0.04, 0.04, 1.0]);
+                } else if x < 64 {
+                    // Midtone (0.45 in 0.08..0.85): halftone dots + satellites
+                    data[idx..idx + 4].copy_from_slice(&[0.45, 0.45, 0.45, 1.0]);
+                } else {
+                    // Highlight paper above white_threshold (0.92 >= 0.85): clean paper
+                    data[idx..idx + 4].copy_from_slice(&[0.92, 0.92, 0.92, 1.0]);
+                }
+            }
+        }
+        let img = Image { rect: bounds, ch: 4, data };
+        let spec = ScreentoneSpec {
+            mode: ScreentoneMode::Shading,
+            use_source_luminance: true,
+            white_threshold: 0.85,
+            black_threshold: 0.08,
+            tone_gamma: 1.0,
+            pattern_type: PatternType::Dots,
+            dot_size: 5.0,
+            spacing_x: 10.0,
+            spacing_y: 10.0,
+            satellite_enabled: true,
+            satellite_size: 3.0,
+            satellite_distance: 4.0,
+            satellite_count: 4,
+            jitter_pos: 5.0,
+            jitter_size: 5.0,
+            ..Default::default()
+        };
+        let out_px = screentone(&img, bounds, &ctx, &spec);
+        for y in 0..32usize {
+            for x in 0..24usize {
+                let a = out_px[(y * 96 + x) * 4 + 3];
+                assert!((a - 1.0).abs() < 1e-5, "deep shadow at ({x}, {y}) must be 1.0 beta fill, got {a}");
+            }
+            for x in 72..96usize {
+                let a = out_px[(y * 96 + x) * 4 + 3];
+                assert_eq!(a, 0.0, "highlight paper at ({x}, {y}) must be 0.0, got {a}");
+            }
+        }
+        let out_slice = out_px.as_slice();
+        let mid_ink: f32 = (0..32usize).flat_map(|y| (38..58usize).map(move |x| out_slice[(y * 96 + x) * 4 + 3])).sum();
+        assert!(mid_ink > 20.0 && mid_ink < (20 * 32) as f32, "midtone region renders partial halftone + satellites (got {mid_ink})");
+
+        // In Sheet mode, the same image renders uniform pattern even over the 0.92 highlight zone.
+        let sheet_spec = ScreentoneSpec { mode: ScreentoneMode::Sheet, use_source_luminance: false, ..spec };
+        let sheet_px = screentone(&img, bounds, &ctx, &sheet_spec);
+        let sheet_slice = sheet_px.as_slice();
+        let sheet_right_ink: f32 = (0..32usize).flat_map(|y| (72..96usize).map(move |x| sheet_slice[(y * 96 + x) * 4 + 3])).sum();
+        assert!(sheet_right_ink > 20.0, "Sheet mode renders uniform dots + satellites across white paper (got {sheet_right_ink})");
     }
 }
