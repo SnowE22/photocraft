@@ -1701,7 +1701,11 @@ fn select_from(d: &Descriptor) -> Mapped {
         (Some("Lyr"), Target::Ordinal(o)) => {
             // Shift+Alt+[ / ] add the next layer to the selection instead of replacing it.
             let add = get_enum(d, "selectionModifier").as_deref() == Some("addToSelection");
+            // Shift+Alt+. / , select the whole run from the active layer to the top / bottom.
+            let run = get_enum(d, "selectionModifier").as_deref() == Some("addToSelectionContinuous");
             match (o.as_str(), add) {
+                ("Frnt", _) if run => none("layer.selectToTop"),
+                ("Back", _) if run => none("layer.selectToBottom"),
                 ("Frwr", false) => none("layer.selectAbove"),
                 ("Frwr", true) => none("layer.addAboveToSelection"),
                 ("Bckw", false) => none("layer.selectBelow"),
@@ -1762,6 +1766,8 @@ fn select_to(id: &str, p: &Value) -> Option<Descriptor> {
         "layer.addBelowToSelection" => desc("null").with("null", ord("Bckw")).with("selectionModifier", enm("selectionModifierType", "addToSelection")),
         "layer.selectTop" => desc("null").with("null", ord("Frnt")),
         "layer.selectBottom" => desc("null").with("null", ord("Back")),
+        "layer.selectToTop" => desc("null").with("null", ord("Frnt")).with("selectionModifier", enm("selectionModifierType", "addToSelectionContinuous")),
+        "layer.selectToBottom" => desc("null").with("null", ord("Back")).with("selectionModifier", enm("selectionModifierType", "addToSelectionContinuous")),
         // An absolute tab index has no Photoshop equivalent; an offset is what Photoshop records.
         "document.activate" if p.get("document").is_none_or(Value::is_null) => {
             let offset = i32::try_from(p.get("offset")?.as_i64()?).ok()?;
@@ -3503,6 +3509,8 @@ const EVENTS: &[Event] = &[
             "layer.addBelowToSelection",
             "layer.selectTop",
             "layer.selectBottom",
+            "layer.selectToTop",
+            "layer.selectToBottom",
             "channel.target",
             "edit.undo",
             "edit.redo",

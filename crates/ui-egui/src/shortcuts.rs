@@ -38,6 +38,10 @@ pub fn parse(s: &str) -> Option<KeyboardShortcut> {
         ";" => Some(Key::Semicolon),
         "'" => Some(Key::Quote),
         "]" => Some(Key::CloseBracket),
+        "/" => Some(Key::Slash),
+        "\\" => Some(Key::Backslash),
+        "," => Some(Key::Comma),
+        "." => Some(Key::Period),
         // Case-insensitive too: bindings saved as `Shift+Pageup` before #6827 still work.
         name => Key::from_name(name).or_else(|| Key::ALL.iter().find(|k| k.name().eq_ignore_ascii_case(name)).copied()),
     }?;
@@ -733,6 +737,12 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
         }
         return;
     }
+    // 1–0 set opacity, ⇧1–0 flow or fill (`opacity_keys`).
+    crate::opacity_keys::handle(app, ctx);
+    // ⇧+ / ⇧− step the blend mode, ⇧⌥<letter> sets it outright (`blend_keys`). Both run before the
+    // tool keys below: those take a key whatever ⇧ and ⌥ are held, so ⇧⌥M would reach the Marquee
+    // tool before it reached Multiply.
+    crate::blend_keys::handle(app, ctx);
     // Tool keys; pressing the key of the current group cycles within it. With Preferences ›
     // Tools › Use Shift Key for Tool Switch, only ⇧+key cycles and the plain key keeps the
     // group's current tool. From another group, the key picks the group's last-used tool.
@@ -765,13 +775,7 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
         }
     }
     // Page Up / Page Down (⌘ sideways, ⇧ a small step), Home and End scroll the canvas (#8057).
-    if crate::page_keys::handle(app, ctx) {
-        return;
-    }
-    // 1–0 set opacity, ⇧1–0 flow or fill (`opacity_keys`).
-    crate::opacity_keys::handle(app, ctx);
-    // ⇧+ / ⇧− step the blend mode (`blend_keys`).
-    crate::blend_keys::handle(app, ctx);
+    crate::page_keys::handle(app, ctx);
 }
 
 #[cfg(test)]

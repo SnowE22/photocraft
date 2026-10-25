@@ -1,6 +1,7 @@
 //! Keyboard layer navigation, the shortcuts that have no menu item (#352): ⌥] / ⌥[ select the
 //! layer above / below, ⌥. / ⌥, the top / bottom layer, and ⇧⌥] / ⇧⌥[ add the layer above /
-//! below to the selection. They follow the Layers panel's rows, top to bottom: a group's row comes
+//! below to the selection. ⇧⌥. / ⇧⌥, select the whole run from the active layer to the top / bottom.
+//! They follow the Layers panel's rows, top to bottom: a group's row comes
 //! before its children, and the children of a collapsed group are skipped.
 
 use photocraft_doc::{Document, Layer, LayerContent, LayerId};
@@ -46,23 +47,38 @@ enum Step {
     Below,
     Top,
     Bottom,
+    /// The active row and every row above it, up to the top.
+    ToTop,
+    /// The active row and every row below it, down to the bottom.
+    ToBottom,
 }
 
-/// Selects (or with `add`, adds to the selection) the row `step` away from the active layer.
-/// At the top or bottom row the selection stays as it is.
+/// Selects (or with `add`, adds to the selection) the row `step` away from the active layer; the
+/// `To…` steps select the whole run of rows from the active one to the top or bottom. At the top or
+/// bottom row the selection stays as it is. Without an active layer a `To…` step selects only the
+/// top or bottom row: there is no run to extend.
 fn navigate(s: &mut Session, step: Step, add: bool) -> Result<Value> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
     let rows = panel_rows(&st.doc);
     let last = rows.len().checked_sub(1).ok_or_else(|| EngineError::Other("the document has no layers".into()))?;
     let current = st.active_layer.and_then(|a| row_of(&st.doc, &rows, a));
     let target = match (step, current) {
-        (Step::Top, _) | (Step::Above, None) => 0,
-        (Step::Bottom, _) | (Step::Below, None) => last,
+        (Step::Top | Step::ToTop, _) | (Step::Above, None) => 0,
+        (Step::Bottom | Step::ToBottom, _) | (Step::Below, None) => last,
         (Step::Above, Some(i)) => i.saturating_sub(1),
         (Step::Below, Some(i)) => (i + 1).min(last),
     };
     let id = rows.get(target).copied().ok_or_else(|| EngineError::Other("no layer there".into()))?;
-    if add {
+    let run = match (step, current) {
+        (Step::ToTop, Some(i)) => Some(rows.get(..=i)),
+        (Step::ToBottom, Some(i)) => Some(rows.get(i..)),
+        _ => None,
+    };
+    if let Some(run) = run {
+        let run = run.ok_or_else(|| EngineError::Other("no layer there".into()))?.to_vec();
+        let anchor = st.layer_anchor.or(st.active_layer);
+        set_selection(s, run, Some(id), anchor)?;
+    } else if add {
         let mut sel = st.selected_layers();
         if !sel.contains(&id) {
             sel.push(id);
@@ -96,6 +112,8 @@ pub fn specs() -> Vec<CommandSpec> {
         spec!("layer.selectBelow", "Select Layer Below", "Alt+[", Step::Below, false),
         spec!("layer.selectTop", "Select Top Layer", "Alt+.", Step::Top, false),
         spec!("layer.selectBottom", "Select Bottom Layer", "Alt+,", Step::Bottom, false),
+        spec!("layer.selectToTop", "Select Layers to Top", "Alt+Shift+.", Step::ToTop, false),
+        spec!("layer.selectToBottom", "Select Layers to Bottom", "Alt+Shift+,", Step::ToBottom, false),
         spec!("layer.addAboveToSelection", "Add Layer Above to Selection", "Alt+Shift+]", Step::Above, true),
         spec!("layer.addBelowToSelection", "Add Layer Below to Selection", "Alt+Shift+[", Step::Below, true),
     ]
@@ -144,6 +162,47 @@ mod tests {
         assert_eq!((active(&s), s.active().unwrap().selected_layers()), (bg, vec![bg]));
         s.execute("layer.selectTop", json!({})).unwrap();
         assert_eq!(active(&s), d);
+    }
+
+    /// Rows top to bottom: D, Group, C, B, A, Background. ⇧⌥. / ⇧⌥, select the run from the active
+    /// row to the top / bottom; the active layer ends at the far end and the anchor stays.
+    #[test]
+    fn range_steps_select_the_run_to_the_top_or_bottom() {
+        let (mut s, [bg, a, group, b, c, d]) = session();
+        s.execute("layer.select", json!({"layer": c.0})).unwrap();
+        s.execute("layer.selectToTop", json!({})).unwrap();
+        assert_eq!((active(&s), s.active().unwrap().selected_layers().len()), (d, 3));
+        let mut sel = s.active().unwrap().selected_layers();
+        sel.sort();
+        let mut want = vec![d, group, c];
+        want.sort();
+        assert_eq!(sel, want);
+        assert_eq!(s.active().unwrap().layer_anchor, Some(c));
+        s.execute("layer.select", json!({"layer": b.0})).unwrap();
+        s.execute("layer.selectToBottom", json!({})).unwrap();
+        assert_eq!(active(&s), bg);
+        let mut sel = s.active().unwrap().selected_layers();
+        sel.sort();
+        let mut want = vec![b, a, bg];
+        want.sort();
+        assert_eq!(sel, want);
+        // On the end row the run is that row alone.
+        s.execute("layer.selectToBottom", json!({})).unwrap();
+        assert_eq!(s.active().unwrap().selected_layers(), vec![bg]);
+    }
+
+    /// With no active layer there is no run to extend: only the top or bottom row is selected, never
+    /// the whole stack.
+    #[test]
+    fn range_steps_without_an_active_layer_select_only_the_end_row() {
+        let (mut s, [bg, .., d]) = session();
+        for (cmd, want) in [("layer.selectToTop", d), ("layer.selectToBottom", bg)] {
+            let st = s.active_mut().unwrap();
+            st.active_layer = None;
+            st.selected_layers.clear();
+            s.execute(cmd, json!({})).unwrap();
+            assert_eq!((active(&s), s.active().unwrap().selected_layers()), (want, vec![want]), "{cmd}");
+        }
     }
 
     #[test]

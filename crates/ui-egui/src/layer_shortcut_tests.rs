@@ -48,6 +48,39 @@ fn slash_toggles_lock_transparent_pixels() {
 }
 
 #[test]
+fn command_slash_toggles_lock_all_not_lock_transparent_pixels() {
+    let mut app = app();
+    press(&mut app, Key::Slash, Modifiers::COMMAND);
+    assert!(active(&app).locks.all);
+    assert!(!active(&app).locks.transparency, "plain / is the other lock");
+    press(&mut app, Key::Slash, Modifiers::COMMAND);
+    assert!(!active(&app).locks.all);
+}
+
+#[test]
+fn alt_shift_period_and_comma_select_the_run_to_the_top_and_bottom() {
+    let mut app = app();
+    app.run("layer.new.layer", json!({"name": "Top"})).unwrap();
+    let top = active(&app).id;
+    // Background, the layer from `app()`, and Top: Top is active, so the run to the bottom is all three.
+    press(&mut app, Key::Comma, Modifiers::ALT | Modifiers::SHIFT);
+    assert_eq!(app.session.active().unwrap().selected_layers().len(), 3);
+    assert_ne!(active(&app).id, top, "the active layer ends at the bottom");
+    press(&mut app, Key::Period, Modifiers::ALT | Modifiers::SHIFT);
+    assert_eq!(app.session.active().unwrap().selected_layers().len(), 3, "from the bottom row the run to the top is the whole stack");
+    assert_eq!(active(&app).id, top, "and the active layer ends at the top");
+}
+
+#[test]
+fn command_g_groups_and_command_shift_g_ungroups() {
+    let mut app = app();
+    press(&mut app, Key::G, Modifiers::COMMAND);
+    assert!(active(&app).is_group());
+    press(&mut app, Key::G, Modifiers::COMMAND | Modifiers::SHIFT);
+    assert!(!active(&app).is_group());
+}
+
+#[test]
 fn command_backslash_targets_the_layer_mask() {
     let mut app = app();
     app.run("layer.layerMask.revealAll", json!({})).unwrap();

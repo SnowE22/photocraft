@@ -446,6 +446,8 @@ fn every_mapped_command_exports_and_imports_back() {
         ("select.colorRange", json!({"select": "highlights", "tonalRange": 200})),
         ("select.colorRange", json!({"select": "reds"})),
         ("layer.createClippingMask", json!({})),
+        ("layer.selectToTop", json!({})),
+        ("layer.selectToBottom", json!({})),
         ("layer.releaseClippingMask", json!({"layer": "Shadow"})),
         ("layer.layerMask.revealAll", json!({})),
         ("layer.layerMask.hideAll", json!({})),

@@ -15,7 +15,9 @@
 //!   layer under the pointer, as with the Move tool itself; ⌘-arrows nudge ([`cmd_nudges`]). The
 //!   selection tools do their own ⌘ handling in `canvas` (⌘ inside the selection cuts the
 //!   selected pixels, outside it moves the layer, #896), and the Hand, Zoom, Crop, Slice, Path
-//!   Selection, shape, Pen and Type tools keep ⌘ for themselves.
+//!   Selection, shape, Pen and Type Mask tools keep ⌘ for themselves. The Type and Vertical Type
+//!   tools take it: ⌘-drag, ⌘-click and ⌘-arrows move or pick the text layer, never while text is
+//!   being edited.
 //! - With the Hand tool selected, ⌘ (Ctrl off the Mac) is Zoom In while held and ⌥ (with or
 //!   without ⌘) Zoom Out ([`hand_zoom`], #6434).
 //! - `~` (the backtick key) with the Brush or Pencil: a stroke started while it is held erases,
@@ -67,13 +69,17 @@ impl Temporary {
 }
 
 /// Tools on which holding ⌘ (Ctrl off the Mac) is the Move tool. Photoshop excepts the Hand,
-/// Rotate View, Zoom, Slice, Path and Direct Selection, shape, Pen and Type tools (⌘ means
+/// Rotate View, Zoom, Slice, Path and Direct Selection, shape, Pen and Type Mask tools (⌘ means
 /// something else to each) and the Crop tool's frame; a Free Transform in progress keeps ⌘ for its
 /// distort handles. The selection tools are left out too: for them ⌘ is handled per press in
 /// `canvas::tool_event` (`selection_drag_kind`, `command_moves_layer`), which needs the selection
 /// tool to stay in effect.
+///
+/// The Type and Vertical Type tools are included: ⌘-drag moves the text layer, as with the painting
+/// tools. While text is being edited the held ⌘ never becomes the Move tool (see [`cmd_move_held`]
+/// and [`cmd_nudges`]: both stand down when `text_edit` is set), so the caret keeps its keys.
 pub fn cmd_moves(t: Tool) -> bool {
-    !t.is_type()
+    !t.is_type_mask()
         && !matches!(
             t,
             Tool::Move

@@ -552,16 +552,65 @@ fn hide_or_show(s: &mut Session, p: &Value) -> Result<Value> {
 /// button does. With several layers targeted, any unlocked one means lock them all. The
 /// Background, which can't take this lock, is left out.
 fn toggle_lock_transparency(s: &mut Session, p: &Value) -> Result<Value> {
+    toggle_lock(
+        s,
+        p,
+        LockToggle {
+            on: "Lock Transparent Pixels",
+            off: "Unlock Transparent Pixels",
+            background_error: "the Background layer can't lock transparent pixels",
+            get: |l| l.locks.transparency,
+            set: |l, v| l.locks.transparency = v,
+        },
+    )
+}
+
+/// `⌘/`: Lock All on or off for the targeted layers, as in Photoshop. With several layers targeted,
+/// any layer not yet locked means lock them all; the Background is left out. Only the `all` flag
+/// changes: the partial locks (pixels, position, transparency) keep their own state, so unlocking
+/// returns a layer to the partial locks it had before, as Photoshop does.
+fn toggle_lock_all(s: &mut Session, p: &Value) -> Result<Value> {
+    toggle_lock(
+        s,
+        p,
+        LockToggle {
+            on: "Lock All",
+            off: "Unlock All",
+            background_error: "the Background layer cannot be locked or unlocked",
+            get: |l| l.locks.all,
+            set: |l, v| l.locks.all = v,
+        },
+    )
+}
+
+/// One lock flag the shared toggle drives, with the history names and the Background's refusal.
+struct LockToggle {
+    on: &'static str,
+    off: &'static str,
+    background_error: &'static str,
+    get: fn(&Layer) -> bool,
+    set: fn(&mut Layer, bool),
+}
+
+/// Flips one lock flag for the targeted layers as a single history step: lock them all unless every
+/// one is locked already. The Background can't take these locks and is skipped; when it is the only
+/// target the command fails with `background_error`.
+fn toggle_lock(s: &mut Session, p: &Value, t: LockToggle) -> Result<Value> {
     let st = s.active().ok_or(EngineError::NoDocument)?;
-    let targets: Vec<LayerId> = if crate::layer_multi_cmds::multi(s, p) { crate::layer_multi_cmds::selected(s) } else { vec![layer_param(s, p)?] };
-    let targets: Vec<LayerId> = targets.into_iter().filter(|id| st.doc.layer(*id).is_some_and(|l| !st.doc.is_background(l.id))).collect();
-    if targets.is_empty() {
-        return Err(EngineError::Other("the Background layer can't lock transparent pixels".into()));
+    let raw_targets = if crate::layer_multi_cmds::multi(s, p) { crate::layer_multi_cmds::selected(s) } else { vec![layer_param(s, p)?] };
+    for id in &raw_targets {
+        if st.doc.layer(*id).is_none() {
+            return Err(EngineError::NoLayer(*id));
+        }
     }
-    let lock = !targets.iter().all(|id| st.doc.layer(*id).is_some_and(|l| l.locks.transparency));
-    s.edit(if lock { "Lock Transparent Pixels" } else { "Unlock Transparent Pixels" }, |doc, _| {
+    let targets: Vec<LayerId> = raw_targets.into_iter().filter(|id| !st.doc.is_background(*id)).collect();
+    if targets.is_empty() {
+        return Err(EngineError::Other(t.background_error.into()));
+    }
+    let lock = !targets.iter().all(|id| st.doc.layer(*id).is_some_and(t.get));
+    s.edit(if lock { t.on } else { t.off }, |doc, _| {
         for id in &targets {
-            doc.layer_mut(*id).ok_or(EngineError::NoLayer(*id))?.locks.transparency = lock;
+            (t.set)(doc.layer_mut(*id).ok_or(EngineError::NoLayer(*id))?, lock);
         }
         Ok(())
     })?;
@@ -1020,6 +1069,15 @@ pub fn specs() -> Vec<CommandSpec> {
             r##"{"layer":id?} (toggles; several layers selected: locks them all unless every one is locked)"##,
             has_layer,
             toggle_lock_transparency
+        ),
+        spec!(
+            "layer.toggleLockAll",
+            "Lock All",
+            &[],
+            Some("Cmd+/"),
+            r##"{"layer":id?} (toggles locks.all; several layers selected: locks them all unless every one is locked; never the Background)"##,
+            has_layer,
+            toggle_lock_all
         ),
         spec!(
             "layer.showOnly",
@@ -1705,6 +1763,59 @@ mod tests {
         assert!(s.execute("layer.toggleLockTransparency", json!({"layer": bg.0})).is_err());
         assert_eq!(doc(&s).layer(bg).unwrap().locks, bg_locks, "the Background is left alone");
         assert!(s.execute("layer.toggleLockTransparency", json!({"layer": u64::MAX})).is_err());
+    }
+
+    #[test]
+    fn command_slash_toggles_lock_all_but_not_on_the_background() {
+        let mut s = session(8);
+        let bg = doc(&s).layers[0].id;
+        s.execute("layer.new.layer", json!({})).unwrap();
+        let top = active(&s).id;
+        let locked = |s: &Session, id: LayerId| doc(s).layer(id).unwrap().locks.all;
+        assert_eq!(s.execute("layer.toggleLockAll", json!({})).unwrap()["locked"], true);
+        assert!(locked(&s, top));
+        assert_eq!(s.execute("layer.toggleLockAll", json!({})).unwrap()["locked"], false);
+        assert!(!locked(&s, top));
+        s.undo();
+        assert!(locked(&s, top), "one undoable step each");
+        let bg_locks = doc(&s).layer(bg).unwrap().locks;
+        let err = s.execute("layer.toggleLockAll", json!({"layer": bg.0})).unwrap_err();
+        assert!(err.to_string().contains("Background"), "{err}");
+        assert_eq!(doc(&s).layer(bg).unwrap().locks, bg_locks, "the Background is left alone");
+        assert!(s.execute("layer.toggleLockAll", json!({"layer": u64::MAX})).is_err());
+    }
+
+    /// Lock All is its own flag: unlocking it gives back the partial locks the layer had before.
+    #[test]
+    fn unlocking_all_keeps_the_partial_locks() {
+        let mut s = session(8);
+        s.execute("layer.new.layer", json!({})).unwrap();
+        let top = active(&s).id;
+        s.execute("layer.toggleLockTransparency", json!({})).unwrap();
+        s.execute("layer.toggleLockAll", json!({})).unwrap();
+        s.execute("layer.toggleLockAll", json!({})).unwrap();
+        let l = doc(&s).layer(top).unwrap();
+        assert!(!l.locks.all && l.locks.transparency);
+    }
+
+    /// Several layers: any unlocked one locks them all; the Background in the selection is skipped.
+    #[test]
+    fn lock_all_on_a_selection_locks_unlocked_ones_first_and_skips_the_background() {
+        let mut s = session(8);
+        let bg = doc(&s).layers[0].id;
+        s.execute("layer.new.layer", json!({})).unwrap();
+        let a = active(&s).id;
+        s.execute("layer.new.layer", json!({})).unwrap();
+        let b = active(&s).id;
+        s.execute("layer.toggleLockAll", json!({"layer": a.0})).unwrap();
+        for id in [bg, a, b] {
+            s.execute("layer.select", json!({"layer": id.0, "mode": "add"})).unwrap();
+        }
+        assert_eq!(s.execute("layer.toggleLockAll", json!({})).unwrap()["locked"], true);
+        let all = |s: &Session, id: LayerId| doc(s).layer(id).unwrap().locks.all;
+        assert!(all(&s, a) && all(&s, b) && !all(&s, bg));
+        assert_eq!(s.execute("layer.toggleLockAll", json!({})).unwrap()["locked"], false);
+        assert!(!all(&s, a) && !all(&s, b));
     }
 
     #[test]

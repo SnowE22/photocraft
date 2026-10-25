@@ -671,17 +671,18 @@ fn cmd_click_with_the_brush_picks_the_layer_under_the_pointer() {
 }
 
 /// Tools that keep ⌘ for themselves, and the selection tools (their ⌘ is handled per press in
-/// `canvas`, #896), never become the Move tool this way.
+/// `canvas`, #896), never become the Move tool this way. The Type Mask tools keep it too; the Type
+/// and Vertical Type tools take it (`cmd_held_with_type_tool_becomes_move_tool`).
 #[test]
-fn cmd_is_not_the_move_tool_for_selection_hand_zoom_pen_shape_or_type_tools() {
+fn cmd_is_not_the_move_tool_for_selection_hand_zoom_pen_shape_or_type_mask_tools() {
     for tool in [
         Tool::Hand,
         Tool::RotateView,
         Tool::Zoom,
         Tool::Pen,
         Tool::Rectangle,
-        Tool::Type,
-        Tool::VerticalType,
+        Tool::HorizontalTypeMask,
+        Tool::VerticalTypeMask,
         Tool::Crop,
         Tool::PathSelection,
         Tool::DirectSelection,
@@ -700,9 +701,50 @@ fn cmd_is_not_the_move_tool_for_selection_hand_zoom_pen_shape_or_type_tools() {
         let want = (tool == Tool::Hand).then_some(Temporary::ZoomIn);
         assert_eq!(held_tool(h.state(), &h.ctx), want, "{tool:?}");
     }
-    for tool in [Tool::Brush, Tool::Eraser, Tool::Gradient, Tool::CloneStamp, Tool::Eyedropper, Tool::MagneticLasso, Tool::QuickSelection] {
+    for tool in [Tool::Brush, Tool::Eraser, Tool::Gradient, Tool::CloneStamp, Tool::Eyedropper, Tool::MagneticLasso, Tool::QuickSelection, Tool::Type, Tool::VerticalType] {
         assert!(cmd_moves(tool), "{tool:?}");
     }
+}
+
+/// ⌘ held with the Type or Vertical Type tool is the Move tool, as with the painting tools.
+#[test]
+fn cmd_held_with_type_tool_becomes_move_tool() {
+    for tool in [Tool::Type, Tool::VerticalType] {
+        let mut h = harness(tool);
+        h.event(Event::ModifiersChanged(platform(Modifiers::COMMAND)));
+        h.run_steps(1);
+        assert_eq!(held_tool(h.state(), &h.ctx), Some(Temporary::Move), "{tool:?}");
+        assert_eq!(h.state().ui.tool, tool, "the tool itself is never changed");
+        h.event(Event::ModifiersChanged(Modifiers::NONE));
+        h.run_steps(1);
+        assert_eq!(held_tool(h.state(), &h.ctx), None, "{tool:?}: released");
+    }
+}
+
+/// While text is being edited ⌘ is not the Move tool and ⌘-arrows do not nudge the layer: the caret
+/// keeps its keys.
+#[test]
+fn cmd_does_not_move_while_text_is_being_edited() {
+    let mut h = harness(Tool::Type);
+    let id = h.state_mut().run("type.create", json!({"text": "Hello", "size": 20, "x": 100, "y": 100})).unwrap()["layer"].as_u64().unwrap();
+    h.state_mut().ui.text_edit = Some(crate::state::TextEdit {
+        layer: id,
+        document: None,
+        caret: 2,
+        anchor: 2,
+        session: "t".into(),
+        created: false,
+        mask: false,
+        dragging: false,
+        resize: None,
+        preedit: None,
+    });
+    h.event(Event::ModifiersChanged(platform(Modifiers::COMMAND)));
+    h.run_steps(1);
+    assert_eq!(held_tool(h.state(), &h.ctx), None);
+    assert!(!cmd_nudges(h.state()), "⌘-arrows stay with the caret");
+    h.state_mut().ui.text_edit = None;
+    assert!(cmd_nudges(h.state()), "and nudge the layer once editing ends");
 }
 
 /// The params of the last brush stroke (`paint.stroke`, or the Pencil's `paint.pencil`).
