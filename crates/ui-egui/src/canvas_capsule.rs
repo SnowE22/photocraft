@@ -299,28 +299,28 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
 
                         if clicked_generate || (prompt_non_empty && enter_pressed) {
                             let prompt_text = app.ui.canvas_capsule.prompt.trim().to_string();
-                            crate::notices::post(
-                                app,
-                                "Generative Fill",
-                                vec![format!("Queued generation: \"{prompt_text}\"")],
-                                false,
-                                None,
-                            );
+                            match app.ui.canvas_capsule.backend {
+                                AiBackendChoice::DirectMl => {
+                                    let _ = app.run("edit.generativeFill", json!({"prompt": prompt_text, "model": "diffusion"}));
+                                }
+                                AiBackendChoice::SdCppRemote | AiBackendChoice::LazySdUi => {
+                                    crate::notices::post(
+                                        app,
+                                        "Generative Fill",
+                                        vec![format!("Dispatched to {}: \"{}\"", app.ui.canvas_capsule.backend.label(), prompt_text)],
+                                        false,
+                                        None,
+                                    );
+                                }
+                            }
                         }
 
                         if ui
                             .button("AI Remove")
-                            .on_hover_text("Remove selected object with AI (DirectML LaMa)")
+                            .on_hover_text("Remove selected object with AI (DirectML LaMa / Nano Banana)")
                             .clicked()
                         {
-                            let _ = app.run("edit.inpaint", json!({}));
-                            crate::notices::post(
-                                app,
-                                "AI Remove",
-                                vec!["DirectML LaMa inpainting pipeline will process selection (Phase 2)".to_string()],
-                                false,
-                                None,
-                            );
+                            crate::retouch_ui::remove_selection(app);
                         }
 
                         ui.separator();
