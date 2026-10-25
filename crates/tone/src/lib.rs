@@ -215,8 +215,8 @@ impl ScreentoneSpec {
     pub fn halo_radius(&self) -> i32 {
         if self.use_source_luminance && self.mode == ScreentoneMode::Shading {
             let max_spacing = self.spacing_x.max(self.spacing_y).clamp(1.0, 256.0);
-            let line_pad = if self.preserve_lines { self.line_thickness.ceil() as i32 + 2 } else { 0 };
-            ((max_spacing * 0.5).ceil() as i32 + 2).max(line_pad)
+            let line_pad = if self.preserve_lines { self.line_thickness.ceil() as i32 + 16 } else { 0 };
+            ((max_spacing * 1.5).ceil() as i32 + 14).max(line_pad)
         } else {
             0
         }

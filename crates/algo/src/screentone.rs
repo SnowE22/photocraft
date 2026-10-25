@@ -679,75 +679,10 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
         }
     };
 
-    // Sample brightness-, gamma-, and contrast-adjusted luminance composited over white paper.
-    let sample_luma_adj = |doc_x: f32, doc_y: f32| -> f32 {
-        if src.rect.is_empty() {
-            return 0.5;
-        }
-        let luma_eff = raw_paper_luma(doc_x.floor() as i32, doc_y.floor() as i32);
+    let luma_to_ink = |luma_eff: f32| -> f32 {
         let g = (luma_eff + brightness).clamp(0.0, 1.0);
         let g = g.powf(gamma);
-        ((g - 0.5) * contrast + 0.5).clamp(0.0, 1.0)
-    };
-
-    // Whether integer coordinate `(ix, iy)` is a sharp dark ink line edge (Halftone Studio GT /
-    // Vayce-like line-art detector, using raw unadjusted luminance and 2px local contrast so 1..4px
-    // strokes stay solid without hollow centers while flat shadows stay halftoned).
-    let is_line_edge_at = |ix: i32, iy: i32| -> bool {
-        let l_c = raw_paper_luma(ix, iy);
-        if l_c >= 0.72 {
-            return false;
-        }
-        let l_l = raw_paper_luma(ix - 1, iy);
-        let l_r = raw_paper_luma(ix + 1, iy);
-        let l_u = raw_paper_luma(ix, iy - 1);
-        let l_d = raw_paper_luma(ix, iy + 1);
-        let nb_max = l_l
-            .max(l_r)
-            .max(l_u)
-            .max(l_d)
-            .max(raw_paper_luma(ix - 2, iy))
-            .max(raw_paper_luma(ix + 2, iy))
-            .max(raw_paper_luma(ix, iy - 2))
-            .max(raw_paper_luma(ix, iy + 2));
-        let local_dip = (nb_max - l_c).max(0.0);
-        let contrast_nb = (l_l - l_c).max(l_r - l_c).max(l_u - l_c).max(l_d - l_c).max(0.0);
-        let edge_mag = (l_r - l_l).hypot(l_d - l_u).max(contrast_nb);
-        let thresh = line_thresh.clamp(0.02, 0.72);
-        (l_c <= thresh && (edge_mag > 0.05 || local_dip > 0.06 || l_c <= thresh * 0.75))
-            || (l_c < 0.65 && edge_mag > (0.22 - thresh * 0.35).max(0.06) && local_dip > 0.08)
-    };
-
-    // Dilates preserved line-art edges by `line_thickness` radius (0.5..=5.0 px).
-    let is_preserved_line = |x: i32, y: i32| -> bool {
-        if !spec.preserve_lines {
-            return false;
-        }
-        let r_px = (line_thick - 0.5).max(0.0);
-        let rad = r_px.ceil() as i32;
-        if rad <= 0 {
-            return is_line_edge_at(x, y);
-        }
-        let r_sq = r_px * r_px + 0.25;
-        for dy in -rad..=rad {
-            for dx in -rad..=rad {
-                if (dx * dx + dy * dy) as f32 <= r_sq && is_line_edge_at(x + dx, y + dy) {
-                    return true;
-                }
-            }
-        }
-        false
-    };
-
-    // Normalized ink density in [0.0, 1.0] between `white_threshold` (clean paper = 0.0) and
-    // `black_threshold` (deep shadow = 1.0).
-    let sample_ink = |doc_x: f32, doc_y: f32| -> f32 {
-        if spec.preserve_lines && is_preserved_line(doc_x.round() as i32, doc_y.round() as i32) {
-            // Line-art contours are preserved directly as crisp, solid ink;
-            // suppress halftone dots under preserved lines to eliminate dot bleed ("pimples")
-            return 0.0;
-        }
-        let luma_adj = sample_luma_adj(doc_x, doc_y);
+        let luma_adj = ((g - 0.5) * contrast + 0.5).clamp(0.0, 1.0);
         if luma_adj >= white_thresh {
             0.0
         } else if luma_adj <= black_thresh {
@@ -755,6 +690,436 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
         } else {
             ((white_thresh - luma_adj) / (white_thresh - black_thresh).max(1e-5)).clamp(0.0, 1.0)
         }
+    };
+
+    // Precompute neighborhood grids over `work_rect` when shading is active so line-art
+    // detection, dilation, and morphological tone de-lining run once per pixel in O(1).
+    let max_sp = spacing_x.max(spacing_y).clamp(1.0, 256.0);
+    let reach = (max_sp * 1.5).ceil() as i32 + 16;
+    let work_rect = if use_shading {
+        out.inflate(reach).intersect(&src.rect)
+    } else {
+        Rect::new(0, 0, 0, 0)
+    };
+    let ww = work_rect.width().max(0) as usize;
+    let wh = work_rect.height().max(0) as usize;
+
+    let mut luma_grid = Vec::new();
+    let mut line_edge_grid = Vec::new();
+    let mut preserved_grid = Vec::new();
+    let mut near_line_grid = Vec::new();
+    let mut ambient_ink_grid = Vec::new();
+
+    const NEAR_4PX: u8 = 1;
+    const NEAR_3PX: u8 = 2;
+    const NEAR_2PX: u8 = 4;
+
+    if use_shading && ww > 0 && wh > 0 {
+        luma_grid.resize(ww * wh, 1.0f32);
+        for wy in 0..wh {
+            let iy = work_rect.y0 + wy as i32;
+            let row_off = wy * ww;
+            for wx in 0..ww {
+                let ix = work_rect.x0 + wx as i32;
+                luma_grid[row_off + wx] = raw_paper_luma(ix, iy);
+            }
+        }
+
+        let grid_luma = |ix: i32, iy: i32| -> f32 {
+            let cx = ix.clamp(work_rect.x0, work_rect.x1 - 1) - work_rect.x0;
+            let cy = iy.clamp(work_rect.y0, work_rect.y1 - 1) - work_rect.y0;
+            luma_grid[cy as usize * ww + cx as usize]
+        };
+
+        if spec.preserve_lines {
+            line_edge_grid.resize(ww * wh, 0u8);
+            preserved_grid.resize(ww * wh, 0u8);
+            near_line_grid.resize(ww * wh, 0u8);
+
+            let thresh = line_thresh.clamp(0.02, 0.72);
+            const AXES_4: [(i32, i32); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+            // 1. Detect dark ink line cores and 4-axis monotonic 1D valleys (catching both thick
+            //    black contours and thin 1..3px diagonal/cardinal hatch strokes while ignoring
+            //    anti-aliased outer fringes, flat tones, and un-outlined shadow edges).
+            for wy in 0..wh {
+                let iy = work_rect.y0 + wy as i32;
+                let row_off = wy * ww;
+                for wx in 0..ww {
+                    let ix = work_rect.x0 + wx as i32;
+                    let l_c = luma_grid[row_off + wx];
+                    if l_c >= 0.72 {
+                        continue;
+                    }
+                    let l_l = grid_luma(ix - 1, iy);
+                    let l_r = grid_luma(ix + 1, iy);
+                    let l_u = grid_luma(ix, iy - 1);
+                    let l_d = grid_luma(ix, iy + 1);
+                    let l_ul = grid_luma(ix - 1, iy - 1);
+                    let l_ur = grid_luma(ix + 1, iy - 1);
+                    let l_dl = grid_luma(ix - 1, iy + 1);
+                    let l_dr = grid_luma(ix + 1, iy + 1);
+
+                    let nb_max = l_l
+                        .max(l_r)
+                        .max(l_u)
+                        .max(l_d)
+                        .max(l_ul)
+                        .max(l_ur)
+                        .max(l_dl)
+                        .max(l_dr)
+                        .max(grid_luma(ix - 2, iy))
+                        .max(grid_luma(ix + 2, iy))
+                        .max(grid_luma(ix, iy - 2))
+                        .max(grid_luma(ix, iy + 2))
+                        .max(grid_luma(ix - 2, iy - 2))
+                        .max(grid_luma(ix + 2, iy - 2))
+                        .max(grid_luma(ix - 2, iy + 2))
+                        .max(grid_luma(ix + 2, iy + 2));
+
+                    let local_dip = (nb_max - l_c).max(0.0);
+                    let contrast_nb = (l_l - l_c)
+                        .max(l_r - l_c)
+                        .max(l_u - l_c)
+                        .max(l_d - l_c)
+                        .max(l_ul - l_c)
+                        .max(l_ur - l_c)
+                        .max(l_dl - l_c)
+                        .max(l_dr - l_c)
+                        .max(0.0);
+                    let edge_mag = (l_r - l_l)
+                        .hypot(l_d - l_u)
+                        .max((l_dr - l_ul).hypot(l_ur - l_dl))
+                        .max(contrast_nb);
+
+                    let mut max_valley = 0.0f32;
+                    for &(dx, dy) in &AXES_4 {
+                        let mut l_minus = l_c;
+                        for s in 1..=3 {
+                            let v = grid_luma(ix - dx * s, iy - dy * s);
+                            if v < l_c - 0.08 {
+                                break;
+                            }
+                            if v > l_minus {
+                                l_minus = v;
+                            }
+                        }
+                        let mut l_plus = l_c;
+                        for s in 1..=3 {
+                            let v = grid_luma(ix + dx * s, iy + dy * s);
+                            if v < l_c - 0.08 {
+                                break;
+                            }
+                            if v > l_plus {
+                                l_plus = v;
+                            }
+                        }
+                        let valley = (l_minus.min(l_plus) - l_c).max(0.0);
+                        if valley > max_valley {
+                            max_valley = valley;
+                        }
+                    }
+
+                    let is_edge = (l_c <= thresh && (edge_mag > 0.04 || local_dip > 0.05 || l_c <= thresh * 0.85))
+                        || (l_c < 0.65 && max_valley > (0.14 - thresh * 0.20).max(0.06))
+                        || (l_c < 0.62 && edge_mag > (0.22 - thresh * 0.35).max(0.06) && local_dip > 0.08 && max_valley > 0.03);
+                    if is_edge {
+                        line_edge_grid[row_off + wx] = 1;
+                    }
+                }
+            }
+
+            // 2. Dilate detected line edges by `line_thickness` radius (0.5..=5.0 px).
+            let r_px = (line_thick - 0.5).max(0.0);
+            let rad = r_px.ceil() as i32;
+            if rad <= 0 {
+                preserved_grid.copy_from_slice(&line_edge_grid);
+            } else {
+                let r_sq = r_px * r_px + 0.25;
+                for wy in 0..wh {
+                    let iy = wy as i32;
+                    let row_off = wy * ww;
+                    for wx in 0..ww {
+                        let ix = wx as i32;
+                        let mut hit = false;
+                        'dilate: for dy in -rad..=rad {
+                            let ny = iy + dy;
+                            if ny < 0 || ny >= wh as i32 {
+                                continue;
+                            }
+                            for dx in -rad..=rad {
+                                let nx = ix + dx;
+                                if nx < 0 || nx >= ww as i32 {
+                                    continue;
+                                }
+                                if (dx * dx + dy * dy) as f32 <= r_sq
+                                    && line_edge_grid[ny as usize * ww + nx as usize] != 0
+                                {
+                                    hit = true;
+                                    break 'dilate;
+                                }
+                            }
+                        }
+                        if hit {
+                            preserved_grid[row_off + wx] = 1;
+                        }
+                    }
+                }
+            }
+
+            // 3. Build proximity bitmask (`NEAR_2PX`, `NEAR_3PX`, `NEAR_4PX`) around core lines.
+            for wy in 0..wh {
+                let iy = wy as i32;
+                let row_off = wy * ww;
+                for wx in 0..ww {
+                    let ix = wx as i32;
+                    let mut mask = 0u8;
+                    for dy in -4i32..=4 {
+                        let ny = iy + dy;
+                        if ny < 0 || ny >= wh as i32 {
+                            continue;
+                        }
+                        for dx in -4i32..=4 {
+                            let nx = ix + dx;
+                            if nx < 0 || nx >= ww as i32 {
+                                continue;
+                            }
+                            let n_idx = ny as usize * ww + nx as usize;
+                            if line_edge_grid[n_idx] != 0 || preserved_grid[n_idx] != 0 {
+                                let d2 = dx * dx + dy * dy;
+                                mask |= NEAR_4PX;
+                                if d2 <= 10 {
+                                    mask |= NEAR_3PX;
+                                }
+                                if d2 <= 4 {
+                                    mask |= NEAR_2PX;
+                                }
+                            }
+                        }
+                    }
+                    near_line_grid[row_off + wx] = mask;
+                }
+            }
+        }
+
+        // 4. Reconstruct the de-lined ambient tone map (`ambient_ink_grid`).
+        ambient_ink_grid.resize(ww * wh, 0.0f32);
+        const DIRS_8: [(i32, i32); 8] = [
+            (-1, 0),
+            (1, 0),
+            (0, -1),
+            (0, 1),
+            (-1, -1),
+            (1, -1),
+            (-1, 1),
+            (1, 1),
+        ];
+        const AXES_4: [(i32, i32); 4] = [(1, 0), (0, 1), (1, 1), (1, -1)];
+
+        let is_core_idx = |wx: i32, wy: i32| -> bool {
+            let cx = wx.clamp(0, ww as i32 - 1) as usize;
+            let cy = wy.clamp(0, wh as i32 - 1) as usize;
+            let idx = cy * ww + cx;
+            line_edge_grid[idx] != 0 || preserved_grid[idx] != 0
+        };
+
+        for wy in 0..wh {
+            let row_off = wy * ww;
+            for wx in 0..ww {
+                let idx = row_off + wx;
+                let l0 = luma_grid[idx];
+                if !spec.preserve_lines || (near_line_grid[idx] & NEAR_4PX) == 0 {
+                    ambient_ink_grid[idx] = luma_to_ink(l0);
+                    continue;
+                }
+
+                let ix = wx as i32;
+                let iy = wy as i32;
+                let start_on_line = is_core_idx(ix, iy);
+                let mut best_luma = if start_on_line { 0.0f32 } else { l0 };
+
+                for &(dx, dy) in &DIRS_8 {
+                    let mut prev_l = l0;
+                    let mut exited_line = !start_on_line;
+                    for s in 1..=5 {
+                        let nx = (ix + dx * s).clamp(0, ww as i32 - 1);
+                        let ny = (iy + dy * s).clamp(0, wh as i32 - 1);
+                        let n_idx = ny as usize * ww + nx as usize;
+                        if line_edge_grid[n_idx] != 0 || preserved_grid[n_idx] != 0 {
+                            if exited_line {
+                                break;
+                            } else {
+                                continue;
+                            }
+                        }
+                        exited_line = true;
+                        let cur_l = luma_grid[n_idx];
+                        if cur_l < prev_l - 0.06 {
+                            break;
+                        }
+                        if cur_l > best_luma {
+                            best_luma = cur_l;
+                        }
+                        prev_l = cur_l;
+                    }
+                }
+
+                // Check if `(ix, iy)` is trapped inside a narrow hatching slit or cross-hatching
+                // intersection (lines within 1..=5px in both `-` and `+` directions).
+                let mut slit_axes = 0;
+                let mut slit_narrow = false;
+                for &(dx, dy) in &AXES_4 {
+                    let mut d_neg = 0;
+                    for s in 1..=5 {
+                        if is_core_idx(ix - dx * s, iy - dy * s) {
+                            d_neg = s;
+                            break;
+                        }
+                    }
+                    let mut d_pos = 0;
+                    for s in 1..=5 {
+                        if is_core_idx(ix + dx * s, iy + dy * s) {
+                            d_pos = s;
+                            break;
+                        }
+                    }
+                    if d_neg > 0 && d_pos > 0 {
+                        slit_axes += 1;
+                        if d_neg <= 4 && d_pos <= 4 {
+                            slit_narrow = true;
+                        }
+                    }
+                }
+
+                if slit_narrow || slit_axes >= 2 {
+                    let mut found_clean = false;
+                    let mut clean_max = best_luma;
+                    let mut non_line_max = best_luma;
+                    for dy in -10i32..=10 {
+                        if dy.abs() > 5 && (dy & 1) != 0 {
+                            continue;
+                        }
+                        let ny = (iy + dy).clamp(0, wh as i32 - 1) as usize;
+                        for dx in -10i32..=10 {
+                            if dx.abs() > 5 && (dx & 1) != 0 {
+                                continue;
+                            }
+                            if dx * dx + dy * dy > 100 {
+                                continue;
+                            }
+                            let nx = (ix + dx).clamp(0, ww as i32 - 1) as usize;
+                            let n_idx = ny * ww + nx;
+                            if line_edge_grid[n_idx] == 0 && preserved_grid[n_idx] == 0 {
+                                let nl = luma_grid[n_idx];
+                                if nl > non_line_max {
+                                    non_line_max = nl;
+                                }
+                                if (near_line_grid[n_idx] & NEAR_2PX) == 0 {
+                                    found_clean = true;
+                                    if nl > clean_max {
+                                        clean_max = nl;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if found_clean {
+                        best_luma = best_luma.max(clean_max);
+                    } else if non_line_max >= 0.40 {
+                        best_luma = (non_line_max + 0.30).min(1.0);
+                    }
+                }
+
+                ambient_ink_grid[idx] = luma_to_ink(best_luma);
+            }
+        }
+    }
+
+    let grid_idx = |ix: i32, iy: i32| -> usize {
+        let cx = (ix.clamp(work_rect.x0, work_rect.x1 - 1) - work_rect.x0) as usize;
+        let cy = (iy.clamp(work_rect.y0, work_rect.y1 - 1) - work_rect.y0) as usize;
+        cy * ww + cx
+    };
+
+    let is_preserved_line = |x: i32, y: i32| -> bool {
+        if !spec.preserve_lines || preserved_grid.is_empty() {
+            return false;
+        }
+        preserved_grid[grid_idx(x, y)] != 0
+    };
+
+    let is_core_line = |x: i32, y: i32| -> bool {
+        if !spec.preserve_lines || preserved_grid.is_empty() {
+            return false;
+        }
+        let idx = grid_idx(x, y);
+        preserved_grid[idx] != 0 || line_edge_grid[idx] != 0
+    };
+
+    let sample_ink_at_int = |ix: i32, iy: i32| -> f32 {
+        if !ambient_ink_grid.is_empty() {
+            ambient_ink_grid[grid_idx(ix, iy)]
+        } else {
+            luma_to_ink(raw_paper_luma(ix, iy))
+        }
+    };
+
+    let sample_ink = |doc_x: f32, doc_y: f32| -> f32 {
+        sample_ink_at_int(doc_x.floor() as i32, doc_y.floor() as i32)
+    };
+
+    // Evaluates the halftone ink density for a lattice dot centered at `(doc_dot_x, doc_dot_y)`
+    // when shading canvas pixel `(doc_x, doc_y)` (which is outside `is_preserved_line`).
+    let sample_dot_ink = |doc_dot_x: f32, doc_dot_y: f32, doc_x: f32, doc_y: f32| -> f32 {
+        let dot_ix = doc_dot_x.floor() as i32;
+        let dot_iy = doc_dot_y.floor() as i32;
+        if !spec.preserve_lines || near_line_grid.is_empty() {
+            return sample_ink_at_int(dot_ix, dot_iy);
+        }
+        let px_ix = doc_x.floor() as i32;
+        let px_iy = doc_y.floor() as i32;
+        let ink_px = sample_ink_at_int(px_ix, px_iy);
+
+        let dot_round_x = doc_dot_x.round() as i32;
+        let dot_round_y = doc_dot_y.round() as i32;
+
+        // 1. If the dot center lands inside a preserved/detected line core, it has no independent
+        //    tone of its own: inherit the de-lined ambient ink of the pixel `(px_ix, px_iy)` being
+        //    shaded outside the line.
+        if is_core_line(dot_ix, dot_iy) || is_core_line(dot_round_x, dot_round_y) {
+            return ink_px;
+        }
+
+        let dot_gidx = grid_idx(dot_ix, dot_iy);
+        let px_gidx = grid_idx(px_ix, px_iy);
+        let dot_near = near_line_grid[dot_gidx];
+        let px_near = near_line_grid[px_gidx];
+        let ink_dot = ambient_ink_grid[dot_gidx];
+
+        if (dot_near | px_near) != 0 {
+            // 2. Check if the segment between the dot center and the current pixel crosses a line core.
+            let mid_x = ((doc_dot_x + doc_x) * 0.5).floor() as i32;
+            let mid_y = ((doc_dot_y + doc_y) * 0.5).floor() as i32;
+            let q1_x = (doc_dot_x * 0.67 + doc_x * 0.33).floor() as i32;
+            let q1_y = (doc_dot_y * 0.67 + doc_y * 0.33).floor() as i32;
+            let q2_x = (doc_dot_x * 0.33 + doc_x * 0.67).floor() as i32;
+            let q2_y = (doc_dot_y * 0.33 + doc_y * 0.67).floor() as i32;
+            if is_core_line(mid_x, mid_y) || is_core_line(q1_x, q1_y) || is_core_line(q2_x, q2_y) {
+                return ink_dot.min(ink_px);
+            }
+
+            // 3. Same side of the line, within the 1..2px anti-aliased fringe of the line core:
+            //    use `ink_px` so fringe residuals never spawn pimples on white paper or distort
+            //    dot sizes next to thick lines.
+            if (dot_near & NEAR_2PX) != 0 {
+                return if ink_px <= 1e-5 { 0.0 } else { ink_px };
+            }
+            if ink_px <= 1e-5 && (dot_near & NEAR_4PX) != 0 {
+                return 0.0;
+            }
+        }
+
+        ink_dot
     };
 
     for (i, px) in res.chunks_exact_mut(n).enumerate() {
@@ -820,284 +1185,282 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
 
         let mut cov = 0.0f32;
 
-        match spec.pattern_type {
-            PatternType::Lines => {
-                let ly = grid_y;
-                let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
-                if ink > 1e-5 && width > 1e-4 {
-                    let sp = spacing_y.max(1.0);
-                    let dist = (((ly % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                    cov = coverage_from_sdf(dist, spec.smoothness);
-                }
-            }
-            PatternType::Crosshatch => {
-                let a2_rad = (spec.angle + spec.cross_angle).to_radians();
-                let (sin2, cos2) = a2_rad.sin_cos();
-                let ly1 = grid_y;
-                let ly2 = -local_x * sin2 + local_y * cos2;
-                let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
-                if ink > 1e-5 && width > 1e-4 {
-                    let sp = spacing_y.max(1.0);
-                    let d1 = (((ly1 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                    let d2 = (((ly2 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                    let c1 = coverage_from_sdf(d1, spec.smoothness);
-                    let c2 = coverage_from_sdf(d2, spec.smoothness);
-                    cov = c1.max(c2);
-                }
-            }
-            PatternType::Concentric => {
-                let r = grid_x.hypot(grid_y);
-                let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
-                if ink > 1e-5 && width > 1e-4 {
-                    let sp = spacing_x.max(1.0);
-                    let dist = (((r % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
-                    cov = coverage_from_sdf(dist, spec.smoothness);
-                }
-            }
-            PatternType::Checker => {
-                let ix = (grid_x / spacing_x).floor() as i32;
-                let iy = (grid_y / spacing_y).floor() as i32;
-                if ((ix.wrapping_add(iy)) & 1) == 0 {
-                    let cell_cx = (ix as f32 + 0.5) * spacing_x;
-                    let cell_cy = (iy as f32 + 0.5) * spacing_y;
+        if use_shading && is_preserved_line(x, y) {
+            // Preserved line-art pixels emit solid 100% ink directly without evaluating the 3x3
+            // halftone lattice.
+            cov = 1.0;
+        } else {
+            match spec.pattern_type {
+                PatternType::Lines => {
+                    let ly = grid_y;
                     let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                    let size = (spacing_x * 0.45 * mod_size * spec.density * ink).max(0.0);
-                    if ink > 1e-5 && size > 1e-4 {
-                        let dist = eval_shape_sdf(grid_x - cell_cx, grid_y - cell_cy, DotShape::Square, size, xf);
+                    let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
+                    if ink > 1e-5 && width > 1e-4 {
+                        let sp = spacing_y.max(1.0);
+                        let dist = (((ly % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
                         cov = coverage_from_sdf(dist, spec.smoothness);
                     }
                 }
-            }
-            PatternType::Hexgrid => {
-                let hy = spacing_y * 0.8660254;
-                let cy_idx = (grid_y / hy).round() as i32;
-                for dy in -1..=1 {
-                    let iy = cy_idx + dy;
-                    let cell_y = iy as f32 * hy;
-                    let row_shift = if (iy & 1) != 0 { spacing_x * 0.5 } else { 0.0 };
-                    let cx_idx = ((grid_x - row_shift) / spacing_x).round() as i32;
-                    for dx in -1..=1 {
-                        let ix = cx_idx + dx;
-                        let cell_x = ix as f32 * spacing_x + row_shift;
-                        let ink = if use_shading {
-                            // The cell's lattice coordinate is rotated and phase-shifted;
-                            // sample the canvas at the dot's true document position.
-                            let (doc_dot_x, doc_dot_y) = grid_to_doc(cell_x, cell_y);
-                            sample_ink(doc_dot_x, doc_dot_y)
-                        } else {
-                            1.0
-                        };
-                        if ink <= 1e-5 {
-                            continue;
-                        }
-                        let size = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
-                        let dist = eval_shape_sdf(grid_x - cell_x, grid_y - cell_y, DotShape::Hexagon, size, xf);
-                        let cell_cov = coverage_from_sdf(dist, spec.smoothness);
-                        cov = cov.max(cell_cov);
+                PatternType::Crosshatch => {
+                    let a2_rad = (spec.angle + spec.cross_angle).to_radians();
+                    let (sin2, cos2) = a2_rad.sin_cos();
+                    let ly1 = grid_y;
+                    let ly2 = -local_x * sin2 + local_y * cos2;
+                    let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                    let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
+                    if ink > 1e-5 && width > 1e-4 {
+                        let sp = spacing_y.max(1.0);
+                        let d1 = (((ly1 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                        let d2 = (((ly2 % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                        let c1 = coverage_from_sdf(d1, spec.smoothness);
+                        let c2 = coverage_from_sdf(d2, spec.smoothness);
+                        cov = c1.max(c2);
                     }
                 }
-            }
-            PatternType::Noise => {
-                let seed = spec.seed;
-                let cx_idx = (grid_x / spacing_x).floor() as i32;
-                let cy_idx = (grid_y / spacing_y).floor() as i32;
-                for dy in -1..=1 {
-                    for dx in -1..=1 {
-                        let ix = cx_idx + dx;
-                        let iy = cy_idx + dy;
-                        let h1 = hash_coord(ix, iy, seed);
-                        let h2 = hash_coord(ix.wrapping_add(300), iy.wrapping_add(300), seed);
-                        let h3 = hash_coord(ix.wrapping_add(700), iy.wrapping_add(700), seed);
-                        if h1 > spec.density {
-                            continue;
-                        }
-                        let jx = (h2 - 0.5) * spacing_x * (spec.jitter_pos * 0.01 + 0.8);
-                        let jy = (h3 - 0.5) * spacing_y * (spec.jitter_pos * 0.01 + 0.8);
-                        let dot_cx = (ix as f32 + 0.5) * spacing_x + jx;
-                        let dot_cy = (iy as f32 + 0.5) * spacing_y + jy;
+                PatternType::Concentric => {
+                    let r = grid_x.hypot(grid_y);
+                    let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                    let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
+                    if ink > 1e-5 && width > 1e-4 {
+                        let sp = spacing_x.max(1.0);
+                        let dist = (((r % sp) + sp) % sp - sp * 0.5).abs() - width * 0.5;
+                        cov = coverage_from_sdf(dist, spec.smoothness);
+                    }
+                }
+                PatternType::Checker => {
+                    let ix = (grid_x / spacing_x).floor() as i32;
+                    let iy = (grid_y / spacing_y).floor() as i32;
+                    if ((ix.wrapping_add(iy)) & 1) == 0 {
+                        let cell_cx = (ix as f32 + 0.5) * spacing_x;
+                        let cell_cy = (iy as f32 + 0.5) * spacing_y;
                         let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                        if ink <= 1e-5 {
-                            continue;
+                        let size = (spacing_x * 0.45 * mod_size * spec.density * ink).max(0.0);
+                        if ink > 1e-5 && size > 1e-4 {
+                            let dist = eval_shape_sdf(grid_x - cell_cx, grid_y - cell_cy, DotShape::Square, size, xf);
+                            cov = coverage_from_sdf(dist, spec.smoothness);
                         }
-                        let sz = (spec.dot_size * (1.0 + (h2 - 0.5) * spec.jitter_size * 0.02) * mod_size * ink).max(0.0);
-                        let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
-                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                     }
                 }
-            }
-            PatternType::GaussianNoise => {
-                let seed = spec.seed.wrapping_add(137);
-                let cx_idx = (grid_x / spacing_x).floor() as i32;
-                let cy_idx = (grid_y / spacing_y).floor() as i32;
-                for dy in -1..=1 {
-                    for dx in -1..=1 {
-                        let ix = cx_idx + dx;
+                PatternType::Hexgrid => {
+                    let hy = spacing_y * 0.8660254;
+                    let cy_idx = (grid_y / hy).round() as i32;
+                    for dy in -1..=1 {
                         let iy = cy_idx + dy;
-                        let h1 = hash_coord(ix, iy, seed);
-                        if h1 > spec.density {
-                            continue;
+                        let cell_y = iy as f32 * hy;
+                        let row_shift = if (iy & 1) != 0 { spacing_x * 0.5 } else { 0.0 };
+                        let cx_idx = ((grid_x - row_shift) / spacing_x).round() as i32;
+                        for dx in -1..=1 {
+                            let ix = cx_idx + dx;
+                            let cell_x = ix as f32 * spacing_x + row_shift;
+                            let ink = if use_shading {
+                                // The cell's lattice coordinate is rotated and phase-shifted;
+                                // sample the canvas at the dot's true document position.
+                                let (doc_dot_x, doc_dot_y) = grid_to_doc(cell_x, cell_y);
+                                sample_dot_ink(doc_dot_x, doc_dot_y, doc_x, doc_y)
+                            } else {
+                                1.0
+                            };
+                            if ink <= 1e-5 {
+                                continue;
+                            }
+                            let size = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
+                            let dist = eval_shape_sdf(grid_x - cell_x, grid_y - cell_y, DotShape::Hexagon, size, xf);
+                            let cell_cov = coverage_from_sdf(dist, spec.smoothness);
+                            cov = cov.max(cell_cov);
                         }
-                        let (gx, gy) = hash_gaussian(ix, iy, seed);
-                        let dot_cx = (ix as f32 + 0.5) * spacing_x + gx * spacing_x * 0.4;
-                        let dot_cy = (iy as f32 + 0.5) * spacing_y + gy * spacing_y * 0.4;
-                        let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                        if ink <= 1e-5 {
-                            continue;
-                        }
-                        let sz = (spec.dot_size * (0.6 + h1 * 0.8) * mod_size * ink).max(0.0);
-                        let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
-                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                     }
                 }
-            }
-            PatternType::Stipple => {
-                let seed = spec.seed.wrapping_add(999);
-                let cx_idx = (grid_x / spacing_x).floor() as i32;
-                let cy_idx = (grid_y / spacing_y).floor() as i32;
-                for dy in -1..=1 {
-                    for dx in -1..=1 {
-                        let ix = cx_idx + dx;
-                        let iy = cy_idx + dy;
-                        let h_keep = hash_coord(ix, iy, seed);
-                        let h_jx = hash_coord(ix.wrapping_add(100), iy, seed);
-                        let h_jy = hash_coord(ix.wrapping_add(200), iy, seed);
-                        let h_sz = hash_coord(ix.wrapping_add(500), iy, seed);
+                PatternType::Noise => {
+                    let seed = spec.seed;
+                    let cx_idx = (grid_x / spacing_x).floor() as i32;
+                    let cy_idx = (grid_y / spacing_y).floor() as i32;
+                    for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let ix = cx_idx + dx;
+                            let iy = cy_idx + dy;
+                            let h1 = hash_coord(ix, iy, seed);
+                            let h2 = hash_coord(ix.wrapping_add(300), iy.wrapping_add(300), seed);
+                            let h3 = hash_coord(ix.wrapping_add(700), iy.wrapping_add(700), seed);
+                            if h1 > spec.density {
+                                continue;
+                            }
+                            let jx = (h2 - 0.5) * spacing_x * (spec.jitter_pos * 0.01 + 0.8);
+                            let jy = (h3 - 0.5) * spacing_y * (spec.jitter_pos * 0.01 + 0.8);
+                            let dot_cx = (ix as f32 + 0.5) * spacing_x + jx;
+                            let dot_cy = (iy as f32 + 0.5) * spacing_y + jy;
+                            let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                            if ink <= 1e-5 {
+                                continue;
+                            }
+                            let sz = (spec.dot_size * (1.0 + (h2 - 0.5) * spec.jitter_size * 0.02) * mod_size * ink).max(0.0);
+                            let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
+                            cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                        }
+                    }
+                }
+                PatternType::GaussianNoise => {
+                    let seed = spec.seed.wrapping_add(137);
+                    let cx_idx = (grid_x / spacing_x).floor() as i32;
+                    let cy_idx = (grid_y / spacing_y).floor() as i32;
+                    for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let ix = cx_idx + dx;
+                            let iy = cy_idx + dy;
+                            let h1 = hash_coord(ix, iy, seed);
+                            if h1 > spec.density {
+                                continue;
+                            }
+                            let (gx, gy) = hash_gaussian(ix, iy, seed);
+                            let dot_cx = (ix as f32 + 0.5) * spacing_x + gx * spacing_x * 0.4;
+                            let dot_cy = (iy as f32 + 0.5) * spacing_y + gy * spacing_y * 0.4;
+                            let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                            if ink <= 1e-5 {
+                                continue;
+                            }
+                            let sz = (spec.dot_size * (0.6 + h1 * 0.8) * mod_size * ink).max(0.0);
+                            let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
+                            cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                        }
+                    }
+                }
+                PatternType::Stipple => {
+                    let seed = spec.seed.wrapping_add(999);
+                    let cx_idx = (grid_x / spacing_x).floor() as i32;
+                    let cy_idx = (grid_y / spacing_y).floor() as i32;
+                    for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let ix = cx_idx + dx;
+                            let iy = cy_idx + dy;
+                            let h_keep = hash_coord(ix, iy, seed);
+                            let h_jx = hash_coord(ix.wrapping_add(100), iy, seed);
+                            let h_jy = hash_coord(ix.wrapping_add(200), iy, seed);
+                            let h_sz = hash_coord(ix.wrapping_add(500), iy, seed);
 
-                        let mut dot_cx = ix as f32 * spacing_x + (h_jx - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
-                        let dot_cy = iy as f32 * spacing_y + (h_jy - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
+                            let mut dot_cx = ix as f32 * spacing_x + (h_jx - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
+                            let dot_cy = iy as f32 * spacing_y + (h_jy - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
+                            if (iy & 1) != 0 {
+                                dot_cx += spacing_x * spec.row_offset;
+                            }
+
+                            let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                            if ink <= 1e-5 || h_keep > spec.density * ink {
+                                continue;
+                            }
+                            let sz = (spec.dot_size * (0.5 + h_sz * 0.5) * mod_size).max(0.0);
+                            let dist = eval_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.dot_shape, sz, xf);
+                            cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                        }
+                    }
+                }
+                PatternType::Stars | PatternType::Hearts | PatternType::Triangles => {
+                    let cx_idx = (grid_x / spacing_x).floor() as i32;
+                    let cy_idx = (grid_y / spacing_y).floor() as i32;
+                    for dy in -1..=1 {
+                        for dx in -1..=1 {
+                            let ix = cx_idx + dx;
+                            let iy = cy_idx + dy;
+                            let mut dot_cx = ix as f32 * spacing_x;
+                            let mut dot_cy = iy as f32 * spacing_y;
+                            if (iy & 1) != 0 {
+                                dot_cx += spacing_x * spec.row_offset;
+                            }
+                            if spec.jitter_pos > 0.0 {
+                                dot_cx += (hash_coord(ix, iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
+                                dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
+                            }
+                            let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
+                            if ink <= 1e-5 {
+                                continue;
+                            }
+                            let sz = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
+                            let dist = eval_special_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.pattern_type, sz, xf);
+                            cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
+                        }
+                    }
+                }
+                PatternType::Dots => {
+                    // Default Dots + Satellite system
+                    let cy_idx = (grid_y / spacing_y).floor() as i32;
+                    for dy in -1..=1 {
+                        let iy = cy_idx + dy;
+                        let mut row_shift = 0.0f32;
                         if (iy & 1) != 0 {
-                            dot_cx += spacing_x * spec.row_offset;
+                            row_shift = spacing_x * spec.row_offset;
                         }
+                        let cx_idx = ((grid_x - row_shift) / spacing_x).floor() as i32;
+                        for dx in -1..=1 {
+                            let ix = cx_idx + dx;
+                            let mut dot_cx = ix as f32 * spacing_x + row_shift;
+                            let mut dot_cy = iy as f32 * spacing_y;
 
-                        let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                        if ink <= 1e-5 || h_keep > spec.density * ink {
-                            continue;
-                        }
-                        let sz = (spec.dot_size * (0.5 + h_sz * 0.5) * mod_size).max(0.0);
-                        let dist = eval_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.dot_shape, sz, xf);
-                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
-                    }
-                }
-            }
-            PatternType::Stars | PatternType::Hearts | PatternType::Triangles => {
-                let cx_idx = (grid_x / spacing_x).floor() as i32;
-                let cy_idx = (grid_y / spacing_y).floor() as i32;
-                for dy in -1..=1 {
-                    for dx in -1..=1 {
-                        let ix = cx_idx + dx;
-                        let iy = cy_idx + dy;
-                        let mut dot_cx = ix as f32 * spacing_x;
-                        let mut dot_cy = iy as f32 * spacing_y;
-                        if (iy & 1) != 0 {
-                            dot_cx += spacing_x * spec.row_offset;
-                        }
-                        if spec.jitter_pos > 0.0 {
-                            dot_cx += (hash_coord(ix, iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
-                            dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
-                        }
-                        let ink = if use_shading { sample_ink(doc_x, doc_y) } else { 1.0 };
-                        if ink <= 1e-5 {
-                            continue;
-                        }
-                        let sz = (spec.dot_size * mod_size * spec.density * ink).max(0.0);
-                        let dist = eval_special_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.pattern_type, sz, xf);
-                        cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
-                    }
-                }
-            }
-            PatternType::Dots => {
-                // Default Dots + Satellite system
-                let cy_idx = (grid_y / spacing_y).floor() as i32;
-                for dy in -1..=1 {
-                    let iy = cy_idx + dy;
-                    let mut row_shift = 0.0f32;
-                    if (iy & 1) != 0 {
-                        row_shift = spacing_x * spec.row_offset;
-                    }
-                    let cx_idx = ((grid_x - row_shift) / spacing_x).floor() as i32;
-                    for dx in -1..=1 {
-                        let ix = cx_idx + dx;
-                        let mut dot_cx = ix as f32 * spacing_x + row_shift;
-                        let mut dot_cy = iy as f32 * spacing_y;
+                            if spec.jitter_pos > 0.0 {
+                                dot_cx += (hash_coord(ix, iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
+                                dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
+                            }
 
-                        if spec.jitter_pos > 0.0 {
-                            dot_cx += (hash_coord(ix, iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_x;
-                            dot_cy += (hash_coord(ix.wrapping_add(1000), iy, spec.seed) - 0.5) * spec.jitter_pos * 0.005 * spacing_y;
-                        }
+                            let ink = if use_shading {
+                                // The dot's lattice coordinate is rotated and phase-shifted;
+                                // sample the canvas at the dot's true document position.
+                                let (doc_dot_x, doc_dot_y) = grid_to_doc(dot_cx, dot_cy);
+                                sample_dot_ink(doc_dot_x, doc_dot_y, doc_x, doc_y)
+                            } else {
+                                1.0
+                            };
+                            if ink <= 1e-5 {
+                                continue;
+                            }
 
-                        let ink = if use_shading {
-                            // The dot's lattice coordinate is rotated and phase-shifted;
-                            // sample the canvas at the dot's true document position.
-                            let (doc_dot_x, doc_dot_y) = grid_to_doc(dot_cx, dot_cy);
-                            sample_ink(doc_dot_x, doc_dot_y)
-                        } else {
-                            1.0
-                        };
-                        if ink <= 1e-5 {
-                            continue;
-                        }
+                            let merged_size = spec.dot_size + spec.merge_factor * spacing_x * 0.2;
+                            let psize = (merged_size * mod_size * spec.density * ink).max(0.0);
+                            let ssize = ((spec.satellite_size + spec.merge_factor * spacing_x * 0.4) * mod_size * spec.density * ink).max(0.0);
+                            let sdist = spec.satellite_distance * (1.0 - spec.merge_factor * 0.6);
 
-                        let merged_size = spec.dot_size + spec.merge_factor * spacing_x * 0.2;
-                        let psize = (merged_size * mod_size * spec.density * ink).max(0.0);
-                        let ssize = ((spec.satellite_size + spec.merge_factor * spacing_x * 0.4) * mod_size * spec.density * ink).max(0.0);
-                        let sdist = spec.satellite_distance * (1.0 - spec.merge_factor * 0.6);
+                            let mut final_size = psize;
+                            if spec.jitter_size > 0.0 {
+                                let jval = hash_coord(ix.wrapping_add(5000), iy.wrapping_add(5000), spec.seed);
+                                final_size *= (1.0 + (jval - 0.5) * spec.jitter_size * 0.02).max(0.0);
+                            }
 
-                        let mut final_size = psize;
-                        if spec.jitter_size > 0.0 {
-                            let jval = hash_coord(ix.wrapping_add(5000), iy.wrapping_add(5000), spec.seed);
-                            final_size *= (1.0 + (jval - 0.5) * spec.jitter_size * 0.02).max(0.0);
-                        }
+                            // Main dot
+                            let dist_main = eval_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.dot_shape, final_size, xf);
+                            cov = cov.max(coverage_from_sdf(dist_main, spec.smoothness));
 
-                        // Main dot
-                        let dist_main = eval_shape_sdf(grid_x - dot_cx, grid_y - dot_cy, spec.dot_shape, final_size, xf);
-                        cov = cov.max(coverage_from_sdf(dist_main, spec.smoothness));
+                            // Satellites
+                            if spec.satellite_enabled && ssize > 0.05 {
+                                let sat_offsets: [(f32, f32); 4] = [
+                                    (0.0, -sdist),
+                                    (0.0, sdist),
+                                    (sdist, 0.0),
+                                    (-sdist, 0.0),
+                                ];
+                                let sat_count = (spec.satellite_count as usize).min(4);
+                                for &(ox, oy) in sat_offsets.iter().take(sat_count) {
+                                    let rsx = ox * cos_sat - oy * sin_sat;
+                                    let rsy = ox * sin_sat + oy * cos_sat;
+                                    let sat_x = dot_cx + rsx;
+                                    let sat_y = dot_cy + rsy;
 
-                        // Satellites
-                        if spec.satellite_enabled && ssize > 0.05 {
-                            let sat_offsets: [(f32, f32); 4] = [
-                                (0.0, -sdist),
-                                (0.0, sdist),
-                                (sdist, 0.0),
-                                (-sdist, 0.0),
-                            ];
-                            let sat_count = (spec.satellite_count as usize).min(4);
-                            for &(ox, oy) in sat_offsets.iter().take(sat_count) {
-                                let rsx = ox * cos_sat - oy * sin_sat;
-                                let rsy = ox * sin_sat + oy * cos_sat;
-                                let sat_x = dot_cx + rsx;
-                                let sat_y = dot_cy + rsy;
+                                    let mut spx = grid_x - sat_x;
+                                    let mut spy = grid_y - sat_y;
 
-                                let mut spx = grid_x - sat_x;
-                                let mut spy = grid_y - sat_y;
+                                    if spec.satellite_stretch > 0.0 && (rsx != 0.0 || rsy != 0.0) {
+                                        let stretch_dir = (-rsy).atan2(-rsx);
+                                        let (s_sin, s_cos) = stretch_dir.sin_cos();
+                                        let rot_sx = spx * s_cos + spy * s_sin;
+                                        let rot_sy = -spx * s_sin + spy * s_cos;
+                                        let scaled_sx = rot_sx / (1.0 + spec.satellite_stretch).max(0.01);
+                                        spx = scaled_sx * s_cos - rot_sy * s_sin;
+                                        spy = scaled_sx * s_sin + rot_sy * s_cos;
+                                    }
 
-                                if spec.satellite_stretch > 0.0 && (rsx != 0.0 || rsy != 0.0) {
-                                    let stretch_dir = (-rsy).atan2(-rsx);
-                                    let (s_sin, s_cos) = stretch_dir.sin_cos();
-                                    let rot_sx = spx * s_cos + spy * s_sin;
-                                    let rot_sy = -spx * s_sin + spy * s_cos;
-                                    let scaled_sx = rot_sx / (1.0 + spec.satellite_stretch).max(0.01);
-                                    spx = scaled_sx * s_cos - rot_sy * s_sin;
-                                    spy = scaled_sx * s_sin + rot_sy * s_cos;
+                                    let dist_sat = eval_shape_sdf(spx, spy, spec.satellite_dot_shape, ssize, xf);
+                                    cov = cov.max(coverage_from_sdf(dist_sat, spec.smoothness));
                                 }
-
-                                let dist_sat = eval_shape_sdf(spx, spy, spec.satellite_dot_shape, ssize, xf);
-                                cov = cov.max(coverage_from_sdf(dist_sat, spec.smoothness));
                             }
                         }
                     }
                 }
             }
-        }
-
-        // When `preserve_lines` is enabled, the line-art detector overlays solid 100% ink along
-        // detected contours dilated by `line_thickness`. When disabled, the entire image (fills,
-        // hatching, and ink lines) is rendered as pure smooth halftone dots sized by `sample_ink`,
-        // with no per-pixel binary threshold clipping.
-        if use_shading && is_preserved_line(x, y) {
-            cov = 1.0;
         }
 
         cov = cov.clamp(0.0, 1.0);
@@ -1520,5 +1883,153 @@ mod tests {
         let px_0 = screentone(&img, bounds, &ctx, &spec_0);
         let px_45 = screentone(&img, bounds, &ctx, &spec_45);
         assert_ne!(px_0, px_45, "changing angle to 45° must rotate the dot grid");
+    }
+
+    #[test]
+    fn test_thick_line_in_gray_tone_has_no_staircase_halo_and_white_line_has_no_pimples() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: true };
+
+        let spec = ScreentoneSpec {
+            mode: ScreentoneMode::Shading,
+            use_source_luminance: true,
+            pattern_type: PatternType::Dots,
+            dot_size: 8.0,
+            spacing_x: 10.0,
+            spacing_y: 10.0,
+            density: 0.7,
+            white_threshold: 0.85,
+            black_threshold: 0.08,
+            preserve_lines: true,
+            line_threshold: 0.24,
+            line_thickness: 1.0,
+            ..Default::default()
+        };
+
+        // 1. Pure 50% gray tone reference (no line) vs 50% gray tone with a thick 8px black line
+        //    (x = 28..36) and 2px anti-aliased fringes (x = 26..28 and x = 36..38).
+        let mut gray_ref_data = vec![0.0f32; 64 * 64 * 4];
+        for px in gray_ref_data.chunks_exact_mut(4) {
+            px.copy_from_slice(&[0.50, 0.50, 0.50, 1.0]);
+        }
+        let gray_ref_img = Image { rect: bounds, ch: 4, data: gray_ref_data.clone() };
+        let gray_ref_out = screentone(&gray_ref_img, bounds, &ctx, &spec);
+
+        let mut gray_line_data = gray_ref_data;
+        for y in 0..64usize {
+            for x in 26..38usize {
+                let v = if (28..36).contains(&x) {
+                    0.02
+                } else if x == 27 || x == 36 {
+                    0.28
+                } else {
+                    0.40
+                };
+                let idx = (y * 64 + x) * 4;
+                gray_line_data[idx..idx + 4].copy_from_slice(&[v, v, v, 1.0]);
+            }
+        }
+        let gray_line_img = Image { rect: bounds, ch: 4, data: gray_line_data };
+        let gray_line_out = screentone(&gray_line_img, bounds, &ctx, &spec);
+
+        // Verify the thick black line itself is 100% solid ink, and the pixels immediately
+        // outside the line (x = 22..28 and x = 36..42) match the un-lined 50% gray reference
+        // with zero white staircase halo!
+        for y in 4..60usize {
+            for x in 28..36usize {
+                let a = gray_line_out[(y * 64 + x) * 4 + 3];
+                assert!((a - 1.0).abs() < 1e-4, "thick line interior at ({x}, {y}) must be 1.0, got {a}");
+            }
+            for x in (22..28usize).chain(36..42usize) {
+                let a_line = gray_line_out[(y * 64 + x) * 4 + 3];
+                let a_ref = gray_ref_out[(y * 64 + x) * 4 + 3];
+                assert!(
+                    (a_line - a_ref).abs() < 1e-4,
+                    "white staircase halo or fringe distortion at ({x}, {y}): got {a_line}, expected {a_ref}"
+                );
+            }
+        }
+
+        // 2. Thick 8px black line on white paper (1.0) with 2px anti-aliased gray fringes (0.45, 0.72):
+        //    must produce ZERO halftone pimples outside the preserved line core.
+        let mut white_line_data = vec![1.0f32; 64 * 64 * 4];
+        for y in 0..64usize {
+            for x in 26..38usize {
+                let v = if (28..36).contains(&x) {
+                    0.02
+                } else if x == 27 || x == 36 {
+                    0.45
+                } else {
+                    0.72
+                };
+                let idx = (y * 64 + x) * 4;
+                white_line_data[idx..idx + 4].copy_from_slice(&[v, v, v, 1.0]);
+            }
+        }
+        let white_line_img = Image { rect: bounds, ch: 4, data: white_line_data };
+        let white_line_out = screentone(&white_line_img, bounds, &ctx, &spec);
+        for y in 4..60usize {
+            for x in (20..28usize).chain(36..44usize) {
+                let a = white_line_out[(y * 64 + x) * 4 + 3];
+                assert_eq!(a, 0.0, "anti-aliased fringe on white paper at ({x}, {y}) spawned a pimple (alpha={a})");
+            }
+        }
+    }
+
+    #[test]
+    fn test_fine_hatching_on_white_paper_has_no_pimples() {
+        let bounds = Rect::new(0, 0, 64, 64);
+        let ctx = Ctx { bounds, mode: ColorMode::Rgb, alpha: true };
+        let mut data = vec![1.0f32; 64 * 64 * 4];
+
+        // Draw fine parallel hatching (strokes at x = 20, 24, 28, 32, 36) where the 3px gaps
+        // between strokes are darkened by overlapping anti-aliasing to 0.62..0.74 (< white_threshold 0.85).
+        for y in 12..52usize {
+            for x in 19..=37usize {
+                let dist_to_stroke = [20isize, 24, 28, 32, 36]
+                    .iter()
+                    .map(|&sx| (x as isize - sx).abs())
+                    .min()
+                    .unwrap_or(10);
+                let v = match dist_to_stroke {
+                    0 => 0.12, // hatch stroke core
+                    1 => 0.62, // 1px anti-aliased fringe
+                    _ => 0.74, // midpoint of narrow gap between strokes
+                };
+                let idx = (y * 64 + x) * 4;
+                data[idx..idx + 4].copy_from_slice(&[v, v, v, 1.0]);
+            }
+        }
+
+        let img = Image { rect: bounds, ch: 4, data };
+        let spec = ScreentoneSpec {
+            mode: ScreentoneMode::Shading,
+            use_source_luminance: true,
+            pattern_type: PatternType::Dots,
+            dot_size: 7.0,
+            spacing_x: 10.0,
+            spacing_y: 10.0,
+            density: 0.6,
+            white_threshold: 0.85,
+            black_threshold: 0.08,
+            preserve_lines: true,
+            line_threshold: 0.24,
+            line_thickness: 1.0,
+            ..Default::default()
+        };
+        let out_px = screentone(&img, bounds, &ctx, &spec);
+
+        for y in 16..48usize {
+            // Every hatch stroke core is preserved as 1.0 solid ink.
+            for &sx in &[20usize, 24, 28, 32, 36] {
+                let a = out_px[(y * 64 + sx) * 4 + 3];
+                assert!((a - 1.0).abs() < 1e-4, "hatch stroke at ({sx}, {y}) must be preserved as 1.0, got {a}");
+            }
+            // Every narrow slit between the hatch strokes is clean paper (0.0), with zero pimples.
+            for sx in [21usize, 22, 23, 25, 26, 27, 29, 30, 31, 33, 34, 35] {
+                let a = out_px[(y * 64 + sx) * 4 + 3];
+                assert_eq!(a, 0.0, "pimple detected inside fine hatching gap at ({sx}, {y}): alpha={a}");
+            }
+        }
     }
 }
