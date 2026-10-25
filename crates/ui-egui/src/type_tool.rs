@@ -2309,6 +2309,79 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     }
 }
 
+/// Contextual toolbar controls for text editing in Canvas Capsule.
+pub(crate) fn capsule_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    let t = crate::theme::Tokens::get(ui.ctx());
+    let shown = target(app).and_then(|(id, _)| {
+        let st = app.session.active()?;
+        let tl = text_layer(&st.doc, LayerId(id))?;
+        let run = tl.char_runs().into_iter().next().map(|r| r.style);
+        let size = styles_at(app).map_or(tl.size_pt, |(c, _)| c.size_pt) * shown_scale(app);
+        Some((tl.font_family.clone(), run.as_ref().map(selected_style).unwrap_or_default(), size, styles_at(app).map_or(tl.color, |(c, _)| c.color)))
+    });
+    let o = app.ui.tool_options.clone();
+    let (mut fam, mut style, size) = match &shown {
+        Some((f, s, z, _)) => (f.clone(), if s.is_empty() { "Regular".into() } else { s.clone() }, *z),
+        None => (o.type_font.clone(), o.type_style.clone(), o.type_size),
+    };
+
+    ui.label(egui::RichText::new("T").strong().color(t.text));
+
+    // Font family dropdown
+    if fonts_ready(ui, 120.0) {
+        if font_picker(ui, &mut fam, 120.0, app.session.prefs().type_.font_preview, &app.ui.recent_fonts) {
+            app.note_recent_font(&fam);
+            app.ui.tool_options.type_font = fam.clone();
+            let st = styles(&fam);
+            style = if st.contains(&style) { style } else { st.first().cloned().unwrap_or_else(|| "Regular".into()) };
+            app.ui.tool_options.type_style = style.clone();
+            apply(app, ui.ctx(), json!({"font": fam}));
+        }
+    }
+
+    // Font size field
+    let (unit, label) = type_unit(app);
+    let mut display = size * unit;
+    if crate::widgets::value_field(ui, &mut display, unit..=1296.0 * unit, label, 58.0).changed() {
+        let new_size = display / unit;
+        app.ui.tool_options.type_size = new_size;
+        apply(app, ui.ctx(), json!({"size": new_size, "metricsAsShown": true}));
+    }
+
+    // Alignment buttons
+    ui.spacing_mut().item_spacing.x = 2.0;
+    for (align, icon, tip) in [
+        ("left", "align-left", tl!("Left align text")),
+        ("center", "align-center", tl!("Center text")),
+        ("right", "align-right", tl!("Right align text")),
+    ] {
+        if crate::icons::button(ui, icon, 18.0, o.type_align == align, tip).clicked() {
+            app.ui.tool_options.type_align = align.into();
+            apply(app, ui.ctx(), json!({"align": align}));
+        }
+    }
+    ui.spacing_mut().item_spacing.x = 6.0;
+
+    // Commit / Cancel buttons if editing
+    if app.ui.text_edit.is_some() {
+        ui.separator();
+        if crate::icons::button(
+            ui,
+            "check",
+            18.0,
+            false,
+            &crate::i18n::fmt(tl!("Commit any current edits ({key})"), &[("key", &crate::shortcuts::pretty("Cmd+Enter"))]),
+        )
+        .clicked()
+        {
+            commit_with(app, ui.input(|i| i.modifiers));
+        }
+        if crate::icons::button(ui, "ban", 18.0, false, tl!("Cancel any current edits (Esc)")).clicked() {
+            cancel(app);
+        }
+    }
+}
+
 /// Character and paragraph style at the target (selection start, else the layer's first run).
 pub(crate) fn styles_at(app: &PhotocraftApp) -> Option<(photocraft_doc::text::CharStyle, photocraft_doc::text::ParagraphStyle)> {
     let (layer, range) = target(app)?;
