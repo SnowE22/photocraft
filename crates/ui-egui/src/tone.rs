@@ -180,6 +180,10 @@ pub fn input_fingerprint(doc: &Document, source: HistSource) -> u64 {
                 Some(c) => surface_fp(c, h),
                 None => format!("{sm:?}").hash(h),
             },
+            LayerContent::Screentone(st) => {
+                format!("{:?}{:?}", st.spec, st.origin).hash(h);
+                surface_fp(&st.surface, h);
+            },
         }
     }
     let mut h = H::new();

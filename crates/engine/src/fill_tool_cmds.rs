@@ -211,6 +211,7 @@ enum ContentKey {
     Group(Option<photocraft_doc::Artboard>),
     Adjustment(photocraft_doc::Adjustment),
     Fill(photocraft_doc::Fill),
+    Screentone,
 }
 
 /// Everything about a shown layer that the composite reads, except its pixels and its mask's.
@@ -294,6 +295,7 @@ fn reference_key(doc: &Document, area: Rect) -> Option<ReferenceKey> {
             LayerContent::Group(g) => (ContentKey::Group(g.artboard.clone()), None),
             LayerContent::Adjustment(a) => (ContentKey::Adjustment(a.clone()), None),
             LayerContent::Fill(f) => (ContentKey::Fill(f.clone()), None),
+            LayerContent::Screentone(st) => (ContentKey::Screentone, Some(Tiles::of(&st.surface))),
         };
         if l.video.is_some() {
             return None;

@@ -5147,7 +5147,7 @@ dependencies = [
 
 [[package]]
 name = "photocraft-tone"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "serde",
 ]
@@ -8144,7 +8144,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.10"`r`nsource = "registry+https://github.com/rust-lang/crates.io-index"`r`nchecksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
+version = "1.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
 dependencies = [
  "rustls-pki-types",
 ]
