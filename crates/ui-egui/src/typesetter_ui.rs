@@ -576,17 +576,20 @@ impl TypesetterUi {
         ui.add_space(2.0);
 
         ui.horizontal(|ui| {
+            let is_narrow = ui.available_width() < 300.0;
             ui.label(RichText::new(format!("{}:", tl!("Script"))).color(t.text_dim).small().strong());
 
-            if ui.small_button("📋 Вставить").on_hover_text("Вставить текст сценария из буфера обмена (Ctrl+V)").clicked() {
+            let paste_text = if is_narrow { "📋".to_string() } else { format!("📋 {}", tl!("Paste")) };
+            if ui.small_button(paste_text).on_hover_text(tl!("Paste script text from clipboard (Ctrl+V)")).clicked() {
                 self.paste_script_from_clipboard();
             }
 
-            if ui.small_button("📝 Редактор").on_hover_text("Открыть окно редактора сценария").clicked() {
+            let edit_text = if is_narrow { "📝".to_string() } else { format!("📝 {}", tl!("Editor")) };
+            if ui.small_button(edit_text).on_hover_text(tl!("Open script text editor")).clicked() {
                 self.open_script_editor();
             }
 
-            if ui.small_button("📥 .txt").on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+            if ui.small_button("📥 .txt").on_hover_text(tl!("Load script file (.txt)")).clicked() {
                 self.open_script_file_dialog();
             }
 
@@ -626,13 +629,13 @@ impl TypesetterUi {
             ui.allocate_ui_with_layout(vec2(left_w, ui.available_height()), Layout::top_down(Align::Min), |ui| {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("{}:", tl!("Script"))).color(t.text_dim).small().strong());
-                    if ui.small_button("📋").on_hover_text("Вставить из буфера (Ctrl+V)").clicked() {
+                    if ui.small_button("📋").on_hover_text(tl!("Paste script from clipboard (Ctrl+V)")).clicked() {
                         self.paste_script_from_clipboard();
                     }
-                    if ui.small_button("📝").on_hover_text("Редактор").clicked() {
+                    if ui.small_button("📝").on_hover_text(tl!("Open script text editor")).clicked() {
                         self.open_script_editor();
                     }
-                    if ui.small_button("📥").on_hover_text("Загрузить .txt").clicked() {
+                    if ui.small_button("📥").on_hover_text(tl!("Load script file (.txt)")).clicked() {
                         self.open_script_file_dialog();
                     }
                     if total_lines > 0 {
@@ -817,21 +820,21 @@ impl TypesetterUi {
                     .show(ui, |ui| {
                         if total_lines == 0 {
                             ui.vertical_centered(|ui| {
-                                ui.add_space(14.0);
-                                ui.label(RichText::new("Сценарий не загружен").color(Color32::from_rgb(130, 135, 145)).small());
+                                ui.add_space(10.0);
+                                ui.label(RichText::new(tl!("No script loaded")).color(Color32::from_rgb(130, 135, 145)).small());
                                 ui.add_space(6.0);
-                                ui.horizontal(|ui| {
-                                    if ui.button(RichText::new("📋 Вставить").strong()).on_hover_text("Вставить текст из буфера обмена (Ctrl+V)").clicked() {
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui.button(RichText::new(format!("📋 {}", tl!("Paste"))).strong()).on_hover_text(tl!("Paste script from clipboard (Ctrl+V)")).clicked() {
                                         self.paste_script_from_clipboard();
                                     }
-                                    if ui.button("📥 Файл (.txt)").on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+                                    if ui.button(format!("📥 {}", tl!("Load .txt"))).on_hover_text(tl!("Load script file (.txt)")).clicked() {
                                         self.open_script_file_dialog();
                                     }
-                                    if ui.button("📝 Редактор").on_hover_text("Открыть окно ручного ввода").clicked() {
+                                    if ui.button(format!("📝 {}", tl!("Editor"))).on_hover_text(tl!("Enter script manually")).clicked() {
                                         self.open_script_editor();
                                     }
                                 });
-                                ui.add_space(10.0);
+                                ui.add_space(8.0);
                             });
                         } else {
                             for (idx, line) in self.state.lines.iter().enumerate() {
