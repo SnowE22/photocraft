@@ -253,6 +253,13 @@ fn apply_action(app: &mut PhotocraftApp, action: Action<String>) -> Result<Value
         return Err("saved panel layout is invalid; reset the workspace first".into());
     }
     let mut layout = app.ui.docking.clone().unwrap_or_else(|| legacy(app));
+    let action = match action {
+        Action::Float { panel, rect } => Action::Float {
+            panel: panel.clone(),
+            rect: compact_floating_rect(&panel, rect),
+        },
+        other => other,
+    };
     let returning = match &action {
         Action::Close { panel } => layout.location(panel).ok().map(|location| (panel.clone(), location)),
         Action::Float { panel, .. } => layout.location(panel).ok().filter(|location| location.floating.is_none()).map(|location| (panel.clone(), location)),
@@ -513,7 +520,13 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             let members = group_members(&layout, panel);
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(panel, pointer, &eligible) {
-                ui.painter().rect_stroke(proposal.preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
+                let preview = match proposal.placement {
+                    Placement::Split(zone) if zone != Zone::Center => {
+                        eligible.iter().find(|t| t.anchor == proposal.anchor).map(|t| t.rect).unwrap_or(proposal.preview)
+                    }
+                    _ => proposal.preview,
+                };
+                ui.painter().rect_stroke(preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
             }
         }
     }
@@ -522,12 +535,22 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             let members = group_members(&layout, &panel);
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(&panel, pointer, &eligible) {
-                commands.push(("window.panel.group", json!({"panel":panel,"operation":"move","anchor":proposal.anchor,"placement":proposal.placement})));
+                let placement = match proposal.placement {
+                    Placement::Split(zone) if zone != Zone::Center => Placement::Tab { before: None },
+                    other => other,
+                };
+                commands.push(("window.panel.group", json!({"panel":panel,"operation":"move","anchor":proposal.anchor,"placement":placement})));
             }
         }
     }
-    for action in output.actions {
-        if let Action::Float { ref panel, rect } = action {
+    for mut action in output.actions {
+        if let Action::Move { ref mut placement, .. } = action {
+            if matches!(placement, Placement::Split(zone) if *zone != Zone::Center) {
+                *placement = Placement::Tab { before: None };
+            }
+        }
+        if let Action::Float { ref panel, ref mut rect } = action {
+            *rect = compact_floating_rect(panel, *rect);
             let pointer = ui
                 .ctx()
                 .pointer_interact_pos()
@@ -891,8 +914,24 @@ pub(crate) fn set_panel_visible(app: &mut PhotocraftApp, panel: &str, visible: b
     }
 }
 
+pub(crate) fn compact_floating_rect(panel: &str, rect: [f32; 4]) -> [f32; 4] {
+    let [x, y, w, h] = rect;
+    let default_h = match panel {
+        "layers" => 360.0,
+        "typesetter" => 420.0,
+        "color" | "swatches" | "gradients" | "patterns" | "screentone" => 280.0,
+        "properties" | "adjustments" => 340.0,
+        "character" | "paragraph" => 320.0,
+        _ => 300.0,
+    };
+    let compact_w = if w > 420.0 || w < 200.0 { 300.0 } else { w };
+    let compact_h = if h > 520.0 || h < 140.0 { default_h } else { h.min(480.0) };
+    [x, y, compact_w, compact_h]
+}
+
 fn float_panel_on_canvas(app: &mut PhotocraftApp, panel: String, rect: [f32; 4]) {
     remove_panel_from_all_docks(app, &panel);
+    let rect = compact_floating_rect(&panel, rect);
     let layout = app.ui.docking.get_or_insert_with(|| craft_ui::docking::Layout {
         root: None,
         floating: Vec::new(),
@@ -1046,14 +1085,26 @@ pub(crate) fn show_side_dock(
             let members = group_members(layout, panel);
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(panel, pointer, &eligible) {
-                ui.painter().rect_stroke(proposal.preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
+                let preview = match proposal.placement {
+                    Placement::Split(zone) if zone != Zone::Center => {
+                        eligible.iter().find(|t| t.anchor == proposal.anchor).map(|t| t.rect).unwrap_or(proposal.preview)
+                    }
+                    _ => proposal.preview,
+                };
+                ui.painter().rect_stroke(preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
             }
         }
     }
 
-    for action in output.actions {
+    for mut action in output.actions {
+        if let Action::Move { ref mut placement, .. } = action {
+            if matches!(placement, Placement::Split(zone) if *zone != Zone::Center) {
+                *placement = Placement::Tab { before: None };
+            }
+        }
         match action {
             Action::Float { ref panel, rect } => {
+                let rect = compact_floating_rect(panel, rect);
                 let pointer = ui
                     .ctx()
                     .pointer_interact_pos()
@@ -1085,6 +1136,10 @@ pub(crate) fn show_side_dock(
             let members = group_members(layout, &panel);
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(&panel, pointer, &eligible) {
+                let placement = match proposal.placement {
+                    Placement::Split(zone) if zone != Zone::Center => Placement::Tab { before: None },
+                    other => other,
+                };
                 let target_layout = match side {
                     DockSide::Left => &mut app.ui.docking_left,
                     DockSide::Bottom => &mut app.ui.docking_bottom,
@@ -1094,7 +1149,7 @@ pub(crate) fn show_side_dock(
                     let _ = l.apply(craft_ui::docking::Action::Move {
                         panel,
                         anchor: proposal.anchor,
-                        placement: proposal.placement,
+                        placement,
                     });
                 }
             }
@@ -1550,7 +1605,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 rect,
                 tab_strip: Some(rect),
                 tabs: Vec::new(),
-                allow_splits: true,
+                allow_splits: false,
                 accepts_tabs: !self.app.session.prefs().workspace_locked,
             });
         }

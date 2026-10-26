@@ -913,4 +913,19 @@ fn test_multi_sided_docking_edge_drops_and_transitions() {
     assert_eq!(test_app.typesetter.dock_mode, crate::typesetter_ui::TypesetterDockMode::Floating);
     assert!(test_app.ui.docking.as_ref().unwrap().floating.iter().any(|g| g.panels.contains(&"typesetter".to_string())));
     assert!(!test_app.ui.docking_bottom.as_ref().unwrap().contains(&"typesetter".to_string()));
+
+    // Verify compact size normalization when detaching from a tall side dock
+    let tall_rect = [100.0, 70.0, 280.0, 950.0];
+    let compact = compact_floating_rect("layers", tall_rect);
+    assert_eq!(compact[2], 280.0);
+    assert_eq!(compact[3], 360.0); // clamped from 950 to 360
+
+    let tall_typesetter_rect = [100.0, 70.0, 280.0, 950.0];
+    let compact_typesetter = compact_floating_rect("typesetter", tall_typesetter_rect);
+    assert_eq!(compact_typesetter[3], 420.0);
+
+    // Float with giant rect: verify stored floating rect is compact
+    float_panel_on_canvas(&mut test_app, "layers".to_string(), tall_rect);
+    let floating_layers = test_app.ui.docking.as_ref().unwrap().floating.iter().find(|g| g.panels.contains(&"layers".to_string())).unwrap();
+    assert_eq!(floating_layers.rect[3], 360.0);
 }
