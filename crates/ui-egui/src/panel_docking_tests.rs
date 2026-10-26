@@ -865,3 +865,52 @@ fn multi_sided_docking_edge_snapping_and_typesetter_registration() {
     assert!(!test_app.ui.docking.as_ref().unwrap().floating.iter().any(|g| g.panels.contains(&"typesetter".into())));
     assert!(test_app.ui.docking.as_ref().unwrap().contains(&"typesetter".into()));
 }
+
+
+#[test]
+fn test_multi_sided_docking_edge_drops_and_transitions() {
+    let mut test_app = app();
+    let h = harness(app(), vec2(1280.0, 800.0));
+    let toolbar_w = 40.0;
+
+    // Drop 'layers' into left edge zone
+    let dropped = handle_dock_drop(&mut test_app, &h.ctx, "layers".to_string(), Pos2::new(60.0, 300.0), toolbar_w);
+    assert!(dropped);
+    assert!(test_app.ui.panels.left_dock);
+    assert!(test_app.ui.docking_left.as_ref().unwrap().contains(&"layers".to_string()));
+    assert!(!test_app.ui.docking.as_ref().is_some_and(|l| l.contains(&"layers".to_string())));
+
+    // Drop 'layers' from left dock to bottom edge zone
+    let dropped = handle_dock_drop(&mut test_app, &h.ctx, "layers".to_string(), Pos2::new(500.0, 750.0), toolbar_w);
+    assert!(dropped);
+    assert!(test_app.ui.panels.bottom_dock);
+    assert!(test_app.ui.docking_bottom.as_ref().unwrap().contains(&"layers".to_string()));
+    assert!(!test_app.ui.docking_left.as_ref().unwrap().contains(&"layers".to_string()));
+
+    // Drop 'layers' from bottom dock to right edge zone
+    let dropped = handle_dock_drop(&mut test_app, &h.ctx, "layers".to_string(), Pos2::new(1260.0, 300.0), toolbar_w);
+    assert!(dropped);
+    assert!(test_app.ui.panels.dock);
+    assert!(test_app.ui.docking.as_ref().unwrap().contains(&"layers".to_string()));
+    assert!(!test_app.ui.docking_bottom.as_ref().unwrap().contains(&"layers".to_string()));
+
+    // Drop 'typesetter' into left edge zone
+    let dropped = handle_dock_drop(&mut test_app, &h.ctx, "typesetter".to_string(), Pos2::new(60.0, 300.0), toolbar_w);
+    assert!(dropped);
+    assert_eq!(test_app.typesetter.dock_mode, crate::typesetter_ui::TypesetterDockMode::DockLeft);
+    assert!(test_app.ui.panels.left_dock);
+    assert!(test_app.ui.panels.typesetter);
+    assert!(test_app.typesetter.is_open);
+
+    // Drop 'typesetter' into bottom edge zone
+    let dropped = handle_dock_drop(&mut test_app, &h.ctx, "typesetter".to_string(), Pos2::new(500.0, 750.0), toolbar_w);
+    assert!(dropped);
+    assert_eq!(test_app.typesetter.dock_mode, crate::typesetter_ui::TypesetterDockMode::DockBottom);
+    assert!(test_app.ui.panels.bottom_dock);
+
+    // Float 'typesetter' onto canvas
+    float_panel_on_canvas(&mut test_app, "typesetter".to_string(), [100.0, 100.0, 300.0, 200.0]);
+    assert_eq!(test_app.typesetter.dock_mode, crate::typesetter_ui::TypesetterDockMode::Floating);
+    assert!(test_app.ui.docking.as_ref().unwrap().floating.iter().any(|g| g.panels.contains(&"typesetter".to_string())));
+    assert!(!test_app.ui.docking_bottom.as_ref().unwrap().contains(&"typesetter".to_string()));
+}

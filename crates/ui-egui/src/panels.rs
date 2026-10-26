@@ -2048,15 +2048,23 @@ pub fn left_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if !app.ui.panels.left_dock {
         return;
     }
+    let typesetter_in_tree = app
+        .ui
+        .docking_left
+        .as_ref()
+        .is_some_and(|l| l.root.is_some() && l.contains(&"typesetter".to_string()));
     let typesetter_here = app.ui.panels.typesetter
         && app.typesetter.is_open
-        && app.typesetter.dock_mode == crate::typesetter_ui::TypesetterDockMode::DockLeft;
-    let has_layout_panels = app.ui.docking_left.as_ref().is_some_and(|l| l.root.is_some());
-
+        && app.typesetter.dock_mode == crate::typesetter_ui::TypesetterDockMode::DockLeft
+        && !typesetter_in_tree;
+    let has_layout_panels = app
+        .ui
+        .docking_left
+        .as_ref()
+        .is_some_and(|l| l.root.is_some());
     if !typesetter_here && !has_layout_panels {
         return;
     }
-
     let t = Tokens::get(ui.ctx());
     let default_w = if t.pro { 280.0 } else { 300.0 };
     egui::Panel::left("shared-left-dock")
@@ -2065,12 +2073,20 @@ pub fn left_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.card))
         .show(ui, |ui| {
+            if let Some(layout) = app.ui.docking_left.clone()
+                && layout.root.is_some()
+            {
+                crate::panel_docking::show_side_dock(
+                    app,
+                    ui,
+                    &layout,
+                    crate::panel_docking::DockSide::Left,
+                );
+            }
             if typesetter_here {
                 if let Some(action) = app.typesetter.render_embedded(ui) {
                     app.handle_typesetter_action(action);
                 }
-            } else if let Some(layout) = app.ui.docking_left.clone() {
-                crate::panel_docking::show_side_dock(app, ui, &layout, crate::panel_docking::DockSide::Left);
             }
         });
 }
@@ -2144,15 +2160,23 @@ pub fn bottom_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     if !app.ui.panels.bottom_dock {
         return;
     }
+    let typesetter_in_tree = app
+        .ui
+        .docking_bottom
+        .as_ref()
+        .is_some_and(|l| l.root.is_some() && l.contains(&"typesetter".to_string()));
     let typesetter_here = app.ui.panels.typesetter
         && app.typesetter.is_open
-        && app.typesetter.dock_mode == crate::typesetter_ui::TypesetterDockMode::DockBottom;
-    let has_layout_panels = app.ui.docking_bottom.as_ref().is_some_and(|l| l.root.is_some());
-
+        && app.typesetter.dock_mode == crate::typesetter_ui::TypesetterDockMode::DockBottom
+        && !typesetter_in_tree;
+    let has_layout_panels = app
+        .ui
+        .docking_bottom
+        .as_ref()
+        .is_some_and(|l| l.root.is_some());
     if !typesetter_here && !has_layout_panels {
         return;
     }
-
     let t = Tokens::get(ui.ctx());
     egui::Panel::bottom("shared-bottom-dock")
         .default_size(240.0)
@@ -2160,17 +2184,24 @@ pub fn bottom_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.card))
         .show(ui, |ui| {
+            if let Some(layout) = app.ui.docking_bottom.clone()
+                && layout.root.is_some()
+            {
+                crate::panel_docking::show_side_dock(
+                    app,
+                    ui,
+                    &layout,
+                    crate::panel_docking::DockSide::Bottom,
+                );
+            }
             if typesetter_here {
                 if let Some(action) = app.typesetter.render_embedded(ui) {
                     app.handle_typesetter_action(action);
                 }
-            } else if let Some(layout) = app.ui.docking_bottom.clone() {
-                crate::panel_docking::show_side_dock(app, ui, &layout, crate::panel_docking::DockSide::Bottom);
             }
         });
 }
 
-/// The dock's narrowest width (points). It is the right dock, on the left in a right-to-left UI.
 pub(crate) const DOCK_MIN_WIDTH: f32 = 250.0;
 /// What the dock leaves the toolbar and the canvas when it is widest (points).
 const DOCK_LEAVES: f32 = 400.0;
