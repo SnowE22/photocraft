@@ -2717,17 +2717,11 @@ impl PhotocraftApp {
             self.perf.span("ui: bottom dock", gpu_canvas::now_ms() - t);
         }
         let typesetter_action = if self.ui.panels.typesetter {
-            self.typesetter.is_open = true;
-            let in_dock = self.ui.docking.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
-            let in_left = self.ui.docking_left.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
-            let in_bottom = self.ui.docking_bottom.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
-            if !in_dock && !in_left && !in_bottom && !self.typesetter.rendered_this_frame {
-                panel_docking::float_panel_on_canvas(self, "typesetter".into(), [140.0, 140.0, 340.0, 520.0]);
-            }
             let act = self.typesetter.show(ui);
             self.ui.panels.typesetter = self.typesetter.is_open;
             act
         } else {
+            self.typesetter.is_open = false;
             None
         };
         let t = theme::Tokens::get(&ctx);

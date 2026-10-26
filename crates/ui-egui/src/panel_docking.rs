@@ -193,7 +193,9 @@ pub(crate) fn command(app: &mut PhotocraftApp, id: &str, params: &Value) -> Opti
         if app.ui.docking.is_none() && panel != "brushes" {
             return None;
         }
-        let showing = app.ui.docking.as_ref().is_some_and(|layout| layout.contains(&panel.to_string()));
+        let showing = app.ui.docking.as_ref().is_some_and(|layout| layout.contains(&panel.to_string()))
+            || app.ui.docking_left.as_ref().is_some_and(|layout| layout.contains(&panel.to_string()))
+            || app.ui.docking_bottom.as_ref().is_some_and(|layout| layout.contains(&panel.to_string()));
         let show = match params.get("show").or_else(|| params.get("on")) {
             None => !showing || app.ui.docking.as_ref().is_some_and(|layout| !panel_active(layout, panel) || collapsed_members(app, layout).contains(panel)),
             Some(value) => match value.as_bool() {
@@ -218,7 +220,10 @@ pub(crate) fn command(app: &mut PhotocraftApp, id: &str, params: &Value) -> Opti
 pub(crate) fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
     let layout = app.ui.docking.as_ref()?;
     let panel = id.strip_prefix("window.panel.").or_else(|| id.strip_prefix("window.toggle.")).and_then(normalize)?;
-    Some(layout.contains(&panel.to_string()))
+    let in_dock = layout.contains(&panel.to_string());
+    let in_left = app.ui.docking_left.as_ref().is_some_and(|layout| layout.contains(&panel.to_string()));
+    let in_bottom = app.ui.docking_bottom.as_ref().is_some_and(|layout| layout.contains(&panel.to_string()));
+    Some(in_dock || in_left || in_bottom)
 }
 
 // UI output and automation share this atomic dispatcher. The application owns the registry
@@ -273,6 +278,10 @@ fn apply_action(app: &mut PhotocraftApp, action: Action<String>) -> Result<Value
         Action::Activate { panel } => PANELS.iter().find(|p| p.0 == panel).map(|p| p.2),
         _ => None,
     };
+    let panel_closed = match &action {
+        Action::Close { panel } => Some(panel.clone()),
+        _ => None,
+    };
     layout.apply(action).map_err(|error| error.to_string())?;
     if let Some(group) = activate {
         app.ui.dock.set_collapsed(group, false);
@@ -285,6 +294,9 @@ fn apply_action(app: &mut PhotocraftApp, action: Action<String>) -> Result<Value
     }
     app.ui.docking = Some(layout);
     app.ui.panels.dock = true;
+    if let Some(panel) = panel_closed {
+        set_panel_visible(app, &panel, false);
+    }
     sync_visibility(app);
     if let Some(panel) = reveal {
         app.ui.docking_reveal = Some(panel.clone());
@@ -357,8 +369,12 @@ fn change(app: &mut PhotocraftApp, operation: &str, params: &Value) -> Result<Va
             }
         }
         "close" => {
-            hidden.insert(panel.into(), layout.location(&panel.to_string()).map_err(|e| e.to_string())?);
-            layout.apply(Action::Close { panel: panel.into() }).map_err(|e| e.to_string())?;
+            if let Ok(loc) = layout.location(&panel.to_string()) {
+                hidden.insert(panel.into(), loc);
+            }
+            let _ = layout.apply(Action::Close { panel: panel.into() });
+            remove_panel_from_all_docks(app, panel);
+            set_panel_visible(app, panel, false);
         }
         _ => {
             if !layout.contains(&panel.to_string()) && hidden.contains_key(panel) {
@@ -368,6 +384,7 @@ fn change(app: &mut PhotocraftApp, operation: &str, params: &Value) -> Result<Va
             ensure(&mut layout, panel)?;
             layout.apply(Action::Activate { panel: panel.into() }).map_err(|e| e.to_string())?;
             hidden.remove(panel);
+            set_panel_visible(app, panel, true);
         }
     }
     app.ui.docking = Some(layout);
@@ -535,6 +552,9 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
         }
     }
     for action in output.actions {
+        if let Action::Close { ref panel } = action {
+            set_panel_visible(app, panel, false);
+        }
         if let Action::Float { ref panel, rect } = action {
             let pointer = ui
                 .ctx()
@@ -1652,7 +1672,7 @@ pub(crate) fn sync_visibility(app: &mut PhotocraftApp) {
         }
         let pro = matches!(app.ui.theme, crate::theme::ThemeKind::Pro | crate::theme::ThemeKind::ProMedium);
         for group in Group::ALL {
-            *group.shown_mut(&mut app.ui.panels) = PANELS.iter().filter(|p| p.2 == group).any(|p| layout.contains(&p.0.to_owned()));
+            *group.shown_mut(&mut app.ui.panels) = PANELS.iter().filter(|p| p.2 == group && p.0 != "typesetter").any(|p| layout.contains(&p.0.to_owned()));
             for (index, label) in group.tabs(pro).iter().enumerate() {
                 if let Some(id) = normalize(label) {
                     if layout.contains(&id.to_owned()) {
@@ -1669,6 +1689,10 @@ pub(crate) fn sync_visibility(app: &mut PhotocraftApp) {
                 *group.tab_mut(&mut app.ui.dock_tabs) = selected;
             }
         }
+        let in_dock = layout.contains(&"typesetter".into());
+        let in_left = app.ui.docking_left.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
+        let in_bottom = app.ui.docking_bottom.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
+        set_panel_visible(app, "typesetter", in_dock || in_left || in_bottom);
     }
 }
 

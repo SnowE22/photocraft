@@ -689,6 +689,8 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 if !in_dock && !in_left && !in_bottom {
                     crate::panel_docking::float_panel_on_canvas(app, "typesetter".into(), [140.0, 140.0, 340.0, 520.0]);
                 }
+            } else if !app.ui.panels.typesetter && t == "window.toggle.typesetter" {
+                crate::panel_docking::remove_panel_from_all_docks(app, "typesetter");
             }
             if let Some(g) = crate::dock::Group::from_key(&t["window.toggle.".len()..]).filter(|g| g.shown(&app.ui.panels)) {
                 crate::dock::reveal(app, g);

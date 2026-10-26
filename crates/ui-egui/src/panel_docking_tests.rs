@@ -928,4 +928,13 @@ fn test_multi_sided_docking_edge_drops_and_transitions() {
     float_panel_on_canvas(&mut test_app, "layers".to_string(), tall_rect);
     let floating_layers = test_app.ui.docking.as_ref().unwrap().floating.iter().find(|g| g.panels.contains(&"layers".to_string())).unwrap();
     assert_eq!(floating_layers.rect[3], 360.0);
+
+    // Verify closing floating typesetter cleanly closes and stays closed
+    float_panel_on_canvas(&mut test_app, "typesetter".to_string(), [140.0, 140.0, 300.0, 400.0]);
+    assert!(test_app.ui.panels.typesetter);
+    assert!(test_app.typesetter.is_open);
+    test_app.run("window.panel.layout", json!({"action":{"Close":{"panel":"typesetter"}}})).unwrap();
+    assert!(!test_app.ui.panels.typesetter);
+    assert!(!test_app.typesetter.is_open);
+    assert!(!test_app.ui.docking.as_ref().unwrap().contains(&"typesetter".to_string()));
 }
