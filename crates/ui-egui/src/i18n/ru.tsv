@@ -5066,3 +5066,82 @@ shape	Appearance	Оформление
 	Remove what is selected with Nano Banana ({key})	Удалить выделенное с помощью Nano Banana ({key})
 	Pin to Top	Закрепить сверху
 	Unpin from Top	Открепить сверху
+
+# TypeR Manga Typesetter strings
+	(end of script)	(конец сценария)
+	(no script loaded — see 'Script' tab)	(сценарий не загружен — см. вкладку 'Сценарий')
+	+ Folder	+ Папка
+	+ Style	+ Стиль
+	Auto-advance to next page	Автопереход на след. страницу
+	Automatically advance script to the next page	Автоматический переход на следующую страницу скрипта
+	Baseline shift:	Сдвиг базовой линии:
+	Choose TypeR styles file	Выберите файл стилей TypeR
+	Choose script file	Выберите файл сценария
+	Clear entire script	Очистить весь сценарий
+	Clear script	Очистить сценарий
+	Each line becomes a separate dialogue entry. [Page 1] tags split pages.	Каждая строка станет отдельной репликой в очереди. Метки [Стр. 1] или [1] делят по страницам.
+	Editor	Редактор
+	Enter in Editor	Ввести в редакторе
+	Enter script manually	Ввести сценарий вручную
+	Export TypeR JSON…	Экспорт TypeR JSON…
+	Export TypeR styles	Экспорт стилей TypeR
+	Export error	Ошибка экспорта
+	File:	Файл:
+	Font Settings	Настройки шрифта
+	GEOMETRY & CENTERING	ГЕОМЕТРИЯ И ЦЕНТРИРОВАНИЕ
+	Go to current line/page	Перейти к текущей странице/реплике
+	Import TypeR JSON…	Импорт TypeR JSON…
+	Import error	Ошибка импорта
+	Insert current line into selection/bubble (Enter)	Вставить текущую строку в выделение/баббл (Enter)
+	Insert this line into bubble (Enter)	Вставить эту строку в баббл (Enter)
+	Load .txt	Загрузить .txt
+	Load file (.txt)…	Загрузить файл (.txt)…
+	Load from file	Загрузить из файла
+	Load into typesetter	Загрузить в тайпсеттер
+	Load script file (.txt)	Загрузить файл сценария (.txt)
+	Load script file (.txt)…	Загрузить файл сценария (.txt)…
+	Loaded dialogues	Загружено реплик
+	Loaded styles	Загружено стилей
+	Make this line current	Сделать эту реплику активной
+	Manga Script (Full Text)	Сценарий манги (Полный текст)
+	New Folder	Новая папка
+	Next line (↓)	Следующая строка (↓)
+	Next page	Следующая страница
+	No folder	Без папки
+	No script loaded	Сценарий не загружен
+	Open .txt	Открыть .txt
+	Open script in separate window	Открыть текст в отдельном окне
+	Open script text editor	Открыть редактор текста сценария
+	PRESET STORAGE	ХРАНИЛИЩЕ ПРЕСЕТОВ
+	Page	Стр.
+	Paste / Edit script…	Вставить / Редактировать…
+	Paste copied text from clipboard	Вставить скопированный текст из буфера обмена
+	Paste from Clipboard	Вставить из буфера
+	Paste from Clipboard (Ctrl+V)	Вставить из буфера (Ctrl+V)
+	Paste script from clipboard (Ctrl+V)	Вставить текст сценария из буфера обмена (Ctrl+V)
+	Paste script text from clipboard (Ctrl+V)	Вставить текст сценария из буфера обмена (Ctrl+V)
+	Paste script text here (Ctrl+V) or write dialogues…	Вставьте сюда текст сценария (Ctrl+V) или напишите реплики…
+	Presets loaded from file	Пресеты загружены из файла
+	Presets saved	Пресеты сохранены
+	Previous line (↑)	Предыдущая строка (↑)
+	Previous page	Предыдущая страница
+	Read error	Ошибка чтения
+	Save now	Сохранить сейчас
+	Script	Сценарий
+	Script Editor	Ввод и редактирование сценария
+	Shifting the baseline down ensures precise visual vertical centering inside bubbles.	Сдвиг базовой линии вниз обеспечивает точное визуальное центрирование текста внутри баббла.
+	Show current page dialogues only	Показывать только реплики текущей страницы
+	Strip character names	Очищать имена персонажей
+	Strip character names at start of line ('HERO: Text')	Очищать имена персонажей в начале строки ('ГЕРОЙ: Текст')
+	Strip leading dashes	Очищать тире в начале реплик
+	Strip leading dashes ('- Text', '— Text')	Очищать тире в начале реплик ('- Текст', '— Текст')
+	Styles successfully exported	Стили успешно экспортированы
+	Sync line spacing	Синхронизация интерлиньяжа
+	Sync line spacing with font size	Синхронизация интерлиньяжа с кеглем шрифта
+	TYPESETTER BEHAVIOR	ПОВЕДЕНИЕ ТАЙПСЕТТЕРА
+	TypeR Styles	Стили TypeR
+	Write error	Ошибка записи
+	left	ост.
+	line	строка
+	size	кегль
+	style	стиль

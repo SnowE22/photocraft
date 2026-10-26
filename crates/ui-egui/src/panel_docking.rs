@@ -1,4 +1,4 @@
-﻿//! Application-owned panel IDs and commands around the shared docking layout.
+//! Application-owned panel IDs and commands around the shared docking layout.
 
 use crate::dock::Group;
 use craft_ui::docking::{Action, Floating, Layout, Node, Placement, Zone};
@@ -482,8 +482,9 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
                 } else {
                     // Layers owns its row scroll and footer; leave room for its fixed controls
                     // plus a scrolling row area instead of clipping the footer after a split.
-                    let height = if id == "layers" { 220.0 } else { 80.0 };
-                    craft_ui::docking::PanelLimits { min: egui::vec2(220.0, height), ..Default::default() }
+                    let height = if id == "layers" { 220.0 } else if id == "typesetter" { 320.0 } else { 80.0 };
+                    let width = if id == "typesetter" { 270.0 } else { 220.0 };
+                    craft_ui::docking::PanelLimits { min: egui::vec2(width, height), ..Default::default() }
                 }
             },
             &mut PanelContent { app, collapsed: &collapsed, commands: &mut commands, targets: &mut targets },
@@ -908,12 +909,24 @@ pub(crate) fn compact_floating_rect(panel: &str, rect: [f32; 4]) -> [f32; 4] {
         "character" | "paragraph" => 320.0,
         _ => 300.0,
     };
-    let compact_w = if w > 420.0 || w < 200.0 { 300.0 } else { w };
-    let compact_h = if h > 520.0 || h < 140.0 { default_h } else { h.min(480.0) };
+    let compact_w = if panel == "typesetter" {
+        w.clamp(270.0, 520.0)
+    } else if w > 420.0 || w < 200.0 {
+        300.0
+    } else {
+        w
+    };
+    let compact_h = if panel == "typesetter" {
+        if h > 540.0 || h < 200.0 { default_h } else { h.clamp(320.0, 540.0) }
+    } else if h > 520.0 || h < 140.0 {
+        default_h
+    } else {
+        h.min(480.0)
+    };
     [x, y, compact_w, compact_h]
 }
 
-fn float_panel_on_canvas(app: &mut PhotocraftApp, panel: String, rect: [f32; 4]) {
+pub(crate) fn float_panel_on_canvas(app: &mut PhotocraftApp, panel: String, rect: [f32; 4]) {
     remove_panel_from_all_docks(app, &panel);
     let rect = compact_floating_rect(&panel, rect);
     let layout = app.ui.docking.get_or_insert_with(|| craft_ui::docking::Layout {
@@ -1053,8 +1066,9 @@ pub(crate) fn show_side_dock(
             if collapsed.contains(id) {
                 craft_ui::docking::PanelLimits { min: egui::vec2(200.0, 0.0), max: egui::vec2(1_000_000.0, 0.0) }
             } else {
-                let height = if id == "layers" { 220.0 } else if id == "typesetter" { 200.0 } else { 80.0 };
-                craft_ui::docking::PanelLimits { min: egui::vec2(200.0, height), ..Default::default() }
+                let height = if id == "layers" { 220.0 } else if id == "typesetter" { 320.0 } else { 80.0 };
+                let width = if id == "typesetter" { 270.0 } else { 200.0 };
+                craft_ui::docking::PanelLimits { min: egui::vec2(width, height), ..Default::default() }
             }
         },
         &mut PanelContent { app, collapsed: &collapsed, commands: &mut commands, targets: &mut targets },
