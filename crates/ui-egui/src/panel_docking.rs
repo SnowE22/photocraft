@@ -520,13 +520,7 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             let members = group_members(&layout, panel);
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(panel, pointer, &eligible) {
-                let preview = match proposal.placement {
-                    Placement::Split(zone) if zone != Zone::Center => {
-                        eligible.iter().find(|t| t.anchor == proposal.anchor).map(|t| t.rect).unwrap_or(proposal.preview)
-                    }
-                    _ => proposal.preview,
-                };
-                ui.painter().rect_stroke(preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(proposal.preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
             }
         }
     }
@@ -535,22 +529,12 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
             let members = group_members(&layout, &panel);
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(&panel, pointer, &eligible) {
-                let placement = match proposal.placement {
-                    Placement::Split(zone) if zone != Zone::Center => Placement::Tab { before: None },
-                    other => other,
-                };
-                commands.push(("window.panel.group", json!({"panel":panel,"operation":"move","anchor":proposal.anchor,"placement":placement})));
+                commands.push(("window.panel.group", json!({"panel":panel,"operation":"move","anchor":proposal.anchor,"placement":proposal.placement})));
             }
         }
     }
-    for mut action in output.actions {
-        if let Action::Move { ref mut placement, .. } = action {
-            if matches!(placement, Placement::Split(zone) if *zone != Zone::Center) {
-                *placement = Placement::Tab { before: None };
-            }
-        }
-        if let Action::Float { ref panel, ref mut rect } = action {
-            *rect = compact_floating_rect(panel, *rect);
+    for action in output.actions {
+        if let Action::Float { ref panel, rect } = action {
             let pointer = ui
                 .ctx()
                 .pointer_interact_pos()
@@ -1605,7 +1589,7 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
                 rect,
                 tab_strip: Some(rect),
                 tabs: Vec::new(),
-                allow_splits: false,
+                allow_splits: true,
                 accepts_tabs: !self.app.session.prefs().workspace_locked,
             });
         }

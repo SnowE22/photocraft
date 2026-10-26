@@ -173,4 +173,5 @@ opt-level = "z"
 [profile.wasm-release.package.photocraft-paint]
 opt-level = 3
 
-
+[patch."https://github.com/storytold/craft-libs"]
+craft-ui = { path = "crates/craft-ui" }

@@ -1256,6 +1256,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "craft-ui"
+version = "0.14.0"
+dependencies = [
+ "egui",
+ "egui_extras",
+ "egui_kittest",
+ "image",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "craft-winprint-gdi"
 version = "0.1.0"
 source = "git+https://github.com/storytold/winprint.rs?rev=417ac3c4d14d3da5485a99c7d5ce8f05664ec312#417ac3c4d14d3da5485a99c7d5ce8f05664ec312"
@@ -5159,7 +5171,7 @@ dependencies = [
  "arboard",
  "base64 0.22.1",
  "craft-print",
- "craft-ui",
+ "craft-ui 0.1.0",
  "eframe",
  "egui",
  "egui_extras",
