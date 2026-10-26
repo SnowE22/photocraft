@@ -5145,3 +5145,23 @@ shape	Appearance	Оформление
 	line	строка
 	size	кегль
 	style	стиль
+	Choose presets folder	Выберите папку для пресетов
+	Storage folder set	Папка сохранения задана
+	Storage folder reset to default	Папка сохранения сброшена по умолчанию
+	Open presets folder in file manager	Открыть папку пресетов в проводнике
+	Choose a custom directory to store typesetter presets and state	Выбрать папку для хранения пресетов и настроек тайпсеттера
+	Reset folder	Сбросить папку
+	Reset presets storage to default AppData directory	Сбросить папку сохранения на стандартную папку AppData
+	Folder name	Имя папки
+	Folder duplicated	Папка продублирована
+	Style name	Имя стиля
+	Typography and Font	Гарнитура и начертание
+	Typography Size (Line Spacing Sync)	Размеры типографики (Line Spacing Sync)
+	Size (pt)	Кегль (pt)
+	Horizontal scale (%)	Гориз. шкала (%)
+	Text Outline	Обводка текста
+	Thickness (px)	Толщина (px)
+	No outline	Без обводки
+	Duplicate this style	Создать копию этого стиля
+	Delete this style	Удалить этот стиль
+	Duplicate folder	Дублировать папку

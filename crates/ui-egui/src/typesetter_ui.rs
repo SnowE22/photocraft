@@ -40,6 +40,8 @@ struct TypesetterPersistedState {
     pub dock_mode: TypesetterDockMode,
     pub state: TypesetterState,
     pub selected_folder: Option<String>,
+    #[serde(default)]
+    pub custom_storage_dir: Option<std::path::PathBuf>,
 }
 
 pub fn typesetter_storage_path() -> Option<std::path::PathBuf> {
@@ -100,6 +102,7 @@ pub struct TypesetterUi {
     pub line_filter: String,
     pub full_text_filter: String,
     pub selected_folder: Option<String>,
+    pub custom_storage_dir: Option<std::path::PathBuf>,
     pub status_message: Option<String>,
     pub status_error: bool,
     pub filter_current_page_only: bool,
@@ -127,6 +130,7 @@ impl Default for TypesetterUi {
             line_filter: String::new(),
             full_text_filter: String::new(),
             selected_folder: None,
+            custom_storage_dir: None,
             status_message: None,
             status_error: false,
             filter_current_page_only: true,
@@ -205,16 +209,29 @@ impl TypesetterUi {
         }
     }
 
+    /// Текущий эффективный путь к файлу пресетов (пользовательская папка или системная).
+    pub fn storage_path(&self) -> Option<std::path::PathBuf> {
+        if let Some(custom_dir) = &self.custom_storage_dir {
+            return Some(custom_dir.join("typesetter_state.json"));
+        }
+        typesetter_storage_path()
+    }
+
     /// Автоматическое сохранение состояния и пресетов в файл настроек.
     pub fn auto_save(&self) {
-        if let Some(path) = typesetter_storage_path() {
-            let persisted = TypesetterPersistedState {
-                dock_mode: self.dock_mode,
-                state: self.state.clone(),
-                selected_folder: self.selected_folder.clone(),
-            };
-            if let Ok(json_str) = serde_json::to_string_pretty(&persisted) {
-                let _ = std::fs::write(path, json_str);
+        let persisted = TypesetterPersistedState {
+            dock_mode: self.dock_mode,
+            state: self.state.clone(),
+            selected_folder: self.selected_folder.clone(),
+            custom_storage_dir: self.custom_storage_dir.clone(),
+        };
+        if let Ok(json_str) = serde_json::to_string_pretty(&persisted) {
+            if let Some(custom_dir) = &self.custom_storage_dir {
+                let _ = std::fs::create_dir_all(custom_dir);
+                let _ = std::fs::write(custom_dir.join("typesetter_state.json"), &json_str);
+            }
+            if let Some(default_path) = typesetter_storage_path() {
+                let _ = std::fs::write(default_path, &json_str);
             }
         }
     }
@@ -228,11 +245,25 @@ impl TypesetterUi {
                         self.dock_mode = data.dock_mode;
                         self.state = data.state;
                         self.selected_folder = data.selected_folder;
-                        if !self.state.presets.is_empty() {
-                            return;
-                        }
+                        self.custom_storage_dir = data.custom_storage_dir;
                     } else if let Ok(count) = self.state.import_styles_json(&content) {
                         if count > 0 {
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(custom_dir) = &self.custom_storage_dir {
+            let custom_path = custom_dir.join("typesetter_state.json");
+            if custom_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&custom_path) {
+                    if let Ok(data) = serde_json::from_str::<TypesetterPersistedState>(&content) {
+                        self.dock_mode = data.dock_mode;
+                        self.state = data.state;
+                        self.selected_folder = data.selected_folder;
+                        if !self.state.presets.is_empty() {
                             return;
                         }
                     }
@@ -263,8 +294,12 @@ impl TypesetterUi {
     pub fn render_embedded(&mut self, ui: &mut egui::Ui) -> Option<TypesetterAction> {
         self.rendered_this_frame = true;
         let mut action = None;
-        self.render_header_toolbar(ui);
-        self.render_body(ui, &mut action);
+        egui::Frame::NONE
+            .inner_margin(egui::Margin { left: 6, right: 6, top: 4, bottom: 4 })
+            .show(ui, |ui| {
+                self.render_header_toolbar(ui);
+                self.render_body(ui, &mut action);
+            });
         action
     }
 
@@ -761,7 +796,7 @@ impl TypesetterUi {
                 .inner_margin(Margin::same(6))
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Имя папки:").color(t.text).small());
+                        ui.label(RichText::new(format!("{}:", tl!("Folder name"))).color(t.text).small());
                         ui.text_edit_singleline(&mut self.new_folder_name_buffer);
                         if ui.button("OK").clicked() {
                             let name = self.new_folder_name_buffer.trim().to_string();
@@ -770,7 +805,7 @@ impl TypesetterUi {
                             }
                             self.creating_new_folder = false;
                         }
-                        if ui.button("Отмена").clicked() {
+                        if ui.button(tl!("Cancel")).clicked() {
                             self.creating_new_folder = false;
                         }
                     });
@@ -784,16 +819,16 @@ impl TypesetterUi {
                 .corner_radius(CornerRadius::same(t.radius_sm as u8))
                 .inner_margin(Margin::same(6))
                 .show(ui, |ui| {
-                    ui.label(RichText::new(format!("Дублировать папку '{}':", src_folder)).color(t.text).strong().small());
+                    ui.label(RichText::new(format!("{}: '{}'", tl!("Duplicate folder"), src_folder)).color(t.text).strong().small());
                     ui.horizontal(|ui| {
                         ui.text_edit_singleline(&mut self.duplicate_folder_name_buffer);
                         if ui.button("OK").clicked() {
                             let count = self.state.duplicate_folder(&src_folder, &self.duplicate_folder_name_buffer);
-                            self.status_message = Some(format!("Папка продублирована ({} стилей)", count));
+                            self.status_message = Some(format!("{}: {}", tl!("Folder duplicated"), count));
                             self.duplicating_folder = None;
                             self.auto_save();
                         }
-                        if ui.button("Отмена").clicked() {
+                        if ui.button(tl!("Cancel")).clicked() {
                             self.duplicating_folder = None;
                         }
                     });
@@ -1493,21 +1528,36 @@ impl TypesetterUi {
 
     /// Модальное окно редактирования настроек конкретного шрифта и стиля.
     fn render_font_settings_modal(&mut self, ui: &mut egui::Ui, idx: usize, close_modal: &mut bool) {
+        let available_folders = self.state.folders();
         let mut to_delete = false;
         let mut to_duplicate = false;
         let mut changed = false;
 
         if let Some(preset) = self.state.presets.get_mut(idx) {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Имя стиля:").strong());
+                ui.label(RichText::new(format!("{}:", tl!("Style name"))).strong());
                 if ui.text_edit_singleline(&mut preset.name).changed() {
                     changed = true;
                 }
             });
 
             ui.horizontal(|ui| {
-                ui.label("Папка:");
+                ui.label(format!("{}:", tl!("Folder")));
                 let mut folder_str = preset.folder.clone().unwrap_or_default();
+                egui::ComboBox::from_id_salt("edit_preset_folder_combo")
+                    .selected_text(if folder_str.is_empty() { tl!("No folder") } else { &folder_str })
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(folder_str.is_empty(), tl!("No folder")).clicked() {
+                            preset.folder = None;
+                            changed = true;
+                        }
+                        for f in &available_folders {
+                            if ui.selectable_label(&folder_str == f, f).clicked() {
+                                preset.folder = Some(f.clone());
+                                changed = true;
+                            }
+                        }
+                    });
                 if ui.text_edit_singleline(&mut folder_str).changed() {
                     preset.folder = if folder_str.trim().is_empty() {
                         None
@@ -1520,9 +1570,9 @@ impl TypesetterUi {
 
             ui.separator();
 
-            ui.label(RichText::new("Гарнитура и начертание").strong());
+            ui.label(RichText::new(tl!("Typography and Font")).strong());
             ui.horizontal(|ui| {
-                ui.label("Шрифт:");
+                ui.label(format!("{}:", tl!("Font")));
                 if ui.text_edit_singleline(&mut preset.font_family).changed() {
                     changed = true;
                 }
@@ -1533,14 +1583,14 @@ impl TypesetterUi {
                 if ui.text_edit_singleline(&mut preset.font_postscript).changed() {
                     changed = true;
                 }
-                ui.label("Начертание:");
+                ui.label(format!("{}:", tl!("Style")));
                 if ui.text_edit_singleline(&mut preset.font_style).changed() {
                     changed = true;
                 }
             });
 
             ui.horizontal(|ui| {
-                if ui.checkbox(&mut preset.bold, "Жирный (Bold)").changed() {
+                if ui.checkbox(&mut preset.bold, tl!("Bold")).changed() {
                     if preset.bold && !preset.font_style.to_lowercase().contains("bold") {
                         preset.font_style = if preset.italic { "Bold Italic".into() } else { "Bold".into() };
                     } else if !preset.bold && preset.font_style.to_lowercase().contains("bold") {
@@ -1548,7 +1598,7 @@ impl TypesetterUi {
                     }
                     changed = true;
                 }
-                if ui.checkbox(&mut preset.italic, "Курсив (Italic)").changed() {
+                if ui.checkbox(&mut preset.italic, tl!("Italic")).changed() {
                     if preset.italic && !preset.font_style.to_lowercase().contains("italic") {
                         preset.font_style = if preset.bold { "Bold Italic".into() } else { "Italic".into() };
                     } else if !preset.italic && preset.font_style.to_lowercase().contains("italic") {
@@ -1563,9 +1613,9 @@ impl TypesetterUi {
 
             ui.separator();
 
-            ui.label(RichText::new("Размеры типографики (Line Spacing Sync)").strong());
+            ui.label(RichText::new(tl!("Typography Size (Line Spacing Sync)")).strong());
             ui.horizontal(|ui| {
-                ui.label("Кегль (pt):");
+                ui.label(format!("{}:", tl!("Size (pt)")));
                 let mut size = preset.font_size;
                 if ui.add(egui::DragValue::new(&mut size).speed(0.5).range(4.0..=200.0)).changed() {
                     preset.sync_leading_with_size(size);
@@ -1583,18 +1633,18 @@ impl TypesetterUi {
             });
 
             ui.horizontal(|ui| {
-                ui.label("Интерлиньяж (Leading):");
+                ui.label(format!("{}:", tl!("Leading")));
                 if ui.add(egui::DragValue::new(&mut preset.leading).speed(0.5).range(4.0..=300.0)).changed() {
                     changed = true;
                 }
             });
 
             ui.horizontal(|ui| {
-                ui.label("Трекинг:");
+                ui.label(format!("{}:", tl!("Tracking")));
                 if ui.add(egui::DragValue::new(&mut preset.tracking).speed(1.0).range(-200..=1000)).changed() {
                     changed = true;
                 }
-                ui.label("Гориз. шкала (%):");
+                ui.label(format!("{}:", tl!("Horizontal scale (%)")));
                 if ui.add(egui::DragValue::new(&mut preset.horizontal_scale).speed(1.0).range(20.0..=300.0)).changed() {
                     changed = true;
                 }
@@ -1602,27 +1652,27 @@ impl TypesetterUi {
 
             ui.separator();
 
-            ui.label(RichText::new("Обводка текста").strong());
+            ui.label(RichText::new(tl!("Text Outline")).strong());
             ui.horizontal(|ui| {
-                ui.label("Толщина (px):");
+                ui.label(format!("{}:", tl!("Thickness (px)")));
                 if ui.add(egui::DragValue::new(&mut preset.stroke_width).speed(0.2).range(0.0..=30.0)).changed() {
                     changed = true;
                 }
-                let desc = if preset.stroke_width > 0.0 { "Включена" } else { "Без обводки" };
+                let desc = if preset.stroke_width > 0.0 { tl!("Enabled") } else { tl!("No outline") };
                 ui.label(RichText::new(desc).small().weak());
             });
 
             ui.separator();
 
             ui.horizontal(|ui| {
-                if ui.button("📋 Дублировать").on_hover_text("Создать копию этого стиля").clicked() {
+                if ui.button(tl!("Duplicate")).on_hover_text(tl!("Duplicate this style")).clicked() {
                     to_duplicate = true;
                 }
-                if ui.button("🗑 Удалить").on_hover_text("Удалить этот стиль").clicked() {
+                if ui.button(tl!("Delete")).on_hover_text(tl!("Delete this style")).clicked() {
                     to_delete = true;
                 }
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("✓ Готово").clicked() {
+                    if ui.button(tl!("Done")).clicked() {
                         *close_modal = true;
                     }
                 });
@@ -1682,16 +1732,34 @@ impl TypesetterUi {
 
             ui.label(RichText::new(tl!("GEOMETRY & CENTERING")).size(11.0).color(t.text_dim).strong());
 
-            ui.horizontal(|ui| {
+            let avail_w = ui.available_width();
+            if avail_w < 340.0 {
                 ui.label(RichText::new(tl!("Baseline shift:")).color(t.text));
-                if ui.add(
+                let slider_w = (ui.available_width() - 8.0).max(120.0);
+                if ui.add_sized(
+                    [slider_w, 20.0],
                     egui::Slider::new(&mut self.state.options.optical_baseline_factor, 0.0..=0.6)
                         .show_value(true)
-                        .suffix(" ×"),
+                        .suffix(" ×")
+                        .max_decimals(3),
                 ).changed() {
                     self.auto_save();
                 }
-            });
+            } else {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(tl!("Baseline shift:")).color(t.text));
+                    let slider_w = (ui.available_width() - 8.0).max(120.0);
+                    if ui.add_sized(
+                        [slider_w, 20.0],
+                        egui::Slider::new(&mut self.state.options.optical_baseline_factor, 0.0..=0.6)
+                            .show_value(true)
+                            .suffix(" ×")
+                            .max_decimals(3),
+                    ).changed() {
+                        self.auto_save();
+                    }
+                });
+            }
             ui.label(
                 RichText::new(tl!("Shifting the baseline down ensures precise visual vertical centering inside bubbles."))
                     .color(t.text_faint)
@@ -1702,17 +1770,62 @@ impl TypesetterUi {
             ui.add_space(4.0);
 
             ui.label(RichText::new(tl!("PRESET STORAGE")).size(11.0).color(t.text_dim).strong());
-            if let Some(path) = typesetter_storage_path() {
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(format!("{}: {}", tl!("File:"), path.display()))
-                            .color(t.text_faint)
-                            .small(),
-                    ).truncate(),
-                ).on_hover_text(path.display().to_string());
+            if let Some(path) = self.storage_path() {
+                let dir_str = path.parent().map(|p| p.display().to_string()).unwrap_or_else(|| ".".into());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("{}:", tl!("Folder"))).color(t.text_dim).small());
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&dir_str)
+                                .color(t.text_faint)
+                                .small(),
+                        ).truncate(),
+                    ).on_hover_text(&dir_str);
+                });
+                let file_str = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "typesetter_state.json".into());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("{}:", tl!("File"))).color(t.text_dim).small());
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&file_str)
+                                .color(t.text_faint)
+                                .small(),
+                        ).truncate(),
+                    ).on_hover_text(path.display().to_string());
+                });
             }
 
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(tl!("Choose folder…")).on_hover_text(tl!("Choose a custom directory to store typesetter presets and state")).clicked() {
+                    let mut dlg = rfd::FileDialog::new().set_title(tl!("Choose presets folder"));
+                    if let Some(curr) = self.storage_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
+                        dlg = dlg.set_directory(&curr);
+                    }
+                    if let Some(folder) = dlg.pick_folder() {
+                        self.custom_storage_dir = Some(folder.clone());
+                        self.auto_save();
+                        self.status_message = Some(format!("{}: {}", tl!("Storage folder set"), folder.display()));
+                        self.status_error = false;
+                    }
+                }
+                if ui.button(tl!("Open folder")).on_hover_text(tl!("Open presets folder in file manager")).clicked() {
+                    if let Some(path) = self.storage_path() {
+                        if let Some(dir) = path.parent() {
+                            #[cfg(windows)]
+                            {
+                                let _ = std::process::Command::new("explorer").arg(dir).spawn();
+                            }
+                            #[cfg(target_os = "macos")]
+                            {
+                                let _ = std::process::Command::new("open").arg(dir).spawn();
+                            }
+                            #[cfg(not(any(windows, target_os = "macos")))]
+                            {
+                                let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+                            }
+                        }
+                    }
+                }
                 if ui.button(tl!("Save now")).clicked() {
                     self.auto_save();
                     self.status_message = Some(tl!("Presets saved").into());
@@ -1722,6 +1835,14 @@ impl TypesetterUi {
                     self.auto_load();
                     self.status_message = Some(tl!("Presets loaded from file").into());
                     self.status_error = false;
+                }
+                if self.custom_storage_dir.is_some() {
+                    if ui.button(tl!("Reset folder")).on_hover_text(tl!("Reset presets storage to default AppData directory")).clicked() {
+                        self.custom_storage_dir = None;
+                        self.auto_save();
+                        self.status_message = Some(tl!("Storage folder reset to default").into());
+                        self.status_error = false;
+                    }
                 }
             });
         });
