@@ -1,4 +1,4 @@
-//! Application-owned panel IDs and commands around the shared docking layout.
+﻿//! Application-owned panel IDs and commands around the shared docking layout.
 
 use crate::dock::Group;
 use craft_ui::docking::{Action, Floating, Layout, Node, Placement, Zone};
@@ -17,6 +17,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("adjustments", "Adjustments", Group::Properties),
     ("character", "Character", Group::Character),
     ("paragraph", "Paragraph", Group::Character),
+    ("typesetter", "TypeR Manga", Group::Character),
     ("brushes", "Brushes", Group::Brushes),
     ("navigator", "Navigator", Group::Navigator),
     ("histogram", "Histogram", Group::Navigator),
@@ -503,20 +504,62 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
         }
         ui.ctx().data_mut(|data| data.remove::<LegacyDrag>(egui::Id::new("photocraft-panel-docking").with("legacy-origin")));
     }
+    let tools_w = crate::panels::toolbar_width(t.pro, app.ui.panels.toolbar_double);
     if let Some(panel) = output.group_drag.as_ref()
         && let Some(pointer) = ui.ctx().pointer_interact_pos()
     {
-        let members = group_members(&layout, panel);
-        let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
-        if let Some(proposal) = craft_ui::docking::resolve_drop(panel, pointer, &eligible) {
-            ui.painter().rect_stroke(proposal.preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
+        if let Some((_edge, preview)) = detect_edge_zone(ui.ctx(), pointer, tools_w) {
+            ui.painter().rect_filled(preview, 0.0, t.accent.gamma_multiply(0.18));
+            ui.painter().rect_stroke(preview, 0.0, egui::Stroke::new(2.5, t.accent), egui::StrokeKind::Inside);
+        } else {
+            let members = group_members(&layout, panel);
+            let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
+            if let Some(proposal) = craft_ui::docking::resolve_drop(panel, pointer, &eligible) {
+                ui.painter().rect_stroke(proposal.preview, 0.0, egui::Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
+            }
         }
     }
     if let Some((panel, pointer)) = output.group_drop {
-        let members = group_members(&layout, &panel);
-        let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
-        if let Some(proposal) = craft_ui::docking::resolve_drop(&panel, pointer, &eligible) {
-            commands.push(("window.panel.group", json!({"panel":panel,"operation":"move","anchor":proposal.anchor,"placement":proposal.placement})));
+        if let Some((edge, _)) = detect_edge_zone(ui.ctx(), pointer, tools_w) {
+            match edge {
+                EdgeZone::Left => {
+                    if panel == "typesetter" {
+                        app.typesetter.dock_mode = crate::typesetter_ui::TypesetterDockMode::DockLeft;
+                        app.ui.panels.left_dock = true;
+                        app.typesetter.auto_save();
+                    } else {
+                        let node = Node::Tabs { panels: vec![panel.clone()], active: 0 };
+                        app.ui.docking_left = Some(Layout { root: Some(node), floating: Vec::new() });
+                        app.ui.panels.left_dock = true;
+                        let _ = app.run("window.panel.close", json!({"panel": panel}));
+                    }
+                }
+                EdgeZone::Right => {
+                    if panel == "typesetter" {
+                        app.typesetter.dock_mode = crate::typesetter_ui::TypesetterDockMode::DockRight;
+                        app.ui.panels.dock = true;
+                        app.typesetter.auto_save();
+                    }
+                }
+                EdgeZone::Bottom => {
+                    if panel == "typesetter" {
+                        app.typesetter.dock_mode = crate::typesetter_ui::TypesetterDockMode::DockBottom;
+                        app.ui.panels.bottom_dock = true;
+                        app.typesetter.auto_save();
+                    } else {
+                        let node = Node::Tabs { panels: vec![panel.clone()], active: 0 };
+                        app.ui.docking_bottom = Some(Layout { root: Some(node), floating: Vec::new() });
+                        app.ui.panels.bottom_dock = true;
+                        let _ = app.run("window.panel.close", json!({"panel": panel}));
+                    }
+                }
+            }
+        } else {
+            let members = group_members(&layout, &panel);
+            let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
+            if let Some(proposal) = craft_ui::docking::resolve_drop(&panel, pointer, &eligible) {
+                commands.push(("window.panel.group", json!({"panel":panel,"operation":"move","anchor":proposal.anchor,"placement":proposal.placement})));
+            }
         }
     }
     for action in output.actions {
@@ -675,7 +718,146 @@ pub(crate) fn legacy_tab(app: &mut PhotocraftApp, ui: &mut egui::Ui, panel: &str
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EdgeZone {
+    Left,
+    Right,
+    Bottom,
+}
+
+pub(crate) fn detect_edge_zone(ctx: &egui::Context, pointer: egui::Pos2, toolbar_w: f32) -> Option<(EdgeZone, egui::Rect)> {
+    let screen = ctx.content_rect();
+    let top_y = 68.0;
+    let bottom_y = screen.bottom() - 30.0;
+    if pointer.y < top_y || pointer.y > bottom_y {
+        return None;
+    }
+
+    // Left edge zone (near toolbar)
+    let left_zone = egui::Rect::from_min_max(
+        egui::pos2(toolbar_w, top_y),
+        egui::pos2(toolbar_w + 55.0, bottom_y - 50.0),
+    );
+    if left_zone.contains(pointer) {
+        let preview = egui::Rect::from_min_size(
+            egui::pos2(toolbar_w, top_y),
+            egui::vec2(280.0, (bottom_y - top_y).max(100.0)),
+        );
+        return Some((EdgeZone::Left, preview));
+    }
+
+    // Right edge zone
+    let right_zone = egui::Rect::from_min_max(
+        egui::pos2(screen.right() - 55.0, top_y),
+        egui::pos2(screen.right(), bottom_y - 50.0),
+    );
+    if right_zone.contains(pointer) {
+        let preview = egui::Rect::from_min_size(
+            egui::pos2(screen.right() - 300.0, top_y),
+            egui::vec2(300.0, (bottom_y - top_y).max(100.0)),
+        );
+        return Some((EdgeZone::Right, preview));
+    }
+
+    // Bottom edge zone
+    let bottom_zone = egui::Rect::from_min_max(
+        egui::pos2(toolbar_w + 50.0, bottom_y - 55.0),
+        egui::pos2(screen.right() - 50.0, bottom_y),
+    );
+    if bottom_zone.contains(pointer) {
+        let preview = egui::Rect::from_min_size(
+            egui::pos2(toolbar_w, (bottom_y - 200.0).max(top_y)),
+            egui::vec2((screen.width() - toolbar_w).max(200.0), 200.0),
+        );
+        return Some((EdgeZone::Bottom, preview));
+    }
+
+    None
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(dead_code)]
+pub(crate) enum DockSide {
+    Left,
+    Right,
+    Bottom,
+}
+
+pub(crate) fn show_side_dock(
+    app: &mut PhotocraftApp,
+    ui: &mut egui::Ui,
+    layout: &craft_ui::docking::Layout<String>,
+    _side: DockSide,
+) {
+    let t = crate::theme::Tokens::get(ui.ctx());
+    let locked = app.session.prefs().workspace_locked;
+    let collapsed = collapsed_members(app, layout);
+    let mut commands = Vec::new();
+    let mut targets = Vec::new();
+
+    let mut style = craft_ui::docking::DockStyle::from_ui(ui);
+    style.tab_height = if t.pro { 28.0 } else { 40.0 };
+    style.min_pane = 0.0;
+    style.background = t.card;
+    style.tab_background = if t.tab_strip.a() == 0 { t.card } else { t.tab_strip };
+    style.active_background = t.card;
+    style.text = t.text;
+    style.inactive_text = t.text_dim;
+    style.border = egui::Stroke::new(1.0, t.card_border);
+    style.accent = t.accent;
+    style.float_label = tl!("Float Panel").to_string();
+    style.close_label = tl!("Close Panel").to_string();
+    style.move_label = tl!("Group with").to_string();
+    style.panels_label = tl!("Panels").to_string();
+    style.resize_label = tl!("Resize panels").to_string();
+    style.resize_window_label = tl!("Resize panel window").to_string();
+
+    let tools_w = crate::panels::toolbar_width(t.pro, app.ui.panels.toolbar_double);
+    let area = craft_ui::docking::DockArea::new(egui::Id::new("photocraft-side-docking"));
+    let output = area.show_customized(
+        ui,
+        layout,
+        &style,
+        |id| {
+            if id == TOOLS {
+                return tl!("Toolbar").to_string();
+            }
+            PANELS.iter().find(|p| p.0 == id).map(|p| tl!(p.1).to_string()).unwrap_or_else(|| id.clone())
+        },
+        |_| craft_ui::docking::Permissions { movable: !locked, floatable: !locked, closable: !locked, accepts_tabs: !locked },
+        |id| {
+            if id == TOOLS {
+                return craft_ui::docking::PanelLimits { min: egui::vec2(tools_w, 160.0), max: egui::vec2(tools_w, 1_000_000.0) };
+            }
+            if collapsed.contains(id) {
+                craft_ui::docking::PanelLimits { min: egui::vec2(200.0, 0.0), max: egui::vec2(1_000_000.0, 0.0) }
+            } else {
+                let height = if id == "layers" { 220.0 } else if id == "typesetter" { 200.0 } else { 80.0 };
+                craft_ui::docking::PanelLimits { min: egui::vec2(200.0, height), ..Default::default() }
+            }
+        },
+        &mut PanelContent { app, collapsed: &collapsed, commands: &mut commands, targets: &mut targets },
+    );
+
+    for action in output.actions {
+        if let Err(error) = app.run("window.panel.layout", json!({"action": action})) {
+            app.ui.status = error;
+        }
+    }
+    for (id, params) in commands {
+        if let Err(error) = app.run(id, params) {
+            app.ui.status = error;
+        }
+    }
+}
+
 fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: &str) {
+    if id == "typesetter" {
+        if let Some(action) = app.typesetter.render_embedded(ui) {
+            app.handle_typesetter_action(action);
+        }
+        return;
+    }
     let Some((_, label, group)) = PANELS.iter().find(|p| p.0 == id) else { return };
     let pro = crate::theme::Tokens::get(ui.ctx()).pro;
     let Some(tab) = group.tabs(pro).iter().position(|name| name == label) else { return };
@@ -1066,6 +1248,12 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
     fn body(&mut self, ui: &mut egui::Ui, id: &String) {
         if id == TOOLS {
             crate::panels::toolbar_docked(self.app, ui);
+            return;
+        }
+        if id == "typesetter" {
+            if let Some(action) = self.app.typesetter.render_embedded(ui) {
+                self.app.handle_typesetter_action(action);
+            }
             return;
         }
         if let Some(target) = self.targets.iter_mut().find(|target| target.anchor == *id) {

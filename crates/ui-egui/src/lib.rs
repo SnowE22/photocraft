@@ -2698,6 +2698,11 @@ impl PhotocraftApp {
             panels::toolbar(self, ui);
             self.perf.span("ui: toolbar", gpu_canvas::now_ms() - t);
         }
+        if (chrome && self.ui.panels.left_dock) || tabbed_in {
+            let t = gpu_canvas::now_ms();
+            panels::left_dock(self, ui);
+            self.perf.span("ui: left dock", gpu_canvas::now_ms() - t);
+        }
         if (chrome && self.ui.panels.dock) || tabbed_in {
             let t = gpu_canvas::now_ms();
             panels::right_dock(self, ui);
@@ -2705,6 +2710,11 @@ impl PhotocraftApp {
         } else if chrome && self.ui.panels.toolbar {
             // With the dock hidden, a Tools panel docked at that side still shows.
             panels::toolbar_end(self, ui);
+        }
+        if (chrome && self.ui.panels.bottom_dock) || tabbed_in {
+            let t = gpu_canvas::now_ms();
+            panels::bottom_dock(self, ui);
+            self.perf.span("ui: bottom dock", gpu_canvas::now_ms() - t);
         }
         let typesetter_action = if self.ui.panels.typesetter {
             self.typesetter.is_open = true;

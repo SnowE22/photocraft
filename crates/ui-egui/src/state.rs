@@ -1,4 +1,4 @@
-//! UI state as plain data, so the control channel (and later MCP) can read and drive every
+﻿//! UI state as plain data, so the control channel (and later MCP) can read and drive every
 //! aspect of the interface: tools, zoom, panels, dialogs and windows.
 
 use serde::{Deserialize, Serialize};
@@ -530,6 +530,12 @@ pub struct Panels {
     /// Window > TypeR Manga: manga typesetter and dialogue style presets.
     #[serde(default = "yes")]
     pub typesetter: bool,
+    /// Window > Left Dock: secondary panel dock on the left side beside toolbar.
+    #[serde(default = "yes")]
+    pub left_dock: bool,
+    /// Window > Bottom Dock: horizontal panel dock along the bottom.
+    #[serde(default = "yes")]
+    pub bottom_dock: bool,
 }
 
 impl Default for Panels {
@@ -557,7 +563,9 @@ impl Default for Panels {
             menu_bar: true,
             gradient_editor: false,
             canvas_capsule: true,
-            typesetter: true,
+            typesetter: false,
+            left_dock: true,
+            bottom_dock: true,
         }
     }
 }
@@ -1602,6 +1610,10 @@ pub struct UiState {
     /// Authoritative custom panel membership and placement; legacy fields are compatibility projections.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docking: Option<craft_ui::docking::Layout<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docking_left: Option<craft_ui::docking::Layout<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docking_bottom: Option<craft_ui::docking::Layout<String>>,
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub docking_hidden: std::collections::BTreeMap<String, craft_ui::docking::Location<String>>,
     /// Invalidates in-flight gestures when a workspace is replaced.
@@ -1753,6 +1765,8 @@ impl Default for UiState {
             dock_tabs: DockTabs::default(),
             dock: Default::default(),
             docking: None,
+            docking_left: None,
+            docking_bottom: None,
             docking_hidden: Default::default(),
             docking_generation: 0,
             docking_collapsed: Vec::new(),

@@ -2044,6 +2044,37 @@ pub fn status_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
 
 // ----------------------------------------------------------------------------- dock
 
+pub fn left_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if !app.ui.panels.left_dock {
+        return;
+    }
+    let typesetter_here = app.ui.panels.typesetter
+        && app.typesetter.is_open
+        && app.typesetter.dock_mode == crate::typesetter_ui::TypesetterDockMode::DockLeft;
+    let has_layout_panels = app.ui.docking_left.as_ref().is_some_and(|l| l.root.is_some());
+
+    if !typesetter_here && !has_layout_panels {
+        return;
+    }
+
+    let t = Tokens::get(ui.ctx());
+    let default_w = if t.pro { 280.0 } else { 300.0 };
+    egui::Panel::left("shared-left-dock")
+        .default_size(default_w)
+        .size_range(200.0..=520.0)
+        .resizable(true)
+        .frame(egui::Frame::NONE.fill(t.card))
+        .show(ui, |ui| {
+            if typesetter_here {
+                if let Some(action) = app.typesetter.render_embedded(ui) {
+                    app.handle_typesetter_action(action);
+                }
+            } else if let Some(layout) = app.ui.docking_left.clone() {
+                crate::panel_docking::show_side_dock(app, ui, &layout, crate::panel_docking::DockSide::Left);
+            }
+        });
+}
+
 pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     // Even legacy destinations must discard gestures captured by an earlier workspace.
     let customized = crate::panel_docking::show(app, ui);
@@ -2107,6 +2138,36 @@ pub fn right_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
         toolbar_end(app, ui);
     }
     crate::dock::persist(app, ui.ctx());
+}
+
+pub fn bottom_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
+    if !app.ui.panels.bottom_dock {
+        return;
+    }
+    let typesetter_here = app.ui.panels.typesetter
+        && app.typesetter.is_open
+        && app.typesetter.dock_mode == crate::typesetter_ui::TypesetterDockMode::DockBottom;
+    let has_layout_panels = app.ui.docking_bottom.as_ref().is_some_and(|l| l.root.is_some());
+
+    if !typesetter_here && !has_layout_panels {
+        return;
+    }
+
+    let t = Tokens::get(ui.ctx());
+    egui::Panel::bottom("shared-bottom-dock")
+        .default_size(240.0)
+        .size_range(140.0..=480.0)
+        .resizable(true)
+        .frame(egui::Frame::NONE.fill(t.card))
+        .show(ui, |ui| {
+            if typesetter_here {
+                if let Some(action) = app.typesetter.render_embedded(ui) {
+                    app.handle_typesetter_action(action);
+                }
+            } else if let Some(layout) = app.ui.docking_bottom.clone() {
+                crate::panel_docking::show_side_dock(app, ui, &layout, crate::panel_docking::DockSide::Bottom);
+            }
+        });
 }
 
 /// The dock's narrowest width (points). It is the right dock, on the left in a right-to-left UI.

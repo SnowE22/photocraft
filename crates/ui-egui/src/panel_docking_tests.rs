@@ -828,3 +828,40 @@ fn the_dock_can_be_as_wide_as_the_window_allows() {
         assert_eq!((*range.start(), *range.end()), (crate::panels::DOCK_MIN_WIDTH, max), "{window}");
     }
 }
+
+
+#[test]
+fn multi_sided_docking_edge_snapping_and_typesetter_registration() {
+    // 1. Verify typesetter is registered in PANELS
+    assert!(PANELS.iter().any(|(id, label, _)| *id == "typesetter" && *label == "TypeR Manga"));
+
+    // 2. Test harness with ctx to test detect_edge_zone
+    let h = harness(app(), vec2(1280.0, 800.0));
+    let toolbar_w = 40.0;
+
+    // Pointer near left edge (toolbar_w = 40.0, x = 60.0 is within 40.0..95.0, y = 300.0)
+    let left_zone = detect_edge_zone(&h.ctx, Pos2::new(60.0, 300.0), toolbar_w);
+    assert_eq!(left_zone.map(|(z, _)| z), Some(EdgeZone::Left));
+
+    // Pointer near right edge (x = 1260.0 is within 1280.0 - 55.0..1280.0, y = 300.0)
+    let right_zone = detect_edge_zone(&h.ctx, Pos2::new(1260.0, 300.0), toolbar_w);
+    assert_eq!(right_zone.map(|(z, _)| z), Some(EdgeZone::Right));
+
+    // Pointer near bottom edge (y = 750.0 is within 770.0 - 55.0..770.0, x = 500.0)
+    let bottom_zone = detect_edge_zone(&h.ctx, Pos2::new(500.0, 750.0), toolbar_w);
+    assert_eq!(bottom_zone.map(|(z, _)| z), Some(EdgeZone::Bottom));
+
+    // Center pointer has no edge zone
+    let center_zone = detect_edge_zone(&h.ctx, Pos2::new(500.0, 300.0), toolbar_w);
+    assert_eq!(center_zone, None);
+
+    // 3. Test typesetter float & dock commands
+    let mut test_app = app();
+    test_app.run("window.panel.float", json!({"panel": "typesetter", "x": 100, "y": 100, "width": 400, "height": 300})).unwrap();
+    assert!(test_app.ui.docking.as_ref().unwrap().floating.iter().any(|g| g.panels.contains(&"typesetter".into())));
+
+    // Dock it back
+    test_app.run("window.panel.dock", json!({"panel": "typesetter"})).unwrap();
+    assert!(!test_app.ui.docking.as_ref().unwrap().floating.iter().any(|g| g.panels.contains(&"typesetter".into())));
+    assert!(test_app.ui.docking.as_ref().unwrap().contains(&"typesetter".into()));
+}
