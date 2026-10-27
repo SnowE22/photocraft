@@ -1324,6 +1324,7 @@ mod tests {
             "Opaque Paper",
             "Pattern Name",
             "Preserve Lines",
+            "Quick Adjust HUD…",
             "Sheet / Pattern",
             "Tone Gamma:",
             "White Cutoff:",

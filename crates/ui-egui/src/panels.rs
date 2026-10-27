@@ -5484,9 +5484,34 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
     }
     for (i, (name, on, kind)) in rows.into_iter().enumerate() {
         let (rect, resp) = ui.allocate_exact_size(vec2(ui.available_width(), 22.0), Sense::click_and_drag());
-        // Drag the row onto another layer to move its effects there, ⌥-drag to copy them.
-        if resp.drag_started() {
-            start_fx_drag(ui.ctx(), l.id, i.checked_sub(1));
+        let fx_opt = i.checked_sub(1).and_then(|idx| l.effects.items.get(idx));
+        if let Some(fx) = fx_opt {
+            if let Some(param) = crate::fx_scrub::primary_param(fx) {
+                let scrub = crate::fx_scrub::handle_effect_drag(ui.ctx(), &resp, l.id, i - 1, &l.effects.items, param, true);
+                if scrub.trigger_dnd {
+                    start_fx_drag(ui.ctx(), l.id, Some(i - 1));
+                }
+                if let Some(action) = scrub.action {
+                    actions.push(action);
+                }
+            } else if resp.drag_started() {
+                start_fx_drag(ui.ctx(), l.id, Some(i - 1));
+            }
+            if resp.clicked() && ui.input(|inp| inp.modifiers.alt) {
+                let anchor = crate::fx_scrub::compute_hud_anchor(ui.ctx(), rect, 190.0);
+                ui.ctx().data_mut(|d| {
+                    d.insert_temp(
+                        crate::fx_scrub::hud_state_id(),
+                        crate::fx_scrub::FxHudState {
+                            layer_id: l.id,
+                            effect_idx: i - 1,
+                            anchor_pos: anchor,
+                        },
+                    );
+                });
+            }
+        } else if i == 0 && resp.drag_started() {
+            start_fx_drag(ui.ctx(), l.id, None);
         }
         if !ui.is_rect_visible(rect) {
             continue;
@@ -5521,11 +5546,26 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
             ui.painter(),
             x,
             rect.center().y,
-            right,
+            right - 30.0,
             &name,
             egui::FontId::proportional(11.5),
             if on { t.text_dim } else { t.text_faint },
         );
+        if let Some(fx) = fx_opt
+            && let Some(param) = crate::fx_scrub::primary_param(fx)
+        {
+            let val = (param.getter)(fx);
+            let val_str = param.format(val);
+            let val_font = egui::FontId::proportional(10.5);
+            let val_color = if resp.hovered() { t.text_dim } else { t.text_faint.gamma_multiply(0.7) };
+            ui.painter().text(
+                pos2(right - 2.0, rect.center().y),
+                egui::Align2::RIGHT_CENTER,
+                val_str,
+                val_font,
+                val_color,
+            );
+        }
         resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, name.clone()));
         if resp.double_clicked() {
             crate::layer_style::open_for_layer(app, l.id, kind);
@@ -5533,8 +5573,28 @@ fn effect_rows(app: &mut PhotocraftApp, ui: &mut egui::Ui, l: &Layer, depth: usi
         // #2846: right-click opens the layer style menu (Create Layer, Copy Layer Style…), as in Photoshop.
         resp.context_menu(|ui| {
             crate::widgets::style_spectrum_popup_menu(ui);
+            if i >= 1 {
+                if ui.button(tl!("Quick Adjust HUD…")).clicked() {
+                    let anchor = crate::fx_scrub::compute_hud_anchor(ui.ctx(), rect, 190.0);
+                    ui.ctx().data_mut(|d| {
+                        d.insert_temp(
+                            crate::fx_scrub::hud_state_id(),
+                            crate::fx_scrub::FxHudState {
+                                layer_id: l.id,
+                                effect_idx: i - 1,
+                                anchor_pos: anchor,
+                            },
+                        );
+                    });
+                    ui.close();
+                }
+                ui.separator();
+            }
             crate::layer_menu_ui::show_effects(app, ui, l, actions);
         });
+    }
+    if let Some(st) = app.session.active() {
+        crate::fx_scrub::render_fx_hud(ui.ctx(), &st.doc, actions);
     }
 }
 
