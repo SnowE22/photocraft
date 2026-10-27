@@ -303,6 +303,12 @@ fn engine_commands_open_their_dialogs() {
     assert_eq!(app.ui.views[0].zoom, 4.0);
     crate::menus::invoke_unguarded(&mut app, &ctx, "file.closeAll", json!({})).unwrap();
     assert!(app.ui.views.is_empty() && app.session.documents().is_empty());
+
+    // Closing all when documents are already empty succeeds without error and button is disabled
+    let res = crate::menus::invoke_unguarded(&mut app, &ctx, "file.closeAll", json!({}));
+    assert!(res.is_ok());
+    assert_eq!(res.unwrap()["closed"], 0);
+    assert!(!crate::menus::is_enabled(&app, "file.closeAll"));
 }
 
 #[test]

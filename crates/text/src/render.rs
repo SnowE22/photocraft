@@ -18,7 +18,7 @@ use rayon::prelude::*;
 /// Faux-italic slant in degrees (Photoshop-like).
 pub const FAUX_ITALIC_DEG: f32 = 12.0;
 /// Faux-bold ring radius as a fraction of the font size (tuned so stem weight stays close to the old summed-coverage look).
-pub const FAUX_BOLD_RADIUS: f32 = 0.036;
+pub const FAUX_BOLD_RADIUS: f32 = 0.026;
 /// Largest raster we produce (pixels), as a guard against absurd sizes.
 const MAX_PIXELS: u64 = 256 * 1024 * 1024;
 /// Peak working bytes one rasterization may keep live. [`MAX_PIXELS`] does not bound them: the

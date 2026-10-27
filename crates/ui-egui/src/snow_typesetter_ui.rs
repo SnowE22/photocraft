@@ -1621,6 +1621,8 @@ impl TypesetterUi {
         let mut to_duplicate = false;
         let mut changed = false;
         let mut toggle_fav_font: Option<String> = None;
+        let mut toggle_sync = false;
+        let sync_leading = self.state.options.line_spacing_sync;
 
         if let Some(preset) = self.state.presets.get_mut(idx) {
             ui.horizontal(|ui| {
@@ -1764,17 +1766,41 @@ impl TypesetterUi {
                 ui.label(format!("{}:", tl!("Size (pt)")));
                 let mut size = preset.font_size;
                 if ui.add(egui::DragValue::new(&mut size).speed(0.5).range(4.0..=200.0)).changed() {
-                    preset.sync_leading_with_size(size);
+                    if sync_leading {
+                        preset.sync_leading_with_size(size);
+                    } else {
+                        preset.font_size = size;
+                    }
                     changed = true;
                 }
 
                 if ui.small_button("A-").clicked() {
-                    preset.sync_leading_with_size((preset.font_size - 1.0).max(4.0));
+                    let new_sz = (preset.font_size - 1.0).max(4.0);
+                    if sync_leading {
+                        preset.sync_leading_with_size(new_sz);
+                    } else {
+                        preset.font_size = new_sz;
+                    }
                     changed = true;
                 }
                 if ui.small_button("A+").clicked() {
-                    preset.sync_leading_with_size(preset.font_size + 1.0);
+                    let new_sz = preset.font_size + 1.0;
+                    if self.state.options.line_spacing_sync {
+                        preset.sync_leading_with_size(new_sz);
+                    } else {
+                        preset.font_size = new_sz;
+                    }
                     changed = true;
+                }
+
+                let link_icon = if sync_leading { "🔗" } else { "⛓" };
+                let link_tip = if sync_leading {
+                    "Связка кегля и интерлиньяжа активна (Leading меняется пропорционально)"
+                } else {
+                    "Связка кегля и интерлиньяжа отключена (Leading независим)"
+                };
+                if ui.selectable_label(sync_leading, link_icon).on_hover_text(link_tip).clicked() {
+                    toggle_sync = true;
                 }
             });
 
@@ -1844,6 +1870,11 @@ impl TypesetterUi {
                     }
                 });
             });
+        }
+
+        if toggle_sync {
+            self.state.options.line_spacing_sync = !self.state.options.line_spacing_sync;
+            self.auto_save();
         }
 
         if let Some(font) = toggle_fav_font {

@@ -89,7 +89,7 @@ impl TextStylePreset {
         let clamped = new_size.clamp(4.0, 500.0);
         if self.font_size > 0.0 {
             let ratio = clamped / self.font_size;
-            self.leading = (self.leading * ratio).round();
+            self.leading = ((self.leading * ratio) * 10.0).round() / 10.0;
         }
         self.font_size = clamped;
     }
@@ -793,25 +793,11 @@ pub fn clean_script_line(line: &str) -> String {
     clean_script_line_with_options(line, &TypesetterOptions::default())
 }
 
-/// Вычисляет приблизительную ширину символа с учетом начертания и масштаба.
-fn char_width_factor(c: char) -> f32 {
-    match c {
-        ' ' => 0.28,
-        'i' | 'j' | 'l' | '!' | ':' | ';' | '.' | ',' | '\'' | '`' | '|' => 0.26,
-        'f' | 'r' | 't' | '(' | ')' | '[' | ']' | '-' => 0.38,
-        'm' | 'w' | 'M' | 'W' | '—' => 0.85,
-        'Ж' | 'ж' | 'Ш' | 'ш' | 'Щ' | 'щ' | 'Ю' | 'ю' | 'Ы' | 'ы' => 0.82,
-        c if c.is_ascii_uppercase() => 0.65,
-        c if ('А'..='Я').contains(&c) || c == 'Ё' => 0.65,
-        c if c >= '\u{4E00}' && c <= '\u{9FFF}' => 1.0,
-        c if c >= '\u{3040}' && c <= '\u{30FF}' => 1.0,
-        c if c.is_uppercase() => 0.65,
-        _ => 0.52,
-    }
-}
+pub use crate::snow_knuth_plass::char_width_factor;
 
 /// Рассчитывает автоматический перенос слов (word wrap) для вставки текста в выделенный баббл/форму.
-/// Сохраняет форму баббла (балансировка строк к центру) и предотвращает вылет текста вправо.
+/// Использует типографическую привязку союзов/предлогов («висячка») и солвер Кнута—Пласса
+/// для балансировки строк по форме овального или ромбовидного манга-баблона.
 pub fn wrap_text_to_bubble(
     text: &str,
     bubble_width: f32,
@@ -819,72 +805,14 @@ pub fn wrap_text_to_bubble(
     dpi: f32,
     horizontal_scale_pct: f32,
 ) -> String {
-    let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed.contains('\n') || bubble_width <= 10.0 {
-        return text.to_string();
-    }
-
-    let dpi_scale = if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
-    let font_size_px = font_size_pt * dpi_scale;
-    let h_scale = (horizontal_scale_pct / 100.0).clamp(0.1, 5.0);
-    // Безопасная полезная ширина внутри овального баббла (~78% от габаритов)
-    let max_line_width = (bubble_width * 0.78).max(font_size_px * 2.0);
-
-    let words: Vec<&str> = trimmed.split_whitespace().collect();
-    if words.len() <= 1 {
-        return text.to_string();
-    }
-
-    let word_width = |w: &str| -> f32 {
-        let mut width = 0.0;
-        for c in w.chars() {
-            width += char_width_factor(c) * font_size_px * h_scale;
-        }
-        width
-    };
-
-    let space_width = char_width_factor(' ') * font_size_px * h_scale;
-    let word_widths: Vec<f32> = words.iter().map(|w| word_width(w)).collect();
-    let total_width: f32 = word_widths.iter().sum::<f32>() + (words.len() - 1) as f32 * space_width;
-
-    if total_width <= max_line_width {
-        return text.to_string();
-    }
-
-    let num_lines = ((total_width / max_line_width).ceil() as usize).max(2);
-    let target_line_width = (total_width / num_lines as f32).min(max_line_width);
-
-    let mut lines: Vec<String> = Vec::new();
-    let mut cur_line = String::new();
-    let mut cur_width = 0.0;
-
-    for (i, word) in words.iter().enumerate() {
-        let w_len = word_widths[i];
-        if cur_line.is_empty() {
-            cur_line.push_str(word);
-            cur_width = w_len;
-        } else {
-            let next_width = cur_width + space_width + w_len;
-            let exceeds_max = next_width > max_line_width;
-            let balanced_break = cur_width >= target_line_width && lines.len() + 1 < num_lines;
-
-            if exceeds_max || balanced_break {
-                lines.push(cur_line);
-                cur_line = word.to_string();
-                cur_width = w_len;
-            } else {
-                cur_line.push(' ');
-                cur_line.push_str(word);
-                cur_width = next_width;
-            }
-        }
-    }
-
-    if !cur_line.is_empty() {
-        lines.push(cur_line);
-    }
-
-    lines.join("\n")
+    crate::snow_knuth_plass::knuth_plass_bubble_wrap(
+        text,
+        bubble_width,
+        bubble_width * 1.2,
+        font_size_pt,
+        dpi,
+        horizontal_scale_pct,
+    )
 }
 
 /// Вычисляет геометрический центр ограничивающего прямоугольника [min_x, min_y, max_x, max_y] баббла.

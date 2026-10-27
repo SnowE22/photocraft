@@ -33,6 +33,8 @@ pub mod color_to_alpha_cmds;
 pub mod commands;
 pub mod snow_typesetter;
 pub use snow_typesetter as typesetter;
+pub mod snow_knuth_plass;
+pub use snow_knuth_plass as knuth_plass;
 pub mod comps_cmds;
 pub mod contour_lib_cmds;
 mod crop_fill;

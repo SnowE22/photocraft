@@ -1358,35 +1358,20 @@ impl PhotocraftApp {
             return;
         };
 
-        // 1. Приоритет: оптический центр выделенной области
-        let (selection_center, selection_width) = st.doc.selection.as_ref().and_then(|sel| {
+        // 1. Приоритет: границы выделенной области (Magic Wand / Лассо) для Box Text с нативным центрированием
+        let selection_box: Option<[f32; 4]> = st.doc.selection.as_ref().and_then(|sel| {
             let bounds = sel.content_bounds();
             if !bounds.is_empty() {
-                let cx = bounds.x0 as f32 + bounds.width() as f32 * 0.5;
-                // Сдвиг базовой линии вниз: если выбрана оптическая система, используем optical_baseline_factor (по умолчанию ~0.35)
-                // для точной вертикальной визуальной центровки в бабле. При метрической системе базовая линия центрируется по метрикам шрифта.
-                let baseline_shift = if action.preset.measurement_system.is_optical() {
-                    let factor = self.typesetter.state.options.optical_baseline_factor;
-                    action.preset.font_size * factor
-                } else {
-                    0.0
-                };
-                let cy = bounds.y0 as f32 + bounds.height() as f32 * 0.5 + baseline_shift;
-                Some(((cx, cy), bounds.width() as f32))
+                Some([
+                    bounds.x0 as f32,
+                    bounds.y0 as f32,
+                    bounds.width() as f32,
+                    bounds.height() as f32,
+                ])
             } else {
                 None
             }
-        }).unzip();
-
-        // 2. Если выделения нет: курсор мыши
-        // 3. Если курсор вне холста: геометрический центр документа
-        let (x, y) = if let Some(center) = selection_center {
-            center
-        } else if let Some([hx, hy]) = self.hover_doc {
-            (hx as f32, hy as f32)
-        } else {
-            (st.doc.size.width as f32 * 0.5, st.doc.size.height as f32 * 0.5)
-        };
+        });
 
         // Готовим финальный текст (применяем ALL_CAPS если задано в стиле TypeR)
         let mut final_text = if action.preset.all_caps {
@@ -1395,15 +1380,18 @@ impl PhotocraftApp {
             action.text
         };
 
-        // Автоматический перенос строк (word wrap) при вставке в выделенную форму баббла
-        if let Some(bubble_w) = selection_width {
-            final_text = photocraft_engine::typesetter::wrap_text_to_bubble(
+        // Автоматический перенос строк (word wrap) и устранение «висячих» предлогов (солвер Кнута—Пласса)
+        if let Some([_bx, _by, bw, bh]) = selection_box {
+            final_text = photocraft_engine::knuth_plass::knuth_plass_bubble_wrap(
                 &final_text,
-                bubble_w,
+                bw,
+                bh,
                 action.preset.font_size,
                 st.doc.resolution_dpi,
                 action.preset.horizontal_scale,
             );
+        } else {
+            final_text = photocraft_engine::knuth_plass::bind_orphan_prepositions(&final_text);
         }
 
         // Разрешаем семейство шрифта: проверяем наличие на машине, иначе пробуем разрешить через PostScript
@@ -1427,11 +1415,7 @@ impl PhotocraftApp {
             }
         };
 
-        let is_bold_style = action.preset.font_style.to_lowercase().contains("bold");
-        let is_italic_style = action.preset.font_style.to_lowercase().contains("italic")
-            || action.preset.font_style.to_lowercase().contains("oblique");
-
-        let style_name = if !action.preset.font_style.is_empty() && action.preset.font_style != "Regular" {
+        let mut style_name = if !action.preset.font_style.is_empty() && action.preset.font_style != "Regular" {
             action.preset.font_style.clone()
         } else if action.preset.bold && action.preset.italic {
             "Bold Italic".to_string()
@@ -1443,9 +1427,40 @@ impl PhotocraftApp {
             "Regular".to_string()
         };
 
-        let faux_bold = action.preset.bold && !is_bold_style;
-        let faux_italic = action.preset.italic && !is_italic_style;
-        let weight = if action.preset.bold { 700 } else { 400 };
+        let mut faux_bold = false;
+        let mut faux_italic = false;
+        let mut weight = 400;
+
+        if action.preset.bold || action.preset.italic {
+            let mut shared = photocraft_text::shared().lock().unwrap_or_else(|e| e.into_inner());
+            let faces = shared.fonts.faces(&resolved_family);
+
+            if action.preset.bold {
+                // Ищем в гарнитуре настоящее начертание Bold / SemiBold / Black
+                let native_bold = faces.iter().find(|f| {
+                    (f.italic == action.preset.italic)
+                        && (f.weight >= 600.0 || f.style.to_lowercase().contains("bold") || f.style.to_lowercase().contains("black"))
+                }).or_else(|| {
+                    faces.iter().find(|f| f.weight >= 600.0 || f.style.to_lowercase().contains("bold"))
+                });
+
+                if let Some(f) = native_bold {
+                    style_name = f.style.clone();
+                    weight = f.weight as u16;
+                    faux_bold = false;
+                } else {
+                    weight = 700;
+                    faux_bold = true;
+                }
+            }
+
+            if action.preset.italic {
+                let native_italic = faces.iter().find(|f| f.italic);
+                if native_italic.is_none() && !style_name.to_lowercase().contains("italic") && !style_name.to_lowercase().contains("oblique") {
+                    faux_italic = true;
+                }
+            }
+        }
 
         let hex_text_color = format!(
             "#{:02x}{:02x}{:02x}{:02x}",
@@ -1454,14 +1469,25 @@ impl PhotocraftApp {
             action.preset.text_color[2],
             action.preset.text_color[3],
         );
-        let kerning_mode = match action.preset.measurement_system {
-            photocraft_engine::typesetter::MeasurementSystem::Optical => "optical",
-            photocraft_engine::typesetter::MeasurementSystem::Metric => "metrics",
+        let is_optical = action.preset.measurement_system.is_optical();
+        let kerning_mode = if is_optical { "optical" } else { "metrics" };
+        let auto_kern_val = if is_optical { "opticalKern" } else { "metricsKern" };
+
+        let box_coords = if let Some([bx, by, bw, bh]) = selection_box {
+            [bx, by, bw, bh]
+        } else {
+            let (cx, cy) = if let Some([hx, hy]) = self.hover_doc {
+                (hx as f32, hy as f32)
+            } else {
+                (st.doc.size.width as f32 * 0.5, st.doc.size.height as f32 * 0.5)
+            };
+            let bw = (action.preset.font_size * 18.0).min(st.doc.size.width as f32 * 0.8);
+            let bh = (action.preset.leading * 10.0).min(st.doc.size.height as f32 * 0.8);
+            [cx - bw * 0.5, cy - bh * 0.5, bw, bh]
         };
 
         let mut type_params = serde_json::json!({
-            "x": x,
-            "y": y,
+            "box": box_coords,
             "text": final_text,
             "size": action.preset.font_size,
             "font": resolved_family,
@@ -1476,7 +1502,8 @@ impl PhotocraftApp {
             "leading": action.preset.leading,
             "horizontalScale": action.preset.horizontal_scale,
             "color": hex_text_color,
-            "kerning": kerning_mode
+            "kerning": kerning_mode,
+            "autoKern": auto_kern_val
         });
 
         if !action.preset.font_postscript.is_empty() {

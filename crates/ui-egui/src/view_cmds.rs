@@ -1225,12 +1225,27 @@ fn default_dir(app: &PhotocraftApp) -> String {
 }
 
 fn front(app: &mut PhotocraftApp, ctx: &egui::Context, id: &str, params: &Value) -> Option<Result<Value, String>> {
-    if id == "file.closeAll" || id == "file.closeOthers" {
+    if id == "file.closeAll" {
+        if app.session.documents().is_empty() {
+            app.ui.views = Vec::new();
+            app.ui.windows.clear();
+            app.sync_views();
+            return Some(Ok(serde_json::json!({"closed": 0})));
+        }
+        let r = app.run(id, params.clone());
+        if r.is_ok() {
+            app.ui.views = Vec::new();
+            app.ui.windows.clear();
+            app.sync_views();
+        }
+        return Some(r);
+    }
+    if id == "file.closeOthers" {
         // Keep the remaining document's view (views are index-aligned with documents).
         let keep = app.session.active_index().and_then(|i| app.ui.views.get(i).cloned());
         let r = app.run(id, params.clone());
         if r.is_ok() {
-            app.ui.views = if id == "file.closeAll" { Vec::new() } else { keep.into_iter().collect() };
+            app.ui.views = keep.into_iter().collect();
             app.ui.windows.clear();
             app.sync_views();
         }

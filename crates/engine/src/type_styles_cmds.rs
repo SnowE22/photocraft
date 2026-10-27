@@ -128,7 +128,7 @@ fn perturbed_para() -> ParagraphStyle {
         direction: TextDirection::Rtl,
         hyphenate: true,
         style_sheet: None,
-        ..Default::default()
+        vertical_align: photocraft_doc::text::VerticalAlign::Bottom,
     }
 }
 
