@@ -41,6 +41,17 @@
 
 ## About this fork
 
+> [!NOTE]
+> **PhotoCraft Community Fork** — независимая сборка для манга-тайпсеттинга, ретуши и работы в привычном стиле Photoshop.
+> Разрабатывается сообществом (**FGSFDS**, **SnowE22**, **NanoNik**, **wilwal2020**) совместно с нейросетями:
+> - **Написание кода:** **Gemini / DeepMind** и **Claude** (через Antigravity), **DeepSeek 4.1-Flash** и **GLM-5.3-Flash** (через OpenCode);
+> - **Поиск и ресерч:** **Z.AI** (по запросам SnowE22);
+> - **Консультации:** **ChatGPT**.
+>
+> 📖 **Полное описание возможностей, архитектуры, авторов и статуса функций: [docs/community-fork.md](docs/community-fork.md)**.
+>
+> *(Примечание: встроенного проброса туннеля для нейросетей пока нет, а визуальные стили GenTonik и элементы интерфейса ещё могут быть скорректированы в будущих обновлениях).*
+
 This is a personal fork of [storytold/photocraft](https://github.com/storytold/photocraft), currently
 based on **PhotoCraft 0.14.0** (branch `photoshop-parity-0.14`). It adds features and fixes aimed at
 making PhotoCraft work the way Photoshop does, mostly found in day-to-day use on Windows. It is
