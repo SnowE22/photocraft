@@ -14,7 +14,7 @@ pub static CATALOG: &[(&[&str], &str, Option<&str>, &str)] = &[
     (&["File"], "Close Others", Some("Cmd+Alt+P"), "file.closeOthers"),
     (&["File"], "---", None, "---"),
     (&["File"], "Save", Some("Cmd+S"), "file.save"),
-    (&["File"], "Save As…", Some("Cmd+Alt+Shift+S"), "file.saveAs"),
+    (&["File"], "Save As…", None, "file.saveAs"),
     (&["File"], "Save a Copy…", Some("Cmd+Alt+S"), "file.saveACopy"),
     (&["File"], "Revert", Some("F12"), "file.revert"),
     (&["File"], "---", None, "---"),
