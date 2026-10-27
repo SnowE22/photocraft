@@ -1688,14 +1688,18 @@ impl PhotocraftApp {
             pages_panel::PagesPanelAction::SortPagesNaturally => {
                 let count = self.session.documents().len();
                 if count > 1 {
-                    let mut indexed: Vec<(usize, String)> = self.session.documents().iter().enumerate().map(|(i, d)| (i, d.doc.name.clone())).collect();
-                    indexed.sort_by(|a, b| pages_panel::natural_cmp_str(&a.1, &b.1));
+                    let mut sorted_ids: Vec<(photocraft_doc::DocId, String)> = self
+                        .session
+                        .documents()
+                        .iter()
+                        .map(|d| (d.doc.id, d.doc.name.clone()))
+                        .collect();
+                    sorted_ids.sort_by(|a, b| pages_panel::natural_cmp_str(&a.1, &b.1));
 
-                    for target_pos in 0..count {
-                        if let Some(current_pos) = indexed.iter().position(|&(orig_idx, _)| orig_idx == target_pos) {
-                            if current_pos != target_pos {
-                                self.session.move_document(current_pos, target_pos);
-                                indexed.swap(current_pos, target_pos);
+                    for (target_idx, (id, _)) in sorted_ids.into_iter().enumerate() {
+                        if let Some(current_idx) = self.session.documents().iter().position(|d| d.doc.id == id) {
+                            if current_idx != target_idx {
+                                self.session.move_document(current_idx, target_idx);
                             }
                         }
                     }

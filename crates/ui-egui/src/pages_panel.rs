@@ -1630,4 +1630,78 @@ mod tests {
 
         assert_eq!(paths, expected);
     }
+
+    #[test]
+    fn test_save_png_as_psd_preserves_page_in_session() {
+        use crate::{PhotocraftApp, Services, menus};
+        use photocraft_engine::Session;
+        use serde_json::json;
+
+        let mut app = PhotocraftApp::new(
+            Session::new(),
+            Services {
+                import: Some(Box::new(|name, bytes, opts| {
+                    photocraft_io::import_with_options(name, bytes, opts).map(|r| (r.document, r.warnings)).map_err(|e| e.to_string())
+                })),
+                export: Some(Box::new(|doc, path, _| {
+                    photocraft_io::export(doc, path, &Default::default()).map(|r| (r.bytes, r.warnings)).map_err(|e| e.to_string())
+                })),
+                write: Some(Box::new(|_, _| Ok(()))),
+                automation_write: Some(Box::new(|_, _| Ok(()))),
+                ..Default::default()
+            },
+        );
+
+        // Document 0: 006.png
+        app.run("file.new", json!({"width": 10, "height": 10, "name": "006.png"})).unwrap();
+        app.session.active_mut().unwrap().path = Some("C:/chapter/006.png".into());
+
+        // Document 1: 007.png
+        app.run("file.new", json!({"width": 10, "height": 10, "name": "007.png"})).unwrap();
+        app.session.active_mut().unwrap().path = Some("C:/chapter/007.png".into());
+
+        // Switch to Document 0 (006.png)
+        app.session.set_active(0);
+        assert_eq!(app.session.active().unwrap().doc.name, "006.png");
+
+        // Edit document 0
+        app.run("layer.new.layer", json!({})).unwrap();
+        assert!(app.session.active().unwrap().is_dirty());
+
+        // Save As 006.psd
+        let ctx = egui::Context::default();
+        menus::invoke(&mut app, &ctx, "file.saveAs", json!({"path": "C:/chapter/006.psd"})).unwrap();
+
+        assert_eq!(app.session.active().unwrap().doc.name, "006.psd");
+        assert_eq!(app.session.active().unwrap().path.as_deref(), Some("C:/chapter/006.psd"));
+        assert!(!app.session.active().unwrap().is_dirty());
+
+        // Switch to Document 1 (007.png) via PagesPanelAction::SelectPage
+        app.handle_pages_action(PagesPanelAction::SelectPage(1));
+        assert_eq!(app.session.active_index(), Some(1));
+        assert_eq!(app.session.active().unwrap().doc.name, "007.png");
+
+        // Verify both documents exist in session
+        let names: Vec<String> = app.session.documents().iter().map(|d| d.doc.name.clone()).collect();
+        assert_eq!(names.len(), 2);
+        assert_eq!(names[0], "006.psd");
+        assert_eq!(names[1], "007.png");
+    }
+
+    #[test]
+    fn test_sort_pages_naturally() {
+        use crate::{PhotocraftApp, Services};
+        use photocraft_engine::Session;
+        use serde_json::json;
+
+        let mut app = PhotocraftApp::new(Session::new(), Services::default());
+        app.run("file.new", json!({"width": 10, "height": 10, "name": "10.png"})).unwrap();
+        app.run("file.new", json!({"width": 10, "height": 10, "name": "2.png"})).unwrap();
+        app.run("file.new", json!({"width": 10, "height": 10, "name": "1.png"})).unwrap();
+
+        app.handle_pages_action(PagesPanelAction::SortPagesNaturally);
+
+        let names: Vec<String> = app.session.documents().iter().map(|d| d.doc.name.clone()).collect();
+        assert_eq!(names, vec!["1.png", "2.png", "10.png"]);
+    }
 }
