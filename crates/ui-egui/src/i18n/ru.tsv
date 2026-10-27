@@ -1609,6 +1609,14 @@
 	Search commands, tools and panels…	Поиск команд, инструментов и панелей…
 	Search Brushes	Поиск кистей
 	Search fonts	Поиск шрифтов
+	Find in Open Pages…	Найти в открытых страницах…
+	Find layer or text across open pages (@text, #group)...	Найти слой или текст в открытых страницах (@текст, #группа)...
+	@ text only	@ только текст
+	# groups only	# только группы
+	! hidden only	! только скрытые
+	Enter: Jump • Shift+Enter: Peek • Esc: Close	Enter: Перейти • Shift+Enter: Просмотр • Esc: Закрыть
+	No matching layers or text in open pages	Нет подходящих слоёв или текста в открытых страницах
+@id	layer.search	Найти в открытых страницах…
 	No matching commands	Нет подходящих команд
 	No document	Нет документа
 	Pixel Layer	Пиксельный слой
@@ -5165,3 +5173,16 @@ shape	Appearance	Оформление
 	Duplicate this style	Создать копию этого стиля
 	Delete this style	Удалить этот стиль
 	Duplicate folder	Дублировать папку
+	Favorite font	Избранный шрифт
+	Pages	Страницы
+	Manga Workflow	Рабочий процесс манги
+	Chapter Pages…	Страницы главы…
+	Toggle Chapter Pages panel	Панель страниц главы
+	Split Left Dock (Pages + TypeR)…	Разделить левый док (Страницы + TypeR)…
+	Engine:	Движок:
+
+	GPU on large canvases, CPU on small	GPU на больших холстах, CPU на малых
+
+	Ultra-fast real-time rendering for giant files	Сверхбыстрый рендеринг на видеокарте для гигантских файлов
+
+	Exact reference CPU engine	Точный эталонный расчет на процессоре

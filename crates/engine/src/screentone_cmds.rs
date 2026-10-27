@@ -16,7 +16,7 @@
 //! the app-level pattern library (the panel's `Save as Pattern`), so a favourite tone survives
 //! restarts and can fill layers and brush textures like any other library pattern.
 
-use photocraft_algo::{self as algo, DotShape, FilterParams, PatternType, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
+use photocraft_algo::{self as algo, DotShape, FilterParams, PatternType, ScreentoneBackend, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
 use photocraft_color::PixelFormat;
 use photocraft_doc::{Layer, LayerContent, LayerMask, Pattern, Rect, ScreentoneLayer};
 use photocraft_raster::Surface;
@@ -172,6 +172,12 @@ pub fn spec(p: &Value) -> ScreentoneSpec {
     } else {
         base.use_source_luminance
     };
+    let backend = p.get("backend").and_then(Value::as_str).and_then(|s| match s {
+        "auto" | "Auto" => Some(ScreentoneBackend::Auto),
+        "gpu" | "Gpu" => Some(ScreentoneBackend::Gpu),
+        "cpu" | "Cpu" => Some(ScreentoneBackend::Cpu),
+        _ => None,
+    }).unwrap_or(base.backend);
     ScreentoneSpec {
         pattern_type: pattern(p, base.pattern_type),
         dot_shape: shape(p, "dotShape", base.dot_shape),
@@ -223,6 +229,7 @@ pub fn spec(p: &Value) -> ScreentoneSpec {
         use_source_luminance,
         smoothness: f_any(p, &["smoothness"], base.smoothness).clamp(0.0, 1.0),
         seed: whole(p, "seed", base.seed),
+        backend,
     }
 }
 
@@ -450,7 +457,17 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
     // equivalent document-space anchor so its lattice stays put when the frame changes.
     let origin = algo::screentone::origin_doc(&spec, bounds);
     let sample_rect = bounds.inflate(spec.halo_radius()).intersect(&doc_bounds);
-    let mut rendered = if spec.mode == ScreentoneMode::Shading && spec.use_source_luminance {
+    let is_gpu = spec.backend == ScreentoneBackend::Gpu
+        || (spec.backend == ScreentoneBackend::Auto && bounds.width() >= 512 && bounds.height() >= 512);
+    let skip_cpu_bake = is_gpu;
+    log::info!(
+        "[SCREENTONE:CMD] create_screentone: bounds={:?}, mode={:?}, backend={:?}, use_source_lum={}, is_gpu={}, skip_cpu_bake={}",
+        bounds, spec.mode, spec.backend, spec.use_source_luminance, is_gpu, skip_cpu_bake
+    );
+    let t0 = std::time::Instant::now();
+    let mut rendered = if skip_cpu_bake {
+        Surface::new(st.doc.pixel_format())
+    } else if spec.mode == ScreentoneMode::Shading && spec.use_source_luminance {
         if let Some(src) = sample_source_surface(&st.doc, st.active_layer, None, sample_rect, st.doc.pixel_format()) {
             src
         } else {
@@ -461,7 +478,15 @@ fn create_layer(s: &mut Session, p: &Value) -> Result<Value> {
         spec.use_source_luminance = false;
         Surface::new(st.doc.pixel_format())
     };
-    let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, &spec, origin);
+    let area = if skip_cpu_bake {
+        bounds
+    } else {
+        algo::screentone::render_screentone_to_surface(&mut rendered, bounds, &spec, origin)
+    };
+    log::info!(
+        "[SCREENTONE:CMD] create_screentone: finished in {:?}, rendered_tiles={}, area={:?}",
+        t0.elapsed(), rendered.tile_count(), area
+    );
     if area.is_empty() {
         return Err(EngineError::Other("nothing to render: the target area is empty".into()));
     }
@@ -568,7 +593,17 @@ fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: Filte
     };
     let origin = algo::screentone::origin_doc(spec, bounds);
     let sample_rect = bounds.inflate(spec.halo_radius()).intersect(&st.doc.bounds());
-    let mut rendered = if spec.mode == ScreentoneMode::Shading && spec.use_source_luminance {
+    let is_gpu = spec.backend == ScreentoneBackend::Gpu
+        || (spec.backend == ScreentoneBackend::Auto && bounds.width() >= 512 && bounds.height() >= 512);
+    let skip_cpu_bake = is_gpu;
+    log::info!(
+        "[SCREENTONE:CMD] restyle_layer: layer={}, bounds={:?}, mode={:?}, backend={:?}, use_source_lum={}, is_gpu={}, skip_cpu_bake={}",
+        id.0, bounds, spec.mode, spec.backend, spec.use_source_luminance, is_gpu, skip_cpu_bake
+    );
+    let t0 = std::time::Instant::now();
+    let mut rendered = if skip_cpu_bake {
+        Surface::new(surface.format())
+    } else if spec.mode == ScreentoneMode::Shading && spec.use_source_luminance {
         if let Some(src) = sample_source_surface(&st.doc, None, Some(id), sample_rect, surface.format()) {
             src
         } else {
@@ -579,7 +614,15 @@ fn restyle_layer(s: &mut Session, id: photocraft_doc::LayerId, mut params: Filte
         spec.use_source_luminance = false;
         Surface::new(surface.format())
     };
-    let area = algo::screentone::render_screentone_to_surface(&mut rendered, bounds, spec, origin);
+    let area = if skip_cpu_bake {
+        bounds
+    } else {
+        algo::screentone::render_screentone_to_surface(&mut rendered, bounds, spec, origin)
+    };
+    log::info!(
+        "[SCREENTONE:CMD] restyle_layer: finished in {:?}, rendered_tiles={}, area={:?}",
+        t0.elapsed(), rendered.tile_count(), area
+    );
     if area.is_empty() {
         return Err(EngineError::Other("nothing to render: the layer's area is empty".into()));
     }

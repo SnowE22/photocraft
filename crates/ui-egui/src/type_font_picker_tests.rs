@@ -914,3 +914,40 @@ fn options_bar_hover_previews_with_the_character_picker_also_shown() {
     h.run();
     assert_eq!(font(&mut h), "Inter", "leaving the row restores the committed font");
 }
+
+#[test]
+fn favorite_fonts_head_the_menu_and_keep_their_place() {
+    let families: Vec<String> = ["Arial", "Baskerville", "Courier", "Zeta Sans"].iter().map(|s| s.to_string()).collect();
+    let favorites: Vec<String> = vec!["Courier".into(), "Zeta Sans".into()];
+    let recents: Vec<String> = vec!["Baskerville".into(), "Courier".into()];
+    let (rows, n_fav, n_recent) = super::font_menu_rows_with_favorites(&families, None, "", &favorites, &recents);
+    let names: Vec<String> = rows.into_iter().map(|(f, _)| f.clone()).collect();
+    assert_eq!(n_fav, 2, "2 favorites");
+    assert_eq!(n_recent, 1, "1 recent (Courier is already in favorites, so de-duplicated from recents)");
+    let expected: Vec<String> = vec![
+        "Courier".into(),
+        "Zeta Sans".into(),
+        "Baskerville".into(),
+        "Arial".into(),
+        "Baskerville".into(),
+        "Courier".into(),
+        "Zeta Sans".into(),
+    ];
+    assert_eq!(names, expected);
+
+    // Searching matches favorites first
+    let (search_rows, _, _) = super::font_menu_rows_with_favorites(&families, None, "a", &favorites, &recents);
+    let search_names: Vec<String> = search_rows.into_iter().map(|(f, _)| f.clone()).collect();
+    let expected_search: Vec<String> = vec!["Zeta Sans".into(), "Arial".into(), "Baskerville".into()];
+    assert_eq!(search_names, expected_search);
+}
+
+#[test]
+fn clicking_star_toggles_favorite_font() {
+    let ctx = egui::Context::default();
+    assert!(!super::is_favorite_font(&ctx, "Kurai Voice 2"));
+    assert!(super::toggle_favorite_font(&ctx, "Kurai Voice 2"));
+    assert!(super::is_favorite_font(&ctx, "Kurai Voice 2"));
+    assert!(!super::toggle_favorite_font(&ctx, "Kurai Voice 2"));
+    assert!(!super::is_favorite_font(&ctx, "Kurai Voice 2"));
+}

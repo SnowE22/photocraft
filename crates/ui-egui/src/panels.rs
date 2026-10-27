@@ -2069,7 +2069,7 @@ pub fn left_dock(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     let default_w = if t.pro { 280.0 } else { 300.0 };
     egui::Panel::left("shared-left-dock")
         .default_size(default_w)
-        .size_range(200.0..=520.0)
+        .size_range(200.0..=650.0)
         .resizable(true)
         .frame(egui::Frame::NONE.fill(t.card))
         .show(ui, |ui| {

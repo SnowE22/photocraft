@@ -22,7 +22,7 @@ use parley::{
     PositionedLayoutItem, StyleProperty,
 };
 use photocraft_doc::TextLayer;
-use photocraft_doc::text::{Caps, CharStyle, FontBaseline, Kerning, Orientation, TextAlign, TextDirection, TextShape};
+use photocraft_doc::text::{Caps, CharStyle, FontBaseline, Kerning, Orientation, TextAlign, TextDirection, TextShape, VerticalAlign};
 use skrifa::raw::types::Tag;
 
 use crate::fonts::FontDb;
@@ -528,6 +528,7 @@ impl Layouter {
         let mut prev_baseline: Option<f32> = None;
         let mut pending_space = 0.0f32;
         let mut stop = false;
+        let mut line_spans: Vec<(Range<usize>, Range<usize>)> = Vec::new();
         // Fixed for the whole layout, and the font probe only matters for styles that use small
         // caps. A real `smcp` substitution must receive lowercase source text; only the fallback
         // path uppercases it and scales it down.
@@ -938,6 +939,7 @@ impl Layouter {
                 let line_index = out.lines.len();
                 let lr = line.text_range();
                 let g0 = out.glyphs.len();
+                let d0 = out.decorations.len();
                 let c0 = out.clusters.len();
                 let mut vinfo: Vec<VGlyph> = Vec::new();
                 let mut extra = 0.0f32; // horizontal-scale growth and kerning along the line
@@ -1094,8 +1096,59 @@ impl Layouter {
                     descent,
                     paragraph: pi,
                 });
+                line_spans.push((g0..out.glyphs.len(), d0..out.decorations.len()));
             }
             pending_space += ps.space_after_pt * k;
+        }
+        if is_box && !vertical && !out.lines.is_empty() {
+            let vertical_align = paras.first().map_or(VerticalAlign::Top, |p| p.style.vertical_align);
+            let box_height = box_rect.3;
+            let top_y = out.lines.first().map(|l| l.baseline - l.ascent).unwrap_or(0.0);
+            let bottom_y = out.lines.last().map(|l| l.baseline + l.descent).unwrap_or(0.0);
+            let text_height = (bottom_y - top_y).max(0.0);
+            match vertical_align {
+                VerticalAlign::Top => {}
+                VerticalAlign::Center | VerticalAlign::Bottom => {
+                    let y_offset = match vertical_align {
+                        VerticalAlign::Center => ((box_height - text_height) * 0.5).max(0.0),
+                        _ => (box_height - text_height).max(0.0),
+                    };
+                    if y_offset > 0.0 {
+                        for line in &mut out.lines {
+                            line.baseline += y_offset;
+                        }
+                        for g in &mut out.glyphs {
+                            g.y += y_offset;
+                        }
+                        for d in &mut out.decorations {
+                            d.y0 += y_offset;
+                            d.y1 += y_offset;
+                        }
+                    }
+                }
+                VerticalAlign::Justify => {
+                    let n = out.lines.len();
+                    let slack = (box_height - text_height).max(0.0);
+                    if n > 1 && slack > 0.0 {
+                        let step = slack / (n - 1) as f32;
+                        for (li, (line, (g_span, d_span))) in out.lines.iter_mut().zip(line_spans).enumerate() {
+                            let y_offset = step * li as f32;
+                            line.baseline += y_offset;
+                            if let Some(glyphs) = out.glyphs.get_mut(g_span) {
+                                for g in glyphs {
+                                    g.y += y_offset;
+                                }
+                            }
+                            if let Some(decorations) = out.decorations.get_mut(d_span) {
+                                for d in decorations {
+                                    d.y0 += y_offset;
+                                    d.y1 += y_offset;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         out
     }

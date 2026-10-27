@@ -1,4 +1,4 @@
-﻿//! UI state as plain data, so the control channel (and later MCP) can read and drive every
+//! UI state as plain data, so the control channel (and later MCP) can read and drive every
 //! aspect of the interface: tools, zoom, panels, dialogs and windows.
 
 use serde::{Deserialize, Serialize};
@@ -530,6 +530,9 @@ pub struct Panels {
     /// Window > TypeR Manga: manga typesetter and dialogue style presets.
     #[serde(default = "yes")]
     pub typesetter: bool,
+    /// Window > Pages: manga chapter pages manager and navigator.
+    #[serde(default = "yes")]
+    pub pages: bool,
     /// Window > Left Dock: secondary panel dock on the left side beside toolbar.
     #[serde(default = "yes")]
     pub left_dock: bool,
@@ -564,6 +567,7 @@ impl Default for Panels {
             gradient_editor: false,
             canvas_capsule: true,
             typesetter: false,
+            pages: false,
             left_dock: true,
             bottom_dock: true,
         }
@@ -1433,6 +1437,12 @@ pub struct UiState {
     /// Preferences ▸ Type ▸ Recent Fonts; de-duplicated.
     #[serde(default)]
     pub recent_fonts: Vec<String>,
+    /// User-starred type families pinned at the top of the font menu.
+    #[serde(default)]
+    pub favorite_fonts: Vec<String>,
+    /// Currently opened manga chapter folder name in the Pages panel.
+    #[serde(default)]
+    pub chapter_folder_name: Option<String>,
     /// Inline type editing session, if any.
     #[serde(default)]
     pub text_edit: Option<TextEdit>,
@@ -1603,6 +1613,10 @@ pub struct UiState {
     pub theme: crate::theme::ThemeKind,
     pub workspace: String,
     pub palette_open: bool,
+    /// Layer & text search across open pages (Edit › Find in Open Pages…, ⌘⇧F). Never restored
+    /// with a workspace: like `palette_open` it is a transient modal.
+    #[serde(default)]
+    pub layer_search_open: bool,
     pub dock_tabs: DockTabs,
     /// Right-dock group order, heights and collapsed groups (see `dock`).
     #[serde(default)]
@@ -1703,6 +1717,8 @@ impl Default for UiState {
             spring: None,
             recent_files: Vec::new(),
             recent_fonts: Vec::new(),
+            favorite_fonts: Vec::new(),
+            chapter_folder_name: None,
             text_edit: None,
             caret_blink_time: 0.0,
             text_edit_return_tool: None,
@@ -1762,6 +1778,7 @@ impl Default for UiState {
             theme: crate::theme::ThemeKind::ProMedium,
             workspace: "Essentials".into(),
             palette_open: false,
+            layer_search_open: false,
             dock_tabs: DockTabs::default(),
             dock: Default::default(),
             docking: None,

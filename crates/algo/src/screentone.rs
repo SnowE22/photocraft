@@ -13,7 +13,7 @@
 
 use photocraft_geom::Rect;
 use photocraft_raster::Surface;
-pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
+pub use photocraft_tone::{DotShape, PatternType, ScreentoneBackend, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
 
 use crate::Ctx;
 use crate::fxutil::{luma, rgba, set_rgba, xy};
@@ -354,6 +354,21 @@ pub fn render_screentone_to_surface(surface: &mut Surface, bounds: Rect, spec: &
 // Math & Distance Field Helpers
 // ────────────────────────────────────────────────────────────
 
+/// Euclidean distance, bit-equivalent to WGSL `length(vec2f(a, b))`.
+///
+/// WGSL defines `length(v) = sqrt(dot(v, v))`. For a `vec2f(a, b)` that
+/// is `sqrt(a*a + b*b)`. Rust's `f32::hypot(a, b)` is permitted to use
+/// a different (overflow-avoiding) algorithm and diverges from this
+/// form by 1-2 ULP.
+///
+/// Every distance in the screentone hot path goes through this
+/// helper so the CPU oracle and the WGSL kernel produce identical
+/// ULPs.
+#[inline]
+fn sdist2(a: f32, b: f32) -> f32 {
+    (a * a + b * b).sqrt()
+}
+
 #[inline]
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
     a + (b - a) * t
@@ -408,7 +423,7 @@ fn compute_grad_factor(x: f32, y: f32, width: f32, height: f32, spec: &Screenton
             proj / (width * 0.8).max(1.0) + 0.5
         }
         ScreentoneGradientType::Radial => {
-            let dist = x.hypot(y);
+            let dist = sdist2(x, y);
             dist / (width.min(height) * 0.6).max(1.0)
         }
         ScreentoneGradientType::None => 0.5,
@@ -429,12 +444,12 @@ fn dist_to_segment(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
     let bay = b.1 - a.1;
     let len_sq = bax * bax + bay * bay;
     if len_sq < 1e-8 {
-        return pax.hypot(pay);
+        return sdist2(pax, pay);
     }
     let h = ((pax * bax + pay * bay) / len_sq).clamp(0.0, 1.0);
     let dx = pax - bax * h;
     let dy = pay - bay * h;
-    dx.hypot(dy)
+    sdist2(dx, dy)
 }
 
 /// Signed distance field to a 2D box with rounded corners.
@@ -443,14 +458,14 @@ fn sdf_box_rounded(px: f32, py: f32, half_w: f32, half_h: f32, radius: f32) -> f
     let r = radius.clamp(0.0, half_w.min(half_h));
     let qx = px.abs() - (half_w - r);
     let qy = py.abs() - (half_h - r);
-    qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - r
+    sdist2(qx.max(0.0), qy.max(0.0)) + qx.max(qy).min(0.0) - r
 }
 
 /// Signed distance field for Square dot shape.
 #[inline]
 fn sdf_square(px: f32, py: f32, size: f32, roundness: f32) -> f32 {
     if roundness >= 0.95 {
-        return px.hypot(py) - size;
+        return sdist2(px, py) - size;
     }
     let s = size * 0.8;
     let r = roundness.clamp(0.0, 1.0) * s * 0.5;
@@ -461,7 +476,7 @@ fn sdf_square(px: f32, py: f32, size: f32, roundness: f32) -> f32 {
 #[inline]
 fn sdf_diamond(px: f32, py: f32, size: f32, roundness: f32) -> f32 {
     if roundness >= 0.95 {
-        return px.hypot(py) - size;
+        return sdist2(px, py) - size;
     }
     let u = (px + py) * std::f32::consts::FRAC_1_SQRT_2;
     let v = (-px + py) * std::f32::consts::FRAC_1_SQRT_2;
@@ -564,7 +579,7 @@ fn eval_shape_sdf(px: f32, py: f32, shape: DotShape, size: f32, xf: ShapeXform) 
         && (xf.stretch_x - 1.0).abs() <= 1e-4
         && (xf.stretch_y - 1.0).abs() <= 1e-4
     {
-        return px.hypot(py) - size;
+        return sdist2(px, py) - size;
     }
     let (sin_p, cos_p) = xf.rot_pattern_rad.sin_cos();
     let rx = px * cos_p + py * sin_p;
@@ -573,10 +588,10 @@ fn eval_shape_sdf(px: f32, py: f32, shape: DotShape, size: f32, xf: ShapeXform) 
     let sy = ry / xf.stretch_y.max(0.01);
 
     if shape == DotShape::Circle || xf.roundness >= 0.95 {
-        return sx.hypot(sy) - size;
+        return sdist2(sx, sy) - size;
     }
     match shape {
-        DotShape::Circle => sx.hypot(sy) - size,
+        DotShape::Circle => sdist2(sx, sy) - size,
         DotShape::Square => sdf_square(sx, sy, size, xf.roundness),
         DotShape::Diamond => sdf_diamond(sx, sy, size, xf.roundness),
         DotShape::Hexagon => {
@@ -610,7 +625,7 @@ fn eval_special_shape_sdf(px: f32, py: f32, pattern: PatternType, size: f32, xf:
             let verts = triangle_vertices(size);
             sdf_polygon((sx, sy), &verts, xf.roundness)
         }
-        _ => sx.hypot(sy) - size,
+        _ => sdist2(sx, sy) - size,
     }
 }
 
@@ -785,9 +800,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         .max(l_dl - l_c)
                         .max(l_dr - l_c)
                         .max(0.0);
-                    let edge_mag = (l_r - l_l)
-                        .hypot(l_d - l_u)
-                        .max((l_dr - l_ul).hypot(l_ur - l_dl))
+                    let edge_mag = sdist2(l_r - l_l, l_d - l_u)
+                        .max(sdist2(l_dr - l_ul, l_ur - l_dl))
                         .max(contrast_nb);
 
                     let mut max_valley = 0.0f32;
@@ -1085,7 +1099,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                         }
                     }
                     PatternType::Concentric => {
-                        let r = grid_x.hypot(grid_y);
+                        let r = sdist2(grid_x, grid_y);
                         let width = (spec.line_width * mod_size * spec.density * ink).max(0.0);
                         if width > 1e-4 {
                             let sp = spacing_x.max(1.0);
@@ -1143,7 +1157,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                                 let dot_cx = (ix as f32 + 0.5) * spacing_x + jx;
                                 let dot_cy = (iy as f32 + 0.5) * spacing_y + jy;
                                 let sz = (spec.dot_size * (1.0 + (h2 - 0.5) * spec.jitter_size * 0.02) * mod_size * ink).max(0.0);
-                                let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
+                                let dist = sdist2(grid_x - dot_cx, grid_y - dot_cy) - sz;
                                 cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                             }
                         }
@@ -1164,7 +1178,7 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
                                 let dot_cx = (ix as f32 + 0.5) * spacing_x + gx * spacing_x * 0.4;
                                 let dot_cy = (iy as f32 + 0.5) * spacing_y + gy * spacing_y * 0.4;
                                 let sz = (spec.dot_size * (0.6 + h1 * 0.8) * mod_size * ink).max(0.0);
-                                let dist = (grid_x - dot_cx).hypot(grid_y - dot_cy) - sz;
+                                let dist = sdist2(grid_x - dot_cx, grid_y - dot_cy) - sz;
                                 cov = cov.max(coverage_from_sdf(dist, spec.smoothness));
                             }
                         }
@@ -1933,5 +1947,54 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn step7_sdist2_matches_wgsl_length_semantics() {
+        let mut tested_pairs = 0usize;
+        let mut hypot_ulp_divergences = 0usize;
+
+        for iy in -128..=128 {
+            for ix in -128..=128 {
+                let a = (ix as f32) * 0.371_093_75;
+                let b = (iy as f32) * 0.613_281_25;
+
+                let wgsl_length = (a * a + b * b).sqrt();
+                let cpu_sdist2 = sdist2(a, b);
+                let std_hypot = a.hypot(b);
+
+                // 1. Exact bit-level identity between sdist2(a, b) and WGSL length(vec2f(a, b))
+                assert_eq!(
+                    cpu_sdist2.to_bits(),
+                    wgsl_length.to_bits(),
+                    "sdist2({a}, {b}) must match WGSL sqrt(a*a + b*b) to 0 ULP"
+                );
+
+                // 2. Track 1-2 ULP divergences against f32::hypot while proving tight numerical tolerance
+                let ulp_diff = cpu_sdist2.to_bits().abs_diff(std_hypot.to_bits());
+                if ulp_diff > 0 {
+                    hypot_ulp_divergences += 1;
+                }
+                assert!(
+                    ulp_diff <= 2,
+                    "sdist2({a}, {b}) vs hypot({a}, {b}) exceeded 2 ULP: {ulp_diff} ULP"
+                );
+
+                let abs_err = (cpu_sdist2 - std_hypot).abs();
+                let rel_tol = 2.0 * f32::EPSILON * std_hypot.max(1.0);
+                assert!(
+                    abs_err <= rel_tol,
+                    "Relative error {abs_err} exceeded tolerance {rel_tol} at ({a}, {b})"
+                );
+
+                tested_pairs += 1;
+            }
+        }
+
+        assert!(tested_pairs > 65_000);
+        assert!(
+            hypot_ulp_divergences > 0,
+            "Expected f32::hypot to exhibit 1-2 ULP scaling divergences across test grid"
+        );
     }
 }

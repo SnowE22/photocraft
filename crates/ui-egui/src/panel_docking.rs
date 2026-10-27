@@ -18,6 +18,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("character", "Character", Group::Character),
     ("paragraph", "Paragraph", Group::Character),
     ("typesetter", "TypeR Manga", Group::Character),
+    ("pages", "Pages", Group::Character),
     ("brushes", "Brushes", Group::Brushes),
     ("navigator", "Navigator", Group::Navigator),
     ("histogram", "Histogram", Group::Navigator),
@@ -527,7 +528,10 @@ pub(crate) fn show(app: &mut PhotocraftApp, ui: &mut egui::Ui) -> bool {
         if !output.actions.iter().any(|action| matches!(action, Action::Move { .. } | Action::Float { .. })) && cancel_legacy_drag(app, ui.ctx()) {
             return app.ui.docking.is_some();
         }
-        ui.ctx().data_mut(|data| data.remove::<LegacyDrag>(egui::Id::new("photocraft-panel-docking").with("legacy-origin")));
+        ui.ctx().data_mut(|data| {
+            data.remove::<LegacyDrag>(egui::Id::new("photocraft-panel-docking").with("legacy-origin"));
+            data.remove_temp::<bool>(egui::Id::new("photocraft_strip_dragging"));
+        });
     }
     let tools_w = crate::panels::toolbar_width(t.pro, app.ui.panels.toolbar_double);
     paint_edge_snap_preview(ui, &t, output.group_drag.is_some(), tools_w);
@@ -917,26 +921,29 @@ pub(crate) fn set_panel_visible(app: &mut PhotocraftApp, panel: &str, visible: b
         app.ui.panels.typesetter = visible;
         app.typesetter.is_open = visible;
     }
+    if panel == "pages" {
+        app.ui.panels.pages = visible;
+    }
 }
 
 pub(crate) fn compact_floating_rect(panel: &str, rect: [f32; 4]) -> [f32; 4] {
     let [x, y, w, h] = rect;
     let default_h = match panel {
         "layers" => 360.0,
-        "typesetter" => 420.0,
+        "typesetter" | "pages" => 420.0,
         "color" | "swatches" | "gradients" | "patterns" | "screentone" => 280.0,
         "properties" | "adjustments" => 340.0,
         "character" | "paragraph" => 320.0,
         _ => 300.0,
     };
-    let compact_w = if panel == "typesetter" {
+    let compact_w = if panel == "typesetter" || panel == "pages" {
         w.clamp(270.0, 520.0)
     } else if w > 420.0 || w < 200.0 {
         300.0
     } else {
         w
     };
-    let compact_h = if panel == "typesetter" {
+    let compact_h = if panel == "typesetter" || panel == "pages" {
         if h > 540.0 || h < 200.0 { default_h } else { h.clamp(320.0, 540.0) }
     } else if h > 520.0 || h < 140.0 {
         default_h
@@ -1006,14 +1013,34 @@ pub(crate) fn handle_dock_drop(
     false
 }
 
+fn is_dock_drag_active(ctx: &egui::Context) -> bool {
+    let Some(dragged) = ctx.dragged_id() else { return false };
+    if !ctx.input(|i| i.pointer.primary_down()) {
+        return false;
+    }
+    const AREAS: [&str; 4] = [
+        "photocraft-panel-docking",
+        "photocraft-left-docking",
+        "photocraft-right-docking",
+        "photocraft-bottom-docking",
+    ];
+    let is_owned = ctx.data(|d| {
+        AREAS.iter().any(|area_name| {
+            let area_id = egui::Id::new(*area_name);
+            d.get_temp::<Vec<egui::Id>>(area_id.with("owned-interactions"))
+                .is_some_and(|ids| ids.contains(&dragged))
+        })
+    });
+    is_owned || ctx.data(|d| d.get_temp::<bool>(egui::Id::new("photocraft_strip_dragging")).unwrap_or(false))
+}
+
 fn paint_edge_snap_preview(
     ui: &egui::Ui,
     t: &crate::theme::Tokens,
     is_dragging_group: bool,
     tools_w: f32,
 ) {
-    let is_dragging_tab = ui.ctx().dragged_id().is_some()
-        && ui.ctx().input(|i| i.pointer.primary_down());
+    let is_dragging_tab = is_dock_drag_active(ui.ctx());
     if (is_dragging_group || is_dragging_tab)
         && let Some(pointer) = ui.ctx().pointer_interact_pos()
         && let Some((_edge, preview)) = detect_edge_zone(ui.ctx(), pointer, tools_w)
@@ -1030,6 +1057,75 @@ fn paint_edge_snap_preview(
             egui::StrokeKind::Inside,
         );
     }
+}
+
+pub(crate) fn count_dock_panes<P>(node: &craft_ui::docking::Node<P>) -> usize {
+    match node {
+        craft_ui::docking::Node::Split { first, second, .. } => {
+            count_dock_panes(first) + count_dock_panes(second)
+        }
+        craft_ui::docking::Node::Tabs { .. } | craft_ui::docking::Node::Stack { .. } => 1,
+    }
+}
+
+fn allow_split_in_side_dock(
+    layout: &craft_ui::docking::Layout<String>,
+    panel: &str,
+    side: DockSide,
+) -> bool {
+    if side != DockSide::Left {
+        return false;
+    }
+    let current_panes = layout.root.as_ref().map_or(0, count_dock_panes);
+    if current_panes < 2 {
+        return true;
+    }
+    let source_members = group_members(layout, panel);
+    source_members.len() == 1
+}
+
+pub(crate) fn toggle_split_left_dock(app: &mut PhotocraftApp) {
+    let is_already_split = app.ui.docking_left.as_ref().map_or(false, |l| {
+        l.root.as_ref().map_or(false, |r| count_dock_panes(r) > 1)
+    });
+
+    if is_already_split {
+        remove_panel_from_all_docks(app, "pages");
+        remove_panel_from_all_docks(app, "typesetter");
+        let layout = app.ui.docking_left.get_or_insert_with(|| craft_ui::docking::Layout {
+            root: None,
+            floating: Vec::new(),
+        });
+        layout.root = Some(craft_ui::docking::Node::Tabs {
+            panels: vec!["pages".to_string(), "typesetter".to_string()],
+            active: 0,
+        });
+    } else {
+        remove_panel_from_all_docks(app, "pages");
+        remove_panel_from_all_docks(app, "typesetter");
+        let layout = app.ui.docking_left.get_or_insert_with(|| craft_ui::docking::Layout {
+            root: None,
+            floating: Vec::new(),
+        });
+        layout.root = Some(craft_ui::docking::Node::Split {
+            axis: craft_ui::layout::SplitAxis::Vertical,
+            size: craft_ui::layout::SplitSize::Ratio(0.42),
+            first: Box::new(craft_ui::docking::Node::Tabs {
+                panels: vec!["pages".to_string()],
+                active: 0,
+            }),
+            second: Box::new(craft_ui::docking::Node::Tabs {
+                panels: vec!["typesetter".to_string()],
+                active: 0,
+            }),
+        });
+    }
+
+    set_panel_visible(app, "pages", true);
+    set_panel_visible(app, "typesetter", true);
+    app.ui.panels.left_dock = true;
+    app.typesetter.dock_mode = crate::typesetter_ui::TypesetterDockMode::DockLeft;
+    app.typesetter.auto_save();
 }
 
 pub(crate) fn show_side_dock(
@@ -1104,7 +1200,7 @@ pub(crate) fn show_side_dock(
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(panel, pointer, &eligible) {
                 let preview = match proposal.placement {
-                    Placement::Split(zone) if zone != Zone::Center => {
+                    Placement::Split(zone) if zone != Zone::Center && !allow_split_in_side_dock(layout, panel, side) => {
                         eligible.iter().find(|t| t.anchor == proposal.anchor).map(|t| t.rect).unwrap_or(proposal.preview)
                     }
                     _ => proposal.preview,
@@ -1115,8 +1211,10 @@ pub(crate) fn show_side_dock(
     }
 
     for mut action in output.actions {
-        if let Action::Move { ref mut placement, .. } = action {
-            if matches!(placement, Placement::Split(zone) if *zone != Zone::Center) {
+        if let Action::Move { ref panel, ref mut placement, .. } = action {
+            if matches!(placement, Placement::Split(zone) if *zone != Zone::Center)
+                && !allow_split_in_side_dock(layout, panel, side)
+            {
                 *placement = Placement::Tab { before: None };
             }
         }
@@ -1155,7 +1253,9 @@ pub(crate) fn show_side_dock(
             let eligible: Vec<_> = targets.iter().filter(|target| !members.contains(&target.anchor)).cloned().collect();
             if let Some(proposal) = craft_ui::docking::resolve_drop(&panel, pointer, &eligible) {
                 let placement = match proposal.placement {
-                    Placement::Split(zone) if zone != Zone::Center => Placement::Tab { before: None },
+                    Placement::Split(zone) if zone != Zone::Center && !allow_split_in_side_dock(layout, &panel, side) => {
+                        Placement::Tab { before: None }
+                    }
                     other => other,
                 };
                 let target_layout = match side {
@@ -1185,6 +1285,18 @@ fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: &str) {
     if id == "typesetter" {
         if let Some(action) = app.typesetter.render_embedded(ui) {
             app.handle_typesetter_action(action);
+        }
+        if ui.ctx().data_mut(|d| d.remove_temp(egui::Id::new("photocraft_toggle_pages_cmd"))).unwrap_or(false) {
+            let _ = app.run("window.panel.pages", serde_json::json!({}));
+        }
+        if ui.ctx().data_mut(|d| d.remove_temp(egui::Id::new("photocraft_toggle_split_dock_cmd"))).unwrap_or(false) {
+            toggle_split_left_dock(app);
+        }
+        return;
+    }
+    if id == "pages" {
+        if let Some(action) = app.render_pages_panel(ui) {
+            app.handle_pages_action(action);
         }
         return;
     }
@@ -1538,6 +1650,7 @@ impl PanelContent<'_> {
                 ui.ctx().set_cursor_icon(if r.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab });
             }
         } else if r.drag_started() {
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("photocraft_strip_dragging"), true));
             let source = egui::Rect::from_min_size(egui::pos2(tabs_end - 200.0, header.top()), egui::vec2(240.0, 300.0));
             craft_ui::docking::begin_drag(ui.ctx(), area, active.clone(), source);
         }
@@ -1583,6 +1696,18 @@ impl craft_ui::docking::DockContent<String> for PanelContent<'_> {
         if id == "typesetter" {
             if let Some(action) = self.app.typesetter.render_embedded(ui) {
                 self.app.handle_typesetter_action(action);
+            }
+            if ui.ctx().data_mut(|d| d.remove_temp(egui::Id::new("photocraft_toggle_pages_cmd"))).unwrap_or(false) {
+                let _ = self.app.run("window.panel.pages", serde_json::json!({}));
+            }
+            if ui.ctx().data_mut(|d| d.remove_temp(egui::Id::new("photocraft_toggle_split_dock_cmd"))).unwrap_or(false) {
+                toggle_split_left_dock(self.app);
+            }
+            return;
+        }
+        if id == "pages" {
+            if let Some(action) = self.app.render_pages_panel(ui) {
+                self.app.handle_pages_action(action);
             }
             return;
         }
@@ -1672,7 +1797,7 @@ pub(crate) fn sync_visibility(app: &mut PhotocraftApp) {
         }
         let pro = matches!(app.ui.theme, crate::theme::ThemeKind::Pro | crate::theme::ThemeKind::ProMedium);
         for group in Group::ALL {
-            *group.shown_mut(&mut app.ui.panels) = PANELS.iter().filter(|p| p.2 == group && p.0 != "typesetter").any(|p| layout.contains(&p.0.to_owned()));
+            *group.shown_mut(&mut app.ui.panels) = PANELS.iter().filter(|p| p.2 == group && p.0 != "typesetter" && p.0 != "pages").any(|p| layout.contains(&p.0.to_owned()));
             for (index, label) in group.tabs(pro).iter().enumerate() {
                 if let Some(id) = normalize(label) {
                     if layout.contains(&id.to_owned()) {
@@ -1690,9 +1815,13 @@ pub(crate) fn sync_visibility(app: &mut PhotocraftApp) {
             }
         }
         let in_dock = layout.contains(&"typesetter".into());
+        let in_dock_pages = layout.contains(&"pages".into());
         let in_left = app.ui.docking_left.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
         let in_bottom = app.ui.docking_bottom.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
+        let in_left_pages = app.ui.docking_left.as_ref().is_some_and(|l| l.contains(&"pages".into()));
+        let in_bottom_pages = app.ui.docking_bottom.as_ref().is_some_and(|l| l.contains(&"pages".into()));
         set_panel_visible(app, "typesetter", in_dock || in_left || in_bottom);
+        set_panel_visible(app, "pages", in_dock_pages || in_left_pages || in_bottom_pages);
     }
 }
 

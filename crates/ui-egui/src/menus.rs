@@ -42,6 +42,7 @@ pub(crate) fn panel_alias(id: &str) -> Option<&'static str> {
         "brushes" => "window.toggle.brushes",
         "canvasCapsule" => "window.toggle.canvasCapsule",
         "typesetter" => "window.toggle.typesetter",
+        "pages" => "window.toggle.pages",
         "timelapse" => "window.toggle.timelapse",
 
         _ => return None,
@@ -357,6 +358,10 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
         }
         "edit.search" => {
             app.ui.palette_open = !app.ui.palette_open;
+            Ok(Value::Null)
+        }
+        "layer.search" => {
+            app.ui.layer_search_open = !app.ui.layer_search_open;
             Ok(Value::Null)
         }
         "help.about" => Ok(json!({"dialog": app.ui.open_dialog(DialogKind::About, Default::default())})),
@@ -676,6 +681,7 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 "dock" => &mut p.dock,
                 "canvasCapsule" => &mut p.canvas_capsule,
                 "typesetter" => &mut p.typesetter,
+                "pages" => &mut p.pages,
                 "rail" => &mut p.rail_closed,
 
                 _ => return Err(format!("unknown panel in {t}")),
@@ -691,6 +697,16 @@ pub(crate) fn invoke_unguarded(app: &mut PhotocraftApp, ctx: &egui::Context, id:
                 }
             } else if !app.ui.panels.typesetter && t == "window.toggle.typesetter" {
                 crate::panel_docking::remove_panel_from_all_docks(app, "typesetter");
+            }
+            if app.ui.panels.pages && t == "window.toggle.pages" {
+                let in_dock = app.ui.docking.as_ref().is_some_and(|l| l.contains(&"pages".into()));
+                let in_left = app.ui.docking_left.as_ref().is_some_and(|l| l.contains(&"pages".into()));
+                let in_bottom = app.ui.docking_bottom.as_ref().is_some_and(|l| l.contains(&"pages".into()));
+                if !in_dock && !in_left && !in_bottom {
+                    crate::panel_docking::float_panel_on_canvas(app, "pages".into(), [140.0, 140.0, 270.0, 520.0]);
+                }
+            } else if !app.ui.panels.pages && t == "window.toggle.pages" {
+                crate::panel_docking::remove_panel_from_all_docks(app, "pages");
             }
             if let Some(g) = crate::dock::Group::from_key(&t["window.toggle.".len()..]).filter(|g| g.shown(&app.ui.panels)) {
                 crate::dock::reveal(app, g);
@@ -763,7 +779,7 @@ pub fn is_enabled(app: &PhotocraftApp, id: &str) -> bool {
     match id {
         "window.panel.activate" | "window.panel.layout" => true,
         "window.panel.group" | "window.panel.move" | "window.panel.float" | "window.panel.dock" | "window.panel.close" => !app.session.prefs().workspace_locked,
-        "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" => true,
+        "file.open" | "file.exit" | "file.clearRecent" | "file.removeRecent" | "help.about" | "help.systemInfo" | "edit.search" | "layer.search" => true,
         i if i.starts_with("file.openRecent.") => true,
         i if i.starts_with(DOCUMENT_ITEM) => true,
         i if crate::links::url_for(i).is_some() => true,
@@ -908,6 +924,7 @@ pub(crate) fn checked(app: &PhotocraftApp, id: &str) -> Option<bool> {
         "window.toggle.brushes" => p.brushes,
         "window.toggle.canvasCapsule" => p.canvas_capsule,
         "window.toggle.typesetter" => p.typesetter,
+        "window.toggle.pages" => p.pages,
         "window.toggle.timelapse" => p.timelapse,
 
         _ => return None,

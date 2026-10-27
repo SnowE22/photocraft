@@ -4915,6 +4915,7 @@ dependencies = [
  "craft-print",
  "exr",
  "flate2",
+ "log",
  "photocraft-affinity",
  "photocraft-algo",
  "photocraft-cms",

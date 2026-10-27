@@ -1564,3 +1564,731 @@ fn fs_mstroke(in: VOut) -> @location(0) vec4<f32> {
     let d = textureLoad(tex_a, local(in.pos), 0).r;
     return mout(clamp(op.p0.x + 0.5 - d, 0.0, 1.0));
 }
+
+// ---- GenTonik procedural screentone (photocraft_algo::screentone) ----------------------------
+//
+// Evaluates all 12 GenTonik procedural screentone patterns, 4 geometric dot shapes, corner
+// roundness, orbital satellites, positional/size jitter, and gradient modulation on the GPU.
+// Every Euclidean distance uses `length(vec2<f32>(a, b))` = `sqrt(a*a + b*b)`, matching
+// `sdist2(a, b)` in `crates/algo/src/screentone.rs` (Step 7 parity).
+
+const ST_PI: f32 = 3.14159265358979323846;
+const ST_FRAC_PI_2: f32 = 1.57079632679489661923;
+const ST_FRAC_PI_6: f32 = 0.52359877559829887308;
+const ST_FRAC_1_SQRT_2: f32 = 0.70710678118654752440;
+
+// Bit-exact port of `hash_coord(x: i32, y: i32, seed: u32) -> f32` from `algo/screentone.rs`.
+fn hash_coord(x: i32, y: i32, seed: u32) -> f32 {
+    let ux = bitcast<u32>(x);
+    let uy = bitcast<u32>(y);
+    var h = ((ux * 374761393u) ^ (uy * 668265263u) ^ (seed * 1274126177u)) & 0x7fffffffu;
+    h = ((h ^ (h >> 13u)) * 1274126177u) & 0x7fffffffu;
+    h = (h ^ (h >> 16u)) & 0x7fffffffu;
+    return f32(h) / 2147483647.0;
+}
+
+// Bit-exact port of `hash_gaussian(ix: i32, iy: i32, seed: u32) -> (f32, f32)` (Box-Muller).
+fn hash_gaussian(ix: i32, iy: i32, seed: u32) -> vec2<f32> {
+    let u1 = clamp(hash_coord(ix, iy, seed), 1e-6, 1.0);
+    let u2 = hash_coord(ix + 1000, iy + 1000, seed);
+    let r = sqrt(-2.0 * log(u1));
+    let theta = 2.0 * ST_PI * u2;
+    return vec2<f32>(r * cos(theta), r * sin(theta));
+}
+
+// Convert Signed Distance `dist` to coverage in `[0.0, 1.0]`.
+// When `smoothness < 0.05`, switches to pure 1-bit binary threshold (manga print mode).
+fn coverage_from_sdf(dist: f32, smoothness: f32) -> f32 {
+    if (smoothness < 0.05) {
+        return select(0.0, 1.0, dist <= 0.0);
+    }
+    return clamp((0.5 - dist) / smoothness, 0.0, 1.0);
+}
+
+// Midpoint bias curve for screentone gradient modulation (`mid_bias_curve` in `algo/screentone.rs`).
+fn st_mid_bias_curve(t: f32, midpoint: f32) -> f32 {
+    if (t <= 0.0) { return 0.0; }
+    if (t >= 1.0) { return 1.0; }
+    if (midpoint <= 0.001 || midpoint >= 0.999) { return t; }
+    let denom = log(clamp(midpoint, 0.001, 0.999));
+    if (abs(denom) <= 1e-7) { return t; }
+    let exponent = log(0.5) / denom;
+    return clamp(pow(t, exponent), 0.0, 1.0);
+}
+
+// Distance from point `p` to line segment `a -> b` (`dist_to_segment` in `algo/screentone.rs`).
+fn dist_to_segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let pa = p - a;
+    let ba = b - a;
+    let len_sq = dot(ba, ba);
+    if (len_sq < 1e-8) {
+        return length(pa);
+    }
+    let h = clamp(dot(pa, ba) / len_sq, 0.0, 1.0);
+    return length(pa - ba * h);
+}
+
+// Signed distance field to a 2D box with rounded corners (`sdf_box_rounded`).
+fn sdf_box_rounded(p: vec2<f32>, half_w: f32, half_h: f32, radius: f32) -> f32 {
+    let r = clamp(radius, 0.0, min(half_w, half_h));
+    let q = abs(p) - vec2<f32>(half_w - r, half_h - r);
+    return length(max(q, vec2<f32>(0.0))) + min(max(q.x, q.y), 0.0) - r;
+}
+
+// Signed distance field for Square dot shape (`sdf_square`).
+fn sdf_square(p: vec2<f32>, size: f32, roundness: f32) -> f32 {
+    if (roundness >= 0.95) {
+        return length(p) - size;
+    }
+    let s = size * 0.8;
+    let r = clamp(roundness, 0.0, 1.0) * s * 0.5;
+    return sdf_box_rounded(p, s, s, r);
+}
+
+// Signed distance field for Diamond dot shape (`sdf_diamond`).
+fn sdf_diamond(p: vec2<f32>, size: f32, roundness: f32) -> f32 {
+    if (roundness >= 0.95) {
+        return length(p) - size;
+    }
+    let u = (p.x + p.y) * ST_FRAC_1_SQRT_2;
+    let v = (-p.x + p.y) * ST_FRAC_1_SQRT_2;
+    let s = size * ST_FRAC_1_SQRT_2;
+    let r = clamp(roundness, 0.0, 1.0) * s * 0.5;
+    return sdf_box_rounded(vec2<f32>(u, v), s, s, r);
+}
+
+// Finalize polygon SDF with ray-casting sign and corner roundness (`sdf_polygon`).
+fn finalize_polygon_sdf(min_d: f32, inside_poly: bool, roundness: f32) -> f32 {
+    let signed_d = select(min_d, -min_d, inside_poly);
+    let r = clamp(roundness, 0.0, 1.0);
+    if (r > 0.01) {
+        let corner_rad = min(min_d, 2.0) * 0.5 * r;
+        return signed_d - corner_rad;
+    }
+    return signed_d;
+}
+
+// Signed distance field for Hexagon (`hexagon_vertices` + `sdf_polygon`).
+fn sdf_hexagon(p: vec2<f32>, size: f32, roundness: f32) -> f32 {
+    var min_d = F32_MAX;
+    var inside_poly = false;
+    let a_last = (ST_PI / 3.0) * 5.0 - ST_FRAC_PI_6;
+    var vj = vec2<f32>(cos(a_last) * size, sin(a_last) * size);
+    for (var i = 0; i < 6; i = i + 1) {
+        let a = (ST_PI / 3.0) * f32(i) - ST_FRAC_PI_6;
+        let vi = vec2<f32>(cos(a) * size, sin(a) * size);
+        if (((vi.y > p.y) != (vj.y > p.y)) && (p.x < (vj.x - vi.x) * (p.y - vi.y) / max(abs(vj.y - vi.y), 1e-6) + vi.x)) {
+            inside_poly = !inside_poly;
+        }
+        let seg_d = dist_to_segment(p, vj, vi);
+        if (seg_d < min_d) { min_d = seg_d; }
+        vj = vi;
+    }
+    return finalize_polygon_sdf(min_d, inside_poly, roundness);
+}
+
+// Signed distance field for 5-pointed Star (`star_vertices` + `sdf_polygon`).
+fn sdf_star(p: vec2<f32>, size: f32, roundness: f32) -> f32 {
+    var min_d = F32_MAX;
+    var inside_poly = false;
+    let a_last = (ST_PI / 5.0) * 9.0 - ST_FRAC_PI_2;
+    let r_last = size * 0.4;
+    var vj = vec2<f32>(cos(a_last) * r_last, sin(a_last) * r_last);
+    for (var i = 0; i < 10; i = i + 1) {
+        let r = select(size * 0.4, size, (i % 2) == 0);
+        let a = (ST_PI / 5.0) * f32(i) - ST_FRAC_PI_2;
+        let vi = vec2<f32>(cos(a) * r, sin(a) * r);
+        if (((vi.y > p.y) != (vj.y > p.y)) && (p.x < (vj.x - vi.x) * (p.y - vi.y) / max(abs(vj.y - vi.y), 1e-6) + vi.x)) {
+            inside_poly = !inside_poly;
+        }
+        let seg_d = dist_to_segment(p, vj, vi);
+        if (seg_d < min_d) { min_d = seg_d; }
+        vj = vi;
+    }
+    return finalize_polygon_sdf(min_d, inside_poly, roundness);
+}
+
+// Signed distance field for Equilateral Triangle (`triangle_vertices` + `sdf_polygon`).
+fn sdf_triangle(p: vec2<f32>, size: f32, roundness: f32) -> f32 {
+    let v0 = vec2<f32>(0.0, -size);
+    let v1 = vec2<f32>(size * 0.8660254, size * 0.5);
+    let v2 = vec2<f32>(-size * 0.8660254, size * 0.5);
+    let verts = array<vec2<f32>, 3>(v0, v1, v2);
+    var min_d = F32_MAX;
+    var inside_poly = false;
+    var vj = v2;
+    for (var i = 0; i < 3; i = i + 1) {
+        let vi = verts[i];
+        if (((vi.y > p.y) != (vj.y > p.y)) && (p.x < (vj.x - vi.x) * (p.y - vi.y) / max(abs(vj.y - vi.y), 1e-6) + vi.x)) {
+            inside_poly = !inside_poly;
+        }
+        let seg_d = dist_to_segment(p, vj, vi);
+        if (seg_d < min_d) { min_d = seg_d; }
+        vj = vi;
+    }
+    return finalize_polygon_sdf(min_d, inside_poly, roundness);
+}
+
+// Signed distance field for Heart curve (`heart_vertices` 28 sample points + `sdf_polygon`).
+fn heart_vertex(i: i32, sc: f32) -> vec2<f32> {
+    let t = (f32(i) / 28.0) * ST_PI * 2.0;
+    let sin_t = sin(t);
+    let x = sc * 16.0 * sin_t * sin_t * sin_t;
+    let y = -sc * (13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t));
+    return vec2<f32>(x, y);
+}
+
+fn sdf_heart(p: vec2<f32>, size: f32, roundness: f32) -> f32 {
+    let sc = size / 17.0;
+    var min_d = F32_MAX;
+    var inside_poly = false;
+    var vj = heart_vertex(27, sc);
+    for (var i = 0; i < 28; i = i + 1) {
+        let vi = heart_vertex(i, sc);
+        if (((vi.y > p.y) != (vj.y > p.y)) && (p.x < (vj.x - vi.x) * (p.y - vi.y) / max(abs(vj.y - vi.y), 1e-6) + vi.x)) {
+            inside_poly = !inside_poly;
+        }
+        let seg_d = dist_to_segment(p, vj, vi);
+        if (seg_d < min_d) { min_d = seg_d; }
+        vj = vi;
+    }
+    return finalize_polygon_sdf(min_d, inside_poly, roundness);
+}
+
+// Evaluates Signed Distance to a dot shape (`0: Circle`, `1: Square`, `2: Diamond`, `3: Hexagon`)
+// at `p = (px, py)` with stretch `(stretch_x, stretch_y)`, `roundness`, and `rot_pattern_rad`.
+fn eval_shape_sdf(
+    p: vec2<f32>,
+    shape: u32,
+    size: f32,
+    stretch_x: f32,
+    stretch_y: f32,
+    roundness: f32,
+    rot_pattern_rad: f32,
+) -> f32 {
+    if (size <= 0.05) {
+        return 1e6;
+    }
+    if ((shape == 0u || roundness >= 0.95) && abs(stretch_x - 1.0) <= 1e-4 && abs(stretch_y - 1.0) <= 1e-4) {
+        return length(p) - size;
+    }
+    let sin_p = sin(rot_pattern_rad);
+    let cos_p = cos(rot_pattern_rad);
+    let rx = p.x * cos_p + p.y * sin_p;
+    let ry = -p.x * sin_p + p.y * cos_p;
+    let s = vec2<f32>(rx / max(stretch_x, 0.01), ry / max(stretch_y, 0.01));
+
+    if (shape == 0u || roundness >= 0.95) {
+        return length(s) - size;
+    }
+    switch shape {
+        case 1u: { return sdf_square(s, size, roundness); }
+        case 2u: { return sdf_diamond(s, size, roundness); }
+        case 3u: { return sdf_hexagon(s, size, roundness); }
+        default: { return length(s) - size; }
+    }
+}
+
+// Evaluates special pattern shape SDF (`9: Stars`, `10: Hearts`, `11: Triangles`).
+fn eval_special_shape_sdf(
+    p: vec2<f32>,
+    pattern: i32,
+    size: f32,
+    stretch_x: f32,
+    stretch_y: f32,
+    roundness: f32,
+    rot_pattern_rad: f32,
+) -> f32 {
+    if (size <= 0.05) {
+        return 1e6;
+    }
+    let sin_p = sin(rot_pattern_rad);
+    let cos_p = cos(rot_pattern_rad);
+    let rx = p.x * cos_p + p.y * sin_p;
+    let ry = -p.x * sin_p + p.y * cos_p;
+    let s = vec2<f32>(rx / max(stretch_x, 0.01), ry / max(stretch_y, 0.01));
+
+    switch pattern {
+        case 9: { return sdf_star(s, size, roundness); }
+        case 10: { return sdf_heart(s, size, roundness); }
+        case 11: { return sdf_triangle(s, size, roundness); }
+        default: { return length(s) - size; }
+    }
+}
+
+// Compute gradient factor in `[0.0, 1.0]` at relative position `(x, y)` from center.
+// Supports `0: None`, `1: Linear`, `2: Radial` (from `ScreentoneGradientType`), as well as
+// `3: Angle`, `4: Reflected`, `5: Diamond`.
+fn compute_screentone_grad_factor(
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    grad_type: u32,
+    grad_angle_rad: f32,
+    grad_reverse: bool,
+    grad_midpoint: f32,
+) -> f32 {
+    if (grad_type == 0u) {
+        return 0.5;
+    }
+    let dir_y = sin(grad_angle_rad);
+    let dir_x = cos(grad_angle_rad);
+    var raw_grad = 0.5;
+    switch grad_type {
+        case 1u: { // Linear
+            let proj = x * dir_x + y * dir_y;
+            raw_grad = proj / max(width * 0.8, 1.0) + 0.5;
+        }
+        case 2u: { // Radial
+            let dist = length(vec2<f32>(x, y));
+            raw_grad = dist / max(min(width, height) * 0.6, 1.0);
+        }
+        case 3u: { // Angle / Conic
+            raw_grad = rem_euclid((grad_angle_rad - atan2(-y, x)) / (2.0 * ST_PI), 1.0);
+        }
+        case 4u: { // Reflected
+            let proj = x * dir_x + y * dir_y;
+            raw_grad = abs(proj) / max(width * 0.4, 1.0);
+        }
+        case 5u: { // Diamond
+            let along = x * dir_x + y * dir_y;
+            let across = -x * dir_y + y * dir_x;
+            raw_grad = (abs(along) + abs(across)) / max(min(width, height) * 0.6, 1.0);
+        }
+        default: {
+            raw_grad = 0.5;
+        }
+    }
+    var g = clamp(raw_grad, 0.0, 1.0);
+    if (grad_reverse) {
+        g = 1.0 - g;
+    }
+    return st_mid_bias_curve(g, grad_midpoint);
+}
+
+// Core procedural screentone evaluation at document pixel `d`, returning straight-alpha RGBA.
+fn screentone_tone(d: vec2<i32>, loc: vec2<i32>) -> vec4<f32> {
+    let doc_x = f32(d.x) + 0.5;
+    let doc_y = f32(d.y) + 0.5;
+
+    // Unpack primary uniform parameters from `op`:
+    // op.p0 = (spacing_x, angle_rad, origin_x, origin_y)
+    // op.p1 = (packed_bits, dot_size, smoothness, density)
+    // op.p2 = (spacing_y, grad_angle_rad, center_x, center_y)
+    // op.p3 = (bounds_w, bounds_h, line_width, cross_angle_rad)
+    let spacing_x = clamp(op.p0.x, 1.0, 2000.0);
+    let angle_rad = op.p0.y;
+    let origin_x = op.p0.z;
+    let origin_y = op.p0.w;
+
+    let packed_bits = u32(max(op.p1.x, 0.0));
+    let dot_shape = packed_bits & 3u;
+    let sat_shape = (packed_bits >> 2u) & 3u;
+    let sat_enabled = ((packed_bits >> 4u) & 1u) != 0u;
+    let sat_count = clamp(i32((packed_bits >> 5u) & 7u), 1, 4);
+    let grad_type = (packed_bits >> 8u) & 3u;
+    let grad_reverse = ((packed_bits >> 10u) & 1u) != 0u;
+    let grad_color_trans = ((packed_bits >> 11u) & 1u) != 0u;
+
+    let dot_size = max(op.p1.y, 0.0);
+    let smoothness = clamp(op.p1.z, 0.0, 1.0);
+    let density = clamp(op.p1.w, 0.0, 1.0);
+
+    let spacing_y = clamp(select(spacing_x, op.p2.x, op.p2.x >= 1.0), 1.0, 2000.0);
+    let grad_angle_rad = op.p2.y;
+    let cx = op.p2.z;
+    let cy = op.p2.w;
+
+    let bw = max(op.p3.x, 1.0);
+    let bh = max(op.p3.y, 1.0);
+    let line_width = max(op.p3.z, 0.0);
+    let cross_angle_rad = op.p3.w;
+
+    let seed = bitcast<u32>(op.fill);
+    let fg = op.color;
+    let bg = op.p4;
+
+    // Extended parameters from LUT row 0 when present (lut_at(18) > 0.5), else defaults.
+    let has_ext = lut_at(18) > 0.5;
+    let aspect_x = select(1.0, lut_at(0), has_ext);
+    let aspect_y = select(1.0, lut_at(1), has_ext);
+    let roundness = select(0.0, lut_at(2), has_ext);
+    let row_offset = select(0.0, lut_at(3), has_ext);
+    let rot_canvas_rad = select(0.0, lut_at(4), has_ext);
+    let rot_pattern_rad = select(0.0, lut_at(5), has_ext);
+    let jitter_pos = select(0.0, lut_at(6), has_ext);
+    let jitter_size = select(0.0, lut_at(7), has_ext);
+    let merge_factor = select(0.0, lut_at(8), has_ext);
+    let sat_size = select(4.0, lut_at(9), has_ext);
+    let sat_distance = select(18.0, lut_at(10), has_ext);
+    let sat_angle_rad = select(0.0, lut_at(11), has_ext);
+    let sat_stretch = select(0.0, lut_at(12), has_ext);
+    let grad_midpoint = select(0.5, lut_at(13), has_ext);
+    let grad_size_start = select(1.0, lut_at(14), has_ext);
+    let grad_size_end = select(0.0, lut_at(15), has_ext);
+    let grad_stretch_start = select(1.0, lut_at(16), has_ext);
+    let grad_stretch_end = select(1.0, lut_at(17), has_ext);
+    let use_shading = select(0.0, lut_at(19), has_ext) > 0.5;
+    let brightness = select(0.0, lut_at(20), has_ext);
+    let contrast = select(1.0, lut_at(21), has_ext);
+    let white_thresh = select(0.85, lut_at(22), has_ext);
+    let black_thresh = select(0.08, lut_at(23), has_ext);
+    let gamma = select(1.0, lut_at(24), has_ext);
+    let preserve_lines = select(0.0, lut_at(25), has_ext) > 0.5;
+    let line_thresh = select(0.24, lut_at(26), has_ext);
+
+    // 1. Relative coordinate from bounds center in canvas-rotated frame
+    let rel_x = doc_x - cx;
+    let rel_y = doc_y - cy;
+    let sin_canvas = sin(rot_canvas_rad);
+    let cos_canvas = cos(rot_canvas_rad);
+    let unshifted_x = rel_x * cos_canvas + rel_y * sin_canvas;
+    let unshifted_y = -rel_x * sin_canvas + rel_y * cos_canvas;
+
+    // 2. Gradient factor at unshifted coordinate
+    let gf = compute_screentone_grad_factor(
+        unshifted_x,
+        unshifted_y,
+        bw,
+        bh,
+        grad_type,
+        grad_angle_rad,
+        grad_reverse,
+        grad_midpoint,
+    );
+    var mod_size = 1.0;
+    var mod_aspect_x = aspect_x;
+    var mod_aspect_y = aspect_y;
+    if (grad_type != 0u) {
+        mod_size = mix(grad_size_start, grad_size_end, gf);
+        let stretch_mod = mix(grad_stretch_start, grad_stretch_end, gf);
+        mod_aspect_x = mod_aspect_x * stretch_mod;
+        mod_aspect_y = mod_aspect_y * stretch_mod;
+    }
+
+    var cur_fg = fg;
+    if (grad_color_trans && grad_type != 0u) {
+        cur_fg = vec4<f32>(mix(fg.rgb, bg.rgb, gf), fg.a);
+    }
+
+    // 3. Apply lattice origin shift and 2D grid rotation (`angle_rad`)
+    let local_x = unshifted_x - origin_x;
+    let local_y = unshifted_y - origin_y;
+    let sin_ang = sin(angle_rad);
+    let cos_ang = cos(angle_rad);
+    let grid_x = select(local_x * cos_ang + local_y * sin_ang, local_x, angle_rad == 0.0);
+    let grid_y = select(-local_x * sin_ang + local_y * cos_ang, local_y, angle_rad == 0.0);
+    let grid_p = vec2<f32>(grid_x, grid_y);
+
+    // 4. Evaluate pattern coverage across all 12 GenTonik patterns (`op.kind` = 0..11)
+    var cov = 0.0;
+    var ink = 1.0;
+    var solid_line = false;
+
+    if (use_shading) {
+        let base_c = textureLoad(tex_a, loc, 0);
+        let a = clamp(base_c.a, 0.0, 1.0);
+        let raw_luma = clamp(0.299 * base_c.r + 0.587 * base_c.g + 0.114 * base_c.b, 0.0, 1.0);
+        let luma_eff = clamp(raw_luma * a + (1.0 - a), 0.0, 1.0);
+        if (preserve_lines && luma_eff <= line_thresh) {
+            solid_line = true;
+        } else {
+            let g = pow(clamp(luma_eff + brightness, 0.0, 1.0), gamma);
+            let luma_adj = clamp((g - 0.5) * contrast + 0.5, 0.0, 1.0);
+            if (luma_adj >= white_thresh) {
+                ink = 0.0;
+            } else if (luma_adj <= black_thresh) {
+                ink = 1.0;
+            } else {
+                ink = clamp((white_thresh - luma_adj) / max(white_thresh - black_thresh, 1e-5), 0.0, 1.0);
+            }
+        }
+    }
+
+    switch op.kind {
+        case 1: { // PatternType::Lines
+            let width = max(line_width * mod_size * density * ink, 0.0);
+            if (width > 1e-4) {
+                let sp = max(spacing_y, 1.0);
+                let dist = abs(rem_euclid(grid_y, sp) - sp * 0.5) - width * 0.5;
+                cov = coverage_from_sdf(dist, smoothness);
+            }
+        }
+        case 2: { // PatternType::Crosshatch
+            let a2_rad = angle_rad + cross_angle_rad;
+            let sin2 = sin(a2_rad);
+            let cos2 = cos(a2_rad);
+            let ly1 = grid_y;
+            let ly2 = -local_x * sin2 + local_y * cos2;
+            let width = max(line_width * mod_size * density * ink, 0.0);
+            if (width > 1e-4) {
+                let sp = max(spacing_y, 1.0);
+                let d1 = abs(rem_euclid(ly1, sp) - sp * 0.5) - width * 0.5;
+                let d2 = abs(rem_euclid(ly2, sp) - sp * 0.5) - width * 0.5;
+                cov = max(coverage_from_sdf(d1, smoothness), coverage_from_sdf(d2, smoothness));
+            }
+        }
+        case 3: { // PatternType::Noise
+            let cx_idx = i32(floor(grid_x / spacing_x));
+            let cy_idx = i32(floor(grid_y / spacing_y));
+            for (var dy = -1; dy <= 1; dy = dy + 1) {
+                for (var dx = -1; dx <= 1; dx = dx + 1) {
+                    let ix = cx_idx + dx;
+                    let iy = cy_idx + dy;
+                    let h1 = hash_coord(ix, iy, seed);
+                    if (h1 > density) { continue; }
+                    let h2 = hash_coord(ix + 300, iy + 300, seed);
+                    let h3 = hash_coord(ix + 700, iy + 700, seed);
+                    let jx = (h2 - 0.5) * spacing_x * (jitter_pos * 0.01 + 0.8);
+                    let jy = (h3 - 0.5) * spacing_y * (jitter_pos * 0.01 + 0.8);
+                    let dot_c = vec2<f32>((f32(ix) + 0.5) * spacing_x + jx, (f32(iy) + 0.5) * spacing_y + jy);
+                    let sz = max(dot_size * (1.0 + (h2 - 0.5) * jitter_size * 0.02) * mod_size * ink, 0.0);
+                    let dist = length(grid_p - dot_c) - sz;
+                    cov = max(cov, coverage_from_sdf(dist, smoothness));
+                }
+            }
+        }
+        case 4: { // PatternType::GaussianNoise
+            let g_seed = seed + 137u;
+            let cx_idx = i32(floor(grid_x / spacing_x));
+            let cy_idx = i32(floor(grid_y / spacing_y));
+            for (var dy = -1; dy <= 1; dy = dy + 1) {
+                for (var dx = -1; dx <= 1; dx = dx + 1) {
+                    let ix = cx_idx + dx;
+                    let iy = cy_idx + dy;
+                    let h1 = hash_coord(ix, iy, g_seed);
+                    if (h1 > density) { continue; }
+                    let g = hash_gaussian(ix, iy, g_seed);
+                    let dot_c = vec2<f32>(
+                        (f32(ix) + 0.5) * spacing_x + g.x * spacing_x * 0.4,
+                        (f32(iy) + 0.5) * spacing_y + g.y * spacing_y * 0.4,
+                    );
+                    let sz = max(dot_size * (0.6 + h1 * 0.8) * mod_size * ink, 0.0);
+                    let dist = length(grid_p - dot_c) - sz;
+                    cov = max(cov, coverage_from_sdf(dist, smoothness));
+                }
+            }
+        }
+        case 5: { // PatternType::Stipple
+            let s_seed = seed + 999u;
+            let cx_idx = i32(floor(grid_x / spacing_x));
+            let cy_idx = i32(floor(grid_y / spacing_y));
+            for (var dy = -1; dy <= 1; dy = dy + 1) {
+                for (var dx = -1; dx <= 1; dx = dx + 1) {
+                    let ix = cx_idx + dx;
+                    let iy = cy_idx + dy;
+                    let h_keep = hash_coord(ix, iy, s_seed);
+                    if (h_keep > density * ink) { continue; }
+                    let h_jx = hash_coord(ix + 100, iy, s_seed);
+                    let h_jy = hash_coord(ix + 200, iy, s_seed);
+                    let h_sz = hash_coord(ix + 500, iy, s_seed);
+                    var dot_cx = f32(ix) * spacing_x + (h_jx - 0.5) * jitter_pos * 0.005 * spacing_x;
+                    let dot_cy = f32(iy) * spacing_y + (h_jy - 0.5) * jitter_pos * 0.005 * spacing_y;
+                    if ((iy & 1) != 0) {
+                        dot_cx = dot_cx + spacing_x * row_offset;
+                    }
+                    let sz = max(dot_size * (0.5 + h_sz * 0.5) * mod_size, 0.0);
+                    let dist = eval_shape_sdf(
+                        grid_p - vec2<f32>(dot_cx, dot_cy),
+                        dot_shape,
+                        sz,
+                        mod_aspect_x,
+                        mod_aspect_y,
+                        roundness,
+                        rot_pattern_rad,
+                    );
+                    cov = max(cov, coverage_from_sdf(dist, smoothness));
+                }
+            }
+        }
+        case 6: { // PatternType::Hexgrid
+            let hy = spacing_y * 0.8660254;
+            let cy_idx = i32(round(grid_y / hy));
+            let size = max(dot_size * mod_size * density * ink, 0.0);
+            for (var dy = -1; dy <= 1; dy = dy + 1) {
+                let iy = cy_idx + dy;
+                let cell_y = f32(iy) * hy;
+                let row_shift = select(0.0, spacing_x * 0.5, (iy & 1) != 0);
+                let cx_idx = i32(round((grid_x - row_shift) / spacing_x));
+                for (var dx = -1; dx <= 1; dx = dx + 1) {
+                    let ix = cx_idx + dx;
+                    let cell_x = f32(ix) * spacing_x + row_shift;
+                    let dist = eval_shape_sdf(
+                        grid_p - vec2<f32>(cell_x, cell_y),
+                        3u, // DotShape::Hexagon
+                        size,
+                        mod_aspect_x,
+                        mod_aspect_y,
+                        roundness,
+                        rot_pattern_rad,
+                    );
+                    cov = max(cov, coverage_from_sdf(dist, smoothness));
+                }
+            }
+        }
+        case 7: { // PatternType::Checker
+            let ix = i32(floor(grid_x / spacing_x));
+            let iy = i32(floor(grid_y / spacing_y));
+            if (((ix + iy) & 1) == 0) {
+                let cell_c = vec2<f32>((f32(ix) + 0.5) * spacing_x, (f32(iy) + 0.5) * spacing_y);
+                let size = max(spacing_x * 0.45 * mod_size * density * ink, 0.0);
+                if (size > 1e-4) {
+                    let dist = eval_shape_sdf(
+                        grid_p - cell_c,
+                        1u, // DotShape::Square
+                        size,
+                        mod_aspect_x,
+                        mod_aspect_y,
+                        roundness,
+                        rot_pattern_rad,
+                    );
+                    cov = coverage_from_sdf(dist, smoothness);
+                }
+            }
+        }
+        case 8: { // PatternType::Concentric
+            let r = length(grid_p);
+            let width = max(line_width * mod_size * density * ink, 0.0);
+            if (width > 1e-4) {
+                let sp = max(spacing_x, 1.0);
+                let dist = abs(rem_euclid(r, sp) - sp * 0.5) - width * 0.5;
+                cov = coverage_from_sdf(dist, smoothness);
+            }
+        }
+        case 9, 10, 11: { // PatternType::Stars (9), Hearts (10), Triangles (11)
+            let cx_idx = i32(floor(grid_x / spacing_x));
+            let cy_idx = i32(floor(grid_y / spacing_y));
+            let sz = max(dot_size * mod_size * density * ink, 0.0);
+            for (var dy = -1; dy <= 1; dy = dy + 1) {
+                for (var dx = -1; dx <= 1; dx = dx + 1) {
+                    let ix = cx_idx + dx;
+                    let iy = cy_idx + dy;
+                    var dot_cx = f32(ix) * spacing_x;
+                    var dot_cy = f32(iy) * spacing_y;
+                    if ((iy & 1) != 0) {
+                        dot_cx = dot_cx + spacing_x * row_offset;
+                    }
+                    if (jitter_pos > 0.0) {
+                        dot_cx = dot_cx + (hash_coord(ix, iy, seed) - 0.5) * jitter_pos * 0.005 * spacing_x;
+                        dot_cy = dot_cy + (hash_coord(ix + 1000, iy, seed) - 0.5) * jitter_pos * 0.005 * spacing_y;
+                    }
+                    let dist = eval_special_shape_sdf(
+                        grid_p - vec2<f32>(dot_cx, dot_cy),
+                        op.kind,
+                        sz,
+                        mod_aspect_x,
+                        mod_aspect_y,
+                        roundness,
+                        rot_pattern_rad,
+                    );
+                    cov = max(cov, coverage_from_sdf(dist, smoothness));
+                }
+            }
+        }
+        default: { // PatternType::Dots (0) + Orbital Satellites
+            let cy_idx = i32(floor(grid_y / spacing_y));
+            let merged_size = dot_size + merge_factor * spacing_x * 0.2;
+            let psize = max(merged_size * mod_size * density * ink, 0.0);
+            let ssize = max((sat_size + merge_factor * spacing_x * 0.4) * mod_size * density * ink, 0.0);
+            let sdist = sat_distance * (1.0 - merge_factor * 0.6);
+            let sin_sat = sin(sat_angle_rad);
+            let cos_sat = cos(sat_angle_rad);
+
+            for (var dy = -1; dy <= 1; dy = dy + 1) {
+                let iy = cy_idx + dy;
+                let row_shift = select(0.0, spacing_x * row_offset, (iy & 1) != 0);
+                let cx_idx = i32(floor((grid_x - row_shift) / spacing_x));
+                for (var dx = -1; dx <= 1; dx = dx + 1) {
+                    let ix = cx_idx + dx;
+                    var dot_cx = f32(ix) * spacing_x + row_shift;
+                    var dot_cy = f32(iy) * spacing_y;
+                    if (jitter_pos > 0.0) {
+                        dot_cx = dot_cx + (hash_coord(ix, iy, seed) - 0.5) * jitter_pos * 0.005 * spacing_x;
+                        dot_cy = dot_cy + (hash_coord(ix + 1000, iy, seed) - 0.5) * jitter_pos * 0.005 * spacing_y;
+                    }
+                    var final_size = psize;
+                    if (jitter_size > 0.0) {
+                        let jval = hash_coord(ix + 5000, iy + 5000, seed);
+                        final_size = final_size * max(1.0 + (jval - 0.5) * jitter_size * 0.02, 0.0);
+                    }
+                    let dist_main = eval_shape_sdf(
+                        grid_p - vec2<f32>(dot_cx, dot_cy),
+                        dot_shape,
+                        final_size,
+                        mod_aspect_x,
+                        mod_aspect_y,
+                        roundness,
+                        rot_pattern_rad,
+                    );
+                    cov = max(cov, coverage_from_sdf(dist_main, smoothness));
+
+                    if (sat_enabled && ssize > 0.05) {
+                        let sat_offsets = array<vec2<f32>, 4>(
+                            vec2<f32>(0.0, -sdist),
+                            vec2<f32>(0.0, sdist),
+                            vec2<f32>(sdist, 0.0),
+                            vec2<f32>(-sdist, 0.0),
+                        );
+                        for (var si = 0; si < 4; si = si + 1) {
+                            if (si >= sat_count) { break; }
+                            let off = sat_offsets[si];
+                            let rsx = off.x * cos_sat - off.y * sin_sat;
+                            let rsy = off.x * sin_sat + off.y * cos_sat;
+                            var sp = grid_p - vec2<f32>(dot_cx + rsx, dot_cy + rsy);
+                            if (sat_stretch > 0.0 && (rsx != 0.0 || rsy != 0.0)) {
+                                let stretch_dir = atan2(-rsy, -rsx);
+                                let s_sin = sin(stretch_dir);
+                                let s_cos = cos(stretch_dir);
+                                let rot_sx = sp.x * s_cos + sp.y * s_sin;
+                                let rot_sy = -sp.x * s_sin + sp.y * s_cos;
+                                let scaled_sx = rot_sx / max(1.0 + sat_stretch, 0.01);
+                                sp = vec2<f32>(
+                                    scaled_sx * s_cos - rot_sy * s_sin,
+                                    scaled_sx * s_sin + rot_sy * s_cos,
+                                );
+                            }
+                            let dist_sat = eval_shape_sdf(
+                                sp,
+                                sat_shape,
+                                ssize,
+                                mod_aspect_x,
+                                mod_aspect_y,
+                                roundness,
+                                rot_pattern_rad,
+                            );
+                            cov = max(cov, coverage_from_sdf(dist_sat, smoothness));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (solid_line) {
+        cov = 1.0;
+    }
+
+    cov = clamp(cov, 0.0, 1.0);
+
+    // 5. Blend foreground and background matching `algo/screentone.rs` straight-alpha semantics
+    if (bg.a <= 0.001) {
+        let alpha = cov * cur_fg.a;
+        if (alpha <= 1e-6) {
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+        }
+        return vec4<f32>(cur_fg.rgb, alpha);
+    }
+    return mix(bg, cur_fg, cov);
+}
+
+// Fragment entry point for `Kernel::Screentone`: evaluates the procedural GenTonik screentone
+// and applies the layer's mask (`mask_value(d)`).
+@fragment
+fn fs_screentone(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+    let loc = local(pos);
+    let d = doc_px(loc);
+    var c = screentone_tone(d, loc);
+    c.a = c.a * mask_value(d);
+    return c;
+}

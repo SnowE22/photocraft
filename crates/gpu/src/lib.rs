@@ -1720,6 +1720,12 @@ impl Compositor {
                 if clear {
                     continue;
                 }
+                if kernel == Kernel::Screentone {
+                    log::info!(
+                        "[SCREENTONE:GPU_EXEC] Drawing Kernel::Screentone pass on GPU: pass_idx={}, chunk={:?}, scissor={:?}, dst_slot={}",
+                        i, c, scissor, dst
+                    );
+                }
                 pass.set_pipeline(&self.kit.pipelines[&(kernel, self.acc_format)]);
                 pass.set_scissor_rect(scissor.x0 as u32, scissor.y0 as u32, scissor.width(), scissor.height());
                 pass.set_bind_group(0, &bg0, &[(ci as u64 * STRIDE) as u32, (op_base + i as u64 * STRIDE) as u32]);

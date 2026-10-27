@@ -1245,6 +1245,14 @@ pub fn layer_bounds(layer: &Layer, canvas: Rect) -> Rect {
             }
         }),
         LayerContent::Fill(_) => canvas,
+        LayerContent::Screentone(st) => {
+            let b = bounds::content_bounds(&st.surface);
+            if !b.is_empty() {
+                b
+            } else {
+                canvas
+            }
+        },
         _ => {
             let b = layer.surface().map_or(Rect::EMPTY, bounds::content_bounds);
             let b = match &layer.content {
@@ -1657,6 +1665,7 @@ fn empty_in(layer: &Layer, rect: Rect) -> bool {
         return transparent_outside(layer) && bounds.inflate(effects::margin(layer)).intersect(&rect).is_empty();
     }
     match &layer.content {
+        LayerContent::Screentone(st) if st.surface.tile_count() == 0 => false,
         LayerContent::Raster(_) | LayerContent::Text(_) | LayerContent::Shape(_) | LayerContent::Smart(_) | LayerContent::Screentone(_) => match layer.surface() {
             Some(s) => !s.has_tiles_in(rect) && s.default_pixel().last().is_some_and(|a| *a <= 0.0) && s.format().alpha,
             None => true,
@@ -1827,7 +1836,7 @@ pub fn transparent_outside(layer: &Layer) -> bool {
     match &layer.content {
         LayerContent::Group(g) => g.children.iter().filter(|c| c.visible).all(transparent_outside),
         // Fill layers cover the canvas (their bounds); adjustments draw nothing of their own.
-        LayerContent::Fill(_) | LayerContent::Adjustment(_) => true,
+        LayerContent::Fill(_) | LayerContent::Adjustment(_) | LayerContent::Screentone(_) => true,
         _ => layer.surface().is_none_or(|s| s.format().alpha && s.default_pixel().last().is_some_and(|a| *a <= 0.0)),
     }
 }

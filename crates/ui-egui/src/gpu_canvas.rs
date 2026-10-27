@@ -549,6 +549,7 @@ impl GpuCanvas {
         let region = if fresh { doc.bounds() } else { region.intersect(&doc.bounds()) };
         // Checked before allocating a new canvas texture only: `render` plans (and refuses) itself.
         if fresh && let Err(e) = comp.supports(doc) {
+            log::warn!("[SCREENTONE:CANVAS] comp.supports(doc) failed for doc {}: {:?}", doc.id.0, e);
             res.compositor = Some(comp);
             return Err(e);
         }
@@ -561,6 +562,10 @@ impl GpuCanvas {
             let fit = LayerFit { doc: doc.id.0, needed: comp.working_set(doc, region), budget: comp.resident_budget() };
             res.layer_fit = Some(fit);
             if !fit.fits() {
+                log::warn!(
+                    "[SCREENTONE:CANVAS] Layer working set exceeds resident budget: needed {} MB, budget {} MB",
+                    fit.needed >> 20, fit.budget >> 20
+                );
                 res.compositor = Some(comp);
                 return Err(photocraft_gpu::Unsupported(OVER_BUDGET.into()));
             }
@@ -675,6 +680,13 @@ impl GpuCanvas {
             return Refresh { kind: "lost", fallback: Some(f.to_string()), ..Default::default() };
         }
         if !self.fits_canvas(doc) {
+            let size = [doc.size.width, doc.size.height];
+            let bytes = canvas_texture_bytes(size, self.tile, texel_bytes(self.format_for(doc.depth, size)));
+            let budget = self.canvas_budget.load(Ordering::Relaxed);
+            log::warn!(
+                "[SCREENTONE:CANVAS] Document {} ({}x{}) DOES NOT FIT CANVAS BUDGET: needed {} MB, budget {} MB. CPU fallback!",
+                doc.id.0, doc.size.width, doc.size.height, bytes >> 20, budget >> 20
+            );
             // Neither compositor can fill textures that are never created: the CPU canvas draws
             // it. A set left from before the canvas grew is stale, so it goes too.
             if let Some(res) = self.rs.renderer.write().callback_resources.get_mut::<Resources>() {
@@ -696,8 +708,15 @@ impl GpuCanvas {
         let region = damage.unwrap_or(bounds);
         let encode_srgb = display.is_some_and(|d| d.encode_srgb);
         let gpu = if key == doc.id.0 { self.composite(doc, region, encode_srgb) } else { Err(photocraft_gpu::Unsupported("preview texture".into())) };
+        let has_screentone = doc.walk().into_iter().any(|(_, _, l)| l.is_screentone());
         match gpu {
             Ok(stats) => {
+                if has_screentone {
+                    log::info!(
+                        "[SCREENTONE:CANVAS] GPU refresh SUCCESS: doc={}, region={:?}, passes={}, uploaded_tiles={}, gpu_time={:?}, encode_ms={:.2}",
+                        doc.id.0, region, stats.passes, stats.tiles_uploaded, stats.gpu_time, now_ms() - t0
+                    );
+                }
                 out.kind = if damage.is_some() { "gpu-rect" } else { "gpu-full" };
                 out.px = region.width() as u64 * region.height() as u64;
                 // Encoding and submitting only: the GPU is still running this work.
@@ -706,7 +725,15 @@ impl GpuCanvas {
                 out.gpu = stats.gpu_time;
                 return out;
             }
-            Err(e) => out.fallback = Some(e.0),
+            Err(e) => {
+                if has_screentone {
+                    log::warn!(
+                        "[SCREENTONE:CANVAS] GPU refresh FAILED: doc={}, error={:?}. Falling back to CPU composite!",
+                        doc.id.0, e
+                    );
+                }
+                out.fallback = Some(e.0);
+            }
         }
         let px = region.width() as u64 * region.height() as u64;
         if defer && px >= DEFER_PX && self.prepare_texture(key, doc).is_some() {

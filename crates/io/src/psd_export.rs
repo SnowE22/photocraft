@@ -1221,7 +1221,16 @@ impl Ex {
                 }
                 LayerContent::Screentone(s) => {
                     // PSD has no procedural screentone object: export its rendered pixels.
-                    let r = self.record(l, extra, Some(&s.surface));
+                    let px;
+                    let surface_ref = if s.surface.tile_count() == 0 {
+                        let mut surf = Surface::new(self.fmt);
+                        let _ = photocraft_algo::screentone::render_screentone_to_surface(&mut surf, self.canvas, &s.spec, s.origin);
+                        px = surf;
+                        &px
+                    } else {
+                        &s.surface
+                    };
+                    let r = self.record(l, extra, Some(surface_ref));
                     self.records.push(r);
                 }
                 LayerContent::Adjustment(_) => {

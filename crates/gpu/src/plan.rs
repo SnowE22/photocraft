@@ -17,9 +17,10 @@ use photocraft_color::BlendMode;
 use photocraft_compose::adjust::{self, Transfer};
 use photocraft_compose::effects::has_effects;
 use photocraft_doc::adjust::{ToneSpace, lut3d_len};
-use photocraft_doc::{Adjustment, Document, Effect, Fill, FxPaint, GlobalLight, Glow, Gradient, Layer, LayerContent, LayerId, Pattern, StrokePosition};
+use photocraft_doc::{Adjustment, Document, Effect, Fill, FxPaint, GlobalLight, Glow, Gradient, Layer, LayerContent, LayerId, Pattern, ScreentoneLayer, StrokePosition};
 use photocraft_geom::Rect;
 use photocraft_raster::Surface;
+use photocraft_doc::{DotShape, PatternType, ScreentoneBackend, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
 
 use crate::bounds;
 
@@ -71,6 +72,8 @@ pub enum Kernel {
     MBevelShade,
     MStroke,
     MBevelTex,
+    /// Procedural GenTonik screentone sheet generator (`fs_screentone`).
+    Screentone,
 }
 
 impl Kernel {
@@ -102,6 +105,7 @@ impl Kernel {
             Kernel::MBevelShade => "fs_mbevelshade",
             Kernel::MStroke => "fs_mstroke",
             Kernel::MBevelTex => "fs_mbeveltex",
+            Kernel::Screentone => "fs_screentone",
         })
     }
 
@@ -122,7 +126,7 @@ impl Kernel {
     }
 
     /// Every kernel with a pipeline.
-    pub const DRAWN: [Kernel; 24] = [
+    pub const DRAWN: [Kernel; 25] = [
         Kernel::Content,
         Kernel::Mask,
         Kernel::Blend,
@@ -147,6 +151,7 @@ impl Kernel {
         Kernel::MBevelShade,
         Kernel::MStroke,
         Kernel::MBevelTex,
+        Kernel::Screentone,
     ];
 }
 
@@ -792,6 +797,21 @@ impl<'a> Planner<'a> {
         } else {
             let start = self.passes.len();
             let mut content = self.content(layer)?;
+            if let LayerContent::Screentone(tone) = &layer.content {
+                if tone.spec.mode == ScreentoneMode::Shading && tone.spec.use_source_luminance {
+                    let retained = self.retain(backdrop);
+                    if let Some(pass) = self.passes.get_mut(start) {
+                        if pass.kernel == Kernel::Screentone {
+                            pass.a = Some(retained);
+                            log::info!("[SCREENTONE:GPU_PLAN] Bound backdrop slot {} to Kernel::Screentone pass for Shading mode", backdrop);
+                        } else {
+                            self.release(retained);
+                        }
+                    } else {
+                        self.release(retained);
+                    }
+                }
+            }
             for c in visible_clipped {
                 content = self.atop(c, content)?;
             }
@@ -915,6 +935,22 @@ impl<'a> Planner<'a> {
                 Some(c) if c.fill == *f => self.surface_tex(&mut p, layer.id, &c.surface),
                 _ => self.fill(&mut p, f, photocraft_compose::fill_frame(layer, self.cx.canvas))?,
             },
+            LayerContent::Screentone(tone) => {
+                if self.screentone_on_gpu(layer.id, tone) {
+                    let frame = self.screentone_frame(layer, tone);
+                    log::info!(
+                        "[SCREENTONE:GPU_PLAN] layer {} ({:?}): procedurally generated on GPU (fs_screentone), frame={:?}, origin={:?}, pattern={:?}",
+                        layer.id.0, layer.name, frame, tone.origin, tone.spec.pattern_type
+                    );
+                    self.screentone_pass(&mut p, &tone.spec, frame, tone.origin);
+                } else {
+                    log::warn!(
+                        "[SCREENTONE:GPU_PLAN] layer {} ({:?}): FALLBACK to CPU surface tiles (tile_count={})",
+                        layer.id.0, layer.name, tone.surface.tile_count()
+                    );
+                    self.surface_tex(&mut p, layer.id, &tone.surface);
+                }
+            }
             _ => {
                 if let Some(s) = layer.surface() {
                     self.surface_tex(&mut p, layer.id, s);
@@ -930,6 +966,50 @@ impl<'a> Planner<'a> {
         if s.tile_count() > 0 {
             p.tex = Some(TexUse { layer: id, role: Role::Content, surface: SurfaceRef::Doc(s) });
         }
+    }
+
+    /// Whether `tone` should be evaluated procedurally via `Kernel::Screentone` on the GPU.
+    fn screentone_on_gpu(&self, id: LayerId, tone: &ScreentoneLayer) -> bool {
+        if self.cx.mode == photocraft_color::ColorMode::Cmyk
+            || self.cx.mode == photocraft_color::ColorMode::Lab
+        {
+            log::warn!("[SCREENTONE:GPU_PLAN] layer {} rejected: color mode {:?} unsupported by GPU screentone", id.0, self.cx.mode);
+            return false;
+        }
+        match tone.spec.backend {
+            ScreentoneBackend::Cpu => {
+                log::info!("[SCREENTONE:GPU_PLAN] layer {} rejected: backend explicitly set to Cpu", id.0);
+                false
+            }
+            ScreentoneBackend::Gpu => {
+                log::info!("[SCREENTONE:GPU_PLAN] layer {} accepted: backend explicitly set to Gpu (mode={:?}, use_source_lum={})", id.0, tone.spec.mode, tone.spec.use_source_luminance);
+                true
+            }
+            ScreentoneBackend::Auto => {
+                let area = u64::from(self.cx.canvas.width()) * u64::from(self.cx.canvas.height());
+                let ok = area >= 512 * 512;
+                if ok {
+                    log::info!("[SCREENTONE:GPU_PLAN] layer {} accepted: Auto backend on canvas {}x{} (area {} >= 512x512, mode={:?}, use_source_lum={})", id.0, self.cx.canvas.width(), self.cx.canvas.height(), area, tone.spec.mode, tone.spec.use_source_luminance);
+                } else {
+                    log::info!("[SCREENTONE:GPU_PLAN] layer {} rejected: Auto backend on canvas {}x{} (area {} < 512x512)", id.0, self.cx.canvas.width(), self.cx.canvas.height(), area);
+                }
+                ok
+            }
+        }
+    }
+
+    /// Reference bounds over which a live `ScreentoneLayer` anchors its lattice and gradient.
+    fn screentone_frame(&self, layer: &Layer, tone: &ScreentoneLayer) -> Rect {
+        let tb = tone.surface.content_bounds().intersect(&self.cx.canvas);
+        if !tb.is_empty() {
+            return tb;
+        }
+        photocraft_compose::fill_frame(layer, self.cx.canvas)
+    }
+
+    /// Pack [`ScreentoneSpec`] into a `Kernel::Screentone` pass.
+    pub fn screentone_pass(&self, p: &mut Pass<'a>, spec: &ScreentoneSpec, bounds: Rect, origin: (f32, f32)) {
+        pack_screentone_pass(p, spec, bounds, origin);
     }
 
     fn fill(&self, p: &mut Pass<'a>, f: &Fill, frame: photocraft_geom::Rect) -> Result<(), Unsupported> {
@@ -1869,11 +1949,159 @@ pub fn mode_index(m: BlendMode) -> i32 {
     }
 }
 
+/// Index of [`PatternType`] (0..=11) for `Kernel::Screentone`.
+pub fn screentone_pattern_index(p: PatternType) -> i32 {
+    match p {
+        PatternType::Dots => 0,
+        PatternType::Lines => 1,
+        PatternType::Crosshatch => 2,
+        PatternType::Noise => 3,
+        PatternType::GaussianNoise => 4,
+        PatternType::Stipple => 5,
+        PatternType::Hexgrid => 6,
+        PatternType::Checker => 7,
+        PatternType::Concentric => 8,
+        PatternType::Stars => 9,
+        PatternType::Hearts => 10,
+        PatternType::Triangles => 11,
+    }
+}
+
+/// Index of [`DotShape`] (0..=3) for `Kernel::Screentone`.
+pub fn screentone_shape_index(s: DotShape) -> u32 {
+    match s {
+        DotShape::Circle => 0,
+        DotShape::Square => 1,
+        DotShape::Diamond => 2,
+        DotShape::Hexagon => 3,
+    }
+}
+
+/// Index of [`ScreentoneGradientType`] (0..=2) for `Kernel::Screentone`.
+pub fn screentone_grad_index(g: ScreentoneGradientType) -> u32 {
+    match g {
+        ScreentoneGradientType::None => 0,
+        ScreentoneGradientType::Linear => 1,
+        ScreentoneGradientType::Radial => 2,
+    }
+}
+
+/// Pack [`ScreentoneSpec`], render `bounds`, and document-space `origin` into the 256-byte `Op`
+/// uniform fields of `Pass` for `Kernel::Screentone` (`fs_screentone` in `compose.wgsl`).
+///
+/// Layout in `Op`:
+/// - `op.kind`: `PatternType` index (`0..=11`)
+/// - `op.fill`: `f32::from_bits(spec.seed)` (lossless 32-bit seed)
+/// - `op.color`: `spec.foreground` (straight sRGB RGBA)
+/// - `op.p4` (`p.extra`): `spec.background` (straight sRGB RGBA)
+/// - `op.p0` (`p.params[0]`): `[spacing_x, angle_rad, phase_origin_x, phase_origin_y]`
+/// - `op.p1` (`p.params[1]`): `[packed_shapes_flags, dot_size, smoothness, density]`
+///   where `packed_shapes_flags = dot_shape + sat_shape*4 + sat_enabled*16 + sat_count*32 + grad_type*256 + grad_reverse*1024 + grad_color_trans*2048`
+/// - `op.p2` (`p.params[2]`): `[spacing_y, grad_angle_rad, center_x, center_y]`
+/// - `op.p3` (`p.params[3]`): `[bounds_w, bounds_h, line_width, cross_angle_rad]`
+/// - `op.map_origin` + `op.map_size` (via `p.map` to `SHAPE_MAP` or `op.q0..q3`):
+///   Additionally, `pack_screentone_pass` stores extended parameters in `p.lut` row 0 (16 floats)
+///   when non-default distortion/satellite/gradient curve fields are active, or encodes them
+///   losslessly so all 12 patterns, 4 dot shapes, satellites, jitter, and gradients match the CPU oracle.
+pub fn pack_screentone_pass(p: &mut Pass<'_>, spec: &ScreentoneSpec, bounds: Rect, origin: (f32, f32)) {
+    p.kernel = Kernel::Screentone;
+    p.adjust_kind = screentone_pattern_index(spec.pattern_type);
+    p.fill = f32::from_bits(spec.seed);
+    p.color = spec.foreground;
+    p.extra = spec.background;
+
+    let bw = (bounds.width().max(1)) as f32;
+    let bh = (bounds.height().max(1)) as f32;
+    let cx = bounds.x0 as f32 + bw * 0.5;
+    let cy = bounds.y0 as f32 + bh * 0.5;
+
+    // Convert document-space anchor `origin` into frame-relative phase `(origin_x, origin_y)`
+    // matching `photocraft_algo::screentone::sheet_spec`.
+    let (dx, dy) = (origin.0 - cx, origin.1 - cy);
+    let (sin_c, cos_c) = spec.rot_canvas.to_radians().sin_cos();
+    let phase_x = dx * cos_c + dy * sin_c;
+    let phase_y = -dx * sin_c + dy * cos_c;
+
+    let spacing_x = spec.spacing_x.clamp(1.0, 2000.0);
+    let spacing_y = spec.spacing_y.clamp(1.0, 2000.0);
+
+    // Pack discrete enums and booleans into an exact integer (< 8192, exact in f32).
+    let shape_bits = screentone_shape_index(spec.dot_shape)
+        | (screentone_shape_index(spec.satellite_dot_shape) << 2)
+        | (u32::from(spec.satellite_enabled) << 4)
+        | ((spec.satellite_count.clamp(1, 4) & 0x7) << 5)
+        | (screentone_grad_index(spec.grad_type) << 8)
+        | (u32::from(spec.grad_reverse) << 10)
+        | (u32::from(spec.grad_color_trans) << 11);
+
+    p.params[0] = [
+        spacing_x,
+        spec.angle.to_radians(),
+        phase_x,
+        phase_y,
+    ];
+    p.params[1] = [
+        shape_bits as f32,
+        spec.dot_size.clamp(0.0, 500.0),
+        spec.smoothness.clamp(0.0, 1.0),
+        spec.density.clamp(0.0, 1.0),
+    ];
+    p.params[2] = [
+        spacing_y,
+        spec.grad_angle.to_radians(),
+        cx,
+        cy,
+    ];
+    p.params[3] = [
+        bw,
+        bh,
+        spec.line_width.clamp(0.0, 200.0),
+        spec.cross_angle.to_radians(),
+    ];
+
+    // Store extended GenTonik parameters in LUT row 0 (read texel-exact via `lut_at` in WGSL)
+    // so `q0..q3` / LUT provide full fidelity for aspect stretch, roundness, rotations, jitter,
+    // satellites, and gradient modulation without any precision loss.
+    let mut row = [0.0f32; 4096];
+    row[0] = spec.aspect_x.clamp(0.05, 20.0);
+    row[1] = spec.aspect_y.clamp(0.05, 20.0);
+    row[2] = spec.roundness.clamp(0.0, 1.0);
+    row[3] = spec.row_offset.clamp(-1.0, 1.0);
+    row[4] = spec.rot_canvas.to_radians();
+    row[5] = spec.rot_pattern.to_radians();
+    row[6] = spec.jitter_pos.clamp(0.0, 100.0);
+    row[7] = spec.jitter_size.clamp(0.0, 100.0);
+    row[8] = spec.merge_factor.clamp(0.0, 1.0);
+    row[9] = spec.satellite_size.clamp(0.0, 500.0);
+    row[10] = spec.satellite_distance.clamp(0.0, 2000.0);
+    row[11] = spec.satellite_angle.to_radians();
+    row[12] = spec.satellite_stretch.clamp(0.0, 10.0);
+    row[13] = spec.grad_midpoint.clamp(0.0, 1.0);
+    row[14] = spec.grad_size_start.clamp(0.0, 10.0);
+    row[15] = spec.grad_size_end.clamp(0.0, 10.0);
+    row[16] = spec.grad_stretch_start.clamp(0.0, 10.0);
+    row[17] = spec.grad_stretch_end.clamp(0.0, 10.0);
+    row[18] = 1.0; // sentinel marking LUT row 0 is populated
+    row[19] = if spec.mode == ScreentoneMode::Shading && spec.use_source_luminance { 1.0 } else { 0.0 };
+    row[20] = spec.brightness;
+    row[21] = spec.contrast;
+    row[22] = spec.white_threshold;
+    row[23] = spec.black_threshold;
+    row[24] = spec.tone_gamma;
+    row[25] = if spec.preserve_lines { 1.0 } else { 0.0 };
+    row[26] = spec.line_threshold;
+    row[27] = spec.line_thickness;
+    p.lut = Some(vec![row]);
+}
+
 /// Whether `Planner::content` draws `layer` as one `Planner::content_pass`: not a group's stack,
-/// an adjustment, or a pattern fill painted in passes.
+/// an adjustment, a procedural GPU screentone pass, or a pattern fill painted in passes.
 fn single_content_pass(layer: &Layer) -> bool {
     match &layer.content {
         LayerContent::Group(_) | LayerContent::Adjustment(_) => false,
+        LayerContent::Screentone(tone) => {
+            tone.spec.backend == ScreentoneBackend::Cpu
+        }
         LayerContent::Fill(f @ Fill::Pattern { .. }) => layer.fill_cache.as_ref().is_some_and(|c| c.fill == *f),
         _ => true,
     }

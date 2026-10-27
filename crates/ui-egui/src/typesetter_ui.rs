@@ -1,4 +1,4 @@
-﻿use egui::{
+use egui::{
     Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea, Sense, Stroke,
     Window, vec2,
 };
@@ -42,6 +42,8 @@ struct TypesetterPersistedState {
     pub selected_folder: Option<String>,
     #[serde(default)]
     pub custom_storage_dir: Option<std::path::PathBuf>,
+    #[serde(default)]
+    pub favorite_fonts: Vec<String>,
 }
 
 pub fn typesetter_storage_path() -> Option<std::path::PathBuf> {
@@ -115,6 +117,7 @@ pub struct TypesetterUi {
     pub new_folder_name_buffer: String,
     pub show_script_editor_modal: bool,
     pub script_editor_buffer: String,
+    pub favorite_fonts: Vec<String>,
     pub rendered_this_frame: bool,
 }
 
@@ -143,6 +146,7 @@ impl Default for TypesetterUi {
             new_folder_name_buffer: String::new(),
             show_script_editor_modal: false,
             script_editor_buffer: String::new(),
+            favorite_fonts: Vec::new(),
             rendered_this_frame: false,
         };
         ui.auto_load();
@@ -224,6 +228,7 @@ impl TypesetterUi {
             state: self.state.clone(),
             selected_folder: self.selected_folder.clone(),
             custom_storage_dir: self.custom_storage_dir.clone(),
+            favorite_fonts: self.favorite_fonts.clone(),
         };
         if let Ok(json_str) = serde_json::to_string_pretty(&persisted) {
             if let Some(custom_dir) = &self.custom_storage_dir {
@@ -245,6 +250,9 @@ impl TypesetterUi {
                         self.dock_mode = data.dock_mode;
                         self.state = data.state;
                         self.selected_folder = data.selected_folder;
+                        if !data.favorite_fonts.is_empty() {
+                            self.favorite_fonts = data.favorite_fonts;
+                        }
                         self.custom_storage_dir = data.custom_storage_dir;
                     } else if let Ok(count) = self.state.import_styles_json(&content) {
                         if count > 0 {
@@ -263,6 +271,9 @@ impl TypesetterUi {
                         self.dock_mode = data.dock_mode;
                         self.state = data.state;
                         self.selected_folder = data.selected_folder;
+                        if !data.favorite_fonts.is_empty() {
+                            self.favorite_fonts = data.favorite_fonts;
+                        }
                         if !self.state.presets.is_empty() {
                             return;
                         }
@@ -392,11 +403,22 @@ impl TypesetterUi {
                 }
             }
 
-            // Меню панели (троеточие как во всех панелях Photoshop)
+            // Меню панели и переключатель страниц главы
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.menu_button("···", |ui| {
                     widgets::style_spectrum_popup_menu(ui);
 
+                    ui.label(RichText::new(tl!("Manga Workflow")).size(11.0).color(t.text_dim).strong());
+                    if ui.button(tl!("Chapter Pages…")).clicked() {
+                        ui.close();
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("photocraft_toggle_pages_cmd"), true));
+                    }
+                    if ui.button(tl!("Split Left Dock (Pages + TypeR)…")).clicked() {
+                        ui.close();
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("photocraft_toggle_split_dock_cmd"), true));
+                    }
+
+                    ui.separator();
                     ui.label(RichText::new(tl!("Script")).size(11.0).color(t.text_dim).strong());
 
                     if ui.button(tl!("Paste / Edit script…")).clicked() {
@@ -474,6 +496,13 @@ impl TypesetterUi {
                         }
                     }
                 });
+
+                if ui.button(RichText::new("📄").size(11.0))
+                    .on_hover_text(tl!("Toggle Chapter Pages panel"))
+                    .clicked()
+                {
+                    ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("photocraft_toggle_pages_cmd"), true));
+                }
             });
         });
 
@@ -1532,6 +1561,7 @@ impl TypesetterUi {
         let mut to_delete = false;
         let mut to_duplicate = false;
         let mut changed = false;
+        let mut toggle_fav_font: Option<String> = None;
 
         if let Some(preset) = self.state.presets.get_mut(idx) {
             ui.horizontal(|ui| {
@@ -1573,6 +1603,31 @@ impl TypesetterUi {
             ui.label(RichText::new(tl!("Typography and Font")).strong());
             ui.horizontal(|ui| {
                 ui.label(format!("{}:", tl!("Font")));
+                // Quick star toggle for current font
+                let is_fav = crate::type_tool::is_favorite_font(ui.ctx(), &preset.font_family);
+                let star_text = if is_fav { "★" } else { "☆" };
+                let star_color = if is_fav { egui::Color32::from_rgb(240, 190, 50) } else { ui.visuals().weak_text_color() };
+                if ui.button(RichText::new(star_text).color(star_color)).on_hover_text(tl!("Favorite font")).clicked() {
+                    toggle_fav_font = Some(preset.font_family.clone());
+                }
+
+                // Searchable font dropdown with pinned Favorites at the top!
+                let prev_fam = preset.font_family.clone();
+                let families = crate::type_tool::families();
+                if crate::type_tool::family_picker_in(ui, "typesetter-preset-font", &mut preset.font_family, 180.0, &families, photocraft_engine::prefs::FontPreview::Medium, &[]) {
+                    changed = true;
+                    if preset.font_family != prev_fam {
+                        if let Some(engine) = photocraft_text::try_shared() {
+                            let faces = engine.lock().unwrap_or_else(std::sync::PoisonError::into_inner).fonts.faces(&preset.font_family);
+                            if let Some(first_face) = faces.first() {
+                                if let Some(ps) = &first_face.postscript_name {
+                                    preset.font_postscript = ps.clone();
+                                }
+                                preset.font_style = first_face.style.clone();
+                            }
+                        }
+                    }
+                }
                 if ui.text_edit_singleline(&mut preset.font_family).changed() {
                     changed = true;
                 }
@@ -1677,6 +1732,18 @@ impl TypesetterUi {
                     }
                 });
             });
+        }
+
+        if let Some(font) = toggle_fav_font {
+            let now_fav = crate::type_tool::toggle_favorite_font(ui.ctx(), &font);
+            if now_fav {
+                if !self.favorite_fonts.contains(&font) {
+                    self.favorite_fonts.push(font);
+                }
+            } else {
+                self.favorite_fonts.retain(|f| f != &font);
+            }
+            changed = true;
         }
 
         if to_duplicate {

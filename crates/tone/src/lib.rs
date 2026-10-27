@@ -58,6 +58,16 @@ pub enum ScreentoneMode {
     Sheet,
 }
 
+/// Renderer backend used to generate screentone pixels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ScreentoneBackend {
+    #[default]
+    Auto,
+    Gpu,
+    Cpu,
+}
+
 /// Parameters for procedural screentone generation.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -145,6 +155,8 @@ pub struct ScreentoneSpec {
     pub smoothness: f32,
     /// Seed for noise and stipple patterns.
     pub seed: u32,
+    /// Execution backend: `Auto` (GPU on large canvases, CPU on small), `Gpu`, or `Cpu`.
+    pub backend: ScreentoneBackend,
 }
 
 impl Default for ScreentoneSpec {
@@ -206,6 +218,7 @@ impl Default for ScreentoneSpec {
             use_source_luminance: true,
             smoothness: 1.0,
             seed: 42,
+            backend: ScreentoneBackend::Auto,
         }
     }
 }

@@ -1,6 +1,8 @@
 use photocraft_color::{Color, PixelFormat, SampleType};
 use photocraft_doc::TextLayer;
-use photocraft_doc::text::{AntiAlias, Caps, CharStyle, FontFeature, Orientation, ParagraphRun, ParagraphStyle, TextAlign, TextDirection, TextRun, TextShape};
+use photocraft_doc::text::{
+    AntiAlias, Caps, CharStyle, FontFeature, Orientation, ParagraphRun, ParagraphStyle, TextAlign, TextDirection, TextRun, TextShape, VerticalAlign,
+};
 use photocraft_geom::Affine;
 
 use crate::{TextEngine, fonts};
@@ -2665,4 +2667,47 @@ fn a_word_wider_than_the_paragraph_box_breaks_at_the_box_edge() {
     let l = e.layout(&spaced, 72.0);
     assert_eq!(l.lines.len(), 2, "{:?}", l.lines);
     assert_eq!(l.lines[1].range.start, 3, "{:?}", l.lines);
+}
+
+#[test]
+fn box_text_vertical_align_top_center_bottom_and_justify() {
+    let mut e = TextEngine::new();
+    let box_height = 200.0;
+    let make_box = |text: &str, va: VerticalAlign| {
+        let mut t = styled(text, CharStyle { font_family: "Inter".into(), size_pt: 12.0, underline: true, ..Default::default() });
+        t.shape = TextShape::Box { x: 10.0, y: 20.0, width: 120.0, height: box_height };
+        with_para(t, ParagraphStyle { vertical_align: va, ..Default::default() })
+    };
+
+    let top = e.layout(&make_box("One\nTwo", VerticalAlign::Top), 72.0);
+    let center = e.layout(&make_box("One\nTwo", VerticalAlign::Center), 72.0);
+    let bottom = e.layout(&make_box("One\nTwo", VerticalAlign::Bottom), 72.0);
+    let justify = e.layout(&make_box("One\nTwo\nThree", VerticalAlign::Justify), 72.0);
+    let justify_top = e.layout(&make_box("One\nTwo\nThree", VerticalAlign::Top), 72.0);
+
+    let top_y = top.lines.first().map(|l| l.baseline - l.ascent).unwrap_or(0.0);
+    let bottom_y = top.lines.last().map(|l| l.baseline + l.descent).unwrap_or(0.0);
+    let text_height = (bottom_y - top_y).max(0.0);
+    let expected_center_offset = ((box_height - text_height) * 0.5).max(0.0);
+    let expected_bottom_offset = (box_height - text_height).max(0.0);
+
+    assert!((center.lines[0].baseline - (top.lines[0].baseline + expected_center_offset)).abs() < 1e-3);
+    assert!((bottom.lines[0].baseline - (top.lines[0].baseline + expected_bottom_offset)).abs() < 1e-3);
+    assert!((center.glyphs[0].y - (top.glyphs[0].y + expected_center_offset)).abs() < 1e-3);
+    assert!((bottom.glyphs[0].y - (top.glyphs[0].y + expected_bottom_offset)).abs() < 1e-3);
+    assert!((center.decorations[0].y0 - (top.decorations[0].y0 + expected_center_offset)).abs() < 1e-3);
+    assert!((bottom.decorations[0].y0 - (top.decorations[0].y0 + expected_bottom_offset)).abs() < 1e-3);
+
+    // Justify keeps the first line at the top and pushes the last line to the bottom.
+    assert!((justify.lines[0].baseline - justify_top.lines[0].baseline).abs() < 1e-3);
+    let j_top_y = justify_top.lines.first().map(|l| l.baseline - l.ascent).unwrap_or(0.0);
+    let j_bot_y = justify_top.lines.last().map(|l| l.baseline + l.descent).unwrap_or(0.0);
+    let j_slack = (box_height - (j_bot_y - j_top_y).max(0.0)).max(0.0);
+    assert!((justify.lines[1].baseline - (justify_top.lines[1].baseline + j_slack * 0.5)).abs() < 1e-3);
+    assert!((justify.lines[2].baseline - (justify_top.lines[2].baseline + j_slack)).abs() < 1e-3);
+
+    // Point text ignores vertical_align.
+    let pt_top = e.layout(&with_para(point("Point", 12.0), ParagraphStyle { vertical_align: VerticalAlign::Top, ..Default::default() }), 72.0);
+    let pt_bot = e.layout(&with_para(point("Point", 12.0), ParagraphStyle { vertical_align: VerticalAlign::Bottom, ..Default::default() }), 72.0);
+    assert_eq!(pt_top.lines[0].baseline, pt_bot.lines[0].baseline);
 }

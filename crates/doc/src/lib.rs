@@ -40,7 +40,7 @@ pub use pattern::Pattern;
 pub use photocraft_color::{BlendMode, Color, ColorMode, PixelFormat, SampleType};
 pub use photocraft_geom::{Affine, Rect, Size};
 pub use photocraft_raster::Surface;
-pub use photocraft_tone::{DotShape, PatternType, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
+pub use photocraft_tone::{DotShape, PatternType, ScreentoneBackend, ScreentoneGradientType, ScreentoneMode, ScreentoneSpec};
 use serde::{Deserialize, Serialize};
 pub use slices::{Slice, SliceKind, SliceOrigin, Slices};
 pub use text_styles::TextStyles;
@@ -476,6 +476,10 @@ impl TextLayer {
             self.size_pt = r.style.size_pt;
             self.color = r.style.color;
         }
+    }
+    /// Effective vertical alignment inside a paragraph box (from the first paragraph run).
+    pub fn vertical_align(&self) -> text::VerticalAlign {
+        self.paragraphs.first().map_or(text::VerticalAlign::Top, |r| r.style.vertical_align)
     }
 }
 

@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use photocraft_algo::{ScreentoneMode, ScreentoneSpec};
+use photocraft_algo::{ScreentoneBackend, ScreentoneMode, ScreentoneSpec};
 
 use crate::PhotocraftApp;
 use crate::theme::Tokens;
@@ -135,6 +135,13 @@ pub(crate) fn sync_spec_to_active_layer(app: &mut PhotocraftApp) -> bool {
     if app.ui.screentone_ui.spec == layer_spec {
         return false;
     }
+    log::info!(
+        "[SCREENTONE:UI] sync_spec_to_active_layer: doc={}, layer={}, backend={:?}, mode={:?}, pattern={:?}, dot_size={:.1}, spacing=({:.1}, {:.1}), density={:.2}",
+        doc_id.0, layer_id.0, app.ui.screentone_ui.spec.backend, app.ui.screentone_ui.spec.mode,
+        app.ui.screentone_ui.spec.pattern_type, app.ui.screentone_ui.spec.dot_size,
+        app.ui.screentone_ui.spec.spacing_x, app.ui.screentone_ui.spec.spacing_y,
+        app.ui.screentone_ui.spec.density
+    );
     let mut p = params(&app.ui.screentone_ui);
     if let Some(map) = p.as_object_mut() {
         map.insert("layer".into(), json!(layer_id.0));
@@ -179,6 +186,7 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             .selectable_label(st.spec.mode == ScreentoneMode::Shading, tl!("Manga / Shading"))
             .clicked()
         {
+            log::info!("[SCREENTONE:UI] Mode switched to: Manga / Shading (use_source_luminance=true)");
             st.spec.mode = ScreentoneMode::Shading;
             st.spec.use_source_luminance = true;
             st.spec.background[3] = 1.0;
@@ -187,9 +195,37 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             .selectable_label(st.spec.mode == ScreentoneMode::Sheet, tl!("Sheet / Pattern"))
             .clicked()
         {
+            log::info!("[SCREENTONE:UI] Mode switched to: Sheet / Pattern (use_source_luminance=false)");
             st.spec.mode = ScreentoneMode::Sheet;
             st.spec.use_source_luminance = false;
             st.spec.background[3] = 0.0;
+        }
+    });
+    ui.horizontal(|ui| {
+        row(ui, tl!("Engine:"));
+        if ui
+            .selectable_label(st.spec.backend == ScreentoneBackend::Auto, tl!("Auto"))
+            .on_hover_text(tl!("GPU on large canvases, CPU on small"))
+            .clicked()
+        {
+            log::info!("[SCREENTONE:UI] Engine switched to: Auto");
+            st.spec.backend = ScreentoneBackend::Auto;
+        }
+        if ui
+            .selectable_label(st.spec.backend == ScreentoneBackend::Gpu, tl!("⚡ GPU"))
+            .on_hover_text(tl!("Ultra-fast real-time rendering for giant files"))
+            .clicked()
+        {
+            log::info!("[SCREENTONE:UI] Engine switched to: ⚡ GPU");
+            st.spec.backend = ScreentoneBackend::Gpu;
+        }
+        if ui
+            .selectable_label(st.spec.backend == ScreentoneBackend::Cpu, tl!("⚙ CPU"))
+            .on_hover_text(tl!("Exact reference CPU engine"))
+            .clicked()
+        {
+            log::info!("[SCREENTONE:UI] Engine switched to: ⚙ CPU");
+            st.spec.backend = ScreentoneBackend::Cpu;
         }
     });
     ui.add_space(4.0);
@@ -497,9 +533,11 @@ pub(crate) fn panel(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     });
     app.ui.screentone_ui = st;
     if freeze_clicked {
+        log::info!("[SCREENTONE:UI] Freeze (Rasterize) active layer clicked");
         freeze_active_layer(app);
     } else if let Some(command) = action {
         let params = params(&app.ui.screentone_ui);
+        log::info!("[SCREENTONE:UI] Action clicked: command={}, params={:?}", command, params);
         let result = crate::preset_panels::run(app, command, params);
         // A New Layer run's result binds the gizmo to the generated sheet: the drags restyle
         // that layer in place (see `screentone_gizmo`).

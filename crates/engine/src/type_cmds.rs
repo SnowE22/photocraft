@@ -11,7 +11,7 @@ use std::sync::Arc;
 use photocraft_color::{Color, PixelFormat};
 use photocraft_doc::text::{
     AntiAlias, Caps, CharStyle, FontBaseline, FontFeature, FontVariation, Kerning, Orientation, ParagraphRun, ParagraphStyle, TextAlign, TextDirection,
-    TextRun, TextShape,
+    TextRun, TextShape, VerticalAlign,
 };
 use photocraft_doc::{Affine, Document, Layer, LayerContent, LayerId, TextLayer};
 use serde_json::{Value, json};
@@ -143,6 +143,11 @@ pub fn check_size_tracking(p: &Value) -> std::result::Result<(), String> {
         && !matches!(v.as_str(), Some("normal" | "superscript" | "subscript"))
     {
         return Err("baseline must be \"normal\", \"superscript\" or \"subscript\"".into());
+    }
+    if let Some(v) = p.get("verticalAlign")
+        && v.as_str().and_then(VerticalAlign::from_id).is_none()
+    {
+        return Err("verticalAlign must be \"top\", \"center\", \"bottom\" or \"justify\"".into());
     }
     for key in ["horizontalScale", "verticalScale"] {
         if let Some(v) = p.get(key) {
@@ -458,6 +463,10 @@ pub fn apply_para_props(s: &mut ParagraphStyle, p: &Value) -> bool {
     }
     if let Some(v) = p.get("hyphenate").and_then(Value::as_bool) {
         s.hyphenate = v;
+        any = true;
+    }
+    if let Some(v) = p.get("verticalAlign").and_then(Value::as_str).and_then(VerticalAlign::from_id) {
+        s.vertical_align = v;
         any = true;
     }
     any
@@ -806,6 +815,7 @@ fn info(s: &Session, p: &Value) -> Result<Value> {
         "transform": t.transform.m,
         "antialias": t.antialias,
         "orientation": t.orientation,
+        "verticalAlign": t.vertical_align(),
         "warp": t.warp,
         "runs": runs,
         "paragraphs": paragraphs,
@@ -875,7 +885,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "New Type Layer",
             menu: &["Layer", "New"],
             shortcut: None,
-            params: r##"{"x":px,"y":px (baseline anchor of point text),"text":str,"box":[x,y,w,h]? (paragraph text),"name":str?,"align":"left|center|right|justify…"?,"orientation":"horizontal|vertical"="horizontal", …character keys: "font","size":pt=12,"color",…}"##,
+            params: r##"{"x":px,"y":px (baseline anchor of point text),"text":str,"box":[x,y,w,h]? (paragraph text),"name":str?,"align":"left|center|right|justify…"?,"verticalAlign":"top|center|bottom|justify"="top","orientation":"horizontal|vertical"="horizontal", …character keys: "font","size":pt=12,"color",…}"##,
             enabled: has_doc,
             journal: true,
             run: |s, p| {
@@ -890,6 +900,7 @@ pub fn specs() -> Vec<CommandSpec> {
                 let bounds = s.active().and_then(|d| d.doc.layer(id)).and_then(|l| l.surface()).map(|c| c.content_bounds());
                 let mut out = json!({ "layer": id.0, "bounds": bounds.map(|r| [r.x0, r.y0, r.x1, r.y1]) });
                 if let Some(LayerContent::Text(t)) = s.active().and_then(|d| d.doc.layer(id)).map(|l| &l.content) {
+                    out["verticalAlign"] = json!(t.vertical_align());
                     let warnings = crate::type_extra_cmds::missing_font_warnings_for_layer(t);
                     if !warnings.is_empty() {
                         out["warnings"] = json!(warnings);
@@ -1024,7 +1035,7 @@ pub fn specs() -> Vec<CommandSpec> {
             menu: &[],
             shortcut: None,
             params: Box::leak(
-                format!(r##"{{"layer":id? or "layers":[id,…]? (default selected Type layers),"range":[startChar,endChar]? (single layer; default all),"metricsAsShown":bool=false (size/leading/leadingBy include each layer's transform scale), {CHAR_PARAMS}, relative steps from each character's own value: "leadingBy":pt (auto leading starts from its laid-out value; result 0.01..=5000),"baselineShiftBy":pt (result -5000..=5000),"trackingBy":1/1000 em (result -1000..=10000), paragraph keys: "align":"left|center|right|justify|justifyCenter|justifyRight|justifyAll","firstLineIndent":pt,"startIndent":pt,"endIndent":pt,"spaceBefore":pt,"spaceAfter":pt,"autoLeading":%,"direction":"auto|ltr|rtl","hyphenate":bool}}"##)
+                format!(r##"{{"layer":id? or "layers":[id,…]? (default selected Type layers),"range":[startChar,endChar]? (single layer; default all),"metricsAsShown":bool=false (size/leading/leadingBy include each layer's transform scale), {CHAR_PARAMS}, relative steps from each character's own value: "leadingBy":pt (auto leading starts from its laid-out value; result 0.01..=5000),"baselineShiftBy":pt (result -5000..=5000),"trackingBy":1/1000 em (result -1000..=10000), paragraph keys: "align":"left|center|right|justify|justifyCenter|justifyRight|justifyAll","verticalAlign":"top|center|bottom|justify","firstLineIndent":pt,"startIndent":pt,"endIndent":pt,"spaceBefore":pt,"spaceAfter":pt,"autoLeading":%,"direction":"auto|ltr|rtl","hyphenate":bool}}"##)
                     .into_boxed_str(),
             ),
             enabled: has_doc,
@@ -1047,6 +1058,11 @@ pub fn specs() -> Vec<CommandSpec> {
                         style_paragraphs(t, a, b, &|st| {
                             apply_para_props(st, p);
                         });
+                        if let Some(va) = p.get("verticalAlign").and_then(Value::as_str).and_then(VerticalAlign::from_id) {
+                            for pr in &mut t.paragraphs {
+                                pr.style.vertical_align = va;
+                            }
+                        }
                     }
                     Ok(())
                 })?;
@@ -1893,5 +1909,45 @@ mod tests {
         let empty = s.execute("type.create", json!({"x": 0, "y": 80, "text": "", "size": 10})).unwrap()["layer"].as_u64().unwrap();
         s.execute("type.setStyle", json!({"layer": empty, "range": [0, 0], "leadingBy": -2})).unwrap();
         assert_eq!(text_layer(&s, empty).char_runs()[0].style.leading_pt, Some(10.0));
+    }
+
+    #[test]
+    fn vertical_align_in_create_and_set_style() {
+        let mut s = session();
+        let created = s
+            .execute("type.create", json!({"box": [10, 10, 120, 160], "text": "Hello\nWorld", "size": 12, "verticalAlign": "center"}))
+            .unwrap();
+        let id = created["layer"].as_u64().unwrap();
+        assert_eq!(created["verticalAlign"], "Center");
+        assert_eq!(text_layer(&s, id).vertical_align(), VerticalAlign::Center);
+
+        let info_center = s.execute("type.info", json!({"layer": id})).unwrap();
+        assert_eq!(info_center["verticalAlign"], "Center");
+        assert_eq!(info_center["paragraphs"][0]["style"]["vertical_align"], "Center");
+        let b_center = info_center["lines"][0]["baseline"].as_f64().unwrap();
+
+        let info_top = s.execute("type.setStyle", json!({"layer": id, "verticalAlign": "top"})).unwrap();
+        assert_eq!(info_top["verticalAlign"], "Top");
+        let b_top = info_top["lines"][0]["baseline"].as_f64().unwrap();
+
+        let info_bottom = s.execute("type.setStyle", json!({"layer": id, "verticalAlign": "bottom"})).unwrap();
+        assert_eq!(info_bottom["verticalAlign"], "Bottom");
+        let b_bottom = info_bottom["lines"][0]["baseline"].as_f64().unwrap();
+
+        assert!(b_top < b_center && b_center < b_bottom, "baselines: top={b_top}, center={b_center}, bottom={b_bottom}");
+        assert!(((b_center - b_top) * 2.0 - (b_bottom - b_top)).abs() < 1e-2);
+
+        let info_justify = s.execute("type.setStyle", json!({"layer": id, "verticalAlign": "justify"})).unwrap();
+        assert_eq!(info_justify["verticalAlign"], "Justify");
+        assert_eq!(text_layer(&s, id).vertical_align(), VerticalAlign::Justify);
+
+        // Invalid verticalAlign values are rejected without mutating the layer or history.
+        let steps = s.active().unwrap().history.entries().len();
+        for bad_val in [json!("diagonal"), json!(123), json!(true), json!(null)] {
+            assert!(matches!(s.execute("type.setStyle", json!({"layer": id, "verticalAlign": bad_val})), Err(EngineError::BadParams { .. })));
+            assert!(matches!(s.execute("type.create", json!({"box": [0, 0, 50, 50], "text": "x", "verticalAlign": bad_val})), Err(EngineError::BadParams { .. })));
+        }
+        assert_eq!(s.active().unwrap().history.entries().len(), steps);
+        assert_eq!(text_layer(&s, id).vertical_align(), VerticalAlign::Justify);
     }
 }

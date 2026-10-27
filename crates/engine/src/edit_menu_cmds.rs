@@ -1517,7 +1517,10 @@ pub fn specs() -> Vec<CommandSpec> {
             "edit.fade",
             "Fade…",
             ["Edit"],
-            Some("Cmd+Shift+F"),
+            // ⌘⇧F now opens Edit › Find in Open Pages… (`layer.search`, the cross-document layer
+            // search); Fade stays reachable from its menu item, the canvas context menu and the
+            // Keyboard Shortcuts dialog (assign any key there).
+            None,
             r##"{"opacity":0..100=100,"mode":"normal|multiply|screen|overlay|softLight|hardLight|darken|lighten|difference|color|luminosity"}"##,
             can_fade,
             fade

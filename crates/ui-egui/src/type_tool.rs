@@ -1466,6 +1466,85 @@ fn localized_families() -> Arc<HashMap<String, String>> {
     v
 }
 
+/// Where [`sync_favorite_fonts`] leaves the user's starred font families for this frame.
+pub(crate) fn favorite_fonts_id() -> egui::Id {
+    egui::Id::new("photocraft-font-menu-favorites")
+}
+
+pub(crate) fn favorite_fonts_dirty_id() -> egui::Id {
+    egui::Id::new("photocraft-font-menu-favorites-dirty")
+}
+
+/// Syncs the favorite fonts list into the Context for this frame,
+/// returning `Some(updated)` if a font menu toggled a favorite.
+pub fn sync_favorite_fonts(ctx: &egui::Context, favorites: &[String]) -> Option<Vec<String>> {
+    let updated = ctx.data_mut(|d| d.remove_temp::<Vec<String>>(favorite_fonts_dirty_id()));
+    let active = updated.as_deref().unwrap_or(favorites);
+    ctx.data_mut(|d| d.insert_temp(favorite_fonts_id(), active.to_vec()));
+    updated
+}
+
+/// Toggle `family` in the context's favorite fonts list, returning whether it is now a favorite.
+pub fn toggle_favorite_font(ctx: &egui::Context, family: &str) -> bool {
+    let mut favorites: Vec<String> = ctx.data(|d| d.get_temp::<Vec<String>>(favorite_fonts_id())).unwrap_or_default();
+    let now_fav = if let Some(pos) = favorites.iter().position(|x| x == family) {
+        favorites.remove(pos);
+        false
+    } else {
+        favorites.push(family.to_string());
+        true
+    };
+    ctx.data_mut(|d| {
+        d.insert_temp(favorite_fonts_id(), favorites.clone());
+        d.insert_temp(favorite_fonts_dirty_id(), favorites);
+    });
+    now_fav
+}
+
+/// Whether `family` is currently in the context's favorite fonts list.
+pub fn is_favorite_font(ctx: &egui::Context, family: &str) -> bool {
+    ctx.data(|d| d.get_temp::<Vec<String>>(favorite_fonts_id())).is_some_and(|favs| favs.iter().any(|x| x == family))
+}
+
+/// Draws a 5-pointed star icon at `center`.
+pub(crate) fn paint_star_icon(
+    painter: &egui::Painter,
+    center: egui::Pos2,
+    filled: bool,
+    hovered: bool,
+    faint: egui::Color32,
+) {
+    let outer_r = if hovered { 5.8 } else { 5.0 };
+    let inner_r = outer_r * 0.42;
+    let mut pts = Vec::with_capacity(10);
+    for k in 0..10 {
+        let angle = -std::f32::consts::FRAC_PI_2 + (k as f32) * std::f32::consts::PI / 5.0;
+        let r = if k % 2 == 0 { outer_r } else { inner_r };
+        pts.push(egui::pos2(center.x + r * angle.cos(), center.y + r * angle.sin()));
+    }
+    let gold = if hovered {
+        egui::Color32::from_rgb(255, 215, 80)
+    } else {
+        egui::Color32::from_rgb(240, 190, 50)
+    };
+    if filled {
+        let mut mesh = egui::Mesh::default();
+        mesh.colored_vertex(center, gold);
+        for &p in &pts {
+            mesh.colored_vertex(p, gold);
+        }
+        for k in 0..10u32 {
+            let next = if k == 9 { 1 } else { k + 2 };
+            mesh.add_triangle(0, k + 1, next);
+        }
+        painter.add(egui::Shape::mesh(mesh));
+        painter.add(egui::Shape::closed_line(pts, egui::Stroke::new(0.9, gold)));
+    } else {
+        let stroke_col = if hovered { gold } else { faint };
+        painter.add(egui::Shape::closed_line(pts, egui::Stroke::new(1.15, stroke_col)));
+    }
+}
+
 /// The font menu's rows: each family with the label it shows (its localized name when `labels`
 /// has one, else the family), matching `query` (lowercase) by either name. With localized labels
 /// the rows sort by label, so the menu stays alphabetical as shown. As in Photoshop, recently
@@ -1478,6 +1557,19 @@ fn font_menu_rows<'a>(
     query: &str,
     recents: &[String],
 ) -> (Vec<(&'a String, &'a str)>, usize) {
+    let (rows, _, n_recent) = font_menu_rows_with_favorites(families, labels, query, &[], recents);
+    (rows, n_recent)
+}
+
+/// Headed by user-starred favorites first (once each), then recently used families (once each),
+/// followed by the full alphabetical list below. Returns `(rows, n_favorites, n_recent)`.
+pub(crate) fn font_menu_rows_with_favorites<'a>(
+    families: &'a [String],
+    labels: Option<&'a HashMap<String, String>>,
+    query: &str,
+    favorites: &[String],
+    recents: &[String],
+) -> (Vec<(&'a String, &'a str)>, usize, usize) {
     let label = |f: &'a String| labels.and_then(|l| l.get(f)).map_or(f.as_str(), String::as_str);
     let mut rows: Vec<(&String, &str)> = families
         .iter()
@@ -1488,11 +1580,24 @@ fn font_menu_rows<'a>(
         rows.sort_by_cached_key(|(_, l)| l.to_lowercase());
     }
     if !query.is_empty() {
-        return (rows, 0);
+        if !favorites.is_empty() {
+            rows.sort_by_key(|(f, _)| !favorites.iter().any(|fav| fav == *f));
+        }
+        return (rows, 0, 0);
     }
-    let recent: Vec<(&String, &str)> = recents.iter().filter_map(|r| rows.iter().find(|(f, _)| *f == r).copied()).collect();
-    let n = recent.len();
-    (recent.into_iter().chain(rows).collect(), n)
+    let fav_rows: Vec<(&String, &str)> =
+        favorites.iter().filter_map(|fav| rows.iter().find(|(f, _)| *f == fav).copied()).collect();
+    let n_fav = fav_rows.len();
+
+    let recent: Vec<(&String, &str)> = recents
+        .iter()
+        .filter(|r| !favorites.iter().any(|fav| fav == *r))
+        .filter_map(|r| rows.iter().find(|(f, _)| *f == r).copied())
+        .collect();
+    let n_recent = recent.len();
+
+    let combined: Vec<(&'a String, &'a str)> = fav_rows.into_iter().chain(recent).chain(rows).collect();
+    (combined, n_fav, n_recent)
 }
 
 fn weight_name(w: f32) -> &'static str {
@@ -1745,14 +1850,16 @@ pub(crate) fn family_picker_in(
         // The recent group stays as it was when the menu opened: each arrow step applies (and so
         // records) a family, and moving it to the top would send the next step back up.
         let open_recents: Vec<String> = ui.data_mut(|d| d.get_temp_mut_or_insert_with(recents_id, || recents.to_vec()).clone());
-        let (rows, n_recent) = font_menu_rows(families, labels, &ql, &open_recents);
+        let favorites: Vec<String> = ui.ctx().data(|d| d.get_temp::<Vec<String>>(favorite_fonts_id())).unwrap_or_default();
+        let (rows, n_fav, n_recent) = font_menu_rows_with_favorites(families, labels, &ql, &favorites, &open_recents);
+        let n_top = n_fav + n_recent;
         // A recent family is listed twice. The current family's row is the one the last arrow
         // selected while it still shows that family, else its alphabetical copy, so the arrows
         // step through the alphabet as on the closed field.
         let mut selected = ui
             .data(|d| d.get_temp::<usize>(row_id))
             .filter(|&i| rows.get(i).is_some_and(|(f, _)| *f == current))
-            .or_else(|| rows.iter().skip(n_recent).position(|(f, _)| *f == current).map(|i| i + n_recent))
+            .or_else(|| rows.iter().skip(n_top).position(|(f, _)| *f == current).map(|i| i + n_top))
             .or_else(|| rows.iter().position(|(f, _)| *f == current));
         let mut stepped = None;
         if down || up {
@@ -1785,10 +1892,15 @@ pub(crate) fn family_picker_in(
         // stays fixed at the top of the popup.
         let mut hovered: Option<String> = None;
         egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.spacing_mut().button_padding.x = 22.0;
             for (i, (f, label)) in rows.into_iter().enumerate() {
-                if i == n_recent && n_recent > 0 {
+                if i == n_fav && n_fav > 0 {
                     ui.separator();
                 }
+                if i == n_top && n_recent > 0 {
+                    ui.separator();
+                }
+                let is_fav = favorites.iter().any(|fav| fav == f);
                 // Highlighted by its fill alone, as Photoshop's font menu is. A selectable button lays
                 // out its frame's stroke only once hovered or selected, so with the theme's stroke the
                 // row under the pointer (and the selected one) grew and pushed the rows below down:
@@ -1808,18 +1920,32 @@ pub(crate) fn family_picker_in(
                 {
                     crate::font_preview::paint(ui, f, response.rect, size);
                 }
+                let star_hit_rect = egui::Rect::from_min_max(response.rect.min, egui::pos2(response.rect.min.x + 22.0, response.rect.max.y));
+                let star_center = egui::pos2(response.rect.min.x + 11.0, response.rect.center().y);
+                let on_star = ui.input(|inp| inp.pointer.interact_pos().is_some_and(|p| star_hit_rect.contains(p)));
+                if on_star && response.hovered() {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                if ui.is_rect_visible(response.rect) {
+                    let faint = ui.visuals().weak_text_color();
+                    paint_star_icon(ui.painter(), star_center, is_fav, response.hovered() && on_star, faint);
+                }
                 if response.hovered() {
                     hovered = Some(f.clone());
                 }
                 if press.chosen(ui, &response) {
-                    *current = f.clone();
-                    // A served family not fetched yet: start now, before any text needs it.
-                    photocraft_text::served::request(f);
-                    changed = true;
-                    picked = true;
-                    ui.data_mut(|d| d.remove::<String>(search_id));
-                    hovered = None;
-                    ui.close();
+                    if on_star {
+                        toggle_favorite_font(ui.ctx(), f);
+                    } else {
+                        *current = f.clone();
+                        // A served family not fetched yet: start now, before any text needs it.
+                        photocraft_text::served::request(f);
+                        changed = true;
+                        picked = true;
+                        ui.data_mut(|d| d.remove::<String>(search_id));
+                        hovered = None;
+                        ui.close();
+                    }
                 }
             }
         });
@@ -2251,6 +2377,17 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             apply(app, ui.ctx(), json!({"align": align}));
         }
     }
+    let cur_valign = styles_at(app)
+        .map(|(_, p)| p.vertical_align)
+        .unwrap_or_else(|| default_styles(app).1.vertical_align);
+    ui.spacing_mut().item_spacing.x = 8.0;
+    crate::widgets::vline(ui, 22.0);
+    ui.spacing_mut().item_spacing.x = 2.0;
+    for (key, tip, va) in vertical_align_items() {
+        if vertical_align_button(ui, va, cur_valign == va, tip, 24.0).clicked() {
+            apply_vertical_align(app, ui.ctx(), key);
+        }
+    }
     ui.spacing_mut().item_spacing.x = 8.0;
     crate::widgets::vline(ui, 22.0);
     ui.spacing_mut().item_spacing.x = 2.0;
@@ -2359,6 +2496,18 @@ pub(crate) fn capsule_controls(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
             if crate::icons::button(ui, icon, 18.0, o.type_align == align, tip).clicked() {
                 app.ui.tool_options.type_align = align.into();
                 apply(app, ui.ctx(), json!({"align": align}));
+            }
+        }
+        ui.spacing_mut().item_spacing.x = 6.0;
+        crate::widgets::vline(ui, 18.0);
+        ui.spacing_mut().item_spacing.x = 2.0;
+
+        let cur_valign = styles_at(app)
+            .map(|(_, p)| p.vertical_align)
+            .unwrap_or_else(|| default_styles(app).1.vertical_align);
+        for (key, tip, va) in vertical_align_items() {
+            if vertical_align_button(ui, va, cur_valign == va, tip, 18.0).clicked() {
+                apply_vertical_align(app, ui.ctx(), key);
             }
         }
         ui.spacing_mut().item_spacing.x = 6.0;
@@ -2584,6 +2733,95 @@ fn direction_button(ui: &mut egui::Ui, d: photocraft_doc::text::TextDirection, s
     let (r, resp) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
     let tint = crate::icons::button_chrome(ui, r, selected, resp.hovered());
     direction_glyph(ui.painter(), egui::Rect::from_center_size(r.center(), egui::vec2(14.0, 16.0)), d, tint);
+    let tip = tip.to_string();
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, &tip));
+    resp.on_hover_text(tip)
+}
+
+/// Apply vertical alignment to the active text layer (converting point text to box text if needed)
+/// and update default tool options.
+fn apply_vertical_align(app: &mut PhotocraftApp, ctx: &egui::Context, key: &str) {
+    apply_defaults(app, &json!({"verticalAlign": key}));
+    if let Some((id, _)) = target(app) {
+        if box_shape(app, LayerId(id)).is_none() {
+            if let Some((l, _, _)) = layout(app, LayerId(id)) {
+                if let Some([x0, y0, x1, y1]) = l.bounds() {
+                    let pad = 10.0;
+                    let w = ((x1 - x0) + pad * 2.0).max(60.0);
+                    let h = ((y1 - y0) + pad * 2.0).max(40.0);
+                    let bx = x0 - pad;
+                    let by = y0 - pad;
+                    apply(app, ctx, json!({"box": [bx, by, w, h], "verticalAlign": key}));
+                } else {
+                    apply(app, ctx, json!({"verticalAlign": key}));
+                }
+            } else {
+                apply(app, ctx, json!({"verticalAlign": key}));
+            }
+        } else {
+            apply(app, ctx, json!({"verticalAlign": key}));
+        }
+    }
+}
+
+/// Vertical alignment choices for box text in the options bar and Paragraph panel.
+fn vertical_align_items() -> [(&'static str, &'static str, photocraft_doc::text::VerticalAlign); 4] {
+    use photocraft_doc::text::VerticalAlign as V;
+    [
+        ("top", "Top align text", V::Top),
+        ("center", "Center text vertically", V::Center),
+        ("bottom", "Bottom align text", V::Bottom),
+        ("justify", "Justify text vertically", V::Justify),
+    ]
+}
+
+/// Vertical alignment glyph drawn with `egui::Painter`: frame bounds and horizontal lines
+/// positioned at the top, vertical center, bottom, or justified across the box height.
+fn vertical_align_glyph(p: &egui::Painter, r: egui::Rect, a: photocraft_doc::text::VerticalAlign, c: Color32) {
+    use photocraft_doc::text::VerticalAlign as V;
+    let frame_stroke = Stroke::new(1.2, c);
+    let line_stroke = Stroke::new(1.5, c);
+    let (left, right) = (r.left(), r.right());
+    match a {
+        V::Top => {
+            p.line_segment([egui::pos2(left, r.top()), egui::pos2(right, r.top())], frame_stroke);
+            for (i, w) in [0.85, 0.55].iter().enumerate() {
+                let y = r.top() + 3.5 + i as f32 * 3.0;
+                p.line_segment([egui::pos2(left + 1.0, y), egui::pos2(left + 1.0 + (r.width() - 2.0) * w, y)], line_stroke);
+            }
+        }
+        V::Center => {
+            let cy = r.center().y;
+            p.line_segment([egui::pos2(left, r.top()), egui::pos2(right, r.top())], frame_stroke);
+            p.line_segment([egui::pos2(left, r.bottom()), egui::pos2(right, r.bottom())], frame_stroke);
+            for (dy, w) in [(-1.5, 0.85), (1.5, 0.55)] {
+                let len = (r.width() - 2.0) * w;
+                let x0 = r.center().x - len * 0.5;
+                p.line_segment([egui::pos2(x0, cy + dy), egui::pos2(x0 + len, cy + dy)], line_stroke);
+            }
+        }
+        V::Bottom => {
+            p.line_segment([egui::pos2(left, r.bottom()), egui::pos2(right, r.bottom())], frame_stroke);
+            for (i, w) in [0.85, 0.55].iter().enumerate() {
+                let y = r.bottom() - 6.5 + i as f32 * 3.0;
+                p.line_segment([egui::pos2(left + 1.0, y), egui::pos2(left + 1.0 + (r.width() - 2.0) * w, y)], line_stroke);
+            }
+        }
+        V::Justify => {
+            for (i, w) in [1.0, 0.75, 1.0, 0.65].iter().enumerate() {
+                let y = r.top() + i as f32 * r.height() / 3.0;
+                p.line_segment([egui::pos2(left, y), egui::pos2(left + r.width() * w, y)], line_stroke);
+            }
+        }
+    }
+}
+
+/// Square button for one vertical alignment mode (e.g. 24 px in options bar, 18 px in canvas capsule).
+fn vertical_align_button(ui: &mut egui::Ui, a: photocraft_doc::text::VerticalAlign, selected: bool, tip: &str, size: f32) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::click());
+    let tint = crate::icons::button_chrome(ui, r, selected, resp.hovered());
+    let glyph_size = (size * 0.55).round().max(10.0);
+    vertical_align_glyph(ui.painter(), egui::Rect::from_center_size(r.center(), egui::vec2(glyph_size, glyph_size)), a, tint);
     let tip = tip.to_string();
     resp.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, selected, &tip));
     resp.on_hover_text(tip)
@@ -2949,6 +3187,20 @@ fn type_sections(app: &mut PhotocraftApp, ui: &mut egui::Ui, character: bool, pa
         ui.add_space(ROW_GAP);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
+            for (key, tip, va) in vertical_align_items() {
+                let clicked = ui
+                    .add_enabled_ui(!point, |ui| {
+                        toggle_cell(ui, cw, para.vertical_align == va, tip, |ui, r, col| {
+                            let g = egui::Rect::from_center_size(r.center(), egui::vec2(12.0, 12.0));
+                            let col = if !ui.is_enabled() || para.vertical_align == va { col } else { t.icon };
+                            vertical_align_glyph(ui.painter(), g, va, col);
+                        })
+                    })
+                    .inner;
+                if clicked {
+                    apply(app, ui.ctx(), json!({"verticalAlign": key}));
+                }
+            }
             for (key, tip, d) in direction_items() {
                 let clicked = toggle_cell(ui, cw, para.direction == d, tip, |ui, r, col| {
                     let g = egui::Rect::from_center_size(r.center(), egui::vec2(14.0, 16.0));
