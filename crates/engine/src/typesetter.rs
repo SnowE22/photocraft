@@ -1,5 +1,43 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MeasurementSystem {
+    Metric,
+    Optical,
+}
+
+impl Default for MeasurementSystem {
+    fn default() -> Self {
+        Self::Optical
+    }
+}
+
+impl MeasurementSystem {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Metric => "metric",
+            Self::Optical => "optical",
+        }
+    }
+
+    pub fn is_optical(&self) -> bool {
+        matches!(self, Self::Optical)
+    }
+
+    pub fn from_str_loose(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "optical" | "opticalkern" | "visual" => Self::Optical,
+            "metric" | "metrics" | "metricskern" | "font" => Self::Metric,
+            _ => Self::Optical,
+        }
+    }
+}
+
+pub fn default_text_color() -> [u8; 4] {
+    [0, 0, 0, 255]
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextStylePreset {
     pub name: String,
@@ -16,6 +54,10 @@ pub struct TextStylePreset {
     pub all_caps: bool,
     pub stroke_width: f32,
     pub stroke_color: [u8; 4],
+    #[serde(default = "default_text_color")]
+    pub text_color: [u8; 4],
+    #[serde(default)]
+    pub measurement_system: MeasurementSystem,
 }
 
 impl Default for TextStylePreset {
@@ -35,6 +77,8 @@ impl Default for TextStylePreset {
             all_caps: true,
             stroke_width: 2.0,
             stroke_color: [255, 255, 255, 255],
+            text_color: [0, 0, 0, 255],
+            measurement_system: MeasurementSystem::Optical,
         }
     }
 }
@@ -127,6 +171,116 @@ impl Default for TypesetterState {
             selected_preset_idx: 0,
             options: TypesetterOptions::default(),
         }
+    }
+}
+
+/// Парсер цвета для форматов TypeR и Photoshop CEP:
+/// - Объект RGBA: `{"r": .., "g": .., "b": ..}` или `{"red": .., "green": .., "blue": ..}` (0..255 или 0.0..1.0)
+/// - Объект Grayscale: `{"gray": 100}` (0..100% или 0..255)
+/// - Строка Hex: `"#RRGGBB"` или `"#RRGGBBAA"`
+/// - Массив: `[r, g, b]` или `[r, g, b, a]`
+pub fn parse_color_value(val: &serde_json::Value) -> Option<[u8; 4]> {
+    match val {
+        serde_json::Value::Object(map) => {
+            let r_val = map.get("r").or_else(|| map.get("red"));
+            let g_val = map.get("g").or_else(|| map.get("green"));
+            let b_val = map.get("b").or_else(|| map.get("blue"));
+
+            if let (Some(r), Some(g), Some(b)) = (r_val, g_val, b_val) {
+                let to_u8 = |v: &serde_json::Value| -> u8 {
+                    if let Some(n) = v.as_u64() {
+                        n.min(255) as u8
+                    } else if let Some(f) = v.as_f64() {
+                        if f <= 1.0 && f > 0.0 {
+                            (f * 255.0).round().clamp(0.0, 255.0) as u8
+                        } else {
+                            f.round().clamp(0.0, 255.0) as u8
+                        }
+                    } else {
+                        0
+                    }
+                };
+                let r_u8 = to_u8(r);
+                let g_u8 = to_u8(g);
+                let b_u8 = to_u8(b);
+
+                let a_u8 = if let Some(a) = map.get("a").or_else(|| map.get("alpha")) {
+                    if let Some(n) = a.as_u64() {
+                        n.min(255) as u8
+                    } else if let Some(f) = a.as_f64() {
+                        if f <= 1.0 {
+                            (f * 255.0).round().clamp(0.0, 255.0) as u8
+                        } else {
+                            f.round().clamp(0.0, 255.0) as u8
+                        }
+                    } else {
+                        255
+                    }
+                } else if let Some(op) = map.get("opacity").and_then(|v| v.as_f64()) {
+                    ((op / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8
+                } else {
+                    255
+                };
+
+                return Some([r_u8, g_u8, b_u8, a_u8]);
+            }
+
+            if let Some(g) = map.get("gray").or_else(|| map.get("grey")).and_then(|v| v.as_f64()) {
+                let v = if g <= 1.0 && g > 0.0 {
+                    (g * 255.0).round().clamp(0.0, 255.0) as u8
+                } else if g <= 100.0 {
+                    ((g / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8
+                } else {
+                    g.round().clamp(0.0, 255.0) as u8
+                };
+                let a = if let Some(op) = map.get("opacity").and_then(|v| v.as_f64()) {
+                    ((op / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8
+                } else {
+                    255
+                };
+                return Some([v, v, v, a]);
+            }
+
+            None
+        }
+        serde_json::Value::Array(arr) if arr.len() >= 3 => {
+            let to_u8 = |v: &serde_json::Value| -> u8 {
+                if let Some(n) = v.as_u64() {
+                    n.min(255) as u8
+                } else if let Some(f) = v.as_f64() {
+                    if f <= 1.0 && f > 0.0 {
+                        (f * 255.0).round().clamp(0.0, 255.0) as u8
+                    } else {
+                        f.round().clamp(0.0, 255.0) as u8
+                    }
+                } else {
+                    0
+                }
+            };
+            let r = to_u8(&arr[0]);
+            let g = to_u8(&arr[1]);
+            let b = to_u8(&arr[2]);
+            let a = if arr.len() >= 4 { to_u8(&arr[3]) } else { 255 };
+            Some([r, g, b, a])
+        }
+        serde_json::Value::String(s) => {
+            let s = s.trim_start_matches('#');
+            if s.len() == 6 {
+                let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+                Some([r, g, b, 255])
+            } else if s.len() == 8 {
+                let r = u8::from_str_radix(&s[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&s[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+                let a = u8::from_str_radix(&s[6..8], 16).ok()?;
+                Some([r, g, b, a])
+            } else {
+                None
+            }
+        }
+        _ => None,
     }
 }
 
@@ -247,30 +401,53 @@ impl TypesetterState {
                 let size = stroke_obj.get("size").and_then(|v| v.as_f64()).unwrap_or(0.0) as f32;
                 let width = if enabled { size } else { 0.0 };
                 let color = if let Some(c) = stroke_obj.get("color") {
-                    let r = c.get("r").or_else(|| c.get("red")).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                    let g = c.get("g").or_else(|| c.get("green")).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                    let b = c.get("b").or_else(|| c.get("blue")).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                    let opacity = stroke_obj.get("opacity").and_then(|v| v.as_f64()).unwrap_or(100.0);
-                    let a = ((opacity / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8;
-                    [r, g, b, a]
+                    parse_color_value(c).unwrap_or([255, 255, 255, 255])
                 } else {
                     [255, 255, 255, 255]
                 };
                 (width, color)
             } else if let Some(stroke_val) = item.get("stroke_width").or_else(|| item.get("stroke")) {
                 let width = stroke_val.as_f64().unwrap_or(0.0) as f32;
-                let color = if let Some(color_arr) = item.get("strokeColor").and_then(|c| c.as_array()) {
-                    let r = color_arr.first().and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                    let g = color_arr.get(1).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                    let b = color_arr.get(2).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                    let a = color_arr.get(3).and_then(|v| v.as_u64()).unwrap_or(255) as u8;
-                    [r, g, b, a]
+                let color = if let Some(c) = item.get("strokeColor") {
+                    parse_color_value(c).unwrap_or([255, 255, 255, 255])
                 } else {
                     [255, 255, 255, 255]
                 };
                 (width, color)
             } else {
                 (0.0, [255, 255, 255, 255])
+            };
+
+            let text_color = if let Some(c) = item.get("textColorRgba").or_else(|| item.get("textColor")).or_else(|| item.get("text_color")) {
+                parse_color_value(c)
+            } else if let Some(c) = text_style.and_then(|ts| ts.get("color")) {
+                let mut col = parse_color_value(c);
+                if let Some(ref mut col) = col {
+                    if let Some(op) = text_style.and_then(|ts| ts.get("opacity")).or_else(|| item.get("opacity")).and_then(|v| v.as_f64()) {
+                        if (0.0..=100.0).contains(&op) {
+                            col[3] = ((op / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8;
+                        }
+                    }
+                }
+                col
+            } else if let Some(c) = item.get("color") {
+                parse_color_value(c)
+            } else {
+                None
+            }.unwrap_or([0, 0, 0, 255]);
+
+            let measurement_system = if let Some(kern) = text_style.and_then(|ts| ts.get("autoKern")).and_then(|v| v.as_str()) {
+                MeasurementSystem::from_str_loose(kern)
+            } else if let Some(ms) = item.get("measurementSystem")
+                .or_else(|| item.get("measurement_system"))
+                .or_else(|| text_style.and_then(|ts| ts.get("measurementSystem")))
+                .and_then(|v| v.as_str())
+            {
+                MeasurementSystem::from_str_loose(ms)
+            } else if let Some(kern) = text_style.and_then(|ts| ts.get("kerning")).and_then(|v| v.as_str()) {
+                MeasurementSystem::from_str_loose(kern)
+            } else {
+                MeasurementSystem::Optical
             };
 
             self.presets.push(TextStylePreset {
@@ -288,6 +465,8 @@ impl TypesetterState {
                 all_caps,
                 stroke_width,
                 stroke_color,
+                text_color,
+                measurement_system,
             });
             count += 1;
         }
@@ -347,7 +526,14 @@ impl TypesetterState {
                                     "horizontalScale": preset.horizontal_scale,
                                     "syntheticBold": preset.bold && !preset.font_style.to_lowercase().contains("bold"),
                                     "syntheticItalic": preset.italic && !preset.font_style.to_lowercase().contains("italic"),
-                                    "fontCaps": if preset.all_caps { "allCaps" } else { "normal" }
+                                    "fontCaps": if preset.all_caps { "allCaps" } else { "normal" },
+                                    "autoKern": if preset.measurement_system.is_optical() { "opticalKern" } else { "metricsKern" },
+                                    "color": {
+                                        "red": preset.text_color[0],
+                                        "green": preset.text_color[1],
+                                        "blue": preset.text_color[2]
+                                    },
+                                    "opacity": (preset.text_color[3] as f32 / 2.55).round() as u32
                                 }
                             }
                         ],
@@ -373,7 +559,10 @@ impl TypesetterState {
                     }
                 },
                 "stroke_width": preset.stroke_width,
-                "strokeColor": preset.stroke_color
+                "strokeColor": preset.stroke_color,
+                "textColor": format!("#{:02x}{:02x}{:02x}{:02x}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]),
+                "textColorRgba": preset.text_color,
+                "measurementSystem": preset.measurement_system.as_str()
             }));
         }
 
@@ -690,6 +879,10 @@ mod tests {
         };
         let imported = new_state.import_styles_json(&json).unwrap();
         assert_eq!(imported, state.presets.len());
+        for i in 0..state.presets.len() {
+            assert_eq!(new_state.presets[i].text_color, state.presets[i].text_color);
+            assert_eq!(new_state.presets[i].measurement_system, state.presets[i].measurement_system);
+        }
     }
 
     #[test]
@@ -813,5 +1006,103 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_typer_font_color_and_measurement_system_import_export() {
+        let json_data = r##"{
+            "folders": [{"name": "Тест", "id": "f1"}],
+            "styles": [
+                {
+                    "name": "RGB Optical",
+                    "folder": "f1",
+                    "textProps": {
+                        "layerText": {
+                            "textStyleRange": [{
+                                "textStyle": {
+                                    "fontName": "Inter",
+                                    "size": 20,
+                                    "color": {"red": 255, "green": 128, "blue": 64},
+                                    "opacity": 80,
+                                    "autoKern": "opticalKern"
+                                }
+                            }]
+                        }
+                    }
+                },
+                {
+                    "name": "Grayscale Metric",
+                    "folder": "f1",
+                    "textProps": {
+                        "layerText": {
+                            "textStyleRange": [{
+                                "textStyle": {
+                                    "fontName": "Inter",
+                                    "size": 24,
+                                    "color": {"gray": 100},
+                                    "autoKern": "metricsKern"
+                                }
+                            }]
+                        }
+                    }
+                },
+                {
+                    "name": "Hex Metric",
+                    "folder": "f1",
+                    "textColor": "#112233aa",
+                    "measurementSystem": "metric",
+                    "textProps": {
+                        "layerText": {
+                            "textStyleRange": [{
+                                "textStyle": {
+                                    "fontName": "Inter",
+                                    "size": 18
+                                }
+                            }]
+                        }
+                    }
+                }
+            ]
+        }"##;
+
+        let mut state = TypesetterState {
+            presets: Vec::new(),
+            ..TypesetterState::default()
+        };
+        let count = state.import_styles_json(json_data).unwrap();
+        assert_eq!(count, 3);
+
+        // 1. RGB Optical with 80% opacity: [255, 128, 64, 204]
+        assert_eq!(state.presets[0].name, "RGB Optical");
+        assert_eq!(state.presets[0].text_color[0], 255);
+        assert_eq!(state.presets[0].text_color[1], 128);
+        assert_eq!(state.presets[0].text_color[2], 64);
+        assert_eq!(state.presets[0].text_color[3], 204);
+        assert_eq!(state.presets[0].measurement_system, MeasurementSystem::Optical);
+
+        // 2. Grayscale 100% Metric: [255, 255, 255, 255]
+        assert_eq!(state.presets[1].name, "Grayscale Metric");
+        assert_eq!(state.presets[1].text_color, [255, 255, 255, 255]);
+        assert_eq!(state.presets[1].measurement_system, MeasurementSystem::Metric);
+
+        // 3. Hex Metric: #112233aa
+        assert_eq!(state.presets[2].name, "Hex Metric");
+        assert_eq!(state.presets[2].text_color, [0x11, 0x22, 0x33, 0xaa]);
+        assert_eq!(state.presets[2].measurement_system, MeasurementSystem::Metric);
+
+        // Roundtrip export
+        let exported = state.export_styles_json(None).unwrap();
+        let mut reimported = TypesetterState {
+            presets: Vec::new(),
+            ..TypesetterState::default()
+        };
+        reimported.import_styles_json(&exported).unwrap();
+        assert_eq!(reimported.presets.len(), 3);
+        assert_eq!(reimported.presets[0].text_color, state.presets[0].text_color);
+        assert_eq!(reimported.presets[0].measurement_system, MeasurementSystem::Optical);
+        assert_eq!(reimported.presets[1].text_color, state.presets[1].text_color);
+        assert_eq!(reimported.presets[1].measurement_system, MeasurementSystem::Metric);
+        assert_eq!(reimported.presets[2].text_color, state.presets[2].text_color);
+        assert_eq!(reimported.presets[2].measurement_system, MeasurementSystem::Metric);
     }
 }

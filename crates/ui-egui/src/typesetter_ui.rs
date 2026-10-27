@@ -1082,6 +1082,24 @@ impl TypesetterUi {
                                                 style_to_select = Some(p_idx);
                                             }
 
+                                            let swatch_color = egui::Color32::from_rgba_unmultiplied(
+                                                preset.text_color[0],
+                                                preset.text_color[1],
+                                                preset.text_color[2],
+                                                preset.text_color[3],
+                                            );
+                                            let (swatch_rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
+                                            ui.painter().rect_filled(swatch_rect, 2.0, swatch_color);
+                                            if preset.stroke_width > 0.0 {
+                                                let stroke_c = egui::Color32::from_rgba_unmultiplied(
+                                                    preset.stroke_color[0],
+                                                    preset.stroke_color[1],
+                                                    preset.stroke_color[2],
+                                                    preset.stroke_color[3],
+                                                );
+                                                ui.painter().rect_stroke(swatch_rect, 2.0, egui::Stroke::new(1.0, stroke_c), egui::StrokeKind::Outside);
+                                            }
+
                                             let mut open_edit = false;
                                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                                 let edit_btn = egui::Button::new(
@@ -1103,17 +1121,11 @@ impl TypesetterUi {
                                                         title = title.italics();
                                                     }
 
+                                                    let sys_label = if preset.measurement_system.is_optical() { "Оптическая" } else { "Метрическая" };
+                                                    let hex_c = format!("#{:02X}{:02X}{:02X}{:02X}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]);
                                                     let tip = format!(
-                                                        "{}
-Шрифт: {}
-Кегль: {}pt
-Интерлиньяж: {}pt
-Трекинг: {}
-
-ЛКМ: выбрать стиль
-2xЛКМ: применить и вставить
-ПКМ: меню действий",
-                                                        preset.name, preset.font_family, preset.font_size, preset.leading, preset.tracking
+                                                        "{}\nШрифт: {}\nКегль: {}pt\nИнтерлиньяж: {}pt\nТрекинг: {}\nЦвет шрифта: {}\nСистема: {}\n\nЛКМ: выбрать стиль\n2xЛКМ: применить и вставить\nПКМ: меню действий",
+                                                        preset.name, preset.font_family, preset.font_size, preset.leading, preset.tracking, hex_c, sys_label
                                                     );
 
                                                     let name_label = ui.add(egui::Label::new(title).truncate().sense(Sense::click()))
@@ -1666,9 +1678,41 @@ impl TypesetterUi {
                 }
             });
 
+            ui.horizontal(|ui| {
+                ui.label(format!("{}:", tl!("Color")));
+                let mut text_c = egui::Color32::from_rgba_unmultiplied(
+                    preset.text_color[0],
+                    preset.text_color[1],
+                    preset.text_color[2],
+                    preset.text_color[3],
+                );
+                if egui::color_picker::color_edit_button_srgba(
+                    ui,
+                    &mut text_c,
+                    egui::color_picker::Alpha::BlendOrAdditive,
+                ).changed() {
+                    preset.text_color = [text_c.r(), text_c.g(), text_c.b(), text_c.a()];
+                    changed = true;
+                }
+                ui.label(format!("#{:02X}{:02X}{:02X}{:02X}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]));
+            });
+
             ui.separator();
 
             ui.label(RichText::new(tl!("Typography Size (Line Spacing Sync)")).strong());
+            ui.horizontal(|ui| {
+                ui.label("Система:");
+                let is_optical = preset.measurement_system.is_optical();
+                if ui.selectable_label(!is_optical, tl!("Metrics")).on_hover_text("Метрическая система: стандартные метрики шрифта и базовая линия").clicked() {
+                    preset.measurement_system = photocraft_engine::typesetter::MeasurementSystem::Metric;
+                    changed = true;
+                }
+                if ui.selectable_label(is_optical, tl!("Optical")).on_hover_text("Оптическая система: визуальный оптический кернинг и центровка баббла").clicked() {
+                    preset.measurement_system = photocraft_engine::typesetter::MeasurementSystem::Optical;
+                    changed = true;
+                }
+            });
+
             ui.horizontal(|ui| {
                 ui.label(format!("{}:", tl!("Size (pt)")));
                 let mut size = preset.font_size;
@@ -1716,6 +1760,27 @@ impl TypesetterUi {
                 let desc = if preset.stroke_width > 0.0 { tl!("Enabled") } else { tl!("No outline") };
                 ui.label(RichText::new(desc).small().weak());
             });
+
+            if preset.stroke_width > 0.0 {
+                ui.horizontal(|ui| {
+                    ui.label(format!("{}:", tl!("Color")));
+                    let mut stroke_c = egui::Color32::from_rgba_unmultiplied(
+                        preset.stroke_color[0],
+                        preset.stroke_color[1],
+                        preset.stroke_color[2],
+                        preset.stroke_color[3],
+                    );
+                    if egui::color_picker::color_edit_button_srgba(
+                        ui,
+                        &mut stroke_c,
+                        egui::color_picker::Alpha::BlendOrAdditive,
+                    ).changed() {
+                        preset.stroke_color = [stroke_c.r(), stroke_c.g(), stroke_c.b(), stroke_c.a()];
+                        changed = true;
+                    }
+                    ui.label(format!("#{:02X}{:02X}{:02X}{:02X}", preset.stroke_color[0], preset.stroke_color[1], preset.stroke_color[2], preset.stroke_color[3]));
+                });
+            }
 
             ui.separator();
 
@@ -1913,5 +1978,79 @@ impl TypesetterUi {
                 }
             });
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use photocraft_doc::LayerContent;
+    use photocraft_engine::typesetter::MeasurementSystem;
+    use serde_json::json;
+
+    #[test]
+    fn typesetter_action_applies_font_color_and_measurement_system() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+
+        // 1. Action with Optical measurement system and custom RGBA text color
+        let action_optical = TypesetterAction {
+            text: "Optical Text".into(),
+            preset: TextStylePreset {
+                name: "Test Optical".into(),
+                font_size: 24.0,
+                text_color: [255, 100, 50, 200],
+                measurement_system: MeasurementSystem::Optical,
+                ..TextStylePreset::default()
+            },
+        };
+
+        app.handle_typesetter_action(action_optical);
+
+        let st = app.session.active().unwrap();
+        let layer_id = st.active_layer.unwrap();
+        let layer = st.doc.layer(layer_id).unwrap();
+        if let LayerContent::Text(t) = &layer.content {
+            assert_eq!(t.text, "OPTICAL TEXT"); // all_caps default is true
+            let style = &t.runs[0].style;
+            assert_eq!(style.kerning, photocraft_doc::text::Kerning::Optical);
+            let rgb = style.color.to_rgb();
+            assert!((rgb[0] - (255.0 / 255.0)).abs() < 0.02);
+            assert!((rgb[1] - (100.0 / 255.0)).abs() < 0.02);
+            assert!((rgb[2] - (50.0 / 255.0)).abs() < 0.02);
+            assert!((style.color.alpha - (200.0 / 255.0)).abs() < 0.02);
+        } else {
+            panic!("Expected text layer");
+        }
+
+        // 2. Action with Metric measurement system
+        let action_metric = TypesetterAction {
+            text: "Metric Text".into(),
+            preset: TextStylePreset {
+                name: "Test Metric".into(),
+                font_size: 20.0,
+                text_color: [0, 128, 255, 255],
+                measurement_system: MeasurementSystem::Metric,
+                all_caps: false,
+                ..TextStylePreset::default()
+            },
+        };
+
+        app.handle_typesetter_action(action_metric);
+
+        let st = app.session.active().unwrap();
+        let layer_id = st.active_layer.unwrap();
+        let layer = st.doc.layer(layer_id).unwrap();
+        if let LayerContent::Text(t) = &layer.content {
+            assert_eq!(t.text, "Metric Text");
+            let style = &t.runs[0].style;
+            assert_eq!(style.kerning, photocraft_doc::text::Kerning::Metrics);
+            let rgb = style.color.to_rgb();
+            assert!((rgb[0] - 0.0).abs() < 0.02);
+            assert!((rgb[1] - (128.0 / 255.0)).abs() < 0.02);
+            assert!((rgb[2] - 1.0).abs() < 0.02);
+        } else {
+            panic!("Expected text layer");
+        }
     }
 }

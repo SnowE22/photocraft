@@ -1361,8 +1361,15 @@ impl PhotocraftApp {
             let bounds = sel.content_bounds();
             if !bounds.is_empty() {
                 let cx = bounds.x0 as f32 + bounds.width() as f32 * 0.5;
-                // Сдвиг базовой линии вниз на ~0.35 размера шрифта для точной вертикальной центровки
-                let cy = bounds.y0 as f32 + bounds.height() as f32 * 0.5 + (action.preset.font_size * 0.35);
+                // Сдвиг базовой линии вниз: если выбрана оптическая система, используем optical_baseline_factor (по умолчанию ~0.35)
+                // для точной вертикальной визуальной центровки в бабле. При метрической системе базовая линия центрируется по метрикам шрифта.
+                let baseline_shift = if action.preset.measurement_system.is_optical() {
+                    let factor = self.typesetter.state.options.optical_baseline_factor;
+                    action.preset.font_size * factor
+                } else {
+                    0.0
+                };
+                let cy = bounds.y0 as f32 + bounds.height() as f32 * 0.5 + baseline_shift;
                 Some((cx, cy))
             } else {
                 None
@@ -1427,6 +1434,18 @@ impl PhotocraftApp {
         let faux_italic = action.preset.italic && !is_italic_style;
         let weight = if action.preset.bold { 700 } else { 400 };
 
+        let hex_text_color = format!(
+            "#{:02x}{:02x}{:02x}{:02x}",
+            action.preset.text_color[0],
+            action.preset.text_color[1],
+            action.preset.text_color[2],
+            action.preset.text_color[3],
+        );
+        let kerning_mode = match action.preset.measurement_system {
+            photocraft_engine::typesetter::MeasurementSystem::Optical => "optical",
+            photocraft_engine::typesetter::MeasurementSystem::Metric => "metrics",
+        };
+
         let mut type_params = serde_json::json!({
             "x": x,
             "y": y,
@@ -1441,7 +1460,10 @@ impl PhotocraftApp {
             "align": "center",
             "verticalAlign": "center",
             "tracking": action.preset.tracking,
-            "leading": action.preset.leading
+            "leading": action.preset.leading,
+            "horizontalScale": action.preset.horizontal_scale,
+            "color": hex_text_color,
+            "kerning": kerning_mode
         });
 
         if !action.preset.font_postscript.is_empty() {
