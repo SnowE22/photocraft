@@ -583,7 +583,7 @@ fn persist(app: &mut PhotocraftApp, now: f64) -> Option<f64> {
 
 /// Write `ours` over the stored preferences, keeping what another instance (a second browser
 /// tab, another app window) changed there since this one last loaded or saved them.
-fn write_prefs(app: &mut PhotocraftApp, ours: &Value) -> Result<(), String> {
+pub(crate) fn write_prefs(app: &mut PhotocraftApp, ours: &Value) -> Result<(), String> {
     let Some(save) = app.services.save_prefs.as_mut() else { return Ok(()) };
     let stored = app.services.load_prefs.as_mut().and_then(|load| load()).and_then(|t| serde_json::from_str::<Value>(&t).ok());
     let text = match (stored, &app.prefs_rt.saved_value) {

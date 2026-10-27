@@ -1357,7 +1357,7 @@ impl PhotocraftApp {
         };
 
         // 1. Приоритет: оптический центр выделенной области
-        let selection_center = st.doc.selection.as_ref().and_then(|sel| {
+        let (selection_center, selection_width) = st.doc.selection.as_ref().and_then(|sel| {
             let bounds = sel.content_bounds();
             if !bounds.is_empty() {
                 let cx = bounds.x0 as f32 + bounds.width() as f32 * 0.5;
@@ -1370,11 +1370,11 @@ impl PhotocraftApp {
                     0.0
                 };
                 let cy = bounds.y0 as f32 + bounds.height() as f32 * 0.5 + baseline_shift;
-                Some((cx, cy))
+                Some(((cx, cy), bounds.width() as f32))
             } else {
                 None
             }
-        });
+        }).unzip();
 
         // 2. Если выделения нет: курсор мыши
         // 3. Если курсор вне холста: геометрический центр документа
@@ -1387,11 +1387,22 @@ impl PhotocraftApp {
         };
 
         // Готовим финальный текст (применяем ALL_CAPS если задано в стиле TypeR)
-        let final_text = if action.preset.all_caps {
+        let mut final_text = if action.preset.all_caps {
             action.text.to_uppercase()
         } else {
             action.text
         };
+
+        // Автоматический перенос строк (word wrap) при вставке в выделенную форму баббла
+        if let Some(bubble_w) = selection_width {
+            final_text = photocraft_engine::typesetter::wrap_text_to_bubble(
+                &final_text,
+                bubble_w,
+                action.preset.font_size,
+                st.doc.resolution_dpi,
+                action.preset.horizontal_scale,
+            );
+        }
 
         // Разрешаем семейство шрифта: проверяем наличие на машине, иначе пробуем разрешить через PostScript
         let resolved_family = {

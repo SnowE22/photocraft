@@ -526,6 +526,7 @@ pub struct Export {
     pub webp_quality: u32,
     pub metadata: ExportMetadata,
     pub convert_to_srgb: bool,
+    pub last_export_dir: Option<String>,
 }
 
 impl Default for Export {
@@ -538,6 +539,7 @@ impl Default for Export {
             webp_quality: 85,
             metadata: ExportMetadata::Copyright,
             convert_to_srgb: true,
+            last_export_dir: None,
         }
     }
 }

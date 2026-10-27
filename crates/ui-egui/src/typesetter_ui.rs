@@ -119,6 +119,7 @@ pub struct TypesetterUi {
     pub script_editor_buffer: String,
     pub favorite_fonts: Vec<String>,
     pub rendered_this_frame: bool,
+    pub scroll_to_active_line: bool,
 }
 
 impl Default for TypesetterUi {
@@ -148,6 +149,7 @@ impl Default for TypesetterUi {
             script_editor_buffer: String::new(),
             favorite_fonts: Vec::new(),
             rendered_this_frame: false,
+            scroll_to_active_line: false,
         };
         ui.auto_load();
         ui
@@ -552,10 +554,12 @@ impl TypesetterUi {
                 let up_btn = egui::Button::new("▲").min_size(vec2(22.0, 16.0));
                 if ui.add(up_btn).on_hover_text(tl!("Previous line (↑)")).clicked() {
                     self.state.prev_line();
+                    self.scroll_to_active_line = true;
                 }
                 let down_btn = egui::Button::new("▼").min_size(vec2(22.0, 16.0));
                 if ui.add(down_btn).on_hover_text(tl!("Next line (↓)")).clicked() {
                     self.state.advance_line();
+                    self.scroll_to_active_line = true;
                 }
             });
 
@@ -593,6 +597,7 @@ impl TypesetterUi {
                                         preset,
                                     });
                                     self.state.advance_line();
+                                    self.scroll_to_active_line = true;
                                     self.auto_save();
                                 }
                             }
@@ -722,10 +727,12 @@ impl TypesetterUi {
                     let up_btn = egui::Button::new("▲").min_size(vec2(22.0, 16.0));
                     if ui.add(up_btn).on_hover_text(tl!("Previous line (↑)")).clicked() {
                         self.state.prev_line();
+                        self.scroll_to_active_line = true;
                     }
                     let down_btn = egui::Button::new("▼").min_size(vec2(22.0, 16.0));
                     if ui.add(down_btn).on_hover_text(tl!("Next line (↓)")).clicked() {
                         self.state.advance_line();
+                        self.scroll_to_active_line = true;
                     }
 
                     let line_num_str = if total_lines == 0 { 0 } else { cur_idx + 1 };
@@ -776,6 +783,7 @@ impl TypesetterUi {
                                 preset,
                             });
                             self.state.advance_line();
+                            self.scroll_to_active_line = true;
                             self.auto_save();
                         }
                     }
@@ -868,8 +876,12 @@ impl TypesetterUi {
     /// Построчный список сценария TypeR со скроллом и интерактивными кнопками.
     fn render_script_list(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>, max_height: f32) {
         let total_lines = self.state.lines.len();
+        let cur_line_idx = self.state.current_line_idx;
         let mut line_to_set = None;
         let mut line_to_insert = None;
+        let mut text_changed = false;
+        let mut should_clear_scroll = false;
+        let do_scroll = self.scroll_to_active_line;
 
         Frame::NONE
             .fill(Color32::WHITE)
@@ -901,8 +913,8 @@ impl TypesetterUi {
                                 ui.add_space(8.0);
                             });
                         } else {
-                            for (idx, line) in self.state.lines.iter().enumerate() {
-                                let is_active = idx == self.state.current_line_idx;
+                            for (idx, line) in self.state.lines.iter_mut().enumerate() {
+                                let is_active = idx == cur_line_idx;
 
                                 let (row_bg, row_border, text_color, num_color) = if is_active {
                                     (
@@ -939,7 +951,7 @@ impl TypesetterUi {
 
                                         let target_icon = if is_active { "●" } else { "◎" };
                                         if ui.small_button(target_icon).on_hover_text(tl!("Make this line current")).clicked() {
-                                            line_to_set = Some(idx);
+                                            line_to_set = Some((idx, true));
                                         }
 
                                         let mut do_insert = false;
@@ -955,14 +967,17 @@ impl TypesetterUi {
                                             }
 
                                             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                                                let text_label = egui::Label::new(
-                                                    RichText::new(&line.text)
-                                                        .color(text_color)
-                                                        .strong(),
-                                                ).truncate();
-                                                let text_resp = ui.add(text_label.sense(Sense::click()));
-                                                if text_resp.clicked() {
-                                                    line_to_set = Some(idx);
+                                                let edit = egui::TextEdit::singleline(&mut line.text)
+                                                    .font(egui::TextStyle::Body)
+                                                    .text_color(text_color)
+                                                    .frame(egui::Frame::NONE)
+                                                    .id_salt(egui::Id::new("typer_line_text").with(idx));
+                                                let edit_resp = ui.add(edit);
+                                                if edit_resp.gained_focus() || edit_resp.clicked() {
+                                                    line_to_set = Some((idx, false));
+                                                }
+                                                if edit_resp.changed() {
+                                                    text_changed = true;
                                                 }
                                             });
                                         });
@@ -973,8 +988,9 @@ impl TypesetterUi {
                                     });
                                 });
 
-                                if is_active {
+                                if is_active && do_scroll {
                                     row_resp.response.scroll_to_me(Some(Align::Center));
+                                    should_clear_scroll = true;
                                 }
 
                                 if idx + 1 < total_lines {
@@ -987,8 +1003,15 @@ impl TypesetterUi {
                     });
             });
 
-        if let Some(idx) = line_to_set {
+        if should_clear_scroll {
+            self.scroll_to_active_line = false;
+        }
+
+        if let Some((idx, req_scroll)) = line_to_set {
             self.state.set_current_line(idx);
+            if req_scroll {
+                self.scroll_to_active_line = true;
+            }
         }
 
         if let Some((idx, line)) = line_to_insert {
@@ -998,8 +1021,13 @@ impl TypesetterUi {
                     preset,
                 });
                 self.state.set_current_line(idx + 1);
+                self.scroll_to_active_line = true;
                 self.auto_save();
             }
+        }
+
+        if text_changed {
+            self.auto_save();
         }
     }
 
@@ -1217,6 +1245,7 @@ impl TypesetterUi {
                         preset,
                     });
                     self.state.advance_line();
+                    self.scroll_to_active_line = true;
                 }
             }
             self.auto_save();
@@ -1362,9 +1391,13 @@ impl TypesetterUi {
                 let filter = self.full_text_filter.to_lowercase();
                 let mut line_to_set = None;
                 let mut line_to_insert = None;
+                let mut text_changed = false;
+                let mut should_clear_scroll = false;
+                let do_scroll = self.scroll_to_active_line;
+                let cur_line_idx = self.state.current_line_idx;
                 let mut last_rendered_page = 0;
 
-                for (idx, line) in self.state.lines.iter().enumerate() {
+                for (idx, line) in self.state.lines.iter_mut().enumerate() {
                     if self.filter_current_page_only && line.page != self.state.current_page {
                         continue;
                     }
@@ -1382,7 +1415,7 @@ impl TypesetterUi {
                         ui.add_space(2.0);
                     }
 
-                    let is_active = idx == self.state.current_line_idx;
+                    let is_active = idx == cur_line_idx;
                     let (card_bg, card_border, text_color, num_color) = if is_active {
                         (
                             Color32::from_rgb(204, 232, 255),
@@ -1418,7 +1451,7 @@ impl TypesetterUi {
 
                             let target_icon = if is_active { "●" } else { "◎" };
                             if ui.small_button(target_icon).on_hover_text(tl!("Make this line current")).clicked() {
-                                line_to_set = Some(idx);
+                                line_to_set = Some((idx, true));
                             }
 
                             let mut do_insert = false;
@@ -1439,16 +1472,17 @@ impl TypesetterUi {
                                 }
 
                                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                                    let label = egui::Label::new(
-                                        RichText::new(&line.text)
-                                            .color(text_color)
-                                            .strong(),
-                                    )
-                                    .wrap_mode(egui::TextWrapMode::Wrap);
-
-                                    let text_resp = ui.add(label.sense(Sense::click()));
-                                    if text_resp.clicked() {
-                                        line_to_set = Some(idx);
+                                    let edit = egui::TextEdit::singleline(&mut line.text)
+                                        .font(egui::TextStyle::Body)
+                                        .text_color(text_color)
+                                        .frame(egui::Frame::NONE)
+                                        .id_salt(egui::Id::new("typer_fulltext_line").with(idx));
+                                    let edit_resp = ui.add(edit);
+                                    if edit_resp.gained_focus() || edit_resp.clicked() {
+                                        line_to_set = Some((idx, false));
+                                    }
+                                    if edit_resp.changed() {
+                                        text_changed = true;
                                     }
                                 });
                             });
@@ -1459,15 +1493,23 @@ impl TypesetterUi {
                         });
                     });
 
-                    if is_active {
+                    if is_active && do_scroll {
                         row_resp.response.scroll_to_me(Some(Align::Center));
+                        should_clear_scroll = true;
                     }
 
                     ui.add_space(2.0);
                 }
 
-                if let Some(idx) = line_to_set {
+                if should_clear_scroll {
+                    self.scroll_to_active_line = false;
+                }
+
+                if let Some((idx, req_scroll)) = line_to_set {
                     self.state.set_current_line(idx);
+                    if req_scroll {
+                        self.scroll_to_active_line = true;
+                    }
                 }
 
                 if let Some((idx, line)) = line_to_insert {
@@ -1477,8 +1519,13 @@ impl TypesetterUi {
                             preset,
                         });
                         self.state.set_current_line(idx + 1);
+                        self.scroll_to_active_line = true;
                         self.auto_save();
                     }
+                }
+
+                if text_changed {
+                    self.auto_save();
                 }
             });
     }

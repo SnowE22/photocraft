@@ -156,6 +156,7 @@ impl PhotocraftApp {
         if suggested.parent().is_some_and(|p| p.as_os_str().is_empty())
             && let Some(dir) = doc
                 .and_then(|d| self.save_dirs.get(&d).cloned())
+                .or_else(|| self.session.prefs().export.last_export_dir.as_ref().map(std::path::PathBuf::from))
                 .or_else(|| self.session.active().and_then(|d| d.path.as_deref()).and_then(|p| std::path::Path::new(p).parent()).map(Path::to_path_buf))
         {
             suggested = dir.join(suggested);
@@ -169,10 +170,14 @@ impl PhotocraftApp {
             FileDialogAnswer::SaveTo(path) => {
                 let path = saved_path(app, &path, suggested_ext.as_deref());
                 // The web answers a download name, which has no folder to remember.
-                if let Some(doc) = doc
-                    && let Some(dir) = Path::new(&path).parent().filter(|p| !p.as_os_str().is_empty())
-                {
-                    app.save_dirs.insert(doc, dir.to_path_buf());
+                if let Some(dir) = Path::new(&path).parent().filter(|p| !p.as_os_str().is_empty()) {
+                    if let Some(doc) = doc {
+                        app.save_dirs.insert(doc, dir.to_path_buf());
+                    }
+                    let dir_str: String = dir.to_string_lossy().into();
+                    app.session.edit_prefs(|p| p.export.last_export_dir = Some(dir_str));
+                    let prefs_json = serde_json::to_value(&app.session.prefs().clone()).unwrap_or_default();
+                    let _ = crate::prefs_ui::write_prefs(app, &prefs_json);
                 }
                 then(app, path)
             }
