@@ -137,15 +137,53 @@ pub fn measure_token_width(token: &str, font_size_px: f32, h_scale: f32) -> f32 
 }
 
 
+/// Оценивает величину оптической компенсации (выноса за границу строки) для знаков препинания на концах слов
+pub fn punctuation_compensation_px(token: &str, font_size_px: f32, h_scale: f32) -> f32 {
+    let mut comp = 0.0;
+    if token.is_empty() {
+        return 0.0;
+    }
+    if token.ends_with("...") || token.ends_with("…") {
+        comp += 0.50 * font_size_px * h_scale;
+    } else if let Some(last) = token.chars().last() {
+        match last {
+            '.' | ',' | ':' | ';' | '!' | '?' => {
+                comp += 0.25 * font_size_px * h_scale;
+            }
+            '—' | '–' | '-' => {
+                comp += 0.35 * font_size_px * h_scale;
+            }
+            '»' | ')' | ']' | '}' | '"' | '\'' => {
+                comp += 0.25 * font_size_px * h_scale;
+            }
+            _ => {}
+        }
+    }
+    comp
+}
+
 /// Солвер переносов строк Кнута—Пласса (Knuth–Plass / Boxes & Glue)
 /// с оптимизацией распределения слов под форму овального или ромбовидного баббла манги.
 pub fn knuth_plass_bubble_wrap(
+    text: &str,
+    bubble_width: f32,
+    bubble_height: f32,
+    font_size_pt: f32,
+    dpi: f32,
+    horizontal_scale_pct: f32,
+) -> String {
+    knuth_plass_bubble_wrap_ext(text, bubble_width, bubble_height, font_size_pt, dpi, horizontal_scale_pct, true)
+}
+
+/// Расширенная версия солвера Кнута—Пласса с поддержкой оптической компенсации знаков в строках (висячая пунктуация)
+pub fn knuth_plass_bubble_wrap_ext(
     text: &str,
     bubble_width: f32,
     _bubble_height: f32,
     font_size_pt: f32,
     dpi: f32,
     horizontal_scale_pct: f32,
+    hanging_punctuation: bool,
 ) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() || bubble_width <= 10.0 {
@@ -227,15 +265,23 @@ pub fn knuth_plass_bubble_wrap(
                         continue;
                     }
 
+                    // Оптическая компенсация знаков в строках (вынос концевой пунктуации за границу строки)
+                    let comp = if hanging_punctuation {
+                        punctuation_compensation_px(tokens[j - 1], font_size_px, h_scale)
+                    } else {
+                        0.0
+                    };
+                    let effective_w = (line_w - comp).max(0.0);
+
                     // Штрафы Кнута—Пласса (Demerits):
                     // 1. Разница с целевой шириной строки
-                    let diff = (line_w - target_w).abs();
+                    let diff = (effective_w - target_w).abs();
                     let relative_diff = diff / target_w;
                     let mut demerits = (relative_diff * 100.0) as f64 * (relative_diff * 100.0) as f64;
 
                     // 2. Жесткий штраф за превышение максимальной безопасной ширины баббла
-                    if line_w > max_safe_width {
-                        let overflow = line_w - max_safe_width;
+                    if effective_w > max_safe_width {
+                        let overflow = effective_w - max_safe_width;
                         demerits += (overflow * 500.0) as f64;
                     }
 

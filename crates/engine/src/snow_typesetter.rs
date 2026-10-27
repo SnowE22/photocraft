@@ -38,6 +38,10 @@ pub fn default_text_color() -> [u8; 4] {
     [0, 0, 0, 255]
 }
 
+pub fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextStylePreset {
     pub name: String,
@@ -58,6 +62,8 @@ pub struct TextStylePreset {
     pub text_color: [u8; 4],
     #[serde(default)]
     pub measurement_system: MeasurementSystem,
+    #[serde(default = "default_true")]
+    pub hanging_punctuation: bool,
 }
 
 impl Default for TextStylePreset {
@@ -79,6 +85,7 @@ impl Default for TextStylePreset {
             stroke_color: [255, 255, 255, 255],
             text_color: [0, 0, 0, 255],
             measurement_system: MeasurementSystem::Optical,
+            hanging_punctuation: true,
         }
     }
 }
@@ -110,6 +117,7 @@ pub struct TypesetterOptions {
     pub strip_character_names: bool,
     pub strip_dash_prefix: bool,
     pub optical_baseline_factor: f32,
+    pub hanging_punctuation: bool,
 }
 
 impl Default for TypesetterOptions {
@@ -120,6 +128,7 @@ impl Default for TypesetterOptions {
             strip_character_names: true,
             strip_dash_prefix: true,
             optical_baseline_factor: 0.35,
+            hanging_punctuation: true,
         }
     }
 }
@@ -450,6 +459,21 @@ impl TypesetterState {
                 MeasurementSystem::Optical
             };
 
+            let para_style = item.get("textProps")
+                .and_then(|tp| tp.get("layerText"))
+                .and_then(|lt| lt.get("paragraphStyleRange"))
+                .and_then(|psr| psr.as_array())
+                .and_then(|arr| arr.first())
+                .and_then(|ps| ps.get("paragraphStyle"));
+
+            let hanging_punctuation = if let Some(hr) = para_style.and_then(|ps| ps.get("hangingRoman")).and_then(|v| v.as_bool()) {
+                hr
+            } else if let Some(hp) = item.get("hangingPunctuation").or_else(|| item.get("hanging_punctuation")).and_then(|v| v.as_bool()) {
+                hp
+            } else {
+                true
+            };
+
             self.presets.push(TextStylePreset {
                 name,
                 folder: folder_name,
@@ -467,6 +491,7 @@ impl TypesetterState {
                 stroke_color,
                 text_color,
                 measurement_system,
+                hanging_punctuation,
             });
             count += 1;
         }
@@ -805,13 +830,14 @@ pub fn wrap_text_to_bubble(
     dpi: f32,
     horizontal_scale_pct: f32,
 ) -> String {
-    crate::snow_knuth_plass::knuth_plass_bubble_wrap(
+    crate::snow_knuth_plass::knuth_plass_bubble_wrap_ext(
         text,
         bubble_width,
         bubble_width * 1.2,
         font_size_pt,
         dpi,
         horizontal_scale_pct,
+        true,
     )
 }
 

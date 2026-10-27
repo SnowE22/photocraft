@@ -18,7 +18,7 @@ use rayon::prelude::*;
 /// Faux-italic slant in degrees (Photoshop-like).
 pub const FAUX_ITALIC_DEG: f32 = 12.0;
 /// Faux-bold ring radius as a fraction of the font size (tuned so stem weight stays close to the old summed-coverage look).
-pub const FAUX_BOLD_RADIUS: f32 = 0.026;
+pub const FAUX_BOLD_RADIUS: f32 = 0.018;
 /// Largest raster we produce (pixels), as a guard against absurd sizes.
 const MAX_PIXELS: u64 = 256 * 1024 * 1024;
 /// Peak working bytes one rasterization may keep live. [`MAX_PIXELS`] does not bound them: the
@@ -128,7 +128,7 @@ enum Pass {
     Bold(usize),
 }
 
-const BOLD_OFFSETS: [(f64, f64); 8] = [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (0.7, 0.7), (-0.7, -0.7), (0.7, -0.7), (-0.7, 0.7)];
+const BOLD_OFFSETS: [(f64, f64); 8] = [(-1.0, 0.0), (1.0, 0.0), (-0.5, 0.0), (0.5, 0.0), (-0.8, 0.25), (0.8, -0.25), (-0.8, -0.25), (0.8, 0.25)];
 
 fn is_bold(layout: &TextLayout, g: &PlacedGlyph) -> bool {
     let face_bold = layout.faces.get(g.face as usize).is_some_and(|f| f.embolden);

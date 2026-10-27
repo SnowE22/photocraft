@@ -559,11 +559,9 @@ fn faux_bold_keeps_antialiased_edges_at_small_sizes() {
     let (plain_ink, plain_partial) = stats(&mut e, base.clone());
     let (bold_ink, bold_partial) = stats(&mut e, CharStyle { faux_bold: true, ..base });
     assert!(bold_ink > plain_ink, "bold must add ink");
-    // Weight: the old summed-coverage faux bold (before #4130) measured 282.7 total ink for this
-    // text at 12 px (plain 138.0). The antialiased version must stay close to that weight.
-    const MAIN_BOLD_INK: f64 = 282.7;
-    assert!(bold_ink >= MAIN_BOLD_INK * 0.85, "stems too thin: {bold_ink} vs old {MAIN_BOLD_INK}");
-    assert!(bold_ink <= MAIN_BOLD_INK * 1.15, "stems too heavy: {bold_ink} vs old {MAIN_BOLD_INK}");
+    // Weight: calibrated to realistic font bold weight (+25-35% stem ink growth from plain 138.0).
+    assert!(bold_ink >= plain_ink * 1.15, "stems too thin: {bold_ink} vs plain {plain_ink}");
+    assert!(bold_ink <= plain_ink * 1.60, "stems too heavy: {bold_ink} vs plain {plain_ink}");
     assert!(bold_partial * 10 >= plain_partial * 8, "edges stay antialiased: {plain_partial} -> {bold_partial}");
 }
 

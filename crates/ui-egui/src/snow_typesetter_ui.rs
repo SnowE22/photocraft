@@ -1725,6 +1725,12 @@ impl TypesetterUi {
                 if ui.checkbox(&mut preset.all_caps, "ALL CAPS").changed() {
                     changed = true;
                 }
+                if ui.checkbox(&mut preset.hanging_punctuation, tl!("Компенсация знаков"))
+                    .on_hover_text("Оптическая компенсация знаков в строках (висячая пунктуация для кавычек, тире, многоточий и точек)")
+                    .changed()
+                {
+                    changed = true;
+                }
             });
 
             ui.horizontal(|ui| {
@@ -1934,6 +1940,13 @@ impl TypesetterUi {
                 &mut self.state.options.strip_dash_prefix,
                 tl!("Strip leading dashes"),
             ).on_hover_text(tl!("Strip leading dashes ('- Text', '— Text')")).changed() {
+                self.auto_save();
+            }
+
+            if ui.checkbox(
+                &mut self.state.options.hanging_punctuation,
+                tl!("Компенсация знаков в строках"),
+            ).on_hover_text(tl!("Оптическая компенсация и вынос знаков препинания за границы строк (висячая пунктуация)")).changed() {
                 self.auto_save();
             }
 

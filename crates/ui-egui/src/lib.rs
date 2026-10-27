@@ -1382,13 +1382,14 @@ impl PhotocraftApp {
 
         // Автоматический перенос строк (word wrap) и устранение «висячих» предлогов (солвер Кнута—Пласса)
         if let Some([_bx, _by, bw, bh]) = selection_box {
-            final_text = photocraft_engine::knuth_plass::knuth_plass_bubble_wrap(
+            final_text = photocraft_engine::knuth_plass::knuth_plass_bubble_wrap_ext(
                 &final_text,
                 bw,
                 bh,
                 action.preset.font_size,
                 st.doc.resolution_dpi,
                 action.preset.horizontal_scale,
+                action.preset.hanging_punctuation,
             );
         } else {
             final_text = photocraft_engine::knuth_plass::bind_orphan_prepositions(&final_text);
@@ -1503,7 +1504,8 @@ impl PhotocraftApp {
             "horizontalScale": action.preset.horizontal_scale,
             "color": hex_text_color,
             "kerning": kerning_mode,
-            "autoKern": auto_kern_val
+            "autoKern": auto_kern_val,
+            "hangingRoman": action.preset.hanging_punctuation
         });
 
         if !action.preset.font_postscript.is_empty() {
