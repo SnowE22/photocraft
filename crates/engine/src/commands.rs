@@ -1541,6 +1541,7 @@ fn build() -> Vec<CommandSpec> {
     v.extend(crate::transform_cmds::specs());
     v.extend(crate::float_cmds::specs());
     v.extend(crate::vector_cmds::specs());
+    v.extend(crate::balloon_cmds::specs());
     v.extend(crate::path_edit_cmds::specs());
     v.extend(crate::smartselect_cmds::specs());
     v.extend(crate::cutout_cmds::specs());

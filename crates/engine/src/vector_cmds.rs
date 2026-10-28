@@ -256,7 +256,7 @@ fn fill_json(f: &Fill) -> Value {
 
 /// `"#rrggbb"` / `[r,g,b,a]` / `{"gradient":{"stops":[[t,"#hex"],…],"angle","scale","style","reverse"}}` /
 /// `{"pattern":name,"scale"}`. `null` → `Ok(None)` (no fill).
-fn parse_fill(v: &Value) -> std::result::Result<Option<Fill>, String> {
+pub(crate) fn parse_fill(v: &Value) -> std::result::Result<Option<Fill>, String> {
     if v.is_null() {
         return Ok(None);
     }
@@ -616,7 +616,7 @@ pub(crate) fn map_shape(sh: &mut ShapeLayer, h: Option<&photocraft_algo::transfo
     Ok(())
 }
 
-fn shape_info(s: &Session, id: LayerId) -> Result<Value> {
+pub(crate) fn shape_info(s: &Session, id: LayerId) -> Result<Value> {
     let d = s.active().ok_or(EngineError::NoDocument)?;
     let l = d.doc.layer(id).ok_or(EngineError::NoLayer(id))?;
     let LayerContent::Shape(sh) = &l.content else {
