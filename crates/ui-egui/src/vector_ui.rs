@@ -1597,6 +1597,14 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
     };
     let o = &mut app.ui.tool_options;
     let target = selected_shape(&app.session);
+    if tool == Tool::Balloon {
+        for (mode, label) in [("tail", "Tail"), ("cloud", "Cloud"), ("spiky", "Spiky"), ("pen", "Pen")] {
+            if crate::widgets::pill_tab(ui, tl!(label), o.balloon_mode == mode).clicked() {
+                o.balloon_mode = mode.to_string();
+            }
+        }
+        crate::widgets::vline(ui, 22.0);
+    }
     if tool == Tool::PathSelection && target.is_none() {
         lbl(ui, if app.ui.vector_mask_target { "Drag to move the targeted vector mask" } else { tl!("Drag to move the active shape's path or the Work Path") });
         return true;
@@ -1756,12 +1764,6 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
         }
         Tool::Balloon => {
             crate::widgets::vline(ui, 22.0);
-            for (mode, label) in [("tail", "Tail"), ("cloud", "Cloud"), ("spiky", "Spiky"), ("pen", "Pen")] {
-                if crate::widgets::pill_tab(ui, tl!(label), o.balloon_mode == mode).clicked() {
-                    o.balloon_mode = mode.to_string();
-                }
-            }
-            crate::widgets::vline(ui, 22.0);
             match o.balloon_mode.as_str() {
                 "cloud" => {
                     lbl(ui, tl!("Bumps:"));
@@ -1786,6 +1788,19 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                     crate::widgets::value_field(ui, &mut o.balloon_jitter, 0.0..=1.0, "", 52.0);
                     ui.checkbox(&mut o.balloon_smooth, tl!("Round"));
                     ui.checkbox(&mut o.balloon_inward, tl!("In"));
+                }
+                "pen" => {
+                    lbl(ui, tl!("Width:"));
+                    crate::widgets::value_field(ui, &mut o.balloon_stroke_width, 0.5..=288.0, "px", 56.0);
+                    ui.checkbox(&mut o.balloon_tapered, tl!("Taper"));
+                    let (ctrl, alt, enter) = (crate::shortcuts::pretty("Ctrl"), crate::shortcuts::pretty("Alt"), crate::shortcuts::pretty("Enter"));
+                    lbl(
+                        ui,
+                        &crate::i18n::fmt(
+                            tl!("Click: node · drag node: weight · {ctrl}-drag: move · {alt}-click: corner · {enter}: finish · Esc: cancel"),
+                            &[("ctrl", &ctrl), ("alt", &alt), ("enter", &enter)],
+                        ),
+                    );
                 }
                 _ => {
                     const PRESETS: [(&str, &str); 4] = [("wedge", "Wedge"), ("arc", "Arc"), ("double", "Double"), ("thought", "Thought")];
@@ -1836,6 +1851,12 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
                 let gesture = d.get_temp_mut_or_default::<(u64, u64)>(gesture_key);
                 gesture.0 = gesture.0.wrapping_add(1);
             });
+        }
+    }
+    if is_shape_tool(tool) {
+        crate::widgets::vline(ui, 22.0);
+        if ui.button("Balloon").on_hover_text("Balloon tool: tails, thought clouds, spiky balloons and SAI-style pen").clicked() {
+            app.ui.tool = Tool::Balloon;
         }
     }
     true
