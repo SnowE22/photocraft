@@ -2363,6 +2363,10 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
     ];
     if crate::widgets::dropdown(ui, "type-aa", &mut aa, &aa_opts, 80.0) {
         app.ui.tool_options.type_aa = aa.clone();
+        if let Some(preset) = app.typesetter.state.active_preset_mut() {
+            preset.anti_alias = aa.clone();
+        }
+        app.typesetter.auto_save();
         if let Some(params) = formatting_params(app) {
             let _ = app.run(&format!("type.antiAlias.{aa}"), params);
         }
@@ -3272,6 +3276,11 @@ fn type_options(app: &mut PhotocraftApp, ui: &mut egui::Ui) {
                 .filter_map(|k| photocraft_engine::commands::find(&format!("type.antiAlias.{k}")).map(|c| (k.to_string(), c.label)))
                 .collect();
             if crate::widgets::dropdown(ui, "props-type-aa", &mut cur, &opts, dd_w) {
+                app.ui.tool_options.type_aa = cur.clone();
+                if let Some(preset) = app.typesetter.state.active_preset_mut() {
+                    preset.anti_alias = cur.clone();
+                }
+                app.typesetter.auto_save();
                 run = Some(format!("type.antiAlias.{cur}"));
             }
         });

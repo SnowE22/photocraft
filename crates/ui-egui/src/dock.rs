@@ -841,7 +841,20 @@ fn resize(layout: &mut DockLayout, heights: &[(Group, f32)], i: usize, dy: f32) 
 
 /// What `prefs.panelLayout` holds: the live layout and open panels.
 fn snapshot(app: &PhotocraftApp) -> Value {
-    json!({"workspace": app.ui.workspace, "panels": app.ui.panels, "dockTabs": app.ui.dock_tabs, "dock": app.ui.dock, "timelineOpen": app.ui.timeline.open, "docking": app.ui.docking, "dockingHidden": app.ui.docking_hidden, "dockingCollapsed": app.ui.docking_collapsed})
+    json!({
+        "workspace": app.ui.workspace,
+        "panels": app.ui.panels,
+        "dockTabs": app.ui.dock_tabs,
+        "dock": app.ui.dock,
+        "timelineOpen": app.ui.timeline.open,
+        "docking": app.ui.docking,
+        "dockingLeft": app.ui.docking_left,
+        "dockingBottom": app.ui.docking_bottom,
+        "dockingHidden": app.ui.docking_hidden,
+        "dockingCollapsed": app.ui.docking_collapsed,
+        "canvasCapsule": app.ui.canvas_capsule,
+        "typesetterOpen": app.ui.panels.typesetter || app.typesetter.is_open,
+    })
 }
 
 /// Remember the layout in the preferences once the user lets go of the mouse (Workspace ›
@@ -892,6 +905,19 @@ pub fn apply(app: &mut PhotocraftApp, v: &Value) {
     }
     if let Some(d) = v.get("dock").and_then(|d| serde_json::from_value(d.clone()).ok()) {
         app.ui.dock = d;
+    }
+    if let Some(dl) = v.get("dockingLeft").and_then(|d| serde_json::from_value(d.clone()).ok()).filter(crate::panel_docking::valid) {
+        app.ui.docking_left = Some(dl);
+    }
+    if let Some(db) = v.get("dockingBottom").and_then(|d| serde_json::from_value(d.clone()).ok()).filter(crate::panel_docking::valid) {
+        app.ui.docking_bottom = Some(db);
+    }
+    if let Some(cc) = v.get("canvasCapsule").and_then(|c| serde_json::from_value(c.clone()).ok()) {
+        app.ui.canvas_capsule = cc;
+    }
+    if let Some(topen) = v.get("typesetterOpen").and_then(Value::as_bool) {
+        app.ui.panels.typesetter = topen;
+        app.typesetter.is_open = topen;
     }
     crate::panel_docking::sync_visibility(app);
     app.ui.timeline.open = v.get("timelineOpen").and_then(Value::as_bool).unwrap_or(false);

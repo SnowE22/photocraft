@@ -1512,7 +1512,8 @@ impl PhotocraftApp {
             "color": hex_text_color,
             "kerning": kerning_mode,
             "autoKern": auto_kern_val,
-            "hangingRoman": action.preset.hanging_punctuation
+            "hangingRoman": action.preset.hanging_punctuation,
+            "antialias": action.preset.anti_alias
         });
 
         if !action.preset.font_postscript.is_empty() {

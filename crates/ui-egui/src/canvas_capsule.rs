@@ -386,6 +386,7 @@ pub fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
                         ui.add(
                             egui::Slider::new(&mut app.ui.canvas_capsule.opacity, 0.3..=1.0)
                                 .text("Opacity")
+                                
                                 .custom_formatter(|n, _| format!("{:.0}%", n * 100.0)),
                         );
 

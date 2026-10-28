@@ -108,6 +108,11 @@ pub fn notches(ui: &Ui, field: Id, focused: bool, rect: Rect) -> f32 {
         if !ui.is_enabled() {
             return 0.0;
         }
+        // В скроллируемых панелях (Свойства, TypeR и т.д.) ненаправленный фокусом ввод колесиком
+        // должен скроллить саму панель, а не случайно сдвигать значения параметров под курсором.
+        if ui.data(|d| d.get_temp::<bool>(egui::Id::new("pc_in_scroll_panel"))).unwrap_or(false) {
+            return 0.0;
+        }
         let Some(mut g) = ui.data(|d| d.get_temp::<Gesture>(gesture_id())) else { return 0.0 };
         let (events, wheel): (Vec<Event>, bool) =
             ui.input(|i| (i.events.iter().filter(|e| for_field(e)).cloned().collect(), i.events.iter().any(|e| matches!(e, Event::MouseWheel { .. }))));

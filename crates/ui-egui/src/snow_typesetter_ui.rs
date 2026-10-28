@@ -35,6 +35,10 @@ pub struct TypesetterAction {
     pub preset: TextStylePreset,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize)]
 struct TypesetterPersistedState {
     pub dock_mode: TypesetterDockMode,
@@ -44,6 +48,8 @@ struct TypesetterPersistedState {
     pub custom_storage_dir: Option<std::path::PathBuf>,
     #[serde(default)]
     pub favorite_fonts: Vec<String>,
+    #[serde(default = "default_true")]
+    pub is_open: bool,
 }
 
 pub fn typesetter_storage_path() -> Option<std::path::PathBuf> {
@@ -231,6 +237,7 @@ impl TypesetterUi {
             selected_folder: self.selected_folder.clone(),
             custom_storage_dir: self.custom_storage_dir.clone(),
             favorite_fonts: self.favorite_fonts.clone(),
+            is_open: self.is_open,
         };
         if let Ok(json_str) = serde_json::to_string_pretty(&persisted) {
             if let Some(custom_dir) = &self.custom_storage_dir {
@@ -256,6 +263,7 @@ impl TypesetterUi {
                             self.favorite_fonts = data.favorite_fonts;
                         }
                         self.custom_storage_dir = data.custom_storage_dir;
+                        self.is_open = data.is_open;
                     } else if let Ok(count) = self.state.import_styles_json(&content) {
                         if count > 0 {
                             return;
@@ -276,6 +284,7 @@ impl TypesetterUi {
                         if !data.favorite_fonts.is_empty() {
                             self.favorite_fonts = data.favorite_fonts;
                         }
+                        self.is_open = data.is_open;
                         if !self.state.presets.is_empty() {
                             return;
                         }
@@ -1731,6 +1740,29 @@ impl TypesetterUi {
                 {
                     changed = true;
                 }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label(format!("{}:", tl!("Anti-aliasing")));
+                let cur_aa = preset.anti_alias.clone();
+                let aa_labels = [
+                    ("crisp", "Чёткий"),
+                    ("sharp", "Резкий"),
+                    ("smooth", "Плавный"),
+                    ("strong", "Жирный"),
+                    ("none", "Нет"),
+                ];
+                let display_label = aa_labels.iter().find(|(k, _)| *k == cur_aa).map(|(_, l)| *l).unwrap_or(cur_aa.as_str());
+                egui::ComboBox::from_id_salt("style_modal_aa")
+                    .selected_text(display_label)
+                    .show_ui(ui, |ui| {
+                        for (k, label) in aa_labels {
+                            if ui.selectable_label(cur_aa == k, label).clicked() {
+                                preset.anti_alias = k.to_string();
+                                changed = true;
+                            }
+                        }
+                    });
             });
 
             ui.horizontal(|ui| {

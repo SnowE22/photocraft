@@ -1311,7 +1311,10 @@ fn body(app: &mut PhotocraftApp, ui: &mut egui::Ui, id: &str) {
         egui::ScrollArea::vertical()
             .id_salt(("shared-panel-body", id))
             .auto_shrink([false, false])
-            .show(ui, |ui| crate::panels::dock_body(app, ui, *group, tab));
+            .show(ui, |ui| {
+                ui.data_mut(|d| d.insert_temp(egui::Id::new("pc_in_scroll_panel"), true));
+                crate::panels::dock_body(app, ui, *group, tab);
+            });
     }
     let selected = *group.tab_mut(&mut app.ui.dock_tabs);
     if selected != tab
@@ -1820,8 +1823,10 @@ pub(crate) fn sync_visibility(app: &mut PhotocraftApp) {
         let in_bottom = app.ui.docking_bottom.as_ref().is_some_and(|l| l.contains(&"typesetter".into()));
         let in_left_pages = app.ui.docking_left.as_ref().is_some_and(|l| l.contains(&"pages".into()));
         let in_bottom_pages = app.ui.docking_bottom.as_ref().is_some_and(|l| l.contains(&"pages".into()));
-        set_panel_visible(app, "typesetter", in_dock || in_left || in_bottom);
-        set_panel_visible(app, "pages", in_dock_pages || in_left_pages || in_bottom_pages);
+        let typesetter_should_be_open = in_dock || in_left || in_bottom || app.ui.panels.typesetter || app.typesetter.is_open;
+        set_panel_visible(app, "typesetter", typesetter_should_be_open);
+        let pages_should_be_open = in_dock_pages || in_left_pages || in_bottom_pages || app.ui.panels.pages;
+        set_panel_visible(app, "pages", pages_should_be_open);
     }
 }
 

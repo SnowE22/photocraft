@@ -872,6 +872,17 @@ pub(crate) fn new_text_layer(s: &Session, p: &Value, cmd: &str) -> Result<TextLa
         orientation,
         ..Default::default()
     };
+    if let Some(a) = p.get("antialias").and_then(Value::as_str) {
+        t.antialias = match a {
+            "none" => AntiAlias::None,
+            "sharp" => AntiAlias::Sharp,
+            "crisp" => AntiAlias::Crisp,
+            "strong" => AntiAlias::Strong,
+            "windows" => AntiAlias::Windows,
+            "windowsLcd" => AntiAlias::WindowsLcd,
+            _ => AntiAlias::Smooth,
+        };
+    }
     t.sync_summary();
     Ok(t)
 }

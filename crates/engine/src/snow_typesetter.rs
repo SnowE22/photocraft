@@ -64,6 +64,12 @@ pub struct TextStylePreset {
     pub measurement_system: MeasurementSystem,
     #[serde(default = "default_true")]
     pub hanging_punctuation: bool,
+    #[serde(default = "default_anti_alias")]
+    pub anti_alias: String,
+}
+
+fn default_anti_alias() -> String {
+    "crisp".to_string()
 }
 
 impl Default for TextStylePreset {
@@ -86,6 +92,7 @@ impl Default for TextStylePreset {
             text_color: [0, 0, 0, 255],
             measurement_system: MeasurementSystem::Optical,
             hanging_punctuation: true,
+            anti_alias: "crisp".to_string(),
         }
     }
 }
@@ -474,6 +481,14 @@ impl TypesetterState {
                 true
             };
 
+            let anti_alias = if let Some(aa) = item.get("antiAlias").or_else(|| item.get("anti_alias")).and_then(|v| v.as_str()) {
+                aa.to_string()
+            } else if let Some(aa) = text_style.and_then(|ts| ts.get("antiAlias")).and_then(|v| v.as_str()) {
+                aa.to_string()
+            } else {
+                "crisp".to_string()
+            };
+
             self.presets.push(TextStylePreset {
                 name,
                 folder: folder_name,
@@ -492,6 +507,7 @@ impl TypesetterState {
                 text_color,
                 measurement_system,
                 hanging_punctuation,
+                anti_alias,
             });
             count += 1;
         }
