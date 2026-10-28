@@ -46,6 +46,10 @@ fn default_script_list_height() -> f32 {
 /// Point size for style names drawn in their own face on the style cards.
 const STYLE_NAME_PT: f32 = 13.0;
 
+/// Extra leading between script rows in the unified editor (logical pixels). egui's multiline
+/// `TextEdit` packs rows at the font's own line height, which is too tight for reading a script.
+const SCRIPT_LINE_SPACING: f32 = 4.0;
+
 #[derive(Serialize, Deserialize)]
 struct TypesetterPersistedState {
     pub dock_mode: TypesetterDockMode,
@@ -1011,9 +1015,12 @@ impl TypesetterUi {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let avail_w = ui.available_width().max(180.0);
+                // Строки сценария читаются слишком плотно при стандартном line-height egui:
+                // добавляем межстрочный интервал, который TextEdit учитывает при раскладке.
+                ui.spacing_mut().extra_text_line_spacing = SCRIPT_LINE_SPACING;
                 // Высота редактора должна следовать за ползунком-сплиттером: без desired_rows
                 // TextEdit всегда занимает 4 строки, и изменение script_list_height не видно.
-                let row_h = ui.text_style_height(&egui::TextStyle::Body).max(1.0);
+                let row_h = (ui.text_style_height(&egui::TextStyle::Body) + SCRIPT_LINE_SPACING).max(1.0);
                 let desired_rows = (((max_height - 8.0) / row_h).floor() as usize).max(1);
                 let edit = egui::TextEdit::multiline(&mut self.script_buffer)
                     .id(edit_id)
