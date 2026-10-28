@@ -174,6 +174,129 @@ pub(crate) fn paint(ui: &egui::Ui, family: &str, row: Rect, size: f32) {
     }
 }
 
+/// A style name rasterized with the style's own face, cached per family, text, UI size and
+/// scale. `size` is the sample's point size in the UI.
+#[derive(Clone)]
+struct LabelSample {
+    texture: TextureHandle,
+    size: [f32; 2],
+}
+
+type LabelKey = (String, String, u32, u64, u32);
+
+#[derive(Clone, Default)]
+struct LabelCache(VecDeque<(LabelKey, Option<LabelSample>)>);
+
+const LABEL_CACHE_ID: &str = "font-name-labels";
+
+fn label_key(ctx: &egui::Context, family: &str, text: &str, size: f32) -> LabelKey {
+    let scale = ctx.pixels_per_point().ceil().clamp(1.0, 4.0) as u32;
+    (family.to_owned(), text.to_owned(), scale, photocraft_text::fonts::shared_generation(), size as u32)
+}
+
+fn render_label(
+    engine: &mut photocraft_text::TextEngine,
+    family: &str,
+    text: &str,
+    scale: u32,
+    size: f32,
+) -> Option<(ColorImage, [f32; 2])> {
+    if text.trim().is_empty() || !engine.fonts.has_family(family) {
+        return None;
+    }
+    let layer = TextLayer {
+        text: text.into(),
+        font_family: family.into(),
+        size_pt: size * scale as f32,
+        ..Default::default()
+    };
+    let layout = engine.layout(&layer, 72.0);
+    let bounds = layout.bounds()?;
+    let width = ((bounds[2] - bounds[0]).abs().ceil() as usize).saturating_add(2);
+    let height = ((bounds[3] - bounds[1]).abs().ceil() as usize).saturating_add(2);
+    if width <= 2 || height <= 2 || width > 4096 || height > 512 {
+        return None;
+    }
+    let transform = Affine::translate(f64::from(1.0 - bounds[0]), f64::from(1.0 - bounds[1]));
+    let ink = photocraft_text::render::ink_rect(&layout, &transform);
+    if ink.is_empty() {
+        return None;
+    }
+    let rendered = photocraft_text::render::rasterize(
+        &layout,
+        &transform,
+        PixelFormat::new(ColorMode::Rgb, SampleType::U8, true),
+        layer.antialias,
+    );
+    let mut rgba = vec![[0u8; 4]; width * height];
+    rendered
+        .surface
+        .read_rgba8_into(photocraft_geom::Rect::new(0, 0, width as i32, height as i32), &mut rgba);
+    let image = ColorImage::from_rgba_unmultiplied(
+        [width, height],
+        &rgba.into_iter().flat_map(|p| [255, 255, 255, p[3]]).collect::<Vec<_>>(),
+    );
+    Some((image, [width as f32 / scale as f32, height as f32 / scale as f32]))
+}
+
+fn label_sample(ctx: &egui::Context, family: &str, text: &str, size: f32) -> Option<LabelSample> {
+    let id = egui::Id::new(LABEL_CACHE_ID);
+    let key = label_key(ctx, family, text, size);
+    let cached: Option<Option<LabelSample>> = ctx.data_mut(|d| {
+        let cache = d.get_temp_mut_or_default::<LabelCache>(id);
+        let index = cache.0.iter().position(|(k, _)| k == &key)?;
+        let entry = cache.0.remove(index)?;
+        let sample = entry.1.clone();
+        cache.0.push_back(entry);
+        Some(sample)
+    });
+    if let Some(sample) = cached {
+        return sample;
+    }
+    let scale = ctx.pixels_per_point().ceil().clamp(1.0, 4.0) as u32;
+    let point_size = size;
+    let sample = render_label(
+        &mut photocraft_text::shared().lock().unwrap_or_else(PoisonError::into_inner),
+        family,
+        text,
+        scale,
+        size,
+    )
+    .map(|(image, logical)| LabelSample {
+        texture: ctx.load_texture(format!("font-name-{family}-{text}-{point_size}-{scale}"), image, TextureOptions::LINEAR),
+        size: logical,
+    });
+    ctx.data_mut(|d| {
+        let cache = d.get_temp_mut_or_default::<LabelCache>(id);
+        if cache.0.len() >= CACHE_LIMIT {
+            cache.0.pop_front();
+        }
+        cache.0.push_back((key, sample.clone()));
+    });
+    sample
+}
+
+/// The on-screen size a style name needs in its own face, or `None` when the family is missing
+/// (the caller then keeps the plain label).
+pub(crate) fn name_size(ctx: &egui::Context, family: &str, text: &str, size: f32) -> Option<[f32; 2]> {
+    label_sample(ctx, family, text, size).map(|s| s.size)
+}
+
+/// Paint a style name in its own face inside `rect`, left-aligned and vertically centred.
+pub(crate) fn paint_name(ui: &egui::Ui, family: &str, text: &str, size: f32, rect: Rect, color: egui::Color32) {
+    let Some(sample) = label_sample(ui.ctx(), family, text, size) else {
+        return;
+    };
+    let [w, h] = sample.size;
+    let target = Rect::from_min_size(pos2(rect.left(), rect.center().y - h / 2.0), vec2(w, h));
+    ui.painter().image(
+        sample.texture.id(),
+        target,
+        Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+        color,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -186,6 +309,17 @@ mod tests {
         let mut chars: Vec<char> = text.chars().collect();
         chars.sort_unstable();
         chars
+    }
+
+    #[test]
+    fn style_names_render_in_their_own_face() {
+        let mut engine = photocraft_text::TextEngine::new();
+        let (sans, sans_size) = render_label(&mut engine, "Inter", "Стиль", 1, 13.0).expect("bundled sans");
+        let (mono, mono_size) = render_label(&mut engine, "JetBrains Mono", "Стиль", 1, 13.0).expect("bundled mono");
+        assert_ne!(sans.pixels, mono.pixels, "the name uses the style's own outlines");
+        assert_ne!(sans_size, mono_size, "different faces have different widths");
+        assert!(render_label(&mut engine, "Missing font", "Стиль", 1, 13.0).is_none());
+        assert!(render_label(&mut engine, "Inter", "", 1, 13.0).is_none());
     }
 
     #[test]

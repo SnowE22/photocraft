@@ -43,6 +43,9 @@ fn default_script_list_height() -> f32 {
     160.0
 }
 
+/// Point size for style names drawn in their own face on the style cards.
+const STYLE_NAME_PT: f32 = 13.0;
+
 #[derive(Serialize, Deserialize)]
 struct TypesetterPersistedState {
     pub dock_mode: TypesetterDockMode,
@@ -1010,11 +1013,12 @@ impl TypesetterUi {
                 let avail_w = ui.available_width().max(180.0);
                 // Высота редактора должна следовать за ползунком-сплиттером: без desired_rows
                 // TextEdit всегда занимает 4 строки, и изменение script_list_height не видно.
-                let row_h = ui.text_style_height(&egui::TextStyle::Monospace).max(1.0);
+                let row_h = ui.text_style_height(&egui::TextStyle::Body).max(1.0);
                 let desired_rows = (((max_height - 8.0) / row_h).floor() as usize).max(1);
                 let edit = egui::TextEdit::multiline(&mut self.script_buffer)
                     .id(edit_id)
-                    .font(egui::TextStyle::Monospace)
+                    // Рабочий текст сценария читается пропорциональным шрифтом, а не моноширинным.
+                    .font(egui::TextStyle::Body)
                     .text_color(Color32::from_rgb(20, 25, 35))
                     // Frame::NONE заменяет margin целиком, поэтому отступы задаём во фрейме:
                     // иначе текст начинается под левым гуттером и первые символы строки скрыты.
@@ -1341,6 +1345,22 @@ impl TypesetterUi {
                                                         title = title.italics();
                                                     }
 
+                                                    // Имя стиля показываем его собственным шрифтом,
+                                                    // если семейство загружено и имя влезает в карточку.
+                                                    let avail_w = ui.available_width().max(16.0);
+                                                    let name_label = if let Some([w, h]) = crate::font_preview::name_size(ui.ctx(), &preset.font_family, &preset.name, STYLE_NAME_PT)
+                                                        .filter(|[w, _]| *w <= avail_w)
+                                                    {
+                                                        let (rect, resp) = ui.allocate_exact_size(
+                                                            vec2(w, h.max(ui.text_style_height(&egui::TextStyle::Body))),
+                                                            Sense::click(),
+                                                        );
+                                                        crate::font_preview::paint_name(ui, &preset.font_family, &preset.name, STYLE_NAME_PT, rect, text_color);
+                                                        resp
+                                                    } else {
+                                                        ui.add(egui::Label::new(title).truncate().sense(Sense::click()))
+                                                    };
+
                                                     let sys_label = if preset.measurement_system.is_optical() { "Оптическая" } else { "Метрическая" };
                                                     let hex_c = format!("#{:02X}{:02X}{:02X}{:02X}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]);
                                                     let tip = format!(
@@ -1348,8 +1368,7 @@ impl TypesetterUi {
                                                         preset.name, preset.font_family, preset.font_size, preset.leading, preset.tracking, hex_c, sys_label
                                                     );
 
-                                                    let name_label = ui.add(egui::Label::new(title).truncate().sense(Sense::click()))
-                                                        .on_hover_text(tip);
+                                                    let name_label = name_label.on_hover_text(tip);
 
                                                     if name_label.clicked() {
                                                         style_to_select = Some(p_idx);
