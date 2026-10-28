@@ -426,11 +426,17 @@ impl TypesetterUi {
                 tl!("Font Settings").to_string()
             };
 
+            // Окно должно свободно перетаскиваться: `.anchor()` прибивал его к центру каждый
+            // кадр, из-за чего заголовок не тянулся. Вместо этого центрируем только стартовую
+            // позицию, а дальнейшие — запоминает egui по стабильному id (иначе id зависел от
+            // имени стиля и позиция сбрасывалась при смене стиля).
             Window::new(title)
+                .id(egui::Id::new("typer_font_settings_window"))
                 .collapsible(false)
                 .resizable(true)
                 .default_width(360.0)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.content_rect().center())
                 .show(&ctx, |ui| {
                     self.render_font_settings_modal(ui, edit_idx, &mut close_modal);
                 });
@@ -445,11 +451,13 @@ impl TypesetterUi {
         if self.show_script_editor_modal {
             let mut close_modal = false;
             Window::new(tl!("Script Editor"))
+                .id(egui::Id::new("typer_script_editor_window"))
                 .collapsible(false)
                 .resizable(true)
                 .default_width(520.0)
                 .default_height(420.0)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.content_rect().center())
                 .show(&ctx, |ui| {
                     self.render_script_editor_modal(ui, &mut close_modal);
                 });
@@ -2385,6 +2393,48 @@ mod tests {
         } else {
             panic!("Expected text layer");
         }
+    }
+
+    /// The style-settings window must be draggable. It used to be `.anchor`ed to the screen
+    /// centre, which re-pinned it there every frame, so its title bar could not be dragged.
+    #[test]
+    fn font_settings_window_can_be_dragged() {
+        use egui_kittest::Harness;
+
+        let mut typer = TypesetterUi::default();
+        if typer.state.presets.is_empty() {
+            typer.state.presets.push(TextStylePreset::default());
+        }
+        typer.is_open = true;
+        typer.editing_preset_idx = Some(0);
+        let mut frames = 0u32;
+        let mut h = Harness::builder().with_size(egui::vec2(900.0, 700.0)).build_ui_state(
+            move |ui, typer: &mut TypesetterUi| {
+                crate::PhotocraftApp::setup_context(ui.ctx(), crate::theme::ThemeKind::ALL[0]);
+                frames += 1;
+                if frames < 2 {
+                    // The named font families reach the context one pass after installation.
+                    return;
+                }
+                typer.show(ui);
+            },
+            typer,
+        );
+        h.run_steps(3);
+        let id = egui::Id::new("typer_font_settings_window");
+        let before = h.ctx.memory(|m| m.area_rect(id)).expect("the style window is shown");
+        let grab = egui::pos2(before.center().x, before.top() + 10.0);
+        let drop = grab + egui::vec2(-80.0, -60.0);
+        h.hover_at(grab);
+        h.drag_at(grab);
+        h.run_steps(1);
+        h.hover_at(drop);
+        h.run_steps(1);
+        h.drop_at(drop);
+        h.run_steps(2);
+        let after = h.ctx.memory(|m| m.area_rect(id)).expect("the style window is still shown");
+        assert!(after.top() < before.top() - 20.0, "the title drag must move the window up: {before:?} -> {after:?}");
+        assert!(after.left() < before.left() - 20.0, "and sideways: {before:?} -> {after:?}");
     }
 
     #[test]
