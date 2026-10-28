@@ -141,6 +141,9 @@ pub struct TypesetterUi {
     pub scroll_to_active_line: bool,
     pub script_buffer: String,
     pub script_list_height: f32,
+    /// Pass number in which the auxiliary windows were last drawn, so a frame that renders both
+    /// the docked body and the floating one does not open them twice.
+    aux_pass: u64,
 }
 
 impl Default for TypesetterUi {
@@ -173,6 +176,7 @@ impl Default for TypesetterUi {
             scroll_to_active_line: false,
             script_buffer: String::new(),
             script_list_height: 160.0,
+            aux_pass: u64::MAX,
         };
         ui.auto_load();
         ui
@@ -387,6 +391,10 @@ impl TypesetterUi {
                 self.render_header_toolbar(ui);
                 self.render_body(ui, &mut action);
             });
+        // Придоканная панель тоже должна открывать окна стиля/сценария; в плавающем режиме их
+        // рисует `show`, а счётчик pass не даст открыть их дважды за кадр.
+        let ctx = ui.ctx().clone();
+        self.render_aux_windows(&ctx, &mut action);
         action
     }
 
@@ -401,7 +409,22 @@ impl TypesetterUi {
         let ctx = ui.ctx().clone();
         self.rendered_this_frame = false;
 
-        // Если открыто отдельное окно полного текста — рендерим его параллельно
+        self.render_aux_windows(&ctx, &mut action);
+
+        action
+    }
+
+    /// Окна-спутники TypeR: полный текст, настройки стиля и редактор сценария.
+    ///
+    /// Рисуются и в плавающем (`show`), и в придоканном (`render_embedded`) режиме: окна egui
+    /// живут на контексте, поэтому вызов один на кадр — иначе панель, которую в доке рисуют и
+    /// `show`, и док, создала бы каждое окно дважды.
+    fn render_aux_windows(&mut self, ctx: &egui::Context, action: &mut Option<TypesetterAction>) {
+        let pass = ctx.cumulative_pass_nr();
+        if self.aux_pass == pass {
+            return;
+        }
+        self.aux_pass = pass;
         if self.show_full_text_window {
             let mut show_win = self.show_full_text_window;
             Window::new(tl!("Manga Script (Full Text)"))
@@ -411,8 +434,8 @@ impl TypesetterUi {
                 .min_width(320.0)
                 .min_height(300.0)
                 .resizable(true)
-                .show(&ctx, |ui| {
-                    self.render_full_text_content(ui, &mut action);
+                .show(ctx, |ui| {
+                    self.render_full_text_content(ui, &mut *action);
                 });
             self.show_full_text_window = show_win;
         }
@@ -437,7 +460,7 @@ impl TypesetterUi {
                 .default_width(360.0)
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(ctx.content_rect().center())
-                .show(&ctx, |ui| {
+                .show(ctx, |ui| {
                     self.render_font_settings_modal(ui, edit_idx, &mut close_modal);
                 });
 
@@ -458,7 +481,7 @@ impl TypesetterUi {
                 .default_height(420.0)
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(ctx.content_rect().center())
-                .show(&ctx, |ui| {
+                .show(ctx, |ui| {
                     self.render_script_editor_modal(ui, &mut close_modal);
                 });
 
@@ -466,8 +489,6 @@ impl TypesetterUi {
                 self.show_script_editor_modal = false;
             }
         }
-
-        action
     }
 
     /// Верхняя панель вкладок и меню опций/импорта/экспорта в едином стиле Photoshop.
@@ -2435,6 +2456,35 @@ mod tests {
         let after = h.ctx.memory(|m| m.area_rect(id)).expect("the style window is still shown");
         assert!(after.top() < before.top() - 20.0, "the title drag must move the window up: {before:?} -> {after:?}");
         assert!(after.left() < before.left() - 20.0, "and sideways: {before:?} -> {after:?}");
+    }
+
+    /// The docked panel body is drawn by `render_embedded`; it must still open the style dialog,
+    /// which used to be reachable only through the floating `show` path.
+    #[test]
+    fn docked_panel_opens_the_style_dialog() {
+        use egui_kittest::Harness;
+
+        let mut typer = TypesetterUi::default();
+        if typer.state.presets.is_empty() {
+            typer.state.presets.push(TextStylePreset::default());
+        }
+        typer.is_open = true;
+        typer.editing_preset_idx = Some(0);
+        let mut frames = 0u32;
+        let mut h = Harness::builder().with_size(egui::vec2(900.0, 700.0)).build_ui_state(
+            move |ui, typer: &mut TypesetterUi| {
+                crate::PhotocraftApp::setup_context(ui.ctx(), crate::theme::ThemeKind::ALL[0]);
+                frames += 1;
+                if frames < 2 {
+                    return;
+                }
+                let _ = typer.render_embedded(ui);
+            },
+            typer,
+        );
+        h.run_steps(3);
+        let id = egui::Id::new("typer_font_settings_window");
+        assert!(h.ctx.memory(|m| m.area_rect(id)).is_some(), "the docked panel opens the style dialog");
     }
 
     #[test]
