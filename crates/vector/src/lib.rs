@@ -4,6 +4,8 @@
 //! shape layers (fill + stroke), vector masks, and the inverse direction (tracing a coverage
 //! mask back into a path for "Make Work Path").
 //!
+//! * [`balloon`]: comic balloon geometry — merged tails, thought clouds, spiky shouts and
+//!   SAI-style smoothed click linework, all as editable paths.
 //! * [`edit`]: point-level path editing (Direct Selection, Convert Point) and hit testing.
 //! * [`feather`]: the Gaussian blur of a feathered mask (vector masks, pixel masks, soft shapes).
 //! * [`flatten`]: cubic Bézier flattening with a distance tolerance.
@@ -20,6 +22,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod balloon;
 pub mod edit;
 pub mod feather;
 pub mod flatten;
