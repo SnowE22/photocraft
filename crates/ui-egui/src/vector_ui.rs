@@ -14,6 +14,19 @@ use crate::canvas::ViewXform;
 use crate::state::{Tool, ToolOptions};
 use crate::theme::Tokens;
 
+
+/// Uncommitted SAI-style stroke of the Balloon tool's Pen mode: click-placed nodes in document px
+/// (`[x, y, pressure, corner]`). Gesture state, not History, like [`PenPath`].
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BalloonPen {
+    pub points: Vec<[f64; 4]>,
+    #[serde(skip)]
+    pub drag: Option<usize>,
+    #[serde(skip)]
+    pub drag_pressure: bool,
+    #[serde(skip)]
+    pub drag_origin_y: f64,
+}
 /// Pen tool path under construction: knots as [anchor, in, out] (document px).
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PenPath {
@@ -194,6 +207,9 @@ fn balloon_body_at(app: &PhotocraftApp, p: [f64; 2]) -> Option<u64> {
 /// balloon drawn inside the drag rectangle.
 pub fn finish_balloon(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2]) {
     let o = app.ui.tool_options.clone();
+    if o.balloon_mode == "pen" {
+        return;
+    }
     let result = match o.balloon_mode.as_str() {
         "cloud" | "spiky" => {
             let Some(rect) = balloon_rect(start, end) else { return };
@@ -1416,8 +1432,149 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
     }
     // The segment the Pen's Auto Add/Delete would add an anchor to, or the anchor it would delete,
     // over the path being drawn. While drawing, the other paths can be hidden: it edits none of them.
+    if balloon_pen_mode(app) {
+        draw_balloon_pen(app, painter, &to_scr);
+    }
     if paths || app.ui.pen.is_some() {
         crate::anchor_tools::draw_pen_hover(app, painter, &to_scr, accent, painter.ctx().input(|i| i.modifiers));
+    }
+}
+
+
+// ---------------------------------------------------------------------------------------------
+// Balloon pen: click-placed, Catmull-Rom smoothed linework (Paint Tool SAI in spirit).
+// ---------------------------------------------------------------------------------------------
+
+/// Is the Balloon tool in its Pen (click linework) mode?
+pub fn balloon_pen_mode(app: &PhotocraftApp) -> bool {
+    app.ui.tool == Tool::Balloon && app.ui.tool_options.balloon_mode == "pen"
+}
+
+fn balloon_pen_node_tol(app: &PhotocraftApp) -> f64 {
+    9.0 / f64::from(app.point_zoom().max(0.01))
+}
+
+fn balloon_pen_node_at(app: &PhotocraftApp, p: [f64; 2]) -> Option<usize> {
+    let tol = balloon_pen_node_tol(app);
+    let pen = app.ui.balloon_pen.as_ref()?;
+    pen.points
+        .iter()
+        .enumerate()
+        .map(|(i, q)| (i, (q[0] - p[0]).hypot(q[1] - p[1])))
+        .filter(|(_, d)| *d <= tol)
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(i, _)| i)
+}
+
+/// Press in Pen mode: a click adds a node; ⌥-click toggles a node's corner, ⌘/Ctrl-drag moves it,
+/// dragging a node without a modifier changes its pressure (sharp stroke tips).
+pub fn balloon_pen_down(app: &mut PhotocraftApp, x: f64, y: f64, mods: egui::Modifiers) {
+    if !balloon_pen_mode(app) {
+        return;
+    }
+    if let Some(i) = balloon_pen_node_at(app, [x, y]) {
+        if mods.alt {
+            if let Some(node) = app.ui.balloon_pen.as_mut().and_then(|p| p.points.get_mut(i)) {
+                node[3] = if node[3] > 0.5 { 0.0 } else { 1.0 };
+            }
+            return;
+        }
+        let move_it = mods.command || mods.ctrl;
+        if let Some(pen) = app.ui.balloon_pen.as_mut() {
+            pen.drag = Some(i);
+            pen.drag_pressure = !move_it;
+            pen.drag_origin_y = y;
+        }
+        return;
+    }
+    let pen = app.ui.balloon_pen.get_or_insert_with(BalloonPen::default);
+    pen.points.push([x, y, 1.0, 0.0]);
+}
+
+pub fn balloon_pen_move(app: &mut PhotocraftApp, x: f64, y: f64) {
+    let Some(pen) = app.ui.balloon_pen.as_mut() else { return };
+    let Some(i) = pen.drag else { return };
+    let origin = pen.drag_origin_y;
+    let by_pressure = pen.drag_pressure;
+    let Some(node) = pen.points.get_mut(i) else {
+        pen.drag = None;
+        return;
+    };
+    if by_pressure {
+        node[2] = (node[2] + (origin - y) / 120.0).clamp(0.0, 1.0);
+        pen.drag_origin_y = y;
+    } else {
+        node[0] = x;
+        node[1] = y;
+    }
+}
+
+pub fn balloon_pen_up(app: &mut PhotocraftApp) {
+    if let Some(pen) = app.ui.balloon_pen.as_mut() {
+        pen.drag = None;
+    }
+}
+
+/// ⌫ during the stroke removes the last node (not Edit › Clear).
+pub fn balloon_pen_undo_last(app: &mut PhotocraftApp) {
+    let Some(pen) = app.ui.balloon_pen.as_mut() else { return };
+    pen.points.pop();
+    if pen.points.is_empty() {
+        app.ui.balloon_pen = None;
+    }
+}
+
+/// Esc: drop the uncommitted stroke.
+pub fn balloon_pen_cancel(app: &mut PhotocraftApp) {
+    app.ui.balloon_pen = None;
+}
+
+/// ↩: finish the stroke as a shape layer (`shape.balloon.stroke`).
+pub fn balloon_pen_commit(app: &mut PhotocraftApp) {
+    let Some(pen) = app.ui.balloon_pen.take() else { return };
+    if pen.points.len() < 2 {
+        app.ui.balloon_pen = Some(pen);
+        app.ui.status = "Balloon pen: at least two nodes are needed".into();
+        app.ui.status_error = true;
+        return;
+    }
+    let width = f64::from(app.ui.tool_options.balloon_stroke_width).clamp(0.01, 1.0e5);
+    let tapered = app.ui.tool_options.balloon_tapered;
+    let points: Vec<Value> = pen
+        .points
+        .iter()
+        .map(|p| json!({"x": p[0], "y": p[1], "pressure": p[2], "corner": p[3] > 0.5}))
+        .collect();
+    let params = json!({"points": points, "width": width, "minRatio": 0.05, "tapered": tapered});
+    if let Err(e) = app.run("shape.balloon.stroke", params) {
+        app.ui.status = e;
+        app.ui.status_error = true;
+    }
+}
+
+/// The uncommitted stroke over the canvas: the smoothed path plus its pressure/corner nodes.
+pub fn draw_balloon_pen(app: &PhotocraftApp, painter: &egui::Painter, to_scr: &impl Fn([f64; 2]) -> Pos2) {
+    let Some(pen) = app.ui.balloon_pen.as_ref() else { return };
+    if pen.points.is_empty() {
+        return;
+    }
+    let accent = Tokens::get(painter.ctx()).accent;
+    let points: Vec<photocraft_vector::balloon::SaiPoint> = pen
+        .points
+        .iter()
+        .map(|p| photocraft_vector::balloon::SaiPoint { p: (p[0], p[1]), pressure: p[2] as f32, corner: p[3] > 0.5 })
+        .collect();
+    let path = photocraft_vector::balloon::sai_stroke(&points, false);
+    for (pts, _) in path_lines(&path, &|q| to_scr([q[0], q[1]])) {
+        painter.add(egui::Shape::line(pts, Stroke::new(1.5, accent)));
+    }
+    for p in &pen.points {
+        let c = to_scr([p[0], p[1]]);
+        let r = 3.0 + p[2] as f32 * 3.0;
+        painter.circle_stroke(c, r, Stroke::new(1.2, accent));
+        if p[3] > 0.5 {
+            painter.rect_stroke(Rect::from_center_size(c, vec2(r * 1.7, r * 1.7)), 0.0, Stroke::new(1.2, accent), egui::StrokeKind::Inside);
+        }
     }
 }
 
@@ -1599,7 +1756,7 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
         }
         Tool::Balloon => {
             crate::widgets::vline(ui, 22.0);
-            for (mode, label) in [("tail", "Tail"), ("cloud", "Cloud"), ("spiky", "Spiky")] {
+            for (mode, label) in [("tail", "Tail"), ("cloud", "Cloud"), ("spiky", "Spiky"), ("pen", "Pen")] {
                 if crate::widgets::pill_tab(ui, tl!(label), o.balloon_mode == mode).clicked() {
                     o.balloon_mode = mode.to_string();
                 }

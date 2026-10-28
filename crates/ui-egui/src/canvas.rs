@@ -6162,6 +6162,9 @@ fn tool_move(app: &mut PhotocraftApp, x: f64, y: f64, pressure: f32, mods: egui:
     } else if tool == Tool::CurvaturePen {
         crate::vector_ui::curvature_move(app, x, y);
     }
+    if crate::vector_ui::balloon_pen_mode(app) {
+        crate::vector_ui::balloon_pen_move(app, x, y);
+    }
     let zoom = app.point_zoom();
     if let Some(d) = app.drag.as_mut().filter(|d| d.reposition) {
         d.track(mods);
@@ -6491,6 +6494,10 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                         let _ = app.run("layer.select", json!({"layer": id.0}));
                     }
                 }
+                Tool::Balloon if crate::vector_ui::balloon_pen_mode(app) => {
+                    crate::vector_ui::balloon_pen_down(app, x, y, mods);
+                    return;
+                }
                 Tool::Pen => {
                     if !(mods.alt && crate::vector_ui::pen_grab_handle(app, x, y)) {
                         crate::vector_ui::pen_down(app, x, y, mods.shift);
@@ -6613,6 +6620,9 @@ pub fn tool_event(app: &mut PhotocraftApp, ev: ToolEvent, mods: egui::Modifiers)
                 crate::vector_ui::pen_up(app);
             } else if tool == Tool::CurvaturePen {
                 crate::vector_ui::curvature_up(app);
+            }
+            if crate::vector_ui::balloon_pen_mode(app) {
+                crate::vector_ui::balloon_pen_up(app);
             }
             let zoom = app.point_zoom();
             let Some(mut d) = app.drag.take() else { return };

@@ -807,7 +807,7 @@ pub struct ToolOptions {
     pub corner_radius: f32,
     pub polygon_sides: u32,
     pub line_weight: f32,
-    /// Balloon tool mode: 	ail (drag a tail from the balloon to the speaker), cloud (drag out
+    /// Balloon tool mode: tail (drag a tail from the balloon to the speaker), cloud (drag out
     /// a thought cloud) or spiky (drag out a shout / flash balloon).
     #[serde(default = "default_balloon_mode")]
     pub balloon_mode: String,
@@ -832,6 +832,11 @@ pub struct ToolOptions {
     pub balloon_inward: bool,
     #[serde(default = "default_balloon_seed")]
     pub balloon_seed: u32,
+    /// Balloon pen: stroke width and whether the stroke is a tapered filled outline.
+    #[serde(default = "default_balloon_stroke_width")]
+    pub balloon_stroke_width: f32,
+    #[serde(default = "yes")]
+    pub balloon_tapered: bool,
     /// Freeform Pen › Curve Fit: how far (px) the fitted path may stray from the pointer trace.
     #[serde(default = "default_curve_fit")]
     pub curve_fit: f32,
@@ -1017,6 +1022,9 @@ fn default_balloon_length() -> f32 {
     0.45
 }
 
+fn default_balloon_stroke_width() -> f32 {
+    6.0
+}
 fn default_balloon_seed() -> u32 {
     1
 }
@@ -1198,6 +1206,8 @@ impl Default for ToolOptions {
             balloon_smooth: false,
             balloon_inward: false,
             balloon_seed: default_balloon_seed(),
+            balloon_stroke_width: default_balloon_stroke_width(),
+            balloon_tapered: true,
             shape_fill: true,
             stroke_width: 0.0,
             shape_stroke: Default::default(),
@@ -1610,6 +1620,9 @@ pub struct UiState {
     /// Pen path under construction.
     #[serde(default)]
     pub pen: Option<crate::vector_ui::PenPath>,
+    /// Balloon tool Pen mode: click-placed nodes not yet committed.
+    #[serde(default)]
+    pub balloon_pen: Option<crate::vector_ui::BalloonPen>,
     /// The document the pen path is drawn on; switching away commits it to that Work Path.
     #[serde(default)]
     pub pen_doc: Option<photocraft_doc::DocId>,
@@ -1842,6 +1855,7 @@ impl Default for UiState {
             layer_filter_name: String::new(),
             layer_filter_mode: default_layer_filter_mode(),
             pen: None,
+            balloon_pen: None,
             pen_doc: None,
             stroke_editor: None,
             direct_selection: Default::default(),

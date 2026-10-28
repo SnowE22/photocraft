@@ -575,6 +575,28 @@ pub fn handle(app: &mut PhotocraftApp, ctx: &egui::Context) {
         crate::vector_ui::pen_commit(app, false);
         return;
     }
+    // Balloon pen (SAI-style click linework): ↩ finishes the stroke, Esc drops it, ⌫ removes the
+    // last node. Uncommitted gesture state, so none of these is a History entry.
+    if app.ui.balloon_pen.as_ref().is_some_and(|p| !p.points.is_empty()) {
+        let mods = ctx.input(|i| i.modifiers);
+        if !mods.command
+            && !mods.ctrl
+            && !mods.shift
+            && !mods.alt
+            && ctx.input_mut(|i| i.consume_key(mods, Key::Backspace) || i.consume_key(mods, Key::Delete))
+        {
+            crate::vector_ui::balloon_pen_undo_last(app);
+            return;
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter)) {
+            crate::vector_ui::balloon_pen_commit(app);
+            return;
+        }
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+            crate::vector_ui::balloon_pen_cancel(app);
+            return;
+        }
+    }
     // A finished work path shown by the Pen or Path Selection: ⌫/Delete deletes it, as in
     // Photoshop (#5702), never Edit › Clear on the pixels under it.
     if focus != Focus::DeletingWidget && crate::vector_ui::delete_key_deletes_work_path(app) {

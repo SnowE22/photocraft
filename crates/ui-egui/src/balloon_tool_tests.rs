@@ -72,3 +72,72 @@ fn a_click_is_not_a_balloon_and_a_missing_shape_layer_is_reported() {
     assert!(app.ui.status_error, "the tool reports the missing balloon body");
     assert_eq!(app.session.active().unwrap().doc.layers.len(), 1);
 }
+
+fn pen_app() -> PhotocraftApp {
+    let mut app = app_with(400, 300);
+    app.ui.tool_options.balloon_mode = "pen".into();
+    app
+}
+
+fn active_shape(app: &PhotocraftApp) -> photocraft_doc::ShapeLayer {
+    let id = active_layer_id(app);
+    match &app.session.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap().content {
+        LayerContent::Shape(sh) => sh.clone(),
+        other => panic!("not a shape: {}", other.kind_name()),
+    }
+}
+
+#[test]
+fn pen_clicks_become_one_smoothed_tapered_stroke() {
+    let mut app = pen_app();
+    let layers = app.session.active().unwrap().doc.layers.len();
+    for (x, y) in [(40.0, 200.0), (120.0, 90.0), (220.0, 140.0), (340.0, 60.0)] {
+        crate::vector_ui::balloon_pen_down(&mut app, x, y, egui::Modifiers::NONE);
+    }
+    assert_eq!(app.ui.balloon_pen.as_ref().map(|p| p.points.len()), Some(4));
+    crate::vector_ui::balloon_pen_commit(&mut app);
+    assert!(app.ui.balloon_pen.is_none(), "committing clears the gesture");
+    assert_eq!(app.ui.status_error, false, "status: {}", app.ui.status);
+    assert_eq!(app.session.active().unwrap().doc.layers.len(), layers + 1);
+    let shape = active_shape(&app);
+    assert!(shape.fill.is_some(), "tapered ink is a filled outline");
+    assert_eq!(shape.path.subpaths.len(), 1);
+}
+
+#[test]
+fn pen_nodes_move_toggle_corner_and_change_pressure() {
+    let mut app = pen_app();
+    crate::vector_ui::balloon_pen_down(&mut app, 50.0, 50.0, egui::Modifiers::NONE);
+    crate::vector_ui::balloon_pen_down(&mut app, 150.0, 50.0, egui::Modifiers::NONE);
+    // Dragging a node without a modifier lowers its pressure.
+    crate::vector_ui::balloon_pen_down(&mut app, 150.0, 50.0, egui::Modifiers::NONE);
+    crate::vector_ui::balloon_pen_move(&mut app, 150.0, 200.0);
+    crate::vector_ui::balloon_pen_up(&mut app);
+    let pen = app.ui.balloon_pen.as_ref().unwrap();
+    assert!(pen.points[1][2] < 0.5, "pressure {}", pen.points[1][2]);
+    assert_eq!((pen.points[1][0], pen.points[1][1]), (150.0, 50.0), "a weight drag does not move the node");
+    // ⌥-click toggles a corner.
+    crate::vector_ui::balloon_pen_down(&mut app, 150.0, 50.0, egui::Modifiers { alt: true, ..Default::default() });
+    assert_eq!(app.ui.balloon_pen.as_ref().unwrap().points[1][3], 1.0);
+    // ⌘/Ctrl-drag moves the node instead.
+    crate::vector_ui::balloon_pen_down(&mut app, 150.0, 50.0, egui::Modifiers { command: true, ..Default::default() });
+    crate::vector_ui::balloon_pen_move(&mut app, 180.0, 70.0);
+    crate::vector_ui::balloon_pen_up(&mut app);
+    let moved = app.ui.balloon_pen.as_ref().unwrap().points[1];
+    assert_eq!((moved[0], moved[1]), (180.0, 70.0));
+    // ⌫ removes the last node.
+    crate::vector_ui::balloon_pen_undo_last(&mut app);
+    assert_eq!(app.ui.balloon_pen.as_ref().unwrap().points.len(), 1);
+    crate::vector_ui::balloon_pen_undo_last(&mut app);
+    assert!(app.ui.balloon_pen.is_none(), "the empty gesture is gone");
+}
+
+#[test]
+fn a_one_node_pen_stroke_is_not_committed() {
+    let mut app = pen_app();
+    let layers = app.session.active().unwrap().doc.layers.len();
+    crate::vector_ui::balloon_pen_down(&mut app, 50.0, 50.0, egui::Modifiers::NONE);
+    crate::vector_ui::balloon_pen_commit(&mut app);
+    assert!(app.ui.status_error, "the tool asks for a second node");
+    assert_eq!(app.session.active().unwrap().doc.layers.len(), layers);
+}
