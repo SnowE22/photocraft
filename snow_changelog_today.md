@@ -21,6 +21,7 @@
 | 21 | **Перетаскиваемые окна стиля и редактора сценария TypeR** | 2026-10-28 20:40 | `fede67671` | `crates/ui-egui/src/snow_typesetter_ui.rs` |
 | 22 | **Окна стиля и сценария открываются из придоканной панели TypeR** | 2026-10-28 21:14 | `72503b0b9` | `crates/ui-egui/src/snow_typesetter_ui.rs` |
 | 23 | **Инструмент баблов в engine: хвосты (union), облака, шипы, SAI-штрихи** | 2026-10-29 00:20 | `79f440ef5`, `f4fbef0ec` | `crates/vector/src/balloon.rs`, `crates/engine/src/balloon_cmds.rs` |
+| 24 | **Инструмент Balloon в интерфейсе: хвост протяжкой, облако и шипы прямоугольником** | 2026-10-29 02:01 | `d82553550` | `crates/ui-egui/src/vector_ui.rs`, `state.rs`, `canvas.rs`, `tool_reset.rs`, `icons.rs`, `panels.rs` |
 
 ---
 
@@ -201,6 +202,18 @@
   Ожидаемо: овал с хвостом без поперечной линии на стыке.
 - **Тесты:** `cargo test -p photocraft-vector --lib balloon` — 9/9; `cargo test -p photocraft-engine --lib balloon_cmds` — 7/7; `cargo test -p photocraft-engine --test panic_hunt -- --ignored` — зелёный.
 - **Ограничение:** GUI-инструмента пока нет (следующий этап), команды доступны через CLI и control-протокол. Демо-рендер: `balloon-demo.png` рядом с exe.
+#### 24. Инструмент Balloon в интерфейсе
+- **Дата добавления:** 29.10.2026 02:01
+- **Коммит:** `d82553550`
+- **Что сделано:**
+  - Новый инструмент **Balloon** (`Tool::Balloon`) в панели инструментов (группа фигур, `U`), со своей строкой опций.
+  - **Хвост:** протяжка на холсте от тела бабла к персонажу; устье ставится на контуре, результат — объединённый контур (`shape.balloon.tail`), одна заливка/обводка без шва. Пресеты переключаются кнопкой `Tail: Wedge → Arc → Double → Thought`, ширина устья — поле `Mouth`.
+  - **Облако/Шипы:** режимы `Cloud` и `Spiky` с параметрами (`Bumps/Depth/Jitter`, `Spikes/Length/Jitter/Round/In`); протяжка прямоугольника создаёт новый Shape-слой (`shape.balloon.create`).
+  - Живой пунктирный предпросмотр протяжки; клик (без движения) ничего не создаёт; при отсутствии Shape-слоя под курсором — сообщение в статус-баре.
+  - `Undo/Redo`, Free Transform, Move и сохранение PSD/`.pcraft` работают как с обычными Shape-слоями.
+- **Где тестировать:** `snow_test_guide.md`, раздел 6.1 (GUI) и 6.2–6.5 (CLI).
+- **Тесты:** `cargo test -p photocraft-ui-egui --lib balloon_tool` — 3/3.
+- **Сборка:** релизный бинарник обновлён 29.10.2026 02:01 в `D:\Photoncraft\release\photocraft.exe` (94 412 800 байт).
 
 ---
 
