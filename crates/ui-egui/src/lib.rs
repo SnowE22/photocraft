@@ -1474,21 +1474,29 @@ impl PhotocraftApp {
         let kerning_mode = if is_optical { "optical" } else { "metrics" };
         let auto_kern_val = if is_optical { "opticalKern" } else { "metricsKern" };
 
-        let box_coords = if let Some([bx, by, bw, bh]) = selection_box {
-            [bx, by, bw, bh]
+        // Рассчитываем оптический центр и базовую линию для Point Text
+        // Это обеспечивает 100% совместимость с Adobe Photoshop (исключает программный сбой при открытии PSD с Area Text)
+        let line_count = final_text.split('\n').count().max(1) as f32;
+        let leading = if action.preset.leading > 0.0 {
+            action.preset.leading
         } else {
-            let (cx, cy) = if let Some([hx, hy]) = self.hover_doc {
-                (hx as f32, hy as f32)
-            } else {
-                (st.doc.size.width as f32 * 0.5, st.doc.size.height as f32 * 0.5)
-            };
-            let bw = (action.preset.font_size * 18.0).min(st.doc.size.width as f32 * 0.8);
-            let bh = (action.preset.leading * 10.0).min(st.doc.size.height as f32 * 0.8);
-            [cx - bw * 0.5, cy - bh * 0.5, bw, bh]
+            action.preset.font_size * 1.2
         };
 
+        let (cx, cy) = if let Some([bx, by, bw, bh]) = selection_box {
+            (bx + bw * 0.5, by + bh * 0.5)
+        } else if let Some([hx, hy]) = self.hover_doc {
+            (hx as f32, hy as f32)
+        } else {
+            (st.doc.size.width as f32 * 0.5, st.doc.size.height as f32 * 0.5)
+        };
+
+        // Базовая линия первой строки так, чтобы центр всего блока строк пришелся на cy
+        let baseline_y = cy - (line_count - 1.0) * leading * 0.5 + action.preset.font_size * 0.225;
+
         let mut type_params = serde_json::json!({
-            "box": box_coords,
+            "x": cx,
+            "y": baseline_y,
             "text": final_text,
             "size": action.preset.font_size,
             "font": resolved_family,
@@ -1498,7 +1506,6 @@ impl PhotocraftApp {
             "fauxBold": faux_bold,
             "fauxItalic": faux_italic,
             "align": "center",
-            "verticalAlign": "center",
             "tracking": action.preset.tracking,
             "leading": action.preset.leading,
             "horizontalScale": action.preset.horizontal_scale,
