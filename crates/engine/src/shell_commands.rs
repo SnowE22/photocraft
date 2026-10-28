@@ -167,6 +167,7 @@ pub const TOOLS: &[(&str, &str, Option<&str>)] = &[
     ("tools.select.polygon", "Polygon Tool", Some("U")),
     ("tools.select.line", "Line Tool", Some("U")),
     ("tools.select.customShape", "Custom Shape Tool", Some("U")),
+    ("tools.select.balloon", "Balloon Tool", Some("U")),
     ("tools.select.slice", "Slice Tool", Some("C")),
     ("tools.select.sliceSelect", "Slice Select Tool", Some("C")),
     ("tools.select.frame", "Frame Tool", Some("K")),
