@@ -2,7 +2,7 @@ use egui::{
     Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea, Sense, Stroke,
     Window, vec2,
 };
-use photocraft_engine::typesetter::{TextStylePreset, TypesetterState};
+use photocraft_engine::typesetter::{ScriptLine, TextStylePreset, TypesetterState};
 use serde::{Deserialize, Serialize};
 
 use crate::theme::Tokens;
@@ -39,6 +39,10 @@ fn default_true() -> bool {
     true
 }
 
+fn default_script_list_height() -> f32 {
+    160.0
+}
+
 #[derive(Serialize, Deserialize)]
 struct TypesetterPersistedState {
     pub dock_mode: TypesetterDockMode,
@@ -50,6 +54,8 @@ struct TypesetterPersistedState {
     pub favorite_fonts: Vec<String>,
     #[serde(default = "default_true")]
     pub is_open: bool,
+    #[serde(default = "default_script_list_height")]
+    pub script_list_height: f32,
 }
 
 pub fn typesetter_storage_path() -> Option<std::path::PathBuf> {
@@ -126,6 +132,8 @@ pub struct TypesetterUi {
     pub favorite_fonts: Vec<String>,
     pub rendered_this_frame: bool,
     pub scroll_to_active_line: bool,
+    pub script_buffer: String,
+    pub script_list_height: f32,
 }
 
 impl Default for TypesetterUi {
@@ -156,13 +164,58 @@ impl Default for TypesetterUi {
             favorite_fonts: Vec::new(),
             rendered_this_frame: false,
             scroll_to_active_line: false,
+            script_buffer: String::new(),
+            script_list_height: 160.0,
         };
         ui.auto_load();
         ui
     }
 }
 
+fn draw_dashed_hline(painter: &egui::Painter, x_start: f32, x_end: f32, y: f32, stroke: Stroke) {
+    let mut x = x_start;
+    let dash_len = 3.0;
+    let gap_len = 3.0;
+    while x < x_end {
+        let x2 = (x + dash_len).min(x_end);
+        painter.line_segment([egui::pos2(x, y), egui::pos2(x2, y)], stroke);
+        x += dash_len + gap_len;
+    }
+}
+
 impl TypesetterUi {
+    /// Синхронизирует буфер единого текстового редактора из массива строк реплик.
+    pub fn sync_script_buffer_from_state(&mut self) {
+        if !self.state.lines.is_empty() {
+            self.script_buffer = self.state.lines.iter().map(|l| l.raw.as_str()).collect::<Vec<_>>().join("\n");
+        }
+    }
+
+    /// Синхронизирует массив строк реплик и метаданных при редактировании единого текстового буфера.
+    pub fn sync_state_from_script_buffer(&mut self) {
+        let lines: Vec<&str> = self.script_buffer.split('\n').collect();
+        let mut new_lines = Vec::with_capacity(lines.len());
+        let mut page = 1;
+        for (i, line_str) in lines.iter().enumerate() {
+            let trimmed = line_str.trim();
+            if let Some(p) = photocraft_engine::typesetter::detect_page_header(trimmed) {
+                page = p;
+            }
+            let cleaned = photocraft_engine::typesetter::clean_script_line_with_options(trimmed, &self.state.options);
+            let was_applied = self.state.lines.get(i).map(|l| l.is_applied).unwrap_or(false);
+            new_lines.push(ScriptLine {
+                raw: line_str.to_string(),
+                text: if cleaned.is_empty() { line_str.to_string() } else { cleaned },
+                is_applied: was_applied,
+                page,
+            });
+        }
+        self.state.lines = new_lines;
+        if self.state.current_line_idx >= self.state.lines.len() {
+            self.state.current_line_idx = self.state.lines.len().saturating_sub(1);
+        }
+        self.auto_save();
+    }
     pub fn new() -> Self {
         Self::default()
     }
@@ -176,6 +229,7 @@ impl TypesetterUi {
                 self.script_input_buffer = text.clone();
                 self.script_editor_buffer = text.clone();
                 self.state.load_script(&text);
+                self.sync_script_buffer_from_state();
                 self.auto_save();
                 self.status_message = Some(format!("Загружено реплик из буфера: {}", self.state.lines.len()));
                 self.status_error = false;
@@ -209,6 +263,7 @@ impl TypesetterUi {
                     self.script_input_buffer = content.clone();
                     self.script_editor_buffer = content.clone();
                     self.state.load_script(&content);
+                    self.sync_script_buffer_from_state();
                     self.auto_save();
                     self.status_message = Some(format!("Загружено реплик из файла: {}", self.state.lines.len()));
                     self.status_error = false;
@@ -238,6 +293,7 @@ impl TypesetterUi {
             custom_storage_dir: self.custom_storage_dir.clone(),
             favorite_fonts: self.favorite_fonts.clone(),
             is_open: self.is_open,
+            script_list_height: self.script_list_height,
         };
         if let Ok(json_str) = serde_json::to_string_pretty(&persisted) {
             if let Some(custom_dir) = &self.custom_storage_dir {
@@ -264,6 +320,8 @@ impl TypesetterUi {
                         }
                         self.custom_storage_dir = data.custom_storage_dir;
                         self.is_open = data.is_open;
+                        self.script_list_height = data.script_list_height;
+                        self.sync_script_buffer_from_state();
                     } else if let Ok(count) = self.state.import_styles_json(&content) {
                         if count > 0 {
                             return;
@@ -683,11 +741,31 @@ impl TypesetterUi {
         });
         ui.add_space(2.0);
 
-        let script_list_height = if ui.available_height() < 420.0 { 100.0 } else { 145.0 };
+        let script_list_height = self.script_list_height;
         self.render_script_list(ui, action, script_list_height);
 
-        widgets::hairline(ui);
-        ui.add_space(3.0);
+        // Splitter / ползунок изменения высоты окна сценария
+        let (res_rect, res_resp) = ui.allocate_exact_size(vec2(ui.available_width(), 8.0), Sense::drag());
+        let is_res_hover = res_resp.hovered() || res_resp.dragged();
+        if is_res_hover {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);
+        }
+        if res_resp.dragged() {
+            self.script_list_height = (self.script_list_height + res_resp.drag_delta().y).clamp(80.0, 600.0);
+            self.auto_save();
+        }
+        let splitter_line_col = if is_res_hover {
+            t.accent
+        } else {
+            Color32::from_rgb(205, 210, 220)
+        };
+        ui.painter().hline(res_rect.x_range(), res_rect.center().y, Stroke::new(1.0, splitter_line_col));
+        let cx = res_rect.center().x;
+        let cy = res_rect.center().y;
+        for offset in [-12.0, -6.0, 0.0, 6.0, 12.0] {
+            ui.painter().circle_filled(egui::pos2(cx + offset, cy), 1.2, splitter_line_col);
+        }
+        ui.add_space(2.0);
 
         self.render_preset_toolbar(ui);
 
@@ -882,162 +960,267 @@ impl TypesetterUi {
         }
     }
 
-    /// Построчный список сценария TypeR со скроллом и интерактивными кнопками.
+    /// Полноценный единый текстовый редактор сценария TypeR с гуттерами строк,
+    /// сквозным выделением текста мышью, свободным слиянием (Backspace) и переносом (Enter).
     fn render_script_list(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>, max_height: f32) {
-        let total_lines = self.state.lines.len();
-        let cur_line_idx = self.state.current_line_idx;
-        let mut line_to_set = None;
-        let mut line_to_insert = None;
-        let mut text_changed = false;
-        let mut should_clear_scroll = false;
-        let do_scroll = self.scroll_to_active_line;
+        if self.script_buffer.is_empty() && !self.state.lines.is_empty() {
+            self.sync_script_buffer_from_state();
+        }
 
-        Frame::NONE
-            .fill(Color32::WHITE)
-            .stroke(Stroke::new(1.0, Color32::from_rgb(175, 180, 190)))
-            .corner_radius(CornerRadius::same(3))
-            .inner_margin(Margin::same(2))
-            .show(ui, |ui| {
-                ScrollArea::vertical()
-                    .id_salt("typer_script_scroll")
-                    .max_height(max_height)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        if total_lines == 0 {
-                            ui.vertical_centered(|ui| {
-                                ui.add_space(10.0);
-                                ui.label(RichText::new(tl!("No script loaded")).color(Color32::from_rgb(130, 135, 145)).small());
-                                ui.add_space(6.0);
-                                ui.horizontal_wrapped(|ui| {
-                                    if ui.button(RichText::new(format!("📋 {}", tl!("Paste"))).strong()).on_hover_text(tl!("Paste script from clipboard (Ctrl+V)")).clicked() {
-                                        self.paste_script_from_clipboard();
-                                    }
-                                    if ui.button(format!("📥 {}", tl!("Load .txt"))).on_hover_text(tl!("Load script file (.txt)")).clicked() {
-                                        self.open_script_file_dialog();
-                                    }
-                                    if ui.button(format!("📝 {}", tl!("Editor"))).on_hover_text(tl!("Enter script manually")).clicked() {
-                                        self.open_script_editor();
-                                    }
-                                });
-                                ui.add_space(8.0);
-                            });
-                        } else {
-                            for (idx, line) in self.state.lines.iter_mut().enumerate() {
-                                let is_active = idx == cur_line_idx;
+        let gutter_w = 46.0f32;
+        let action_w = 24.0f32;
+        let edit_id = egui::Id::new("typer_unified_script_text_edit");
+        let active_line_idx = self.state.current_line_idx;
+        let mut do_scroll_active = self.scroll_to_active_line;
 
-                                let (row_bg, row_border, text_color, num_color) = if is_active {
-                                    (
-                                        Color32::from_rgb(204, 232, 255),
-                                        Color32::from_rgb(0, 120, 215),
-                                        Color32::from_rgb(10, 25, 50),
-                                        Color32::from_rgb(0, 90, 180),
-                                    )
-                                } else if line.is_applied {
-                                    (
-                                        Color32::from_rgb(250, 250, 252),
-                                        Color32::TRANSPARENT,
-                                        Color32::from_rgb(150, 155, 165),
-                                        Color32::from_rgb(170, 175, 185),
-                                    )
-                                } else {
-                                    (
-                                        Color32::WHITE,
-                                        Color32::TRANSPARENT,
-                                        Color32::from_rgb(20, 25, 35),
-                                        Color32::from_rgb(110, 115, 125),
-                                    )
-                                };
-
-                                let row_frame = Frame::NONE
-                                    .fill(row_bg)
-                                    .stroke(Stroke::new(if is_active { 1.5 } else { 0.0 }, row_border))
-                                    .corner_radius(CornerRadius::same(2))
-                                    .inner_margin(Margin::symmetric(4, 3));
-
-                                let row_resp = row_frame.show(ui, |ui| {
-                                    ui.horizontal(|ui| {
-                                        ui.label(RichText::new(format!("{:2}", idx + 1)).color(num_color).monospace().small());
-
-                                        let target_icon = if is_active { "●" } else { "◎" };
-                                        if ui.small_button(target_icon).on_hover_text(tl!("Make this line current")).clicked() {
-                                            line_to_set = Some((idx, true));
-                                        }
-
-                                        let mut do_insert = false;
-                                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                            let insert_btn = egui::Button::new(
-                                                RichText::new("▶").color(Color32::WHITE).strong()
-                                            )
-                                            .fill(Color32::from_rgb(0, 120, 215))
-                                            .min_size(vec2(22.0, 16.0));
-
-                                            if ui.add(insert_btn).on_hover_text(tl!("Insert this line into bubble (Enter)")).clicked() {
-                                                do_insert = true;
-                                            }
-
-                                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                                                let edit = egui::TextEdit::singleline(&mut line.text)
-                                                    .font(egui::TextStyle::Body)
-                                                    .text_color(text_color)
-                                                    .frame(egui::Frame::NONE)
-                                                    .id_salt(egui::Id::new("typer_line_text").with(idx));
-                                                let edit_resp = ui.add(edit);
-                                                if edit_resp.gained_focus() || edit_resp.clicked() {
-                                                    line_to_set = Some((idx, false));
-                                                }
-                                                if edit_resp.changed() {
-                                                    text_changed = true;
-                                                }
-                                            });
-                                        });
-
-                                        if do_insert {
-                                            line_to_insert = Some((idx, line.clone()));
-                                        }
-                                    });
-                                });
-
-                                if is_active && do_scroll {
-                                    row_resp.response.scroll_to_me(Some(Align::Center));
-                                    should_clear_scroll = true;
-                                }
-
-                                if idx + 1 < total_lines {
-                                    let r = ui.available_rect_before_wrap();
-                                    ui.painter().hline(r.x_range(), r.min.y, Stroke::new(1.0, Color32::from_rgb(225, 230, 238)));
-                                    ui.add_space(1.0);
-                                }
+        // Если буфер пуст и реплик нет — показываем плашку быстрого старта с кнопками
+        if self.script_buffer.trim().is_empty() && self.state.lines.is_empty() {
+            Frame::NONE
+                .fill(Color32::WHITE)
+                .stroke(Stroke::new(1.0, Color32::from_rgb(180, 185, 195)))
+                .corner_radius(CornerRadius::same(2))
+                .inner_margin(Margin::same(12))
+                .show(ui, |ui| {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(8.0);
+                        ui.label(RichText::new(tl!("No script loaded")).color(Color32::from_rgb(120, 125, 135)).small());
+                        ui.add_space(6.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.button(RichText::new(format!("📋 {}", tl!("Paste"))).strong()).on_hover_text(tl!("Paste script from clipboard (Ctrl+V)")).clicked() {
+                                self.paste_script_from_clipboard();
                             }
-                        }
+                            if ui.button(format!("📥 {}", tl!("Load .txt"))).on_hover_text(tl!("Load script file (.txt)")).clicked() {
+                                self.open_script_file_dialog();
+                            }
+                            if ui.button(format!("📝 {}", tl!("Editor"))).on_hover_text(tl!("Enter script manually")).clicked() {
+                                self.open_script_editor();
+                            }
+                        });
+                        ui.add_space(8.0);
                     });
+                });
+            return;
+        }
+
+        ScrollArea::vertical()
+            .id_salt("typer_script_unified_scroll")
+            .max_height(max_height)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let avail_w = ui.available_width().max(180.0);
+                // Высота редактора должна следовать за ползунком-сплиттером: без desired_rows
+                // TextEdit всегда занимает 4 строки, и изменение script_list_height не видно.
+                let row_h = ui.text_style_height(&egui::TextStyle::Monospace).max(1.0);
+                let desired_rows = (((max_height - 8.0) / row_h).floor() as usize).max(1);
+                let edit = egui::TextEdit::multiline(&mut self.script_buffer)
+                    .id(edit_id)
+                    .font(egui::TextStyle::Monospace)
+                    .text_color(Color32::from_rgb(20, 25, 35))
+                    // Frame::NONE заменяет margin целиком, поэтому отступы задаём во фрейме:
+                    // иначе текст начинается под левым гуттером и первые символы строки скрыты.
+                    .frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                        left: gutter_w as i8,
+                        right: action_w as i8,
+                        top: 4,
+                        bottom: 4,
+                    }))
+                    .desired_rows(desired_rows)
+                    .desired_width(avail_w);
+
+                // Резервируем форму подложки до отрисовки TextEdit: иначе белая заливка,
+                // добавленная после текста, перекрыла бы его в том же слое painter.
+                let background_idx = ui.painter().add(egui::Shape::Noop);
+                let output = edit.show(ui);
+                let rect = output.response.rect;
+
+                // 1. Отрисовка подложки и вертикальных границ колонок
+                ui.painter().set(background_idx, egui::Shape::rect_filled(rect, CornerRadius::same(2), Color32::WHITE));
+
+                // Левый гуттер (#e4e6eb)
+                let left_gutter_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + gutter_w, rect.bottom()));
+                ui.painter().rect_filled(left_gutter_rect, CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, Color32::from_rgb(228, 230, 235));
+                ui.painter().vline(rect.left() + gutter_w, rect.top()..=rect.bottom(), Stroke::new(1.0, Color32::from_rgb(205, 208, 215)));
+
+                // Правый гуттер (#fafafc)
+                let right_gutter_rect = egui::Rect::from_min_max(egui::pos2(rect.right() - action_w, rect.top()), rect.max);
+                ui.painter().rect_filled(right_gutter_rect, CornerRadius { ne: 2, se: 2, nw: 0, sw: 0 }, Color32::from_rgb(250, 250, 252));
+                ui.painter().vline(rect.right() - action_w, rect.top()..=rect.bottom(), Stroke::new(1.0, Color32::from_rgb(225, 228, 235)));
+
+                // Внешняя аккуратная рамка
+                ui.painter().rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, Color32::from_rgb(180, 185, 195)), egui::StrokeKind::Inside);
+
+                // 2. Расчет геометрии логических строк по строкам галлеи (PlacedRow)
+                let mut logical_line_idx = 0;
+                let mut line_start_y = 0.0f32;
+                let mut line_first_row_y = 0.0f32;
+                let mut line_first_row_h = 16.0f32;
+                let mut line_has_start = false;
+
+                let rows_count = output.galley.rows.len();
+                let mut logical_lines_geom = Vec::new();
+
+                for (r_idx, placed_row) in output.galley.rows.iter().enumerate() {
+                    let row_y = placed_row.pos.y;
+                    let row_h = placed_row.row.size.y;
+                    if !line_has_start {
+                        line_start_y = row_y;
+                        line_first_row_y = row_y;
+                        line_first_row_h = row_h;
+                        line_has_start = true;
+                    }
+
+                    if placed_row.ends_with_newline || r_idx + 1 == rows_count {
+                        let line_end_y = row_y + row_h;
+                        logical_lines_geom.push((
+                            logical_line_idx,
+                            line_start_y,
+                            line_end_y,
+                            line_first_row_y,
+                            line_first_row_h,
+                        ));
+                        logical_line_idx += 1;
+                        line_has_start = false;
+                    }
+                }
+
+                let mouse_pos = ui.input(|i| i.pointer.hover_pos());
+                let primary_clicked = ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+                let mut clicked_target_line = None;
+                let mut clicked_action_line = None;
+
+                for (line_idx, start_y, end_y, first_row_y, first_row_h) in logical_lines_geom {
+                    let screen_start_y = output.galley_pos.y + start_y;
+                    let screen_end_y = output.galley_pos.y + end_y;
+                    let screen_center_y = output.galley_pos.y + first_row_y + first_row_h * 0.5;
+
+                    let is_active = line_idx == active_line_idx;
+                    let is_applied = self.state.lines.get(line_idx).map(|l| l.is_applied).unwrap_or(false);
+
+                    // Скролл к активной строке при программной смене (стрелки ▲/▼, Enter)
+                    if is_active && do_scroll_active {
+                        let active_rect = egui::Rect::from_min_max(
+                            egui::pos2(rect.left(), screen_start_y),
+                            egui::pos2(rect.right(), screen_end_y),
+                        );
+                        ui.scroll_to_rect(active_rect, Some(Align::Center));
+                        do_scroll_active = false;
+                    }
+
+                    // А. Левый гуттер: номер строки
+                    let num_color = if is_active {
+                        Color32::from_rgb(0, 100, 200)
+                    } else if is_applied {
+                        Color32::from_rgb(160, 165, 175)
+                    } else {
+                        Color32::from_rgb(100, 105, 115)
+                    };
+                    ui.painter().text(
+                        egui::pos2(rect.left() + 22.0, screen_center_y),
+                        egui::Align2::RIGHT_CENTER,
+                        format!("{}", line_idx + 1),
+                        egui::FontId::monospace(10.5),
+                        num_color,
+                    );
+
+                    // Мишень / иконка статуса
+                    let target_center = egui::pos2(rect.left() + 34.0, screen_center_y);
+                    let target_rect = egui::Rect::from_center_size(target_center, vec2(16.0, 16.0));
+                    let is_target_hovered = mouse_pos.is_some_and(|p| target_rect.contains(p));
+
+                    if is_active {
+                        ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.3, Color32::from_rgb(0, 120, 215)));
+                        ui.painter().circle_filled(target_center, 2.3, Color32::from_rgb(0, 120, 215));
+                    } else {
+                        let stroke_color = if is_target_hovered {
+                            Color32::from_rgb(0, 120, 215)
+                        } else if is_applied {
+                            Color32::from_rgb(175, 180, 190)
+                        } else {
+                            Color32::from_rgb(130, 135, 145)
+                        };
+                        ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.2, stroke_color));
+                        ui.painter().circle_stroke(target_center, 1.5, Stroke::new(1.0, stroke_color));
+                    }
+
+                    if is_target_hovered && primary_clicked {
+                        clicked_target_line = Some(line_idx);
+                    }
+
+                    // Б. Правый гуттер: кнопка быстрой отправки строки на холст (->)
+                    let action_center = egui::pos2(rect.right() - 12.0, screen_center_y);
+                    let action_rect = egui::Rect::from_center_size(action_center, vec2(18.0, 18.0));
+                    let is_action_hovered = mouse_pos.is_some_and(|p| action_rect.contains(p));
+
+                    let btn_bg = if is_action_hovered {
+                        Color32::from_rgb(0, 120, 215)
+                    } else {
+                        Color32::from_rgb(240, 243, 248)
+                    };
+                    let icon_color = if is_action_hovered {
+                        Color32::WHITE
+                    } else {
+                        Color32::from_rgb(120, 125, 135)
+                    };
+                    let border_color = if is_action_hovered {
+                        Color32::from_rgb(0, 100, 190)
+                    } else {
+                        Color32::from_rgb(205, 210, 220)
+                    };
+
+                    ui.painter().circle_filled(action_center, 7.5, btn_bg);
+                    ui.painter().circle_stroke(action_center, 7.5, Stroke::new(1.0, border_color));
+
+                    let arrow_stroke = Stroke::new(1.4, icon_color);
+                    let ax = action_center.x;
+                    let ay = action_center.y;
+                    ui.painter().line_segment([egui::pos2(ax - 3.5, ay), egui::pos2(ax + 2.5, ay)], arrow_stroke);
+                    ui.painter().line_segment([egui::pos2(ax + 0.5, ay - 2.5), egui::pos2(ax + 3.0, ay)], arrow_stroke);
+                    ui.painter().line_segment([egui::pos2(ax + 0.5, ay + 2.5), egui::pos2(ax + 3.0, ay)], arrow_stroke);
+
+                    if is_action_hovered && primary_clicked {
+                        clicked_action_line = Some(line_idx);
+                    }
+
+                    // В. Горизонтальная пунктирная линия под строкой
+                    let dash_stroke = Stroke::new(1.0, Color32::from_rgb(181, 181, 181)); // #b5b5b5
+                    draw_dashed_hline(ui.painter(), rect.left(), rect.right(), screen_end_y, dash_stroke);
+                }
+
+                if let Some(target_idx) = clicked_target_line {
+                    self.state.set_current_line(target_idx);
+                    self.scroll_to_active_line = true;
+                }
+
+                if let Some(act_idx) = clicked_action_line {
+                    if let Some(line) = self.state.lines.get(act_idx) {
+                        if let Some(preset) = self.state.active_preset().cloned() {
+                            *action = Some(TypesetterAction {
+                                text: line.text.clone(),
+                                preset,
+                            });
+                            self.state.set_current_line(act_idx);
+                            self.state.advance_line();
+                            self.auto_save();
+                        }
+                    }
+                }
+
+                // 3. Отслеживание курсора: при клике или переходе по стрелкам обновляем активную строку
+                if let Some(cr) = output.cursor_range {
+                    let c_idx = cr.primary.index;
+                    let char_count = self.script_buffer.chars().take(c_idx.into()).filter(|&c| c == '\n').count();
+                    if char_count != self.state.current_line_idx && char_count < self.state.lines.len() {
+                        self.state.set_current_line(char_count);
+                    }
+                }
+
+                // 4. Синхронизация состояния при правках в текстовом поле
+                if output.response.response.changed() {
+                    self.sync_state_from_script_buffer();
+                }
             });
 
-        if should_clear_scroll {
-            self.scroll_to_active_line = false;
-        }
-
-        if let Some((idx, req_scroll)) = line_to_set {
-            self.state.set_current_line(idx);
-            if req_scroll {
-                self.scroll_to_active_line = true;
-            }
-        }
-
-        if let Some((idx, line)) = line_to_insert {
-            if let Some(preset) = self.state.active_preset().cloned() {
-                *action = Some(TypesetterAction {
-                    text: line.text.clone(),
-                    preset,
-                });
-                self.state.set_current_line(idx + 1);
-                self.scroll_to_active_line = true;
-                self.auto_save();
-            }
-        }
-
-        if text_changed {
-            self.auto_save();
-        }
+        self.scroll_to_active_line = false;
     }
 
     /// Сетка карточек стилей шрифтов по папкам (с адаптивным числом колонок).
@@ -1611,6 +1794,7 @@ impl TypesetterUi {
             if ui.add_enabled(has_text, apply_btn).clicked() {
                 self.script_input_buffer = self.script_editor_buffer.clone();
                 self.state.load_script(&self.script_editor_buffer);
+                self.sync_script_buffer_from_state();
                 self.auto_save();
                 self.status_message = Some(format!("{}: {}", tl!("Loaded dialogues"), self.state.lines.len()));
                 self.status_error = false;
@@ -2175,5 +2359,46 @@ mod tests {
         } else {
             panic!("Expected text layer");
         }
+    }
+
+    #[test]
+    fn test_unified_script_editor_sync_and_operations() {
+        let mut ui = TypesetterUi::default();
+        // 1. Initial script load
+        ui.state.load_script("Линия 1: Привет!\nЛиния 2: Мир!\nЛиния 3: Тайпер!");
+        ui.sync_script_buffer_from_state();
+        assert_eq!(ui.state.lines.len(), 3);
+        assert_eq!(ui.script_buffer, "Линия 1: Привет!\nЛиния 2: Мир!\nЛиния 3: Тайпер!");
+
+        // 2. User presses Backspace at start of line 2 (merging line 1 and line 2)
+        ui.script_buffer = "Линия 1: Привет! Линия 2: Мир!\nЛиния 3: Тайпер!".to_string();
+        ui.sync_state_from_script_buffer();
+        assert_eq!(ui.state.lines.len(), 2);
+        assert_eq!(ui.state.lines[0].raw, "Линия 1: Привет! Линия 2: Мир!");
+        assert_eq!(ui.state.lines[0].text, "Привет! Линия 2: Мир!");
+        assert_eq!(ui.state.lines[1].raw, "Линия 3: Тайпер!");
+        assert_eq!(ui.state.lines[1].text, "Тайпер!");
+
+        // 3. User presses Enter in the middle of line 1 (splitting into new line)
+        ui.script_buffer = "Линия 1: Привет!\nНовая строка!\nЛиния 3: Тайпер!".to_string();
+        ui.sync_state_from_script_buffer();
+        assert_eq!(ui.state.lines.len(), 3);
+        assert_eq!(ui.state.lines[1].text, "Новая строка!");
+        assert_eq!(ui.state.lines[2].text, "Тайпер!");
+
+        // 4. Height persistence
+        ui.script_list_height = 240.0;
+        let persisted = TypesetterPersistedState {
+            dock_mode: ui.dock_mode,
+            state: ui.state.clone(),
+            selected_folder: ui.selected_folder.clone(),
+            custom_storage_dir: ui.custom_storage_dir.clone(),
+            favorite_fonts: ui.favorite_fonts.clone(),
+            is_open: ui.is_open,
+            script_list_height: ui.script_list_height,
+        };
+        let json_str = serde_json::to_string(&persisted).unwrap();
+        let loaded: TypesetterPersistedState = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(loaded.script_list_height, 240.0);
     }
 }
