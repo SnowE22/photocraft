@@ -20,6 +20,7 @@
 | 20 | **Чёткие имена стилей (без «мыла») и свободный интерлиньяж строк сценария** | 2026-10-28 20:19 | `17d70ba10` | `crates/ui-egui/src/font_preview.rs`, `crates/ui-egui/src/snow_typesetter_ui.rs` |
 | 21 | **Перетаскиваемые окна стиля и редактора сценария TypeR** | 2026-10-28 20:40 | `fede67671` | `crates/ui-egui/src/snow_typesetter_ui.rs` |
 | 22 | **Окна стиля и сценария открываются из придоканной панели TypeR** | 2026-10-28 21:14 | `72503b0b9` | `crates/ui-egui/src/snow_typesetter_ui.rs` |
+| 23 | **Инструмент баблов в engine: хвосты (union), облака, шипы, SAI-штрихи** | 2026-10-29 00:20 | `79f440ef5`, `f4fbef0ec` | `crates/vector/src/balloon.rs`, `crates/engine/src/balloon_cmds.rs` |
 
 ---
 
@@ -178,6 +179,28 @@
   4. Если переключить панель обратно в плавающий режим, окна по-прежнему открываются и не дублируются.
 - **Тест:** `docked_panel_opens_the_style_dialog` рендерит только `render_embedded` и проверяет, что окно настроек стиля появилось. `cargo test -p photocraft-ui-egui --lib snow_typesetter` — 4/4.
 - **Сборка:** релизный бинарник обновлён 28.10.2026 21:14 в `D:\Photoncraft\release\photocraft.exe` (94 163 456 байт).
+
+#### 23. Инструмент баблов: хвосты, облака, шипы и SAI-штрихи (engine + CLI)
+- **Дата добавления:** 29.10.2026 00:20
+- **Коммиты:** `79f440ef5` (геометрия в `photocraft-vector`), `f4fbef0ec` (команды в engine)
+- **Что сделано:**
+  - `crates/vector/src/balloon.rs`: булево объединение контуров (`union_polygons` — разрезание границ и сшивание), пресеты хвостов `wedge / arc / double / thought`; `attach_tail` прячет устье внутрь тела, поэтому результат — **один контур, одна заливка, одна обводка, без шва**.
+  - Процедурные баблы: `cloud` (количество дуг, высота, разброс, детерминированный seed) и `spiky` (плотность игл, длина, разброс, внутрь/наружу, сглаживание).
+  - SAI-ввод: `sai_stroke` (Catmull-Rom по кликам, `corner` — острый узел), `tapered_outline`/`tapered_path` (толщина по точкам, острые кончики).
+  - Команды: `shape.balloon.tail`, `shape.balloon.create`, `shape.balloon.stroke`, `shape.balloon.presets`. Хвост при заданном только `tip` сам находит ближайшую точку контура для устья. Любая правка — один шаг Undo; неверные типы/диапазоны параметров → ошибка без изменения документа.
+  - Результат — обычный `ShapeLayer.path`: Free Transform, PSD-экспорт и остальной shape-инструментарий не менялись.
+- **Как проверить:** полный пошаговый гайд с готовыми командами — `snow_test_guide.md`, раздел 6.
+  Коротко (CLI):
+  ```powershell
+  cd D:\Photoncraft\release
+  .\release\photocraft-cli.exe run --new '{"width":700,"height":500,"background":"white"}' `
+    --cmd shape.create --params '{"kind":"ellipse","rect":[120,60,320,240],"stroke":{"width":5}}' `
+    --cmd shape.balloon.tail --params '{"preset":"arc","tip":[300,450],"mouthWidth":46}' `
+    --out tail-arc.png
+  ```
+  Ожидаемо: овал с хвостом без поперечной линии на стыке.
+- **Тесты:** `cargo test -p photocraft-vector --lib balloon` — 9/9; `cargo test -p photocraft-engine --lib balloon_cmds` — 7/7; `cargo test -p photocraft-engine --test panic_hunt -- --ignored` — зелёный.
+- **Ограничение:** GUI-инструмента пока нет (следующий этап), команды доступны через CLI и control-протокол. Демо-рендер: `balloon-demo.png` рядом с exe.
 
 ---
 
