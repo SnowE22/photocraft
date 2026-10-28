@@ -217,6 +217,9 @@ pub fn option_keys(tool: Tool) -> &'static [&'static str] {
         Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => {
             reset!(vector_mode, shape_fill, stroke_width, shape_stroke, corner_radius, polygon_sides, line_weight)
         }
+        Tool::Balloon => {
+            reset!(balloon_mode, balloon_preset, balloon_mouth, balloon_bumps, balloon_amplitude, balloon_jitter, balloon_spikes, balloon_length, balloon_smooth, balloon_inward, balloon_seed)
+        }
         Tool::ColorSampler
         | Tool::Ruler
         | Tool::Note

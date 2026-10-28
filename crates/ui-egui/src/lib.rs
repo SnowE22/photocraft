@@ -3979,6 +3979,9 @@ impl PhotocraftApp {
 }
 
 #[cfg(test)]
+mod balloon_tool_tests;
+
+#[cfg(test)]
 mod navigator_gpu_tests;
 
 #[cfg(test)]

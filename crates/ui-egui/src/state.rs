@@ -203,13 +203,16 @@ pub enum Tool {
     Polygon,
     Line,
     CustomShape,
+    /// Comic speech / thought balloon tool (shape.balloon.*): drag a tail from a balloon body or
+    /// drag out a procedural cloud / spiky balloon.
+    Balloon,
     Slice,
     SliceSelect,
     Frame,
 }
 
 impl Tool {
-    pub const ALL: [Tool; 68] = [
+    pub const ALL: [Tool; 69] = [
         Tool::Move,
         Tool::Artboard,
         Tool::RectMarquee,
@@ -275,6 +278,7 @@ impl Tool {
         Tool::Polygon,
         Tool::Line,
         Tool::CustomShape,
+        Tool::Balloon,
         Tool::Slice,
         Tool::SliceSelect,
         Tool::Frame,
@@ -350,6 +354,7 @@ impl Tool {
             Tool::Polygon => "Polygon Tool",
             Tool::Line => "Line Tool",
             Tool::CustomShape => "Custom Shape Tool",
+            Tool::Balloon => "Balloon Tool",
         }
     }
     pub fn is_type(self) -> bool {
@@ -415,7 +420,7 @@ impl Tool {
             Tool::QuickSelection | Tool::ObjectSelection => 'W',
             Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen | Tool::AddAnchorPoint | Tool::DeleteAnchorPoint | Tool::ConvertPoint => 'P',
             Tool::PathSelection | Tool::DirectSelection => 'A',
-            Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape => 'U',
+            Tool::Rectangle | Tool::EllipseShape | Tool::Triangle | Tool::Polygon | Tool::Line | Tool::CustomShape | Tool::Balloon => 'U',
         }
     }
     /// Glyph drawn in the toolbar (vector icons come later).
@@ -802,6 +807,31 @@ pub struct ToolOptions {
     pub corner_radius: f32,
     pub polygon_sides: u32,
     pub line_weight: f32,
+    /// Balloon tool mode: 	ail (drag a tail from the balloon to the speaker), cloud (drag out
+    /// a thought cloud) or spiky (drag out a shout / flash balloon).
+    #[serde(default = "default_balloon_mode")]
+    pub balloon_mode: String,
+    /// Balloon tool tail preset: wedge | arc | double | thought (shape.balloon.tail).
+    #[serde(default = "default_balloon_preset")]
+    pub balloon_preset: String,
+    #[serde(default = "default_balloon_mouth")]
+    pub balloon_mouth: f32,
+    #[serde(default = "default_balloon_bumps")]
+    pub balloon_bumps: u32,
+    #[serde(default = "default_balloon_amplitude")]
+    pub balloon_amplitude: f32,
+    #[serde(default = "default_balloon_jitter")]
+    pub balloon_jitter: f32,
+    #[serde(default = "default_balloon_spikes")]
+    pub balloon_spikes: u32,
+    #[serde(default = "default_balloon_length")]
+    pub balloon_length: f32,
+    #[serde(default)]
+    pub balloon_smooth: bool,
+    #[serde(default)]
+    pub balloon_inward: bool,
+    #[serde(default = "default_balloon_seed")]
+    pub balloon_seed: u32,
     /// Freeform Pen › Curve Fit: how far (px) the fitted path may stray from the pointer trace.
     #[serde(default = "default_curve_fit")]
     pub curve_fit: f32,
@@ -955,6 +985,41 @@ fn default_move_target() -> String {
     "layer".into()
 }
 
+fn default_balloon_mode() -> String {
+    "tail".into()
+}
+
+fn default_balloon_preset() -> String {
+    "wedge".into()
+}
+
+fn default_balloon_mouth() -> f32 {
+    20.0
+}
+
+fn default_balloon_bumps() -> u32 {
+    9
+}
+
+fn default_balloon_amplitude() -> f32 {
+    0.18
+}
+
+fn default_balloon_jitter() -> f32 {
+    0.35
+}
+
+fn default_balloon_spikes() -> u32 {
+    12
+}
+
+fn default_balloon_length() -> f32 {
+    0.45
+}
+
+fn default_balloon_seed() -> u32 {
+    1
+}
 fn default_curve_fit() -> f32 {
     2.0
 }
@@ -1122,6 +1187,17 @@ impl Default for ToolOptions {
             finger_painting: false,
             enhance_edge: false,
             vector_mode: "path".into(),
+            balloon_mode: default_balloon_mode(),
+            balloon_preset: default_balloon_preset(),
+            balloon_mouth: default_balloon_mouth(),
+            balloon_bumps: default_balloon_bumps(),
+            balloon_amplitude: default_balloon_amplitude(),
+            balloon_jitter: default_balloon_jitter(),
+            balloon_spikes: default_balloon_spikes(),
+            balloon_length: default_balloon_length(),
+            balloon_smooth: false,
+            balloon_inward: false,
+            balloon_seed: default_balloon_seed(),
             shape_fill: true,
             stroke_width: 0.0,
             shape_stroke: Default::default(),

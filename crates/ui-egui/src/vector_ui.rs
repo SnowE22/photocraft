@@ -152,6 +152,127 @@ pub fn finish_shape(app: &mut PhotocraftApp, tool: Tool, start: [f64; 2], end: [
     }
 }
 
+/// The Balloon tool: tails unioned with a balloon body and procedural cloud / spiky balloons.
+pub fn is_balloon_tool(t: Tool) -> bool {
+    t == Tool::Balloon
+}
+
+/// Normalised drag rectangle `[x, y, w, h]` for a balloon creation drag; `None` when it is a click.
+fn balloon_rect(start: [f64; 2], end: [f64; 2]) -> Option<[f64; 4]> {
+    let x0 = start[0].min(end[0]);
+    let y0 = start[1].min(end[1]);
+    let w = (start[0] - end[0]).abs();
+    let h = (start[1] - end[1]).abs();
+    (w >= 2.0 && h >= 2.0).then_some([x0, y0, w, h])
+}
+
+fn is_shape_layer(layer: &photocraft_doc::Layer) -> bool {
+    matches!(layer.content, LayerContent::Shape(_))
+}
+
+/// The top-most shape layer whose cached bounds cover `p`, or the active layer when it is a shape.
+fn balloon_body_at(app: &PhotocraftApp, p: [f64; 2]) -> Option<u64> {
+    let st = app.session.active()?;
+    if let Some(id) = st.active_layer
+        && st.doc.layer(id).is_some_and(is_shape_layer)
+    {
+        return Some(id.0);
+    }
+    let (x, y) = (p[0].floor(), p[1].floor());
+    for layer in st.doc.layers.iter().rev() {
+        let LayerContent::Shape(shape) = &layer.content else { continue };
+        let Some(cache) = shape.cache.as_ref() else { continue };
+        let r = cache.content_bounds();
+        if r.x0 as f64 <= x && x < r.x1 as f64 && r.y0 as f64 <= y && y < r.y1 as f64 {
+            return Some(layer.id.0);
+        }
+    }
+    None
+}
+
+/// Finish a Balloon-tool drag: a tail from the balloon body to the pointer, or a cloud / spiky
+/// balloon drawn inside the drag rectangle.
+pub fn finish_balloon(app: &mut PhotocraftApp, start: [f64; 2], end: [f64; 2]) {
+    let o = app.ui.tool_options.clone();
+    let result = match o.balloon_mode.as_str() {
+        "cloud" | "spiky" => {
+            let Some(rect) = balloon_rect(start, end) else { return };
+            let mut params = json!({
+                "kind": o.balloon_mode,
+                "rect": rect,
+                "seed": o.balloon_seed,
+                "fill": fill_param(app),
+                "stroke": stroke_param(app),
+            });
+            if o.balloon_mode == "cloud" {
+                params["bumps"] = json!(o.balloon_bumps);
+                params["amplitude"] = json!(o.balloon_amplitude);
+                params["jitter"] = json!(o.balloon_jitter);
+            } else {
+                params["spikes"] = json!(o.balloon_spikes);
+                params["length"] = json!(o.balloon_length);
+                params["jitter"] = json!(o.balloon_jitter);
+                params["smooth"] = json!(o.balloon_smooth);
+                params["inward"] = json!(o.balloon_inward);
+            }
+            app.run("shape.balloon.create", params)
+        }
+        _ => {
+            let length = (end[0] - start[0]).hypot(end[1] - start[1]);
+            if length < 3.0 {
+                return;
+            }
+            let Some(layer) = balloon_body_at(app, start) else {
+                app.ui.status = "Balloon: select a shape layer (the balloon body) or press on one".into();
+                app.ui.status_error = true;
+                return;
+            };
+            let curve = if o.balloon_preset == "arc" { 0.45 } else { 0.15 };
+            let mut params = json!({
+                "layer": layer,
+                "preset": o.balloon_preset,
+                "from": start,
+                "tip": end,
+                "mouthWidth": o.balloon_mouth,
+                "curve": curve,
+            });
+            if o.balloon_preset == "thought" {
+                params["bubbles"] = json!(3);
+                params["bubbleRadius"] = json!((length * 0.12).clamp(3.0, 18.0));
+            }
+            app.run("shape.balloon.tail", params)
+        }
+    };
+    if let Err(e) = result {
+        app.ui.status = e;
+        app.ui.status_error = true;
+    }
+}
+
+/// Balloon-tool drag preview: a dashed tail axis for tails, the balloon box for cloud / spiky.
+pub fn draw_balloon_preview(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform, start: [f64; 2], end: [f64; 2]) {
+    let accent = Tokens::get(painter.ctx()).accent;
+    let stroke = Stroke::new(1.5, accent);
+    let a = xf.to_screen(start[0] as f32, start[1] as f32);
+    let b = xf.to_screen(end[0] as f32, end[1] as f32);
+    match app.ui.tool_options.balloon_mode.as_str() {
+        "cloud" | "spiky" => {
+            let r = Rect::from_two_pos(a, b);
+            painter.rect_stroke(r, 2.0, stroke, egui::StrokeKind::Inside);
+        }
+        _ => {
+            let steps = 12;
+            for i in 0..steps {
+                let t0 = i as f32 / steps as f32;
+                let t1 = (i as f32 + 0.6) / steps as f32;
+                painter.line_segment([a + (b - a) * t0, a + (b - a) * t1], stroke);
+            }
+            let dir = (b - a).normalized();
+            let side = vec2(-dir.y, dir.x) * (app.ui.tool_options.balloon_mouth * 0.5 * xf.zoom);
+            painter.line_segment([a - side, a + side], stroke);
+        }
+    }
+}
 fn fill_param(app: &PhotocraftApp) -> Value {
     if app.ui.tool_options.shape_fill { json!(app.session.tools.foreground) } else { Value::Null }
 }
@@ -1305,7 +1426,7 @@ pub fn draw_overlay(app: &PhotocraftApp, painter: &egui::Painter, xf: &ViewXform
 
 /// Options bar for vector tools; false for other tools.
 pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bool {
-    if !(is_shape_tool(tool)
+    if !(is_shape_tool(tool) || tool == Tool::Balloon
         || matches!(
             tool,
             Tool::Pen | Tool::FreeformPen | Tool::CurvaturePen | Tool::AddAnchorPoint | Tool::DeleteAnchorPoint | Tool::PathSelection | Tool::DirectSelection
@@ -1476,7 +1597,51 @@ pub fn options_bar(app: &mut PhotocraftApp, ui: &mut egui::Ui, tool: Tool) -> bo
             crate::widgets::vline(ui, 22.0);
             crate::preset_panels::shape_picker(app, ui);
         }
-        _ if matches!(tool, Tool::PathSelection | Tool::DirectSelection) => {
+        Tool::Balloon => {
+            crate::widgets::vline(ui, 22.0);
+            for (mode, label) in [("tail", "Tail"), ("cloud", "Cloud"), ("spiky", "Spiky")] {
+                if crate::widgets::pill_tab(ui, tl!(label), o.balloon_mode == mode).clicked() {
+                    o.balloon_mode = mode.to_string();
+                }
+            }
+            crate::widgets::vline(ui, 22.0);
+            match o.balloon_mode.as_str() {
+                "cloud" => {
+                    lbl(ui, tl!("Bumps:"));
+                    let mut bumps = o.balloon_bumps as f32;
+                    if crate::widgets::value_field(ui, &mut bumps, 3.0..=64.0, "", 42.0).changed() {
+                        o.balloon_bumps = bumps.round().clamp(3.0, 64.0) as u32;
+                    }
+                    lbl(ui, tl!("Depth:"));
+                    crate::widgets::value_field(ui, &mut o.balloon_amplitude, 0.0..=1.0, "", 52.0);
+                    lbl(ui, tl!("Jitter:"));
+                    crate::widgets::value_field(ui, &mut o.balloon_jitter, 0.0..=1.0, "", 52.0);
+                }
+                "spiky" => {
+                    lbl(ui, tl!("Spikes:"));
+                    let mut spikes = o.balloon_spikes as f32;
+                    if crate::widgets::value_field(ui, &mut spikes, 3.0..=128.0, "", 42.0).changed() {
+                        o.balloon_spikes = spikes.round().clamp(3.0, 128.0) as u32;
+                    }
+                    lbl(ui, tl!("Length:"));
+                    crate::widgets::value_field(ui, &mut o.balloon_length, 0.0..=2.0, "", 52.0);
+                    lbl(ui, tl!("Jitter:"));
+                    crate::widgets::value_field(ui, &mut o.balloon_jitter, 0.0..=1.0, "", 52.0);
+                    ui.checkbox(&mut o.balloon_smooth, tl!("Round"));
+                    ui.checkbox(&mut o.balloon_inward, tl!("In"));
+                }
+                _ => {
+                    const PRESETS: [(&str, &str); 4] = [("wedge", "Wedge"), ("arc", "Arc"), ("double", "Double"), ("thought", "Thought")];
+                    let idx = PRESETS.iter().position(|(id, _)| *id == o.balloon_preset).unwrap_or(0);
+                    let label = format!("{}: {}", tl!("Tail"), tl!(PRESETS[idx].1));
+                    if ui.button(label).on_hover_text(tl!("Drag from the balloon towards the speaker")).clicked() {
+                        o.balloon_preset = PRESETS[(idx + 1) % PRESETS.len()].0.to_string();
+                    }
+                    lbl(ui, tl!("Mouth:"));
+                    crate::widgets::value_field(ui, &mut o.balloon_mouth, 2.0..=400.0, "px", 56.0);
+                }
+            }
+        }        _ if matches!(tool, Tool::PathSelection | Tool::DirectSelection) => {
             if let Some(photocraft_doc::LiveShape::Rect { radii, .. }) = target.as_ref().and_then(|s| s.live.as_ref()) {
                 crate::widgets::vline(ui, 22.0);
                 lbl(ui, tl!("Radius:"));
