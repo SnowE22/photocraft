@@ -162,6 +162,9 @@ pub struct TypesetterUi {
     aux_pass: u64,
     /// The legacy-state migration already ran (persisted, so removed favorites stay removed).
     legacy_merged: bool,
+    /// Script line the editor caret was on last frame; when the current line differs, the caret
+    /// follows the line (▲/▼, ➔) instead of dragging the selection back to where it was.
+    caret_line: Option<usize>,
 }
 
 impl Default for TypesetterUi {
@@ -196,6 +199,7 @@ impl Default for TypesetterUi {
             script_list_height: 160.0,
             aux_pass: u64::MAX,
             legacy_merged: false,
+            caret_line: None,
         };
         ui.auto_load();
         ui
@@ -321,9 +325,11 @@ impl TypesetterUi {
         if self.legacy_merged {
             return;
         }
+        let mut found = false;
         for path in legacy_typesetter_paths() {
             let Ok(content) = std::fs::read_to_string(&path) else { continue };
             let Ok(data) = serde_json::from_str::<TypesetterPersistedState>(&content) else { continue };
+            found = true;
             for font in data.favorite_fonts {
                 if !self.favorite_fonts.contains(&font) {
                     self.favorite_fonts.push(font);
@@ -336,7 +342,10 @@ impl TypesetterUi {
                 self.state.selected_preset_idx = self.state.selected_preset_idx.min(self.state.presets.len().saturating_sub(1));
             }
         }
-        self.legacy_merged = true;
+        // Only a real source marks the migration done: a run whose exe-adjacent/cwd paths hold
+        // nothing (a test binary, a fresh install) retries on the next launch instead of
+        // silently declaring the old favorites gone.
+        self.legacy_merged = found;
         self.auto_save();
     }
     /// Автоматическое сохранение состояния и пресетов в файл настроек.
@@ -362,6 +371,14 @@ impl TypesetterUi {
         }
     }
 
+    /// Moves the script editor's caret to the start of the current line, so a line chosen by the
+    /// toolbar arrows, or the next one after sending, is where typing continues.
+    fn move_caret_to_current_line(&self, ctx: &egui::Context, id: egui::Id) {
+        let Some(mut state) = egui::text_edit::TextEditState::load(ctx, id) else { return };
+        let start: usize = self.state.lines.iter().take(self.state.current_line_idx).map(|l| l.raw.chars().count() + 1).sum();
+        state.cursor.set_char_range(Some(egui::text_selection::CCursorRange::one(egui::text::CCursor::new(start))));
+        state.store(ctx, id);
+    }
     /// Автоматическая загрузка сохраненных пресетов и состояния.
     pub fn auto_load(&mut self) {
         if let Some(path) = typesetter_storage_path() {
@@ -707,7 +724,8 @@ impl TypesetterUi {
                 }
                 let down_btn = egui::Button::new("▼").min_size(vec2(22.0, 16.0));
                 if ui.add(down_btn).on_hover_text(tl!("Next line (↓)")).clicked() {
-                    self.state.advance_line();
+                    self.state.next_line();
+                    // Navigation only: it must not mark the line as applied (sent).
                     self.scroll_to_active_line = true;
                 }
             });
@@ -1084,8 +1102,10 @@ impl TypesetterUi {
             return;
         }
 
+
+        let programmatic_line = self.caret_line != Some(self.state.current_line_idx);
+
         ScrollArea::vertical()
-            .id_salt("typer_script_unified_scroll")
             .max_height(max_height)
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -1290,25 +1310,25 @@ impl TypesetterUi {
                             self.state.set_current_line(act_idx);
                             self.state.advance_line();
                             line_sent = true;
-                            // Put the caret at the start of the line that just became current,
-                            // so typing continues from the next reply rather than the sent one.
-                            if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), edit_id) {
-                                let start: usize = self.state.lines.iter().take(self.state.current_line_idx).map(|l| l.raw.chars().count() + 1).sum();
-                                let cursor = egui::text::CCursor::new(start);
-                                state.cursor.set_char_range(Some(egui::text_selection::CCursorRange::one(cursor)));
-                                state.store(ui.ctx(), edit_id);
-                            }
-                            self.auto_save();
+                            // Keep the caret on the line that just became current.
+                            self.move_caret_to_current_line(ui.ctx(), edit_id);
+                            self.caret_line = Some(self.state.current_line_idx);
                         }
                     }
                 }
 
                 // 3. Отслеживание курсора: при клике или переходе по стрелкам обновляем активную строку
-                if !line_sent && let Some(cr) = output.cursor_range {
+                if programmatic_line && !line_sent {
+                    self.move_caret_to_current_line(ui.ctx(), edit_id);
+                    self.caret_line = Some(self.state.current_line_idx);
+                }
+
+                if !line_sent && !programmatic_line && let Some(cr) = output.cursor_range {
                     let c_idx = cr.primary.index;
                     let char_count = self.script_buffer.chars().take(c_idx.into()).filter(|&c| c == '\n').count();
                     if char_count != self.state.current_line_idx && char_count < self.state.lines.len() {
                         self.state.set_current_line(char_count);
+                        self.caret_line = Some(char_count);
                     }
                 }
 

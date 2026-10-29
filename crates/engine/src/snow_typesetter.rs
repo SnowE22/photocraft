@@ -690,6 +690,18 @@ impl TypesetterState {
         }
     }
 
+    /// Moves to the next line without marking the current one as applied: the ▼ button's
+    /// navigation, where `advance_line` means "sent to the layer".
+    pub fn next_line(&mut self) {
+        if self.current_line_idx + 1 < self.lines.len() {
+            self.current_line_idx += 1;
+            if self.options.auto_page_switch
+                && let Some(line) = self.lines.get(self.current_line_idx)
+            {
+                self.current_page = line.page;
+            }
+        }
+    }
     pub fn prev_line(&mut self) {
         if self.current_line_idx > 0 {
             self.current_line_idx -= 1;
@@ -866,6 +878,19 @@ pub fn calculate_bubble_center(bounds: [f32; 4]) -> [f32; 2] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ▼ is navigation: it moves to the next line without marking the current one applied.
+    #[test]
+    fn next_line_navigates_without_applying() {
+        let mut state = TypesetterState::default();
+        state.load_script("Line one\nLine two\nLine three");
+        state.set_current_line(1);
+        state.next_line();
+        assert_eq!(state.current_line_idx, 2);
+        assert!(state.lines.iter().all(|l| !l.is_applied), "navigation must not send the line");
+        state.next_line();
+        assert_eq!(state.current_line_idx, 2, "stays on the last line");
+    }
 
     #[test]
     fn test_clean_script_line() {
