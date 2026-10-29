@@ -154,9 +154,17 @@ impl PhotocraftApp {
         let open: Vec<_> = self.session.documents().iter().map(|d| d.doc.id).collect();
         self.save_dirs.retain(|id, _| open.contains(id));
         if suggested.parent().is_some_and(|p| p.as_os_str().is_empty())
-            && let Some(dir) = doc
-                .and_then(|d| self.save_dirs.get(&d).cloned())
-                .or_else(|| self.session.prefs().export.last_export_dir.as_ref().map(std::path::PathBuf::from))
+            // The last folder any dialog wrote to wins, so switching documents keeps the place
+            // (user report: PNG export forgot it after opening another PSD); then the document's
+            // own memory, then beside the document.
+            && let Some(dir) = self
+                .session
+                .prefs()
+                .export
+                .last_export_dir
+                .as_ref()
+                .map(std::path::PathBuf::from)
+                .or_else(|| doc.and_then(|d| self.save_dirs.get(&d).cloned()))
                 .or_else(|| self.session.active().and_then(|d| d.path.as_deref()).and_then(|p| std::path::Path::new(p).parent()).map(Path::to_path_buf))
         {
             suggested = dir.join(suggested);

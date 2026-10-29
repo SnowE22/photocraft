@@ -1100,15 +1100,9 @@ pub fn quick_export_png(app: &mut PhotocraftApp) -> Result<Value, String> {
         let suggested_name = format!("{stem}.{fmt}");
         let doc = st.doc.id;
 
-        let start_dir = app.save_dirs.get(&doc).cloned()
-            .or_else(|| app.session.prefs().export.last_export_dir.as_ref().map(std::path::PathBuf::from))
-            .or_else(|| st.path.as_deref().and_then(|p| std::path::Path::new(p).parent()).map(std::path::Path::to_path_buf));
-
-        let suggested = if let Some(dir) = start_dir {
-            dir.join(&suggested_name)
-        } else {
-            std::path::PathBuf::from(&suggested_name)
-        };
+        // A bare name: `pick_save` starts in the last folder any dialog wrote to (globally, so
+        // switching to another PSD keeps the place), then this document's memory, then beside it.
+        let suggested = std::path::PathBuf::from(&suggested_name);
 
         return app.pick_save(&suggested.to_string_lossy(), move |app, path| {
             if let Some(dir) = std::path::Path::new(&path).parent().filter(|p| !p.as_os_str().is_empty()) {

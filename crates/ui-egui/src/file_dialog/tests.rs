@@ -707,13 +707,13 @@ fn save_dialogs_remember_where_each_document_was_last_saved() {
     assert_eq!(suggested(&open), joined("/renders", "third.png"));
     answer(&open, None);
     app.poll_file_dialog(&ctx, None);
-    // Another document has its own memory: untitled, it starts wherever the shell defaults.
+    // Another document still starts where the last dialog wrote (the folder is global now).
     app.run("file.new", json!({"width": 4, "height": 4})).unwrap();
     let second = app.session.active().unwrap().doc.id;
     assert_ne!(first, second);
     app.pick_save("fresh.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), "fresh.png");
+    assert_eq!(suggested(&open), joined("/renders", "fresh.png"));
     answer(&open, Some(FileDialogAnswer::SaveTo("/other/fresh.png".into())));
     app.poll_file_dialog(&ctx, None);
     assert_eq!(app.save_dirs.get(&second).map(|p| p.to_string_lossy().into_owned()).as_deref(), Some("/other"));
@@ -722,7 +722,7 @@ fn save_dialogs_remember_where_each_document_was_last_saved() {
     app.session.set_active(0);
     app.pick_save("swap.png", |_, _| Ok(Value::Null)).unwrap();
     app.poll_file_dialog(&ctx, None);
-    assert_eq!(suggested(&open), joined("/renders", "swap.png"));
+    assert_eq!(suggested(&open), joined("/other", "swap.png"));
     app.session.set_active(1);
     answer(&open, Some(FileDialogAnswer::SaveTo("/moved/swap.png".into())));
     app.poll_file_dialog(&ctx, None);

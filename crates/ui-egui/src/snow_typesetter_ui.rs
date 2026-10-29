@@ -63,24 +63,23 @@ struct TypesetterPersistedState {
     pub is_open: bool,
     #[serde(default = "default_script_list_height")]
     pub script_list_height: f32,
+    /// The one-time move to the profile store already merged the legacy files.
+    #[serde(default)]
+    pub legacy_merged: bool,
 }
 
 pub fn typesetter_storage_path() -> Option<std::path::PathBuf> {
     if let Some(dir) = std::env::var_os("PHOTOCRAFT_CONFIG_DIR") {
         return Some(std::path::PathBuf::from(dir).join("typesetter_state.json"));
     }
-    // Portable mode: check next to executable or portable.txt
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let local = parent.join("typesetter_state.json");
-            if local.exists() || parent.join("portable.txt").exists() {
-                return Some(local);
-            }
-        }
-    }
-    let cwd_local = std::path::PathBuf::from("typesetter_state.json");
-    if cwd_local.exists() {
-        return Some(cwd_local);
+    // Portable mode is opt-in only (`portable.txt` next to the exe): an existing state file next
+    // to whichever exe was launched must NOT move the store, or updating the exe from another
+    // folder loses favorites and styles.
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+        && parent.join("portable.txt").exists()
+    {
+        return Some(parent.join("typesetter_state.json"));
     }
     #[cfg(target_os = "windows")]
     {
@@ -113,6 +112,23 @@ pub fn typesetter_storage_path() -> Option<std::path::PathBuf> {
     None
 }
 
+/// Where older builds kept `typesetter_state.json`: next to the exe (the old portable heuristic),
+/// the working directory, and the lower-case Roaming folder. Read once for migration, never
+/// written again, so an un-starred font cannot come back from a stale copy.
+fn legacy_typesetter_paths() -> Vec<std::path::PathBuf> {
+    let mut paths = Vec::new();
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(parent) = exe.parent()
+    {
+        paths.push(parent.join("typesetter_state.json"));
+    }
+    paths.push(std::path::PathBuf::from("typesetter_state.json"));
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        paths.push(std::path::PathBuf::from(appdata).join("photocraft").join("typesetter_state.json"));
+    }
+    paths.retain(|p| Some(p) != typesetter_storage_path().as_ref());
+    paths
+}
 pub struct TypesetterUi {
     pub is_open: bool,
     pub dock_mode: TypesetterDockMode,
@@ -144,6 +160,8 @@ pub struct TypesetterUi {
     /// Pass number in which the auxiliary windows were last drawn, so a frame that renders both
     /// the docked body and the floating one does not open them twice.
     aux_pass: u64,
+    /// The legacy-state migration already ran (persisted, so removed favorites stay removed).
+    legacy_merged: bool,
 }
 
 impl Default for TypesetterUi {
@@ -177,6 +195,7 @@ impl Default for TypesetterUi {
             script_buffer: String::new(),
             script_list_height: 160.0,
             aux_pass: u64::MAX,
+            legacy_merged: false,
         };
         ui.auto_load();
         ui
@@ -295,6 +314,31 @@ impl TypesetterUi {
         typesetter_storage_path()
     }
 
+    /// One-time merge of the state files older builds left next to the exe (or in the lower-case
+    /// Roaming folder): favorites are unioned and styles imported when the profile store has none.
+    /// The flag is persisted, so a font the user un-stars later cannot come back from a stale copy.
+    fn migrate_legacy(&mut self) {
+        if self.legacy_merged {
+            return;
+        }
+        for path in legacy_typesetter_paths() {
+            let Ok(content) = std::fs::read_to_string(&path) else { continue };
+            let Ok(data) = serde_json::from_str::<TypesetterPersistedState>(&content) else { continue };
+            for font in data.favorite_fonts {
+                if !self.favorite_fonts.contains(&font) {
+                    self.favorite_fonts.push(font);
+                }
+            }
+            if self.state.presets.is_empty()
+                && let Ok(count) = self.state.import_styles_json(&content)
+                && count > 0
+            {
+                self.state.selected_preset_idx = self.state.selected_preset_idx.min(self.state.presets.len().saturating_sub(1));
+            }
+        }
+        self.legacy_merged = true;
+        self.auto_save();
+    }
     /// Автоматическое сохранение состояния и пресетов в файл настроек.
     pub fn auto_save(&self) {
         let persisted = TypesetterPersistedState {
@@ -305,6 +349,7 @@ impl TypesetterUi {
             favorite_fonts: self.favorite_fonts.clone(),
             is_open: self.is_open,
             script_list_height: self.script_list_height,
+            legacy_merged: self.legacy_merged,
         };
         if let Ok(json_str) = serde_json::to_string_pretty(&persisted) {
             if let Some(custom_dir) = &self.custom_storage_dir {
@@ -326,12 +371,11 @@ impl TypesetterUi {
                         self.dock_mode = data.dock_mode;
                         self.state = data.state;
                         self.selected_folder = data.selected_folder;
-                        if !data.favorite_fonts.is_empty() {
-                            self.favorite_fonts = data.favorite_fonts;
-                        }
+                        self.favorite_fonts = data.favorite_fonts;
                         self.custom_storage_dir = data.custom_storage_dir;
                         self.is_open = data.is_open;
                         self.script_list_height = data.script_list_height;
+                        self.legacy_merged = data.legacy_merged;
                         self.sync_script_buffer_from_state();
                     } else if let Ok(count) = self.state.import_styles_json(&content) {
                         if count > 0 {
@@ -350,10 +394,9 @@ impl TypesetterUi {
                         self.dock_mode = data.dock_mode;
                         self.state = data.state;
                         self.selected_folder = data.selected_folder;
-                        if !data.favorite_fonts.is_empty() {
-                            self.favorite_fonts = data.favorite_fonts;
-                        }
+                        self.favorite_fonts = data.favorite_fonts;
                         self.is_open = data.is_open;
+                        self.legacy_merged = data.legacy_merged;
                         if !self.state.presets.is_empty() {
                             return;
                         }
@@ -361,6 +404,9 @@ impl TypesetterUi {
                 }
             }
         }
+
+        // One-time move of favorites/styles from the old exe-relative stores.
+        self.migrate_legacy();
 
         // Если файла еще нет, проверяем TypeR_Export.json рядом с exe или в текущей папке
         let export_candidates = [
@@ -1127,6 +1173,9 @@ impl TypesetterUi {
                 let primary_clicked = ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
                 let mut clicked_target_line = None;
                 let mut clicked_action_line = None;
+                // A line was just sent to the layer: its next line becomes current, and the caret
+                // must follow it instead of snapping the selection back to where the click was.
+                let mut line_sent = false;
 
                 for (line_idx, start_y, end_y, first_row_y, first_row_h) in logical_lines_geom {
                     let screen_start_y = output.galley_pos.y + start_y;
@@ -1240,13 +1289,22 @@ impl TypesetterUi {
                             });
                             self.state.set_current_line(act_idx);
                             self.state.advance_line();
+                            line_sent = true;
+                            // Put the caret at the start of the line that just became current,
+                            // so typing continues from the next reply rather than the sent one.
+                            if let Some(mut state) = egui::text_edit::TextEditState::load(ui.ctx(), edit_id) {
+                                let start: usize = self.state.lines.iter().take(self.state.current_line_idx).map(|l| l.raw.chars().count() + 1).sum();
+                                let cursor = egui::text::CCursor::new(start);
+                                state.cursor.set_char_range(Some(egui::text_selection::CCursorRange::one(cursor)));
+                                state.store(ui.ctx(), edit_id);
+                            }
                             self.auto_save();
                         }
                     }
                 }
 
                 // 3. Отслеживание курсора: при клике или переходе по стрелкам обновляем активную строку
-                if let Some(cr) = output.cursor_range {
+                if !line_sent && let Some(cr) = output.cursor_range {
                     let c_idx = cr.primary.index;
                     let char_count = self.script_buffer.chars().take(c_idx.into()).filter(|&c| c == '\n').count();
                     if char_count != self.state.current_line_idx && char_count < self.state.lines.len() {
@@ -2486,6 +2544,41 @@ mod tests {
         let id = egui::Id::new("typer_font_settings_window");
         assert!(h.ctx.memory(|m| m.area_rect(id)).is_some(), "the docked panel opens the style dialog");
     }
+    /// Favorites and the one-time migration flag survive the state file round trip, including an
+    /// empty list (un-starring every font must persist as empty, not resurrect old favorites).
+    #[test]
+    fn favorites_and_the_migration_flag_round_trip() {
+        let round = |favorites: Vec<String>, merged: bool| {
+            let persisted = TypesetterPersistedState {
+                dock_mode: TypesetterDockMode::Floating,
+                state: TypesetterState::default(),
+                selected_folder: None,
+                custom_storage_dir: None,
+                favorite_fonts: favorites,
+                is_open: true,
+                script_list_height: 160.0,
+                legacy_merged: merged,
+            };
+            let json = serde_json::to_string(&persisted).unwrap();
+            serde_json::from_str::<TypesetterPersistedState>(&json).unwrap()
+        };
+        let kept = round(vec!["Moritat".into(), "Inter".into()], true);
+        assert_eq!(kept.favorite_fonts, ["Moritat", "Inter"]);
+        assert!(kept.legacy_merged);
+        let cleared = round(Vec::new(), true);
+        assert!(cleared.favorite_fonts.is_empty());
+    }
+
+    /// The store lives in the user profile, not next to whichever exe was launched: updating the
+    /// exe from another folder must keep favorites.
+    #[test]
+    fn the_state_store_is_exe_independent() {
+        let path = typesetter_storage_path().expect("a profile store");
+        assert!(path.ends_with("typesetter_state.json"));
+        #[cfg(target_os = "windows")]
+        assert!(path.to_string_lossy().contains("AppData"), "{path:?}");
+        assert!(!path.to_string_lossy().contains("target"), "{path:?}");
+    }
 
     #[test]
     fn test_unified_script_editor_sync_and_operations() {
@@ -2522,6 +2615,7 @@ mod tests {
             favorite_fonts: ui.favorite_fonts.clone(),
             is_open: ui.is_open,
             script_list_height: ui.script_list_height,
+            legacy_merged: true,
         };
         let json_str = serde_json::to_string(&persisted).unwrap();
         let loaded: TypesetterPersistedState = serde_json::from_str(&json_str).unwrap();
