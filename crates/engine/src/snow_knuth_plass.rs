@@ -137,6 +137,92 @@ pub fn measure_token_width(token: &str, font_size_px: f32, h_scale: f32) -> f32 
 }
 
 
+fn is_vowel(ch: char) -> bool {
+    matches!(
+        ch.to_ascii_lowercase(),
+        'a' | 'e' | 'i' | 'o' | 'u' | 'y' | 'а' | 'е' | 'ё' | 'и' | 'о' | 'у' | 'ы' | 'э' | 'ю' | 'я'
+    )
+}
+
+/// Returns a byte offset where a conservative language-agnostic hyphen may be inserted.
+/// Long alphabetic words break after a vowel group near the middle; short words never do.
+pub fn hyphenation_point(word: &str) -> Option<usize> {
+    hyphenation_candidates(word).into_iter().next()
+}
+
+fn hyphenation_candidates(word: &str) -> Vec<usize> {
+    let chars: Vec<char> = word.chars().collect();
+    if chars.len() < 7 || chars.len() > 40 || !chars.iter().all(|ch| ch.is_alphabetic()) {
+        return Vec::new();
+    }
+    let middle = chars.len() / 2;
+    // Language-aware syllabification ported from TypeR Studio hyphenation rules; the old
+    // vowel-group heuristic remains as a fallback for words without a legal break.
+    let mut candidates: Vec<usize> = crate::snow_hyphenation::hyphenate(word, None)
+        .into_iter()
+        .filter_map(|index| word.char_indices().nth(index).map(|(byte, _)| byte))
+        .collect();
+    if candidates.is_empty() {
+        candidates = (3..chars.len().saturating_sub(2))
+            .filter(|&index| is_vowel(chars[index - 1]) && !is_vowel(chars[index]))
+            .collect();
+    }
+    candidates.sort_by_key(|byte| word.get(..*byte).map_or(0, |prefix| prefix.chars().count()).abs_diff(middle));
+    candidates
+}
+
+/// Splits `token` into a hyphenated left part and the remaining right part when the left
+/// part fits `max_width`. At most one hyphen is inserted per word, as TypeR does.
+pub fn hyphenate_token(token: &str, max_width: f32, font_size_px: f32, h_scale: f32) -> Option<(String, String)> {
+    for break_at in hyphenation_candidates(token) {
+        let (left, right) = token.split_at(break_at);
+        if left.is_empty() || right.is_empty() {
+            continue;
+        }
+        let left = format!("{left}-");
+        if measure_token_width(&left, font_size_px, h_scale) <= max_width {
+            return Some((left, right.to_string()));
+        }
+    }
+    None
+}
+
+/// Adds forced line breaks after hyphens in words wider than `max_width`. Used by the
+/// contour fit, which lays out each resulting paragraph line separately.
+pub fn hyphenate_long_words_with_breaks(text: &str, max_width: f32, font_size_px: f32, h_scale: f32) -> String {
+    let mut lines = Vec::new();
+    for line in text.split('\n') {
+        let mut output = String::new();
+        for (index, word) in line.split(' ').filter(|word| !word.is_empty()).enumerate() {
+            if index > 0 {
+                output.push(' ');
+            }
+            if measure_token_width(word, font_size_px, h_scale) > max_width
+                && let Some((left, right)) = hyphenate_token(word, max_width, font_size_px, h_scale)
+            {
+                output.push_str(&left);
+                output.push('\n');
+                output.push_str(&right);
+            } else {
+                output.push_str(word);
+            }
+        }
+        lines.push(output);
+    }
+    lines.join("\n")
+}
+
+fn join_tokens(tokens: &[String]) -> String {
+    let mut output = String::new();
+    for (index, token) in tokens.iter().enumerate() {
+        if index > 0 && !tokens[index - 1].ends_with('-') {
+            output.push(' ');
+        }
+        output.push_str(token);
+    }
+    output
+}
+
 /// Оценивает величину оптической компенсации (выноса за границу строки) для знаков препинания на концах слов
 pub fn punctuation_compensation_px(token: &str, font_size_px: f32, h_scale: f32) -> f32 {
     let mut comp = 0.0;
@@ -207,13 +293,23 @@ pub fn knuth_plass_bubble_wrap_ext(
     let max_safe_width = (bubble_width * 0.85).max(font_size_px * 2.0);
 
     // Токенизация: разделяем по обычным пробелам (токены с NBSP внутри остаются едиными блоками!)
-    let tokens: Vec<&str> = bound_text.split(' ').filter(|s| !s.is_empty()).collect();
+    let mut tokens: Vec<String> = Vec::new();
+    for token in bound_text.split(' ').filter(|s| !s.is_empty()) {
+        if measure_token_width(token, font_size_px, h_scale) > max_safe_width
+            && let Some((left, right)) = hyphenate_token(token, max_safe_width, font_size_px, h_scale)
+        {
+            tokens.push(left);
+            tokens.push(right);
+        } else {
+            tokens.push(token.to_string());
+        }
+    }
     if tokens.len() <= 1 {
         return bound_text;
     }
 
     let space_width = char_width_factor(' ') * font_size_px * h_scale;
-    let token_widths: Vec<f32> = tokens.iter().map(|&t| measure_token_width(t, font_size_px, h_scale)).collect();
+    let token_widths: Vec<f32> = tokens.iter().map(|token| measure_token_width(token, font_size_px, h_scale)).collect();
     let total_text_width: f32 = token_widths.iter().sum::<f32>() + (tokens.len() - 1) as f32 * space_width;
 
     // Если весь текст комфортно помещается в одну строку
@@ -267,7 +363,7 @@ pub fn knuth_plass_bubble_wrap_ext(
 
                     // Оптическая компенсация знаков в строках (вынос концевой пунктуации за границу строки)
                     let comp = if hanging_punctuation {
-                        punctuation_compensation_px(tokens[j - 1], font_size_px, h_scale)
+                        punctuation_compensation_px(&tokens[j - 1], font_size_px, h_scale)
                     } else {
                         0.0
                     };
@@ -330,11 +426,11 @@ pub fn knuth_plass_bubble_wrap_ext(
     for window in best_break_indices.windows(2) {
         let start = window[0];
         let end = window[1];
-        lines.push(tokens[start..end].join(" "));
+        lines.push(join_tokens(&tokens[start..end]));
     }
     if let Some(&last_start) = best_break_indices.last() {
         if last_start < tokens.len() {
-            lines.push(tokens[last_start..].join(" "));
+            lines.push(join_tokens(&tokens[last_start..]));
         }
     }
 
@@ -360,6 +456,22 @@ mod tests {
     }
 
     #[test]
+    fn conservative_hyphenation_only_breaks_long_words() {
+        assert!(hyphenation_point("wonderful").is_some());
+        assert!(hyphenation_point("extraordinary").is_some());
+        assert!(hyphenation_point("cat").is_none());
+        assert!(hyphenation_point("?!").is_none());
+
+        let (left, right) = hyphenate_token("wonderful", 1000.0, 20.0, 1.0).unwrap();
+        assert!(left.ends_with('-'));
+        assert!(!right.is_empty());
+        assert_eq!(format!("{}{right}", left.trim_end_matches('-')), "wonderful");
+
+        let wrapped = hyphenate_long_words_with_breaks("a wonderful word", 70.0, 20.0, 1.0);
+        assert!(wrapped.contains("-\n"), "a long word must break after its hyphen: {wrapped}");
+    }
+
+    #[test]
     fn test_knuth_plass_bubble_wrap_shape() {
         let text = "Это длинный тестовый текст для проверки солвера Кнута-Пласса в баллонах манги";
         let wrapped = knuth_plass_bubble_wrap(text, 180.0, 200.0, 14.0, 72.0, 100.0);
@@ -369,5 +481,17 @@ mod tests {
         for line in &lines {
             assert!(!line.trim().is_empty());
         }
+
+    }
+
+    /// Phase 1: a long Russian or English word in a narrow balloon breaks by syllables with a
+    /// visible hyphen instead of running past the edge.
+    #[test]
+    fn language_hyphenation_breaks_words_with_a_hyphen() {
+        let russian = hyphenate_long_words_with_breaks("НЕОБХОДИМОСТЬ", 150.0, 26.0, 1.0);
+        assert!(russian.contains('-'), "{russian}");
+        assert!(russian.contains(char::from(10)), "the word is split into lines: {russian}");
+        let english = hyphenate_long_words_with_breaks("EXTRAORDINARY", 150.0, 26.0, 1.0);
+        assert!(english.contains(char::from(10)), "{english}");
     }
 }
