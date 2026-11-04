@@ -17,7 +17,7 @@ const PANELS: &[(&str, &str, Group)] = &[
     ("adjustments", "Adjustments", Group::Properties),
     ("character", "Character", Group::Character),
     ("paragraph", "Paragraph", Group::Character),
-    ("typesetter", "TypeR Manga", Group::Character),
+    ("typesetter", "TypeR", Group::Character),
     ("pages", "Pages", Group::Character),
     ("brushes", "Brushes", Group::Brushes),
     ("navigator", "Navigator", Group::Navigator),

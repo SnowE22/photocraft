@@ -762,8 +762,7 @@ impl TypesetterUi {
         let t = Tokens::get(ui.ctx());
 
         ui.horizontal(|ui| {
-            ui.label(RichText::new("TypeR").strong());
-            ui.label(RichText::new(tl!("Typesetter")).color(t.text_dim).small());
+            ui.label(RichText::new("TypeR").color(crate::snow_typer_style::TyperStyle::get(ui.ctx()).muted).size(11.0));
             if self.current_tab != TypesetterTab::Queue {
                 if ui.small_button("◀").on_hover_text(tl!("Back to TypeR")).clicked() {
                     self.current_tab = TypesetterTab::Queue;
@@ -1016,53 +1015,68 @@ impl TypesetterUi {
 
     /// TypeR's two action rows: paste/align/size, then TextShapeR and page navigation.
     fn render_type_r_action_bar(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
-        let t = Tokens::get(ui.ctx());
-        ui.horizontal(|ui| {
-            let insert = egui::Button::new(RichText::new(format!("⤓ {}", tl!("Insert"))).strong().color(t.accent_text))
-                .fill(t.accent)
-                .min_size(vec2(150.0, 24.0));
+        let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
+        ui.horizontal_wrapped(|ui| {
+            let insert = egui::Button::new(RichText::new(format!("⤓ {}", tl!("Insert"))).color(Color32::WHITE).size(12.0))
+                .fill(ty.blue)
+                .corner_radius(2.0)
+                .min_size(vec2(136.0, 24.0));
             if ui.add(insert).on_hover_text(tl!("Insert current line into selection/bubble (Enter)")).clicked() {
                 self.send_active_line(action);
             }
 
-            let align = egui::Button::new(format!("⊹ {}", tl!("Align"))).min_size(vec2(120.0, 24.0));
+            let align = egui::Button::new(RichText::new(format!("⊹ {}", tl!("Align"))).size(12.0).color(ty.text))
+                .fill(ty.ui)
+                .corner_radius(2.0)
+                .min_size(vec2(104.0, 24.0));
             if ui.add(align).clicked() {
                 self.align_requested = true;
             }
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.small_button("＋").on_hover_text(tl!("Increase text size")).clicked() {
+                let plus = egui::Button::new("+").fill(ty.ui).min_size(vec2(18.0, 20.0));
+                if ui.add(plus).on_hover_text(tl!("Increase text size")).clicked() {
                     self.state.adjust_active_preset_size(1.0);
                     self.auto_save();
                 }
-                ui.label(RichText::new("1 px").small());
-                if ui.small_button("－").on_hover_text(tl!("Decrease text size")).clicked() {
+                Frame::NONE
+                    .fill(ty.ui_dark)
+                    .stroke(Stroke::new(1.0, ty.line))
+                    .corner_radius(2.0)
+                    .inner_margin(Margin::symmetric(6, 2))
+                    .show(ui, |ui| {
+                        ui.label(RichText::new("1 px").color(ty.text).size(11.0));
+                    });
+                let minus = egui::Button::new("−").fill(ty.ui).min_size(vec2(18.0, 20.0));
+                if ui.add(minus).on_hover_text(tl!("Decrease text size")).clicked() {
                     self.state.adjust_active_preset_size(-1.0);
                     self.auto_save();
                 }
-                let _ = ui.small_button("◎").on_hover_text(tl!("Center in selection"));
             });
         });
 
         ui.horizontal(|ui| {
-            if ui.button(tl!("TextShapeR")).clicked() {
-                self.text_shape_requested = true;
-            }
-            let _ = ui.small_button("☆");
-            let _ = ui.small_button("▦");
-            let _ = ui.small_button("▤");
+            ui.menu_button(RichText::new(format!("{}  ⌄", tl!("TextShapeR"))).color(ty.text).size(11.5), |ui| {
+                if ui.button(tl!("TextShapeR")).clicked() {
+                    ui.close();
+                    self.text_shape_requested = true;
+                }
+            });
+            let _ = ui.add(egui::Button::new("☆").frame(false));
+            let _ = ui.add(egui::Button::new("▦").frame(false));
+            let _ = ui.add(egui::Button::new("▤").frame(false));
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let pages = self.state.pages();
                 let current = self.state.current_page;
                 let index = pages.iter().position(|page| *page == current).unwrap_or(0);
-                if ui.small_button("▶").on_hover_text(tl!("Next page")).clicked() {
+                if ui.add(egui::Button::new("▶").frame(false)).on_hover_text(tl!("Next page")).clicked() {
                     if let Some(next) = pages.get(index + 1).copied() {
                         self.set_current_page(next);
                     }
                 }
-                ui.label(RichText::new(format!("{} / {}", index + 1, pages.len().max(1))).small());
-                if ui.small_button("◀").on_hover_text(tl!("Previous page")).clicked() {
+                ui.label(RichText::new(format!("{} / {}", index + 1, pages.len().max(1))).color(ty.muted).size(11.0));
+                if ui.add(egui::Button::new("◀").frame(false)).on_hover_text(tl!("Previous page")).clicked() {
                     if let Some(next) = index.checked_sub(1).and_then(|i| pages.get(i)).copied() {
                         self.set_current_page(next);
                     }
@@ -1256,6 +1270,30 @@ impl TypesetterUi {
         ui.add_space(2.0);
 
         self.render_preset_toolbar(ui);
+
+        // TypeR's two wide style buttons (above the list, so they stay visible in short panels).
+        ui.add_space(3.0);
+        let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
+        let half = ((ui.available_width() - 6.0) * 0.5).max(80.0);
+        ui.horizontal(|ui| {
+            let folder = egui::Button::new(RichText::new("＋ Добавить папку").size(11.5).color(ty.text))
+                .fill(ty.ui)
+                .corner_radius(2.0)
+                .min_size(vec2(half, 26.0));
+            if ui.add(folder).clicked() {
+                self.creating_new_folder = true;
+                self.new_folder_name_buffer = tl!("New Folder").into();
+            }
+            let style = egui::Button::new(RichText::new("＋ Добавить стиль").size(11.5).color(ty.text))
+                .fill(ty.ui)
+                .corner_radius(2.0)
+                .min_size(vec2(half, 26.0));
+            if ui.add(style).clicked() {
+                self.state.presets.push(TextStylePreset { name: tl!("New Preset").to_string(), ..TextStylePreset::default() });
+                self.editing_preset_idx = Some(self.state.presets.len().saturating_sub(1));
+                self.auto_save();
+            }
+        });
 
         let num_cols = if ui.available_width() < 300.0 { 1 } else { 2 };
         self.render_style_presets_grid(ui, action, num_cols);
@@ -1524,6 +1562,10 @@ impl TypesetterUi {
             .max_height(max_height)
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                let styles = ui.style_mut();
+                styles.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(12.0));
+                ui.visuals_mut().selection.bg_fill = crate::snow_typer_style::TyperStyle::get(ui.ctx()).blue;
+                ui.visuals_mut().widgets.inactive.bg_fill = crate::snow_typer_style::TyperStyle::get(ui.ctx()).ui_dark;
                 let avail_w = ui.available_width().max(180.0);
                 // Строки сценария читаются слишком плотно при стандартном line-height egui:
                 // добавляем межстрочный интервал, который TextEdit учитывает при раскладке.
@@ -1539,7 +1581,7 @@ impl TypesetterUi {
                     .text_color(t.text)
                     // Frame::NONE заменяет margin целиком, поэтому отступы задаём во фрейме:
                     // иначе текст начинается под левым гуттером и первые символы строки скрыты.
-                    .frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                    .frame(egui::Frame::NONE.fill(crate::snow_typer_style::TyperStyle::get(ui.ctx()).ui_dark).inner_margin(egui::Margin {
                         left: gutter_w as i8,
                         right: action_w as i8,
                         top: 4,
@@ -1779,9 +1821,11 @@ impl TypesetterUi {
 
         let filter_lower = self.style_filter.trim().to_lowercase();
 
+        let grid_h = (ui.available_height() - 36.0).max(80.0);
         ScrollArea::vertical()
             .id_salt("typer_folders_scroll")
-            .auto_shrink([false; 2])
+            .max_height(grid_h)
+            .auto_shrink([false, true])
             .show(ui, |ui| {
                 for folder_name in &folder_names {
                     let is_unassigned = folder_name == tl!("No folder");
