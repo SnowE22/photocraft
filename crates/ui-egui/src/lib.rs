@@ -1363,6 +1363,9 @@ impl PhotocraftApp {
 
     /// Обработка действий тайпсеттера: создание текстового слоя на активном холсте.
     pub(crate) fn handle_typesetter_action(&mut self, action: typesetter_ui::TypesetterAction) {
+        if self.typesetter.editing_preset_idx.is_some() {
+            return;
+        }
         let Some(st) = self.session.active() else {
             self.ui.status = "Откройте или создайте документ для вставки текста".into();
             self.ui.status_error = true;
@@ -1735,7 +1738,11 @@ impl PhotocraftApp {
     /// Keeps the three TextShapeR preview cards tied to the text layer selected on the page.
     pub(crate) fn refresh_text_shape_previews_from_page(&mut self) {
         let source = self.session.active().and_then(|st| {
-            let id = st.active_layer?;
+            let id = st
+                .selected_layers()
+                .into_iter()
+                .find(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_))))
+                .or_else(|| st.active_layer.filter(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_)))))?;
             let layer = st.doc.layer(id)?;
             let photocraft_doc::LayerContent::Text(text) = &layer.content else { return None };
             let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -1758,7 +1765,12 @@ impl PhotocraftApp {
 
     pub(crate) fn refresh_typesetter_text_shape(&mut self, open_window: bool) {
         let Some(st) = self.session.active() else { return };
-        let Some(id) = st.active_layer else {
+        let target = st
+            .selected_layers()
+            .into_iter()
+            .find(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_))))
+            .or_else(|| st.active_layer.filter(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_)))));
+        let Some(id) = target else {
             self.typesetter.clear_text_shape_candidates();
             return;
         };
