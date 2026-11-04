@@ -65,6 +65,18 @@ const STYLE_NAME_PT: f32 = 13.0;
 /// Extra leading between script rows in the unified editor (logical pixels). egui's multiline
 /// `TextEdit` packs rows at the font's own line height, which is too tight for reading a script.
 const SCRIPT_LINE_SPACING: f32 = 1.0;
+/// A one-line, shortened form of a candidate for the tiny preview cards: whitespace is flattened
+/// and the text is cut with an ellipsis so a long dialogue cannot break the card layout.
+fn preview_short_text(text: &str) -> String {
+    let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.chars().count() > 44 {
+        let mut short: String = flat.chars().take(43).collect();
+        short.push('…');
+        short
+    } else {
+        flat
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 struct TypesetterPersistedState {
@@ -1138,7 +1150,7 @@ impl TypesetterUi {
                                 vec2(ui.available_width(), 62.0),
                                 Sense::click(),
                             );
-                            let mut painted = false;
+                            let short = preview_short_text(&candidate.text);
                             if let Some(preset) = &self.text_shape_preview_preset {
                                 let luma = 0.299 * f32::from(preset.text_color[0])
                                     + 0.587 * f32::from(preset.text_color[1])
@@ -1153,38 +1165,12 @@ impl TypesetterUi {
                                         preset.text_color[3],
                                     )
                                 };
-                                let stroke = (preset.stroke_width > 0.0).then(|| {
-                                    (
-                                        Color32::from_rgba_unmultiplied(
-                                            preset.stroke_color[0],
-                                            preset.stroke_color[1],
-                                            preset.stroke_color[2],
-                                            preset.stroke_color[3],
-                                        ),
-                                        preset.stroke_width.clamp(0.5, 2.0),
-                                    )
-                                });
-                                if let Some([text_w, text_h]) = crate::font_preview::name_size(ui.ctx(), &preset.font_family, &candidate.text, preset.font_size) {
-                                    let scale = (rect.width() / text_w.max(1.0)).min(rect.height() / text_h.max(1.0)).min(1.0) * 0.92;
-                                    let size = (preset.font_size * scale).max(6.0);
-                                    ui.set_clip_rect(rect);
-                                    crate::font_preview::paint_centered(
-                                        ui,
-                                        &preset.font_family,
-                                        &candidate.text,
-                                        size,
-                                        rect,
-                                        color,
-                                        stroke,
-                                    );
-                                    painted = true;
-                                }
-                            }
-                            if !painted {
+                                crate::font_preview::paint_centered(ui, &preset.font_family, &short, preset.font_size.min(18.0), rect, color, None);
+                            } else {
                                 ui.painter().text(
                                     rect.center(),
                                     egui::Align2::CENTER_CENTER,
-                                    &candidate.text,
+                                    &short,
                                     egui::FontId::proportional(10.0),
                                     t.text,
                                 );
@@ -2004,7 +1990,7 @@ impl TypesetterUi {
                                         });
                                     });
                                 let card_bottom = col.cursor().min.y;
-                                let card_rect = egui::Rect::from_min_max(egui::pos2(col.min_rect().left(), card_top), egui::pos2(col.min_rect().right(), card_bottom));
+                                let card_rect = egui::Rect::from_min_max(egui::pos2(col.min_rect().left(), card_top), egui::pos2((col.min_rect().right() - 46.0).max(col.min_rect().left() + 20.0), card_bottom));
                                 let card_resp = col.interact(card_rect, col.id().with(("typer_style_card", p_idx)), Sense::click());
                                 if card_resp.clicked() {
                                     style_to_select = Some(p_idx);
