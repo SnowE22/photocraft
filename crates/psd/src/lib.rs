@@ -76,6 +76,7 @@ pub mod tagged;
 pub mod testgen;
 pub mod tiff;
 pub mod tree;
+pub mod tpl;
 
 pub use blend::BlendMode;
 pub use builder::{GroupSpec, LayerSpec, MaskSpec, PixelData, PsdBuilder};

@@ -1,20 +1,18 @@
-//! Interactive line-break preview for the TypeR script editor (phase 2).
-//!
-//! Shows the current script line above the editor: hovering it reveals the syllable points where
-//! the line may break (from `photocraft_engine::snow_hyphenation`), and clicking a point splits
-//! the line there with a trailing hyphen. A line that already ends with a hyphen shows a join
-//! marker, and clicking it merges the next line back.
+//! Interactive line-break editor preview for TypeR (phase 2), styled after TypeR Studio's Line
+//! Breaks panel: a dark toolbar with the break count, the script line, hover-revealed syllable
+//! marks, click to break, Alt+click for a hard cut (no hyphen), dragging a mark to move the break,
+//! and a click on the join mark to merge with the next line.
 
-use egui::{Color32, FontId, Rect, Sense, Stroke, pos2, vec2};
+use egui::{Color32, FontId, Margin, Rect, Sense, Stroke, pos2, vec2};
 use serde::{Deserialize, Serialize};
 
-use crate::theme::Tokens;
+use crate::snow_typer_style::TyperStyle;
 
-/// What a click in the preview asked for.
+/// What the preview asks the panel to do.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BreakAction {
-    /// Split before this character (an offset inside the line, in chars).
-    Split { char_index: usize },
+    /// Split before this character; `hyphenate` adds the trailing hyphen (Alt turns it off).
+    Split { char_index: usize, hyphenate: bool },
     /// Join the line with the next one (the line ends with a hyphen).
     Merge,
 }
@@ -43,24 +41,25 @@ pub fn line_break_points(line: &str) -> Vec<usize> {
 fn push_run(run: &[char], offset: usize, out: &mut Vec<usize>) {
     let word: String = run.iter().collect();
     for point in photocraft_engine::snow_hyphenation::hyphenate(&word, None) {
-        // Both halves must stay at least two characters long in the whole line.
         out.push(offset + point);
     }
 }
 
-/// Splits `line` before `char_index`, hyphenating the left part (the break is inside a word).
-pub fn split_line(line: &str, char_index: usize) -> (String, String) {
+/// Splits `line` before `char_index`; `hyphenate` keeps the left part with a trailing hyphen, a
+/// hard cut leaves both parts as they are.
+pub fn split_line(line: &str, char_index: usize, hyphenate: bool) -> (String, String) {
     let chars: Vec<char> = line.chars().collect();
     if char_index == 0 || char_index >= chars.len() {
         return (line.to_string(), String::new());
     }
     let left: String = chars[..char_index].iter().collect();
     let right: String = chars[char_index..].iter().collect();
-    (format!("{}-", left.trim_end()), right.trim_start().to_string())
+    let left = if hyphenate && !left.trim_end().ends_with('-') { format!("{}-", left.trim_end()) } else { left.trim_end().to_string() };
+    (left, right.trim_start().to_string())
 }
 
-/// Joins a line ending with a hyphen to the following one, dropping the hyphen. A hyphen means
-/// the break was inside a word, so the halves are glued without a space.
+/// Joins a hyphenated line with the next one, dropping the hyphen (the parts are glued, since a
+/// hyphen means the break was inside a word).
 pub fn merge_lines(left: &str, right: &str) -> String {
     let trimmed = left.trim_end();
     let had_hyphen = trimmed.ends_with('-');
@@ -77,59 +76,120 @@ pub fn merge_lines(left: &str, right: &str) -> String {
     }
 }
 
-/// Calls `f` with the byte offset of `char_index` in `text`.
+/// The break point closest to `char_index` (for dragging a mark to another syllable).
+pub fn nearest_break(points: &[usize], char_index: usize) -> Option<usize> {
+    points.iter().copied().min_by_key(|point| point.abs_diff(char_index))
+}
+
+/// Byte offset of `char_index` in `text`.
 pub fn byte_at_char(text: &str, char_index: usize) -> Option<usize> {
     text.char_indices().nth(char_index).map(|(byte, _)| byte)
 }
 
-/// The preview strip: one line of script text plus the break markers under the pointer.
-///
-/// Returns the action of a click, if any. `next` is required to offer the join marker.
-pub fn show(ui: &mut egui::Ui, line: &str, next: Option<&str>) -> Option<BreakAction> {
-    let t = Tokens::get(ui.ctx());
-    let font = FontId::proportional(13.0);
-    let color = t.text;
-    let galley = ui.painter().layout_no_wrap(line.to_owned(), font.clone(), color);
-    let joinable = line.trim_end().ends_with('-') && next.is_some();
-    let height = galley.size().y.max(18.0) + 6.0;
-    let width = ui.available_width().max(60.0);
-    let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click());
-    let text_rect = Rect::from_min_size(rect.min + vec2(2.0, 3.0), galley.size());
-    ui.painter().galley(text_rect.min, galley.clone(), color);
+const HINT_OPEN: &str = "snow-breaks-hint";
+const DRAG_ID: &str = "snow-breaks-drag";
+const MARKER_HIT_PX: f32 = 6.0;
 
-    if !response.hovered() && !joinable {
-        return None;
-    }
+/// Draws the breaks preview and returns the requested action, styled like TypeR's panel.
+pub fn show(ui: &mut egui::Ui, line: &str, next: Option<&str>) -> Option<BreakAction> {
+    let style = TyperStyle::get(ui.ctx());
     let points = line_break_points(line);
-    let accent = t.accent;
-    let marker = Color32::from_rgba_unmultiplied(accent.r(), accent.g(), accent.b(), 160);
-    let hover = response.hover_pos();
-    let mut nearest: Option<(usize, f32)> = None;
-    if let Some(pos) = hover {
-        for &point in &points {
-            let x = galley.pos_from_cursor(egui::text::CCursor::new(point)).left() + text_rect.min.x;
-            let dx = (pos.x - x).abs();
-            if dx <= 5.0 && nearest.is_none_or(|(_, best)| dx < best) {
-                nearest = Some((point, dx));
+    let joinable = line.trim_end().ends_with('-') && next.is_some();
+    let mut action = None;
+    egui::Frame::NONE
+        .fill(style.ui_dark)
+        .stroke(Stroke::new(1.0, style.line))
+        .corner_radius(2.0)
+        .inner_margin(Margin::symmetric(6, 3))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(format!("{}", points.len())).color(style.muted).size(10.5).strong());
+                ui.label(egui::RichText::new("переносов").color(style.muted).size(10.5));
+                if joinable {
+                    ui.label(egui::RichText::new("· клик по − склеит").color(style.warn).size(10.5));
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let mut hint = ui.ctx().data_mut(|d| d.get_temp::<bool>(egui::Id::new(HINT_OPEN)).unwrap_or(false));
+                    if ui
+                        .add(egui::Button::new(egui::RichText::new("?").size(10.5).color(if hint { Color32::WHITE } else { style.muted })).frame(false))
+                        .clicked()
+                    {
+                        hint = !hint;
+                        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(HINT_OPEN), hint));
+                    }
+                    if hint {
+                        ui.label(
+                            egui::RichText::new("клик — дефис · Alt+клик — без дефиса · тяните маркер — двигать")
+                                .color(style.muted)
+                                .size(10.0),
+                        );
+                    }
+                });
+            });
+            let font = FontId::proportional(13.0);
+            let galley = ui.painter().layout_no_wrap(line.to_owned(), font, style.text);
+            let width = ui.available_width().max(60.0);
+            let height = galley.size().y.max(18.0) + 4.0;
+            let (rect, response) = ui.allocate_exact_size(vec2(width, height), Sense::click_and_drag());
+            let text_rect = Rect::from_min_size(rect.min + vec2(2.0, 2.0), galley.size());
+            ui.painter().galley(text_rect.min, galley.clone(), style.text);
+            let x_of = |index: usize| galley.pos_from_cursor(egui::text::CCursor::new(index)).left() + text_rect.min.x;
+            let pointer = response.hover_pos();
+            let drag_key = egui::Id::new(DRAG_ID);
+            let dragging: Option<usize> = ui.ctx().data(|d| d.get_temp(drag_key));
+            if response.drag_started()
+                && let Some(pos) = pointer
+            {
+                let hit = points.iter().copied().find(|point| (x_of(*point) - pos.x).abs() <= MARKER_HIT_PX);
+                if let Some(point) = hit {
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_key, point));
+                }
             }
-            ui.painter().circle_filled(pos2(x, text_rect.bottom()), 2.0, marker);
-        }
-    }
-    if joinable {
-        let x = text_rect.right() + 4.0;
-        let y = text_rect.center().y;
-        ui.painter().line_segment([pos2(x - 3.0, y), pos2(x + 3.0, y)], Stroke::new(1.5, accent));
-        if response.clicked() && hover.is_some_and(|pos| pos.x >= text_rect.right() - 2.0) {
-            return Some(BreakAction::Merge);
-        }
-    }
-    if response.clicked()
-        && let Some((point, _)) = nearest
-    {
-        return Some(BreakAction::Split { char_index: point });
-    }
-    let _ = rect;
-    None
+            let active = dragging.or_else(|| {
+                pointer.and_then(|pos| points.iter().copied().find(|point| (x_of(*point) - pos.x).abs() <= MARKER_HIT_PX))
+            });
+            if response.hovered() || dragging.is_some() {
+                for &point in &points {
+                    let hot = Some(point) == active;
+                    let color = if hot { style.blue } else { style.muted };
+                    ui.painter().circle_filled(pos2(x_of(point), text_rect.bottom() + 1.0), if hot { 2.6 } else { 2.0 }, color);
+                }
+            }
+            // Dragging a mark: the break follows the pointer to the nearest syllable.
+            let mut release_point = None;
+            if dragging.is_some() {
+                if let Some(pos) = pointer {
+                    let cursor = galley.cursor_from_pos(pos - text_rect.min).index;
+                    let cursor: usize = cursor.into();
+                    release_point = nearest_break(&points, cursor);
+                    if let Some(point) = release_point {
+                        let x = x_of(point);
+                        ui.painter().line_segment([pos2(x, text_rect.top()), pos2(x, text_rect.bottom())], Stroke::new(1.5, style.blue));
+                    }
+                }
+                if response.drag_stopped() {
+                    ui.ctx().data_mut(|d| d.remove_temp::<usize>(drag_key));
+                    if let Some(point) = release_point.or(dragging) {
+                        action = Some(BreakAction::Split { char_index: point, hyphenate: true });
+                    }
+                }
+            } else if response.clicked() {
+                let alt = ui.input(|i| i.modifiers.alt);
+                if joinable && pointer.is_some_and(|pos| pos.x >= text_rect.right() - 2.0) {
+                    action = Some(BreakAction::Merge);
+                } else if let Some(point) = active {
+                    action = Some(BreakAction::Split { char_index: point, hyphenate: !alt });
+                }
+            }
+            if joinable {
+                let x = text_rect.right() + 5.0;
+                ui.painter().line_segment(
+                    [pos2(x - 3.0, text_rect.center().y), pos2(x + 3.0, text_rect.center().y)],
+                    Stroke::new(1.5, style.warn),
+                );
+            }
+        });
+    action
 }
 
 #[cfg(test)]
@@ -154,18 +214,30 @@ mod tests {
     }
 
     #[test]
-    fn split_then_merge_round_trips() {
-        let (left, right) = split_line("НЕОБХОДИМОСТЬ", 5);
+    fn split_with_and_without_hyphen_round_trips() {
+        let (left, right) = split_line("НЕОБХОДИМОСТЬ", 5, true);
         assert_eq!(left, "НЕОБХ-");
         assert_eq!(right, "ОДИМОСТЬ");
         assert_eq!(merge_lines(&left, &right), "НЕОБХОДИМОСТЬ");
+        let (hard_left, hard_right) = split_line("NEEDLESS", 4, false);
+        assert_eq!(hard_left, "NEED");
+        assert_eq!(hard_right, "LESS");
+        assert_eq!(merge_lines(&hard_left, &hard_right), "NEED LESS");
     }
 
     #[test]
-    fn merge_drops_the_hyphen_and_keeps_the_words_apart() {
+    fn merge_drops_the_hyphen_and_keeps_words_apart() {
         assert_eq!(merge_lines("необхо-", "димость"), "необходимость");
         assert_eq!(merge_lines("слово-", ""), "слово");
         assert_eq!(merge_lines("слово", "дальше"), "слово дальше");
+    }
+
+    #[test]
+    fn nearest_break_finds_the_closest_syllable() {
+        let points = [3, 6, 9, 12];
+        assert_eq!(nearest_break(&points, 7), Some(6));
+        assert_eq!(nearest_break(&points, 11), Some(12));
+        assert_eq!(nearest_break(&[], 4), None);
     }
 
     #[test]

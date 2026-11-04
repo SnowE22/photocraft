@@ -89,6 +89,34 @@ pub fn is_sampleable(surface: &Surface) -> bool {
     !matches!(surface.format().mode, ColorMode::Cmyk | ColorMode::Lab)
 }
 
+/// A cheap fingerprint of a selection mask (bounds plus a 32×32 sample of its alpha), so the
+/// paste-on-click hook fires once per new selection instead of every frame.
+pub fn selection_fingerprint(selection: &Surface) -> u64 {
+    let area = selection.content_bounds();
+    if area.is_empty() {
+        return 0;
+    }
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    let mix = |hash: &mut u64, value: u64| {
+        *hash ^= value;
+        *hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    mix(&mut hash, area.x0 as u64);
+    mix(&mut hash, area.y0 as u64);
+    mix(&mut hash, area.x1 as u64);
+    mix(&mut hash, area.y1 as u64);
+    let step_x = ((area.x1 - area.x0) / 32).max(1);
+    let step_y = ((area.y1 - area.y0) / 32).max(1);
+    for y in (area.y0..area.y1).step_by(step_y as usize) {
+        for x in (area.x0..area.x1).step_by(step_x as usize) {
+            if let Some(px) = pixel(selection, x, y) {
+                mix(&mut hash, u64::from(px[3]));
+            }
+        }
+    }
+    hash
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

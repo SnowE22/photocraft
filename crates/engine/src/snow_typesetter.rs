@@ -1,4 +1,16 @@
+use photocraft_doc::effects::{Effect, FxPaint};
+use photocraft_doc::text::{AntiAlias, Caps, CharStyle, Kerning, Orientation, TextAlign, TextDirection, TextRun};
+use photocraft_doc::{Document, LayerContent, TextLayer};
+use photocraft_geom::Rect;
+use photocraft_raster::Surface;
 use serde::{Deserialize, Serialize};
+
+const CONTOUR_PROFILE_ROWS: usize = 64;
+const CONTOUR_SCAN_BUDGET: u64 = 16 * 1024 * 1024;
+const DEFAULT_TYPE_FIT_MIN_PERCENT: f32 = 75.0;
+
+/// Maximum `.tpl` input accepted by the TypeR importer.
+pub const MAX_TPL_FILE_BYTES: usize = photocraft_psd::tpl::MAX_FILE_BYTES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -66,10 +78,112 @@ pub struct TextStylePreset {
     pub hanging_punctuation: bool,
     #[serde(default = "default_anti_alias")]
     pub anti_alias: String,
+    #[serde(default)]
+    pub script_prefixes: Vec<String>,
+    /// TypeR's "punctuation-only" size multiplier: 1.0 is off, 2.0/3.0 enlarge a line
+    /// such as `?!` and its leading. Ordinary lines are never affected.
+    #[serde(default = "default_punctuation_scale")]
+    pub punctuation_only_scale: f32,
+    /// `horizontal` or `vertical` type.
+    #[serde(default = "default_orientation")]
+    pub orientation: String,
+    /// Paragraph alignment: `left`, `center`, `right`, `justify`, `justifyCenter`,
+    /// `justifyRight` or `justifyAll`.
+    #[serde(default = "default_alignment")]
+    pub alignment: String,
+    /// Paragraph direction: `auto`, `ltr` or `rtl`.
+    #[serde(default = "default_direction")]
+    pub direction: String,
+    #[serde(default)]
+    pub first_line_indent: f32,
+    #[serde(default)]
+    pub start_indent: f32,
+    #[serde(default)]
+    pub end_indent: f32,
+    #[serde(default)]
+    pub space_before: f32,
+    #[serde(default)]
+    pub space_after: f32,
+    #[serde(default = "default_true")]
+    pub hyphenate: bool,
 }
 
 fn default_anti_alias() -> String {
     "crisp".to_string()
+}
+
+fn default_punctuation_scale() -> f32 {
+    1.0
+}
+
+fn default_orientation() -> String {
+    "horizontal".to_string()
+}
+
+fn default_alignment() -> String {
+    "center".to_string()
+}
+
+fn default_direction() -> String {
+    "auto".to_string()
+}
+
+fn text_align_name(align: TextAlign) -> &'static str {
+    match align {
+        TextAlign::Left => "left",
+        TextAlign::Center => "center",
+        TextAlign::Right => "right",
+        TextAlign::JustifyLeft => "justify",
+        TextAlign::JustifyCenter => "justifyCenter",
+        TextAlign::JustifyRight => "justifyRight",
+        TextAlign::JustifyAll => "justifyAll",
+    }
+}
+
+fn text_direction_name(direction: TextDirection) -> &'static str {
+    match direction {
+        TextDirection::Auto => "auto",
+        TextDirection::Ltr => "ltr",
+        TextDirection::Rtl => "rtl",
+    }
+}
+
+fn orientation_name(orientation: Orientation) -> &'static str {
+    match orientation {
+        Orientation::Horizontal => "horizontal",
+        Orientation::Vertical => "vertical",
+    }
+}
+
+fn normalize_alignment(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "left" | "start" => "left",
+        "right" | "end" | "rght" => "right",
+        "center" | "centre" | "cntr" | "nrml" => "center",
+        "justify" | "justifyleft" | "justifyfull" | "jstf" => "justify",
+        "justifycenter" => "justifyCenter",
+        "justifyright" => "justifyRight",
+        "justifyall" | "jsta" => "justifyAll",
+        _ => "center",
+    }
+    .to_string()
+}
+
+fn normalize_orientation(value: &str) -> String {
+    if value.trim().eq_ignore_ascii_case("vertical") || value.trim().eq_ignore_ascii_case("vrtc") {
+        "vertical".to_string()
+    } else {
+        "horizontal".to_string()
+    }
+}
+
+fn normalize_direction(value: &str) -> String {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "ltr" | "lefttoright" => "ltr",
+        "rtl" | "righttoleft" => "rtl",
+        _ => "auto",
+    }
+    .to_string()
 }
 
 impl Default for TextStylePreset {
@@ -93,6 +207,17 @@ impl Default for TextStylePreset {
             measurement_system: MeasurementSystem::Optical,
             hanging_punctuation: true,
             anti_alias: "crisp".to_string(),
+            script_prefixes: Vec::new(),
+            punctuation_only_scale: 1.0,
+            orientation: default_orientation(),
+            alignment: default_alignment(),
+            direction: default_direction(),
+            first_line_indent: 0.0,
+            start_indent: 0.0,
+            end_indent: 0.0,
+            space_before: 0.0,
+            space_after: 0.0,
+            hyphenate: true,
         }
     }
 }
@@ -107,6 +232,147 @@ impl TextStylePreset {
         }
         self.font_size = clamped;
     }
+
+    pub fn from_text_layer(name: &str, text: &TextLayer, effects: &photocraft_doc::Effects) -> (Self, bool) {
+        let run = text.char_runs().into_iter().max_by_key(|run| run.len);
+        let style = run.as_ref().map(|run| &run.style);
+        let size = style.map_or(text.size_pt, |style| style.size_pt);
+        let size = if size.is_finite() && size > 0.0 { size.clamp(0.1, 1296.0) } else { 12.0 };
+        let paragraph = text.paragraph_runs().into_iter().next();
+        let auto_leading = paragraph.as_ref().map_or(1.2, |run| run.style.auto_leading);
+        let leading = style
+            .and_then(|style| style.leading_pt)
+            .filter(|leading| leading.is_finite() && *leading > 0.0)
+            .unwrap_or_else(|| {
+                if auto_leading.is_finite() && auto_leading > 0.0 {
+                    size * auto_leading
+                } else {
+                    size * 1.2
+                }
+            });
+        let mut preset = Self {
+            name: if name.trim().is_empty() { "PSD text layer".into() } else { name.into() },
+            folder: None,
+            font_family: style.map_or_else(|| text.font_family.clone(), |style| {
+                if style.font_family.is_empty() { text.font_family.clone() } else { style.font_family.clone() }
+            }),
+            font_postscript: style.and_then(|style| style.postscript_name.clone()).unwrap_or_default(),
+            font_style: style.map_or_else(String::new, |style| style.font_style.clone()),
+            font_size: size,
+            leading: if leading.is_finite() { leading.clamp(0.1, 1296.0) } else { size * 1.2 },
+            tracking: style.map_or(0, |style| style.tracking.round().clamp(-1000.0, 10000.0) as i32),
+            horizontal_scale: style.map_or(100.0, |style| {
+                if style.horizontal_scale.is_finite() { (style.horizontal_scale * 100.0).clamp(1.0, 1000.0) } else { 100.0 }
+            }),
+            bold: style.is_some_and(|style| style.weight >= 600 || style.faux_bold),
+            italic: style.is_some_and(|style| style.italic || style.faux_italic),
+            all_caps: style.is_some_and(|style| style.caps == Caps::AllCaps),
+            stroke_width: 0.0,
+            stroke_color: [255, 255, 255, 255],
+            text_color: style.map_or_else(|| text.color.to_rgba8(), |style| style.color.to_rgba8()),
+            measurement_system: if style.is_some_and(|style| style.kerning == Kerning::Optical) {
+                MeasurementSystem::Optical
+            } else {
+                MeasurementSystem::Metric
+            },
+            hanging_punctuation: true,
+            anti_alias: match text.antialias {
+                AntiAlias::None => "none",
+                AntiAlias::Sharp => "sharp",
+                AntiAlias::Crisp => "crisp",
+                AntiAlias::Strong => "strong",
+                AntiAlias::Smooth => "smooth",
+                AntiAlias::Windows => "windows",
+                AntiAlias::WindowsLcd => "windowsLcd",
+            }
+            .into(),
+            script_prefixes: Vec::new(),
+            punctuation_only_scale: 1.0,
+            orientation: orientation_name(text.orientation).to_string(),
+            alignment: paragraph.as_ref().map_or_else(default_alignment, |run| text_align_name(run.style.align).to_string()),
+            direction: paragraph.as_ref().map_or_else(default_direction, |run| text_direction_name(run.style.direction).to_string()),
+            first_line_indent: paragraph.as_ref().map_or(0.0, |run| run.style.first_line_indent_pt),
+            start_indent: paragraph.as_ref().map_or(0.0, |run| run.style.start_indent_pt),
+            end_indent: paragraph.as_ref().map_or(0.0, |run| run.style.end_indent_pt),
+            space_before: paragraph.as_ref().map_or(0.0, |run| run.style.space_before_pt),
+            space_after: paragraph.as_ref().map_or(0.0, |run| run.style.space_after_pt),
+            hyphenate: paragraph.as_ref().is_some_and(|run| run.style.hyphenate),
+        };
+        let mut unsupported_stroke = false;
+        if effects.enabled {
+            for effect in &effects.items {
+                let Effect::Stroke(stroke) = effect else { continue };
+                if !stroke.common.enabled {
+                    continue;
+                }
+                match &stroke.paint {
+                    FxPaint::Color(color)
+                        if stroke.position == photocraft_doc::effects::StrokePosition::Outside
+                            && stroke.common.blend == photocraft_doc::BlendMode::Normal
+                            && preset.stroke_width == 0.0 =>
+                    {
+                        preset.stroke_width = if stroke.size.is_finite() { stroke.size.clamp(0.0, 2500.0) } else { 0.0 };
+                        preset.stroke_color = color.to_rgba8();
+                        let alpha = (f32::from(preset.stroke_color[3]) * stroke.common.opacity.clamp(0.0, 1.0)).round();
+                        preset.stroke_color[3] = alpha as u8;
+                    }
+                    FxPaint::Color(_) | FxPaint::Gradient(_) | FxPaint::Pattern { .. } => unsupported_stroke = true,
+                }
+            }
+        }
+        (preset, unsupported_stroke)
+    }
+
+    fn same_typography(&self, other: &Self) -> bool {
+        self.font_family == other.font_family
+            && self.font_postscript == other.font_postscript
+            && self.font_style == other.font_style
+            && self.font_size == other.font_size
+            && self.leading == other.leading
+            && self.tracking == other.tracking
+            && self.horizontal_scale == other.horizontal_scale
+            && self.bold == other.bold
+            && self.italic == other.italic
+            && self.all_caps == other.all_caps
+            && self.stroke_width == other.stroke_width
+            && self.stroke_color == other.stroke_color
+            && self.text_color == other.text_color
+            && self.measurement_system == other.measurement_system
+            && self.anti_alias == other.anti_alias
+            && self.punctuation_only_scale == other.punctuation_only_scale
+            && self.orientation == other.orientation
+            && self.alignment == other.alignment
+    }
+
+    /// Scales size and leading for a line made only of punctuation, as TypeR's
+    /// `punctuationOnlyScale` does. Returns the applied multiplier (1.0 when unchanged).
+    pub fn scale_for_punctuation_only(&mut self, text: &str) -> f32 {
+        if self.punctuation_only_scale <= 1.0 || !is_punctuation_only_text(text) {
+            return 1.0;
+        }
+        let scale = self.punctuation_only_scale.clamp(1.0, 4.0);
+        self.font_size = (self.font_size * scale).clamp(0.1, 1296.0);
+        self.leading = (self.leading * scale).clamp(0.1, 1296.0);
+        scale
+    }
+}
+
+/// True when the text has at least one visible character and every visible character is
+/// punctuation. Mirrors TypeR's punctuation-only detection for shouting marks such as `?!`.
+pub fn is_punctuation_only_text(text: &str) -> bool {
+    let mut saw_punctuation = false;
+    for ch in text.chars().filter(|ch| !ch.is_whitespace()) {
+        saw_punctuation = true;
+        let punctuation = ch.is_ascii_punctuation()
+            || matches!(
+                ch,
+                '¡' | '¿' | '«' | '»' | '–' | '—' | '‘' | '’' | '“' | '”' | '…' | '‽' | '⁇' | '⁈' | '⁉' | '、' | '。' | '〜' | '！' | '？' | '～'
+            );
+        if !punctuation {
+            return false;
+        }
+    }
+    saw_punctuation
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -115,9 +381,12 @@ pub struct ScriptLine {
     pub text: String,
     pub is_applied: bool,
     pub page: usize,
+    #[serde(default)]
+    pub matched_preset: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct TypesetterOptions {
     pub auto_page_switch: bool,
     pub line_spacing_sync: bool,
@@ -125,6 +394,20 @@ pub struct TypesetterOptions {
     pub strip_dash_prefix: bool,
     pub optical_baseline_factor: f32,
     pub hanging_punctuation: bool,
+    pub match_style_prefixes: bool,
+    pub match_prefixes_across_folders: bool,
+    #[serde(default = "default_type_fit_min_percent")]
+    pub minimum_fit_scale_percent: f32,
+    /// Paste the current script line as soon as a selection is made.
+    #[serde(default)]
+    pub paste_on_click: bool,
+    /// Fill the balloon on a `TypeR Clean` layer before pasting, hiding the original lettering.
+    #[serde(default)]
+    pub auto_clean: bool,
+}
+
+fn default_type_fit_min_percent() -> f32 {
+    DEFAULT_TYPE_FIT_MIN_PERCENT
 }
 
 impl Default for TypesetterOptions {
@@ -136,6 +419,11 @@ impl Default for TypesetterOptions {
             strip_dash_prefix: true,
             optical_baseline_factor: 0.35,
             hanging_punctuation: true,
+            match_style_prefixes: true,
+            match_prefixes_across_folders: false,
+            minimum_fit_scale_percent: DEFAULT_TYPE_FIT_MIN_PERCENT,
+            paste_on_click: false,
+            auto_clean: false,
         }
     }
 }
@@ -282,15 +570,15 @@ pub fn parse_color_value(val: &serde_json::Value) -> Option<[u8; 4]> {
         serde_json::Value::String(s) => {
             let s = s.trim_start_matches('#');
             if s.len() == 6 {
-                let r = u8::from_str_radix(&s[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&s[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&s[4..6], 16).ok()?;
+                let r = u8::from_str_radix(s.get(0..2)?, 16).ok()?;
+                let g = u8::from_str_radix(s.get(2..4)?, 16).ok()?;
+                let b = u8::from_str_radix(s.get(4..6)?, 16).ok()?;
                 Some([r, g, b, 255])
             } else if s.len() == 8 {
-                let r = u8::from_str_radix(&s[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&s[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&s[4..6], 16).ok()?;
-                let a = u8::from_str_radix(&s[6..8], 16).ok()?;
+                let r = u8::from_str_radix(s.get(0..2)?, 16).ok()?;
+                let g = u8::from_str_radix(s.get(2..4)?, 16).ok()?;
+                let b = u8::from_str_radix(s.get(4..6)?, 16).ok()?;
+                let a = u8::from_str_radix(s.get(6..8)?, 16).ok()?;
                 Some([r, g, b, a])
             } else {
                 None
@@ -300,7 +588,231 @@ pub fn parse_color_value(val: &serde_json::Value) -> Option<[u8; 4]> {
     }
 }
 
+fn tpl_descriptor<'a>(descriptor: &'a photocraft_psd::Descriptor, key: &str) -> Option<&'a photocraft_psd::Descriptor> {
+    match descriptor.get(key)? {
+        photocraft_psd::descriptor::Value::Descriptor(value) | photocraft_psd::descriptor::Value::GlobalObject(value) => Some(value),
+        _ => None,
+    }
+}
+
+fn tpl_text_any(descriptor: &photocraft_psd::Descriptor, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| match descriptor.get(key)? {
+        photocraft_psd::descriptor::Value::Text(value) => {
+            let value = value.to_string_lossy();
+            (!value.trim().is_empty()).then_some(value)
+        }
+        photocraft_psd::descriptor::Value::Enumerated { value, .. } => Some(String::from_utf8_lossy(value.as_bytes()).into_owned()),
+        _ => None,
+    })
+}
+
+fn tpl_number_any(descriptor: &photocraft_psd::Descriptor, keys: &[&str]) -> Option<f64> {
+    keys.iter().find_map(|key| match descriptor.get(key)? {
+        photocraft_psd::descriptor::Value::Double(value) => Some(*value),
+        photocraft_psd::descriptor::Value::UnitFloat { value, .. } => Some(*value),
+        photocraft_psd::descriptor::Value::Integer(value) => Some(f64::from(*value)),
+        photocraft_psd::descriptor::Value::LargeInteger(value) => Some(*value as f64),
+        _ => None,
+    })
+}
+
+fn tpl_bool_any(descriptor: &photocraft_psd::Descriptor, keys: &[&str]) -> Option<bool> {
+    keys.iter().find_map(|key| match descriptor.get(key)? {
+        photocraft_psd::descriptor::Value::Boolean(value) => Some(*value),
+        _ => None,
+    })
+}
+
+fn tpl_rgb(descriptor: &photocraft_psd::Descriptor) -> Option<[u8; 4]> {
+    let color = tpl_descriptor(descriptor, "Clr ")?;
+    let rgb = tpl_descriptor(color, "RGBC").unwrap_or(color);
+    // Photoshop uses `Rd  `/`Grn `/`Bl  ` in the measured files. Some writers emit
+    // 0..1 `redFloat`/`greenFloat`/`blueFloat` keys instead; accept both rather than
+    // silently dropping the colour.
+    let component = |integer_keys: &[&str], float_keys: &[&str]| -> Option<u8> {
+        let value = if let Some(value) = tpl_number_any(rgb, float_keys) {
+            if value.is_finite() && (0.0..=1.0).contains(&value) { value * 255.0 } else { value }
+        } else {
+            tpl_number_any(rgb, integer_keys)?
+        };
+        value.is_finite().then(|| value.round().clamp(0.0, 255.0) as u8)
+    };
+    Some([
+        component(&["Rd  ", "red"], &["redFloat"])?,
+        component(&["Grn ", "green"], &["greenFloat"])?,
+        component(&["Bl  ", "blue"], &["blueFloat"])?,
+        255,
+    ])
+}
+
+fn tpl_display_name(name: &str) -> String {
+    // Adobe's own presets use a localization key: "$$$/Presets/Tools/Key=Display name".
+    if name.starts_with("$$$/") {
+        name.split_once('=').map_or_else(|| name.to_owned(), |(_, display)| display.to_owned())
+    } else {
+        name.to_owned()
+    }
+}
+
+/// What a `.tpl` import actually did, so the UI can report skips instead of silently
+/// presenting a partial library as complete.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TplImportReport {
+    /// Text presets converted into TypeR styles.
+    pub imported: usize,
+    /// Presets not imported (other tools, incomplete text data).
+    pub skipped: usize,
+    /// Subset of `imported`: vertical text presets, imported with vertical orientation.
+    pub vertical_imported: usize,
+}
+
 impl TypesetterState {
+    /// Extracts distinct editable presets from non-empty type layers in the active document.
+    /// The count of effects that cannot fit the preset model is returned for an explicit UI warning.
+    pub fn scan_document_text_styles(&mut self, doc: &Document) -> (usize, usize) {
+        let mut scanned = Vec::<TextStylePreset>::new();
+        let mut unsupported_effects = 0usize;
+        for (_, _, layer) in doc.walk() {
+            let LayerContent::Text(text) = &layer.content else { continue };
+            if text.text.trim().is_empty() {
+                continue;
+            }
+            let (preset, unsupported) = TextStylePreset::from_text_layer(&layer.name, text, &layer.effects);
+            unsupported_effects += usize::from(unsupported);
+            if !self.presets.iter().chain(scanned.iter()).any(|existing| existing.same_typography(&preset)) {
+                scanned.push(preset);
+            }
+        }
+        let added = scanned.len();
+        if added > 0 {
+            let first_added = self.presets.len();
+            self.presets.extend(scanned);
+            self.selected_preset_idx = first_added;
+        }
+        (added, unsupported_effects)
+    }
+
+    /// Imports Photoshop `.tpl` text-tool presets into a folder named after the source file.
+    ///
+    /// Text presets are recognised by their `textToolCharacterOptions` descriptor, not by a
+    /// hard-coded tool class: Photoshop uses several Type tool classes, and non-text presets
+    /// carry no character options. Vertical text presets are imported with vertical
+    /// orientation and counted separately. Tool presets store sizes in points, so no
+    /// ruler-unit conversion is applied.
+    pub fn import_tool_presets_tpl(&mut self, data: &[u8], folder: &str) -> Result<TplImportReport, String> {
+        let file = photocraft_psd::tpl::parse(data).map_err(|error| format!("Photoshop TPL: {error}"))?;
+        let folder = if folder.trim().is_empty() { "Photoshop TPL" } else { folder.trim() };
+        let mut imported = Vec::new();
+        let mut report = TplImportReport::default();
+
+        for tool in file.presets {
+            let character = tpl_descriptor(&tool.settings, "textToolCharacterOptions")
+                .and_then(|options| tpl_descriptor(options, "TxtS").or_else(|| tpl_descriptor(options, "textStyle")));
+            let Some(character) = character else {
+                report.skipped = report.skipped.saturating_add(1);
+                continue;
+            };
+            let font_family = tpl_text_any(character, &["FntN", "fontName"]).filter(|name| !name.trim().is_empty());
+            let font_postscript = tpl_text_any(character, &["fontPostScriptName"]).filter(|name| !name.trim().is_empty());
+            let Some(font_size) = tpl_number_any(character, &["Sz  ", "size"]).filter(|value| value.is_finite() && *value > 0.0) else {
+                report.skipped = report.skipped.saturating_add(1);
+                continue;
+            };
+            if font_family.is_none() && font_postscript.is_none() {
+                report.skipped = report.skipped.saturating_add(1);
+                continue;
+            }
+            let paragraph_options = tpl_descriptor(&tool.settings, "textToolParagraphOptions");
+            let paragraph_style = paragraph_options.and_then(|options| tpl_descriptor(options, "paragraphStyle"));
+            let orientation = paragraph_options.and_then(|options| tpl_text_any(options, &["Ornt"])).unwrap_or_default();
+            let orientation = normalize_orientation(&orientation);
+
+            let font_size = (font_size as f32).clamp(0.1, 1296.0);
+            let auto_leading = tpl_bool_any(character, &["autoLeading"]);
+            let leading = match tpl_number_any(character, &["Ldng", "leading"]) {
+                Some(value) if value.is_finite() && value > 0.0 && auto_leading != Some(true) => (value as f32).clamp(0.1, 1296.0),
+                _ => font_size * 1.2,
+            };
+            let tracking = tpl_number_any(character, &["Trck", "tracking"])
+                .filter(|value| value.is_finite())
+                .map_or(0, |value| value.round().clamp(-1000.0, 10000.0) as i32);
+            let horizontal_scale = tpl_number_any(character, &["HrzS", "horizontalScale"])
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .map_or(100.0, |value| (value as f32).clamp(1.0, 1000.0));
+            let font_style = tpl_text_any(character, &["FntS", "fontStyleName"]).unwrap_or_else(|| "Regular".into());
+            let caps = tpl_text_any(character, &["fontCaps"]).unwrap_or_default();
+            let kerning = tpl_text_any(character, &["AtKr", "autoKern"]).unwrap_or_default();
+            let font_family = font_family.or_else(|| font_postscript.clone()).unwrap_or_default();
+            // Measured Photoshop 27.7 values; the old 0..4 guess mapped 2/3/4 to the wrong faces.
+            let anti_alias = match tpl_number_any(character, &["AntA"]) {
+                Some(value) if value.is_finite() => match value.round() as i64 {
+                    0 => "none",
+                    1 => "crisp",
+                    2 => "strong",
+                    8 => "smooth",
+                    16 => "sharp",
+                    _ => "smooth",
+                },
+                _ => "smooth",
+            };
+            let paragraph_number = |key: &str| {
+                paragraph_style
+                    .and_then(|style| tpl_number_any(style, &[key]))
+                    .filter(|value| value.is_finite())
+                    .map_or(0.0, |value| value.clamp(-5000.0, 5000.0) as f32)
+            };
+            let alignment = paragraph_style
+                .and_then(|style| tpl_text_any(style, &["Algn", "alignment"]))
+                .map_or_else(default_alignment, |value| normalize_alignment(&value));
+            let style_lower = font_style.to_ascii_lowercase();
+            imported.push(TextStylePreset {
+                name: tpl_display_name(&tool.name),
+                folder: Some(folder.to_owned()),
+                font_postscript: font_postscript.unwrap_or_default(),
+                font_family,
+                bold: tpl_bool_any(character, &["syntheticBold", "FauxBold"]).unwrap_or(false) || style_lower.contains("bold"),
+                italic: tpl_bool_any(character, &["syntheticItalic", "FauxItalic"]).unwrap_or(false)
+                    || style_lower.contains("italic")
+                    || style_lower.contains("oblique"),
+                font_style,
+                font_size,
+                leading,
+                tracking,
+                horizontal_scale,
+                all_caps: caps.eq_ignore_ascii_case("allcaps") || caps.eq_ignore_ascii_case("all"),
+                text_color: tpl_rgb(character).unwrap_or([0, 0, 0, 255]),
+                measurement_system: if kerning.to_ascii_lowercase().contains("optical") { MeasurementSystem::Optical } else { MeasurementSystem::Metric },
+                stroke_width: 0.0,
+                anti_alias: anti_alias.into(),
+                orientation: orientation.clone(),
+                alignment,
+                direction: default_direction(),
+                first_line_indent: paragraph_number("firstLineIndent"),
+                start_indent: paragraph_number("startIndent"),
+                end_indent: paragraph_number("endIndent"),
+                space_before: paragraph_number("spaceBefore"),
+                space_after: paragraph_number("spaceAfter"),
+                hyphenate: paragraph_style
+                    .and_then(|style| tpl_bool_any(style, &["hyphenate"]))
+                    .unwrap_or(false),
+                ..TextStylePreset::default()
+            });
+            if orientation == "vertical" {
+                report.vertical_imported = report.vertical_imported.saturating_add(1);
+            }
+        }
+
+        if imported.is_empty() {
+            return Err(format!("В файле нет поддерживаемых текстовых пресетов (пропущено: {})", report.skipped));
+        }
+        report.imported = imported.len();
+        let first_imported = self.presets.len();
+        self.presets.extend(imported);
+        self.selected_preset_idx = first_imported;
+        self.recompute_script_style_matches();
+        Ok(report)
+    }
+
     /// Импортирует стили из JSON-строки (полная поддержка структуры TypeR / Photoshop CEP).
     pub fn import_styles_json(&mut self, json_str: &str) -> Result<usize, String> {
         let val: serde_json::Value = serde_json::from_str(json_str)
@@ -489,6 +1001,57 @@ impl TypesetterState {
                 "crisp".to_string()
             };
 
+            let script_prefixes = item
+                .get("scriptPrefixes")
+                .or_else(|| item.get("prefixes"))
+                .or_else(|| item.get("prefix"))
+                .map(|value| match value {
+                    serde_json::Value::Array(values) => values
+                        .iter()
+                        .filter_map(serde_json::Value::as_str)
+                        .map(str::trim)
+                        .filter(|prefix| !prefix.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                    serde_json::Value::String(prefix) => prefix
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|prefix| !prefix.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                    _ => Vec::new(),
+                })
+                .unwrap_or_default();
+            let punctuation_only_scale = item
+                .get("punctuationOnlyScale")
+                .or_else(|| item.get("punctuation_only_scale"))
+                .and_then(serde_json::Value::as_f64)
+                .filter(|value| value.is_finite() && *value > 0.0)
+                .map_or(1.0, |value| (value as f32).clamp(1.0, 4.0));
+            let orientation = item
+                .get("orientation")
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| item.pointer("/textProps/layerText/orientation").and_then(serde_json::Value::as_str))
+                .map_or_else(default_orientation, normalize_orientation);
+            let alignment = item
+                .get("alignment")
+                .or_else(|| item.get("align"))
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| para_style.and_then(|style| style.get("align")).and_then(serde_json::Value::as_str))
+                .map_or_else(default_alignment, normalize_alignment);
+            let direction = item
+                .get("direction")
+                .and_then(serde_json::Value::as_str)
+                .or_else(|| para_style.and_then(|style| style.get("direction")).and_then(serde_json::Value::as_str))
+                .map_or_else(default_direction, normalize_direction);
+            let paragraph_number = |key: &str, fallback: &str| {
+                item.get(key)
+                    .or_else(|| para_style.and_then(|style| style.get(fallback)))
+                    .and_then(serde_json::Value::as_f64)
+                    .filter(|value| value.is_finite())
+                    .map_or(0.0, |value| value.clamp(-5000.0, 5000.0) as f32)
+            };
+
             self.presets.push(TextStylePreset {
                 name,
                 folder: folder_name,
@@ -508,12 +1071,28 @@ impl TypesetterState {
                 measurement_system,
                 hanging_punctuation,
                 anti_alias,
+                script_prefixes,
+                punctuation_only_scale,
+                orientation,
+                alignment,
+                direction,
+                first_line_indent: paragraph_number("firstLineIndent", "firstLineIndent"),
+                start_indent: paragraph_number("startIndent", "startIndent"),
+                end_indent: paragraph_number("endIndent", "endIndent"),
+                space_before: paragraph_number("spaceBefore", "spaceBefore"),
+                space_after: paragraph_number("spaceAfter", "spaceAfter"),
+                hyphenate: item
+                    .get("hyphenate")
+                    .and_then(serde_json::Value::as_bool)
+                    .or_else(|| para_style.and_then(|style| style.get("hyphenate")).and_then(serde_json::Value::as_bool))
+                    .unwrap_or(false),
             });
             count += 1;
         }
 
         if count > 0 {
             self.selected_preset_idx = self.presets.len() - 1;
+            self.recompute_script_style_matches();
         }
 
         Ok(count)
@@ -603,7 +1182,18 @@ impl TypesetterState {
                 "strokeColor": preset.stroke_color,
                 "textColor": format!("#{:02x}{:02x}{:02x}{:02x}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]),
                 "textColorRgba": preset.text_color,
-                "measurementSystem": preset.measurement_system.as_str()
+                "measurementSystem": preset.measurement_system.as_str(),
+                "scriptPrefixes": preset.script_prefixes,
+                "punctuationOnlyScale": preset.punctuation_only_scale,
+                "orientation": preset.orientation,
+                "alignment": preset.alignment,
+                "direction": preset.direction,
+                "firstLineIndent": preset.first_line_indent,
+                "startIndent": preset.start_indent,
+                "endIndent": preset.end_indent,
+                "spaceBefore": preset.space_before,
+                "spaceAfter": preset.space_after,
+                "hyphenate": preset.hyphenate
             }));
         }
 
@@ -632,19 +1222,95 @@ impl TypesetterState {
                 continue;
             }
 
-            let cleaned = clean_script_line_with_options(trimmed, &self.options);
-            if !cleaned.is_empty() {
-                self.lines.push(ScriptLine {
-                    raw: trimmed.to_string(),
-                    text: cleaned,
-                    is_applied: false,
-                    page,
-                });
+            if trimmed.starts_with("##") {
+                continue;
+            }
+
+            if let Some(line) = self.parse_script_line(trimmed, page, false) {
+                self.lines.push(line);
             }
         }
 
         self.current_line_idx = 0;
         self.current_page = self.lines.first().map_or(1, |l| l.page);
+        self.activate_current_line_preset();
+    }
+
+    fn parse_script_line(&self, raw: &str, page: usize, is_applied: bool) -> Option<ScriptLine> {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed.starts_with("##") {
+            return None;
+        }
+
+        let prefix_source = if self.options.strip_dash_prefix {
+            trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("— ")).unwrap_or(trimmed)
+        } else {
+            trimmed
+        };
+        let style_match = self.match_script_prefix(prefix_source);
+        let text_source = style_match.map_or(trimmed, |(_, text)| text);
+        let text = clean_script_line_with_options(text_source, &self.options);
+        if text.is_empty() {
+            return None;
+        }
+
+        Some(ScriptLine {
+            raw: trimmed.to_string(),
+            text,
+            is_applied,
+            page,
+            matched_preset: style_match.map(|(idx, _)| idx),
+        })
+    }
+
+    fn match_script_prefix<'a>(&self, line: &'a str) -> Option<(usize, &'a str)> {
+        if !self.options.match_style_prefixes {
+            return None;
+        }
+        let (tag, text) = line.split_once(':')?;
+        let tag = tag.trim();
+        let text = text.trim_start();
+        if tag.is_empty() || text.is_empty() {
+            return None;
+        }
+
+        let active_folder = self.active_preset().and_then(|preset| preset.folder.as_deref());
+        self.presets
+            .iter()
+            .enumerate()
+            .filter(|(_, preset)| {
+                self.options.match_prefixes_across_folders
+                    || preset.folder.as_deref() == active_folder
+            })
+            .flat_map(|(idx, preset)| {
+                preset.script_prefixes.iter().filter_map(move |prefix| {
+                    let prefix = prefix.trim().trim_end_matches(':').trim();
+                    (!prefix.is_empty() && prefix.eq_ignore_ascii_case(tag)).then_some((idx, text, prefix.len()))
+                })
+            })
+            .max_by_key(|(_, _, prefix_len)| *prefix_len)
+            .map(|(idx, text, _)| (idx, text))
+    }
+
+    fn activate_current_line_preset(&mut self) {
+        if let Some(Some(idx)) = self.lines.get(self.current_line_idx).map(|line| line.matched_preset)
+            && idx < self.presets.len()
+        {
+            self.selected_preset_idx = idx;
+        }
+    }
+
+    pub fn recompute_script_style_matches(&mut self) {
+        let updated: Vec<_> = self
+            .lines
+            .iter()
+            .filter_map(|line| self.parse_script_line(&line.raw, line.page, line.is_applied))
+            .collect();
+        self.lines = updated;
+        if self.current_line_idx >= self.lines.len() {
+            self.current_line_idx = self.lines.len().saturating_sub(1);
+        }
+        self.activate_current_line_preset();
     }
 
     /// Возвращает список всех уникальных страниц в скрипте.
@@ -678,6 +1344,7 @@ impl TypesetterState {
         }
         if self.current_line_idx + 1 < self.lines.len() {
             self.current_line_idx += 1;
+            self.activate_current_line_preset();
             let next = self.lines.get(self.current_line_idx);
             if self.options.auto_page_switch {
                 if let Some(nl) = next {
@@ -695,6 +1362,7 @@ impl TypesetterState {
     pub fn next_line(&mut self) {
         if self.current_line_idx + 1 < self.lines.len() {
             self.current_line_idx += 1;
+            self.activate_current_line_preset();
             if self.options.auto_page_switch
                 && let Some(line) = self.lines.get(self.current_line_idx)
             {
@@ -705,6 +1373,7 @@ impl TypesetterState {
     pub fn prev_line(&mut self) {
         if self.current_line_idx > 0 {
             self.current_line_idx -= 1;
+            self.activate_current_line_preset();
             if self.options.auto_page_switch {
                 if let Some(line) = self.lines.get(self.current_line_idx) {
                     self.current_page = line.page;
@@ -716,6 +1385,7 @@ impl TypesetterState {
     pub fn set_current_line(&mut self, idx: usize) {
         if idx < self.lines.len() {
             self.current_line_idx = idx;
+            self.activate_current_line_preset();
             if let Some(line) = self.lines.get(idx) {
                 self.current_page = line.page;
             }
@@ -724,6 +1394,14 @@ impl TypesetterState {
 
     pub fn active_preset(&self) -> Option<&TextStylePreset> {
         self.presets.get(self.selected_preset_idx)
+    }
+
+    pub fn preset_for_line(&self, idx: usize) -> Option<&TextStylePreset> {
+        self.lines
+            .get(idx)
+            .and_then(|line| line.matched_preset)
+            .and_then(|preset_idx| self.presets.get(preset_idx))
+            .or_else(|| self.active_preset())
     }
 
     pub fn active_preset_mut(&mut self) -> Option<&mut TextStylePreset> {
@@ -792,6 +1470,17 @@ impl TypesetterState {
             return false;
         }
         self.presets.remove(idx);
+        for line in &mut self.lines {
+            line.matched_preset = line.matched_preset.and_then(|matched| {
+                if matched == idx {
+                    None
+                } else if matched > idx {
+                    Some(matched - 1)
+                } else {
+                    Some(matched)
+                }
+            });
+        }
         if self.selected_preset_idx >= self.presets.len() {
             self.selected_preset_idx = self.presets.len() - 1;
         }
@@ -875,9 +1564,669 @@ pub fn calculate_bubble_center(bounds: [f32; 4]) -> [f32; 2] {
     [min_x + (max_x - min_x) * 0.5, min_y + (max_y - min_y) * 0.5]
 }
 
+fn contour_profile(selection: &Surface, bounds: Rect) -> Result<Vec<(i32, i32, i32)>, String> {
+    let bounds = selection.content_bounds().intersect(&bounds);
+    if bounds.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let width = bounds.width() as usize;
+    let height = bounds.height() as usize;
+    let channels = selection.channels();
+    if channels == 0 || width == 0 || height == 0 {
+        return Ok(Vec::new());
+    }
+    let row_samples = (width as u64).checked_mul(channels as u64).ok_or_else(|| "bubble selection row size overflow".to_string())?;
+    if row_samples > CONTOUR_SCAN_BUDGET {
+        return Err("bubble selection is too wide to scan safely".into());
+    }
+
+    let max_rows = (CONTOUR_SCAN_BUDGET / row_samples.max(1)).clamp(2, CONTOUR_PROFILE_ROWS as u64) as usize;
+    let sample_count = height.min(max_rows);
+    let center_twice = i64::from(bounds.x0) + i64::from(bounds.x1);
+    let mut profile = Vec::new();
+    profile.try_reserve_exact(sample_count).map_err(|error| format!("cannot allocate bubble contour profile: {error}"))?;
+
+    let max_row_gap = (height / sample_count.max(1)).saturating_mul(2).max(2) as i32;
+    let mut previous_y = None;
+    for row in 0..sample_count {
+        let y_offset = if sample_count <= 1 { 0 } else { (row as u64 * (height - 1) as u64 / (sample_count - 1) as u64) as usize };
+        let y = bounds.y0.saturating_add(y_offset as i32);
+        let row_rect = Rect::new(bounds.x0, y, bounds.x1, y.saturating_add(1));
+        let samples = selection
+            .try_read_region(row_rect)
+            .map_err(|error| format!("cannot read bubble selection: {error}"))?;
+        let mut start = None;
+        let mut best: Option<(usize, usize, i64, usize)> = None;
+        let mut significant_spans = 0usize;
+        let mut consider_span = |begin: usize, end: usize| {
+            let midpoint_twice = 2 * i64::from(bounds.x0) + begin as i64 + end as i64;
+            let distance = (midpoint_twice - center_twice).abs();
+            let candidate = (begin, end, distance, end - begin);
+            if candidate.3 >= width / 12 {
+                significant_spans += 1;
+            }
+            if best.is_none_or(|current| distance < current.2 || (distance == current.2 && candidate.3 > current.3)) {
+                best = Some(candidate);
+            }
+        };
+        for x in 0..width {
+            let selected = samples.get(x.saturating_mul(channels)).is_some_and(|value| *value >= 0.5);
+            match (start, selected) {
+                (None, true) => start = Some(x),
+                (Some(begin), false) => {
+                    consider_span(begin, x);
+                    start = None;
+                }
+                _ => {}
+            }
+        }
+        if let Some(begin) = start {
+            consider_span(begin, width);
+        }
+
+        if significant_spans > 1 {
+            return Ok(Vec::new());
+        }
+        if let Some((x0, x1, _, _)) = best {
+            if previous_y.is_some_and(|previous| y.saturating_sub(previous) > max_row_gap) {
+                return Ok(Vec::new());
+            }
+            profile.push((y, bounds.x0.saturating_add(x0 as i32), bounds.x0.saturating_add(x1 as i32)));
+            previous_y = Some(y);
+        }
+    }
+    Ok(profile)
+}
+
+fn measure_script_word(text: &str, style: &CharStyle, dpi: f32, engine: &mut photocraft_text::TextEngine) -> f32 {
+    let layer = TextLayer {
+        text: text.to_string(),
+        runs: vec![TextRun { len: text.len(), style: style.clone() }],
+        ..TextLayer::default()
+    };
+    engine.layout(&layer, dpi).lines.first().map_or(0.0, |line| (line.x1 - line.x0).max(0.0))
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScriptMarkupCharStyle {
+    pub bold: bool,
+    pub italic: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ScriptMarkupWord {
+    pub chars: Vec<ScriptMarkupCharStyle>,
+}
+
+fn exact_marker_at(text: &str, at: usize, marker: &str) -> bool {
+    let Some(end) = at.checked_add(marker.len()) else {
+        return false;
+    };
+    if text.get(at..end) != Some(marker) {
+        return false;
+    }
+    let byte = marker.as_bytes().first().copied();
+    let before_is_marker = at.checked_sub(1).and_then(|i| text.as_bytes().get(i)).copied() == byte;
+    let after_is_marker = text.as_bytes().get(end).copied() == byte;
+    !before_is_marker && !after_is_marker
+}
+
+fn has_closing_marker(text: &str, marker: &str, after: usize) -> bool {
+    let mut search = after;
+    while let Some(relative) = text.get(search..).and_then(|rest| rest.find(marker)) {
+        let at = search.saturating_add(relative);
+        if exact_marker_at(text, at, marker) && at > after {
+            return true;
+        }
+        search = at.saturating_add(1);
+    }
+    false
+}
+
+/// Removes Markdown `**bold**` / `__bold__` and `*italic*` / `_italic_` markers while retaining
+/// the style of each script word, so inserted layers stay natively editable type.
+pub fn parse_script_markup(text: &str) -> (String, Vec<ScriptMarkupWord>) {
+    let mut output = String::with_capacity(text.len());
+    let mut words = Vec::new();
+    let (mut bold, mut italic) = (false, false);
+    let mut word = ScriptMarkupWord::default();
+    let mut at = 0usize;
+    while at < text.len() {
+        if text.as_bytes().get(at) == Some(&b'\\')
+            && let Some(next) = at.checked_add(1).and_then(|index| text.get(index..))
+            && let Some(ch) = next.chars().next()
+            && matches!(ch, '*' | '_' | '\\')
+        {
+            output.push(ch);
+            word.chars.push(ScriptMarkupCharStyle { bold, italic });
+            at += 1 + ch.len_utf8();
+            continue;
+        }
+
+        let remaining = text.get(at..).unwrap_or_default();
+        let marker = if remaining.starts_with("**") {
+            Some(("**", true))
+        } else if remaining.starts_with("__") {
+            Some(("__", true))
+        } else if remaining.starts_with('*') && !remaining.starts_with("**") {
+            Some(("*", false))
+        } else if remaining.starts_with('_') && !remaining.starts_with("__") {
+            Some(("_", false))
+        } else {
+            None
+        };
+        if let Some((marker, is_bold)) = marker {
+            let style_is_active = if is_bold { bold } else { italic };
+            if style_is_active || has_closing_marker(text, marker, at + marker.len()) {
+                if is_bold {
+                    bold = !bold;
+                } else {
+                    italic = !italic;
+                }
+                at += marker.len();
+                continue;
+            }
+        }
+
+        let Some(ch) = remaining.chars().next() else {
+            break;
+        };
+        output.push(ch);
+        if ch.is_whitespace() {
+            if !word.chars.is_empty() {
+                words.push(std::mem::take(&mut word));
+            }
+        } else {
+            word.chars.push(ScriptMarkupCharStyle { bold, italic });
+        }
+        at += ch.len_utf8();
+    }
+    if !word.chars.is_empty() {
+        words.push(word);
+    }
+    (output, words)
+}
+
+/// Builds `type.edit` character-run parameters after contour fitting has inserted line breaks.
+pub fn script_markup_run_params(text: &str, words: &[ScriptMarkupWord]) -> Vec<serde_json::Value> {
+    let output_chars: Vec<char> = text.chars().collect();
+    let mut runs = Vec::new();
+    let mut cursor = 0usize;
+    for style_word in words {
+        while output_chars.get(cursor).is_some_and(|ch| ch.is_whitespace()) {
+            cursor += 1;
+        }
+        let word_start = cursor;
+        while output_chars.get(cursor).is_some_and(|ch| !ch.is_whitespace()) {
+            cursor += 1;
+        }
+        if cursor.saturating_sub(word_start) != style_word.chars.len() {
+            return Vec::new();
+        }
+        let mut start = 0usize;
+        while start < style_word.chars.len() {
+            let Some(style) = style_word.chars.get(start).copied() else {
+                break;
+            };
+            let mut end = start + 1;
+            while end < style_word.chars.len() && style_word.chars.get(end) == Some(&style) {
+                end += 1;
+            }
+            if style.bold || style.italic {
+                let mut params = serde_json::json!({
+                    "start": word_start + start,
+                    "end": word_start + end
+                });
+                if style.bold {
+                    params["fauxBold"] = serde_json::Value::Bool(true);
+                }
+                if style.italic {
+                    params["fauxItalic"] = serde_json::Value::Bool(true);
+                }
+                runs.push(params);
+            }
+            start = end;
+        }
+    }
+    if output_chars.get(cursor).is_some_and(|ch| !ch.is_whitespace()) {
+        return Vec::new();
+    }
+    runs
+}
+
+fn contour_line_width(profile: &[(i32, i32, i32)], center_x: f32, center_y: f32, half_height: f32) -> Option<f32> {
+    let mut width = f32::INFINITY;
+    let mut samples = 0usize;
+    for &(y, x0, x1) in profile {
+        if (y as f32 - center_y).abs() <= half_height {
+            let left = center_x - x0 as f32;
+            let right = x1 as f32 - center_x;
+            width = width.min((left.min(right) * 2.0).max(0.0));
+            samples += 1;
+        }
+    }
+    if samples == 0 {
+        profile
+            .iter()
+            .min_by(|a, b| (a.0 as f32 - center_y).abs().total_cmp(&(b.0 as f32 - center_y).abs()))
+            .map(|(_, x0, x1)| (2.0 * (center_x - *x0 as f32).min(*x1 as f32 - center_x)).max(0.0))
+    } else {
+        Some(width)
+    }
+}
+
+fn wrap_words_for_contour(
+    paragraphs: &[Vec<(String, f32)>],
+    profile: &[(i32, i32, i32)],
+    bounds: Rect,
+    line_count: usize,
+    font_size_px: f32,
+    leading_px: f32,
+    space_width: f32,
+) -> Option<Vec<String>> {
+    if line_count == 0 || profile.is_empty() {
+        return None;
+    }
+    let line_height = leading_px.max(font_size_px);
+    let total_height = (line_count.saturating_sub(1) as f32) * line_height + font_size_px;
+    if total_height > bounds.height() as f32 {
+        return None;
+    }
+    let center_y = (bounds.y0 as f32 + bounds.y1 as f32) * 0.5;
+    let first_center = center_y - (line_count.saturating_sub(1) as f32) * line_height * 0.5;
+    let mut widths = Vec::new();
+    widths.try_reserve_exact(line_count).ok()?;
+    for index in 0..line_count {
+        let y = first_center + index as f32 * line_height;
+        let width = contour_line_width(profile, (bounds.x0 as f32 + bounds.x1 as f32) * 0.5, y, font_size_px * 0.45)? * 0.88;
+        if width < font_size_px * 0.5 {
+            return None;
+        }
+        widths.push(width);
+    }
+
+    let mut output = Vec::new();
+    output.try_reserve_exact(line_count).ok()?;
+    let mut output_line = 0usize;
+    for paragraph in paragraphs {
+        if paragraph.is_empty() {
+            if output_line >= widths.len() {
+                return None;
+            }
+            output.push(String::new());
+            output_line += 1;
+            continue;
+        }
+
+        let mut word_index = 0usize;
+        while word_index < paragraph.len() {
+            let target = *widths.get(output_line)?;
+            let mut used = 0.0f32;
+            let mut end = word_index;
+            while let Some((_, word_width)) = paragraph.get(end) {
+                let next_width = used + *word_width + if end > word_index { space_width } else { 0.0 };
+                if next_width > target {
+                    break;
+                }
+                used = next_width;
+                end += 1;
+            }
+            if end == word_index {
+                return None;
+            }
+            end = balanced_contour_line_end(paragraph, word_index, end, &widths, output_line, space_width);
+            let mut line = String::new();
+            for index in word_index..end {
+                let (word, _) = paragraph.get(index)?;
+                if index > word_index {
+                    line.push(' ');
+                }
+                line.push_str(word);
+            }
+            output.push(line);
+            output_line += 1;
+            word_index = end;
+        }
+    }
+    Some(output)
+}
+
+fn balanced_contour_line_end(words: &[(String, f32)], start: usize, greedy_end: usize, line_widths: &[f32], line_index: usize, space_width: f32) -> usize {
+    let Some(&target_width) = line_widths.get(line_index) else {
+        return greedy_end;
+    };
+    let Some(&next_width) = line_widths.get(line_index.saturating_add(1)) else {
+        return greedy_end;
+    };
+    if greedy_end <= start.saturating_add(1) || greedy_end >= words.len() || target_width <= 0.0 || next_width <= 0.0 {
+        return greedy_end;
+    }
+
+    let first_candidate = greedy_end.saturating_sub(12).max(start.saturating_add(1));
+    let mut best_end = greedy_end;
+    let mut best_cost = f32::INFINITY;
+    let mut current_width = 0.0f32;
+    for candidate_end in start.saturating_add(1)..=greedy_end {
+        let Some((_, word_width)) = words.get(candidate_end.saturating_sub(1)) else {
+            break;
+        };
+        current_width += *word_width;
+        if candidate_end > start.saturating_add(1) {
+            current_width += space_width;
+        }
+        if candidate_end < first_candidate {
+            continue;
+        }
+
+        let mut next_used = 0.0f32;
+        let mut next_end = candidate_end;
+        while let Some((_, word_width)) = words.get(next_end) {
+            let next_width_with_word = next_used + *word_width + if next_end > candidate_end { space_width } else { 0.0 };
+            if next_width_with_word > next_width {
+                break;
+            }
+            next_used = next_width_with_word;
+            next_end = next_end.saturating_add(1);
+        }
+        if next_end == candidate_end {
+            continue;
+        }
+
+        let current_slack = ((target_width - current_width).max(0.0) / target_width).powi(2);
+        let next_slack = ((next_width - next_used).max(0.0) / next_width).powi(2);
+        let current_weight = if candidate_end == words.len() { 0.4 } else { 1.0 };
+        let next_weight = if next_end == words.len() { 0.4 } else { 0.7 };
+        let orphan_penalty = if next_end == words.len() && words.len().saturating_sub(candidate_end) == 1 { 0.2 } else { 0.0 };
+        let cost = current_slack * current_weight + next_slack * next_weight + orphan_penalty;
+        if cost < best_cost {
+            best_cost = cost;
+            best_end = candidate_end;
+        }
+    }
+    best_end
+}
+
+/// One proposed line-breaking of the active TypeR line, shown by TextShapeR.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextShapeKind {
+    /// Explicit line breaks kept as written, with orphan binders applied.
+    Original,
+    /// The fitted contour layout at the style's size or the smallest allowed size.
+    ContourFit,
+    /// The rectangular bubble wrap.
+    BubbleWrap,
+    /// Words distributed over roughly square line lengths.
+    Balanced,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TextShapeCandidate {
+    pub kind: TextShapeKind,
+    pub text: String,
+}
+
+fn balanced_plain_wrap(text: &str) -> String {
+    let mut output = Vec::new();
+    for paragraph in text.split('\n') {
+        let words: Vec<&str> = paragraph.split(' ').filter(|word| !word.is_empty()).collect();
+        if words.len() <= 2 {
+            output.push(words.join(" "));
+            continue;
+        }
+        let target_lines = (words.len() as f32).sqrt().ceil().max(1.0) as usize;
+        let per_line = words.len().div_ceil(target_lines);
+        let mut index = 0usize;
+        while index < words.len() {
+            let end = (index + per_line).min(words.len());
+            output.push(words.get(index..end).unwrap_or_default().join(" "));
+            index = end;
+        }
+    }
+    output.join("\n")
+}
+
+/// Proposes line breaks for the active TypeR line. This is a bounded, local TextShapeR:
+/// it reuses the existing contour fit, rectangular wrap and a balanced split instead of
+/// TypeR's trained lettering model.
+pub fn text_shape_candidates(
+    text: &str,
+    preset: &TextStylePreset,
+    selection: Option<&Surface>,
+    document_bounds: Rect,
+    dpi: f32,
+    sync_leading: bool,
+    minimum_fit_scale_percent: f32,
+) -> Result<Vec<TextShapeCandidate>, String> {
+    if text.trim().is_empty() || text.len() > 16_384 {
+        return Ok(Vec::new());
+    }
+    let mut candidates = Vec::new();
+    let mut push = |kind, text: String| {
+        if !text.trim().is_empty() && !candidates.iter().any(|candidate: &TextShapeCandidate| candidate.text == text) {
+            candidates.push(TextShapeCandidate { kind, text });
+        }
+    };
+
+    push(TextShapeKind::Original, crate::snow_knuth_plass::bind_orphan_prepositions(text));
+
+    if let Some(selection) = selection {
+        let mut fitted_preset = preset.clone();
+        if let Some(fitted) = fit_script_text_to_selection(
+            text,
+            &mut fitted_preset,
+            selection,
+            document_bounds,
+            dpi,
+            sync_leading,
+            minimum_fit_scale_percent,
+        )? {
+            push(TextShapeKind::ContourFit, fitted);
+        }
+        let bubble = selection.content_bounds().intersect(&document_bounds);
+        if bubble.width() >= 10 && bubble.height() >= 10 {
+            push(
+                TextShapeKind::BubbleWrap,
+                crate::snow_knuth_plass::knuth_plass_bubble_wrap_ext(
+                    text,
+                    bubble.width() as f32,
+                    bubble.height() as f32,
+                    preset.font_size,
+                    dpi,
+                    preset.horizontal_scale,
+                    preset.hanging_punctuation,
+                ),
+            );
+        }
+    }
+    push(TextShapeKind::Balanced, balanced_plain_wrap(text));
+    Ok(candidates)
+}
+
+/// Wraps and scales a TypeR line against the selected bubble's sampled contour.
+///
+/// `None` means the selection is not a suitable bubble or the text cannot fit at the minimum
+/// type size; callers may retain their rectangular-bubble fallback. Errors reading the mask are
+/// returned so the caller can report them rather than silently pretending the fit succeeded.
+pub fn fit_script_text_to_selection(
+    text: &str,
+    preset: &mut TextStylePreset,
+    selection: &Surface,
+    document_bounds: Rect,
+    dpi: f32,
+    sync_leading: bool,
+    minimum_fit_scale_percent: f32,
+) -> Result<Option<String>, String> {
+    if text.trim().is_empty() || text.len() > 16_384 || !preset.font_size.is_finite() || preset.font_size <= 0.0 {
+        return Ok(None);
+    }
+    let mut text = crate::snow_knuth_plass::bind_orphan_prepositions(text);
+    let profile = contour_profile(selection, document_bounds)?;
+    if profile.len() < 2 {
+        return Ok(None);
+    }
+    let fit_bounds = selection.content_bounds().intersect(&document_bounds);
+    if fit_bounds.width() < 8 || fit_bounds.height() < 8 {
+        return Ok(None);
+    }
+    if preset.hyphenate {
+        let dpi_scale = if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
+        let widest_line = profile.iter().map(|sample| (sample.2 - sample.1) as f32).fold(0.0f32, f32::max) * 0.88;
+        let h_scale = (preset.horizontal_scale / 100.0).clamp(0.01, 10.0);
+        text = crate::snow_knuth_plass::hyphenate_long_words_with_breaks(
+            &text,
+            widest_line * 0.95,
+            preset.font_size * dpi_scale,
+            h_scale,
+        );
+    }
+
+    let paragraphs: Vec<Vec<&str>> = text
+        .split('\n')
+        .map(|paragraph| paragraph.split(' ').filter(|word| !word.is_empty()).collect())
+        .collect();
+    let family = if preset.font_family.trim().is_empty() { photocraft_text::fonts::DEFAULT_FAMILY } else { preset.font_family.as_str() };
+    let style = CharStyle {
+        font_family: family.to_string(),
+        font_style: preset.font_style.clone(),
+        postscript_name: (!preset.font_postscript.is_empty()).then(|| preset.font_postscript.clone()),
+        weight: if preset.bold { 700 } else { 400 },
+        italic: preset.italic,
+        size_pt: preset.font_size,
+        tracking: preset.tracking as f32,
+        horizontal_scale: (preset.horizontal_scale / 100.0).clamp(0.01, 10.0),
+        faux_bold: preset.bold,
+        faux_italic: preset.italic,
+        kerning: if preset.measurement_system.is_optical() { Kerning::Optical } else { Kerning::Metrics },
+        ..CharStyle::default()
+    };
+    let dpi_scale = if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
+    let (word_widths, space_width) = {
+        let mut engine = photocraft_text::shared().lock().unwrap_or_else(|error| error.into_inner());
+        let mut cache = std::collections::HashMap::<String, f32>::new();
+        for word in paragraphs.iter().flatten() {
+            if !cache.contains_key(*word) {
+                let width = measure_script_word(word, &style, dpi, &mut engine);
+                cache.insert((*word).to_string(), width);
+            }
+        }
+        let measured_space = measure_script_word(" ", &style, dpi, &mut engine);
+        let space = if measured_space > 0.0 { measured_space } else { preset.font_size * dpi_scale * style.horizontal_scale * 0.25 };
+        (cache, space)
+    };
+    let paragraphs: Vec<Vec<(String, f32)>> = paragraphs
+        .iter()
+        .map(|paragraph| {
+            paragraph
+                .iter()
+                .map(|word| {
+                    let width = word_widths.get(*word).copied().unwrap_or(0.0);
+                    ((*word).to_string(), width)
+                })
+                .collect()
+        })
+        .collect();
+    let total_width: f32 = paragraphs.iter().flatten().map(|(_, width)| *width).sum::<f32>()
+        + paragraphs.iter().map(|paragraph| paragraph.len().saturating_sub(1)).sum::<usize>() as f32 * space_width;
+    if total_width <= 0.0 || !total_width.is_finite() {
+        return Ok(None);
+    }
+
+    let original_size = preset.font_size;
+    let original_leading = if preset.leading > 0.0 { preset.leading } else { original_size * 1.2 };
+    let check_size = |size: f32| -> Option<Vec<String>> {
+        let ratio = size / original_size;
+        let leading_pt = if sync_leading { original_leading * ratio } else { original_leading };
+        let font_size_px = size * dpi_scale;
+        let leading_px = leading_pt * dpi_scale;
+        let available_lines = ((fit_bounds.height() as f32 - font_size_px) / leading_px.max(font_size_px)).floor() as usize + 1;
+        if available_lines == 0 || available_lines > 512 {
+            return None;
+        }
+        let scaled_paragraphs: Vec<Vec<(String, f32)>> = paragraphs
+            .iter()
+            .map(|paragraph| paragraph.iter().map(|(word, width)| (word.clone(), width * ratio)).collect())
+            .collect();
+        let widest = profile.iter().map(|sample| (sample.2 - sample.1) as f32).fold(0.0f32, f32::max) * 0.88;
+        let mut expected = ((total_width * ratio / widest.max(1.0) / 0.68).ceil() as usize).clamp(1, available_lines);
+        for _ in 0..12 {
+            let lines = wrap_words_for_contour(&scaled_paragraphs, &profile, fit_bounds, expected, font_size_px, leading_px, space_width * ratio)?;
+            if lines.len() == expected {
+                return Some(lines);
+            }
+            if lines.len() > available_lines {
+                return None;
+            }
+            expected = lines.len().max(1);
+        }
+        None
+    };
+
+    if let Some(lines) = check_size(original_size) {
+        return Ok(Some(lines.join("\n")));
+    }
+    let minimum_scale = if minimum_fit_scale_percent.is_finite() {
+        (minimum_fit_scale_percent / 100.0).clamp(0.1, 1.0)
+    } else {
+        DEFAULT_TYPE_FIT_MIN_PERCENT / 100.0
+    };
+    let minimum_size = (original_size * minimum_scale).max(0.1);
+    let Some(mut best_lines) = check_size(minimum_size) else {
+        return Ok(None);
+    };
+    let mut low = minimum_size;
+    let mut high = original_size;
+    for _ in 0..12 {
+        let candidate = (low + high) * 0.5;
+        if let Some(lines) = check_size(candidate) {
+            low = candidate;
+            best_lines = lines;
+        } else {
+            high = candidate;
+        }
+    }
+    let scale = low / original_size;
+    preset.font_size = low;
+    if sync_leading {
+        preset.leading = original_leading * scale;
+    }
+    Ok(Some(best_lines.join("\n")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn append_tpl_entry(section: &mut Vec<u8>, name: &str, descriptor: photocraft_psd::Descriptor) {
+        let units: Vec<u16> = name.encode_utf16().collect();
+        section.extend_from_slice(&(units.len() as u32).to_be_bytes());
+        for unit in units {
+            section.extend_from_slice(&unit.to_be_bytes());
+        }
+        // Photoshop writes a descriptor version (measured: 16), then one full ActionDescriptor
+        // (display name, class id, property count, properties).
+        section.extend_from_slice(&16u32.to_be_bytes());
+        section.extend_from_slice(&descriptor.to_bytes());
+    }
+
+    fn tpl_file(section: Vec<u8>) -> Vec<u8> {
+        let mut data = b"8BTP".to_vec();
+        data.extend_from_slice(&2u32.to_be_bytes());
+        data.extend_from_slice(&1u32.to_be_bytes());
+        data.extend_from_slice(b"8BIMtptp");
+        data.extend_from_slice(&(section.len() as u32).to_be_bytes());
+        data.extend_from_slice(&section);
+        while !data.len().is_multiple_of(4) {
+            data.push(0);
+        }
+        data
+    }
+
+    #[test]
+    fn invalid_unicode_hex_colors_are_rejected_without_panicking() {
+        assert_eq!(parse_color_value(&serde_json::json!("界界")), None);
+        assert_eq!(parse_color_value(&serde_json::json!("1界界1")), None);
+    }
 
     /// ▼ is navigation: it moves to the next line without marking the current one applied.
     #[test]
@@ -912,9 +2261,551 @@ mod tests {
     }
 
     #[test]
+    fn script_prefix_selects_matching_style_and_is_removed() {
+        let mut state = TypesetterState::default();
+        state.presets[0].script_prefixes = vec!["REG".into()];
+        state.load_script("Page 12 : title\nrEg: Dialogue\n## translator note\n- REG: Next");
+
+        assert_eq!(state.lines.len(), 2);
+        assert_eq!(state.lines[0].page, 12);
+        assert_eq!(state.lines[0].text, "Dialogue");
+        assert_eq!(state.lines[0].matched_preset, Some(0));
+        assert_eq!(state.lines[1].text, "Next");
+        assert_eq!(state.lines[1].matched_preset, Some(0));
+        assert_eq!(state.selected_preset_idx, 0);
+    }
+
+    #[test]
+    fn style_prefix_scope_can_be_extended_across_folders() {
+        let mut state = TypesetterState::default();
+        state.presets[1].folder = Some("SFX".into());
+        state.presets[1].script_prefixes = vec!["SFX".into()];
+        state.load_script("SFX: Boom");
+        assert_eq!(state.lines[0].matched_preset, None);
+
+        state.options.match_prefixes_across_folders = true;
+        state.load_script("SFX: Boom");
+        assert_eq!(state.lines[0].matched_preset, Some(1));
+        assert_eq!(state.selected_preset_idx, 1);
+    }
+
+    #[test]
+    fn navigating_to_prefixed_line_activates_its_style() {
+        let mut state = TypesetterState::default();
+        state.presets[0].script_prefixes = vec!["REG".into()];
+        state.presets[1].folder = state.presets[0].folder.clone();
+        state.presets[1].script_prefixes = vec!["SFX".into()];
+        state.load_script("REG: Hello\nSFX: Boom");
+        state.next_line();
+
+        assert_eq!(state.selected_preset_idx, 1);
+        state.prev_line();
+        assert_eq!(state.selected_preset_idx, 0);
+    }
+
+    #[test]
+    fn line_preset_uses_prefix_match_even_before_navigation() {
+        let mut state = TypesetterState::default();
+        state.presets[0].script_prefixes = vec!["REG".into()];
+        state.presets[1].folder = state.presets[0].folder.clone();
+        state.presets[1].script_prefixes = vec!["SFX".into()];
+        state.load_script("REG: Dialogue\nSFX: Boom");
+
+        assert_eq!(state.selected_preset_idx, 0);
+        assert_eq!(state.preset_for_line(1).map(|preset| preset.name.as_str()), Some("Крик / SFX"));
+    }
+
+    #[test]
+    fn imported_style_prefixes_round_trip_and_old_settings_default_cleanly() {
+        let mut state = TypesetterState::default();
+        let imported = state
+            .import_styles_json(r#"{"styles":[{"name":"SFX","prefixes":["SFX","BOOM"]}]}"#)
+            .unwrap();
+        assert_eq!(imported, 1);
+        assert_eq!(state.presets.last().unwrap().script_prefixes, vec!["SFX", "BOOM"]);
+
+        let exported = state.export_styles_json(None).unwrap();
+        let exported: serde_json::Value = serde_json::from_str(&exported).unwrap();
+        let styles = exported.get("styles").and_then(serde_json::Value::as_array).unwrap();
+        let prefixes = styles.last().and_then(|style| style.get("scriptPrefixes"));
+        assert_eq!(prefixes, Some(&serde_json::json!(["SFX", "BOOM"])));
+
+        let options: TypesetterOptions = serde_json::from_str(
+            r#"{"auto_page_switch":true,"line_spacing_sync":true,"strip_character_names":true,"strip_dash_prefix":true,"optical_baseline_factor":0.35,"hanging_punctuation":true}"#,
+        )
+        .unwrap();
+        assert!(options.match_style_prefixes);
+        assert!(!options.match_prefixes_across_folders);
+        assert_eq!(options.minimum_fit_scale_percent, DEFAULT_TYPE_FIT_MIN_PERCENT);
+    }
+
+    #[test]
     fn test_bubble_center_calculation() {
         let center = calculate_bubble_center([100.0, 100.0, 300.0, 500.0]);
         assert_eq!(center, [200.0, 300.0]);
+    }
+
+    #[test]
+    fn contour_fit_wraps_to_mask_and_reduces_size_when_needed() {
+        let bounds = Rect::new(0, 0, 260, 220);
+        let center_x = 130.0f32;
+        let center_y = 110.0f32;
+        let mut pixels = vec![0.0; bounds.width() as usize * bounds.height() as usize];
+        for y in bounds.y0..bounds.y1 {
+            for x in bounds.x0..bounds.x1 {
+                let dx = (x as f32 - center_x) / 128.0;
+                let dy = (y as f32 - center_y) / 108.0;
+                if dx * dx + dy * dy <= 1.0 {
+                    let index = y as usize * bounds.width() as usize + x as usize;
+                    if let Some(pixel) = pixels.get_mut(index) {
+                        *pixel = 1.0;
+                    }
+                }
+            }
+        }
+        let mut selection = Surface::new(photocraft_color::PixelFormat::GRAY8);
+        selection.write_region(bounds, &pixels);
+        let text = "This is a longer sample dialogue that needs several carefully balanced lines inside the selected speech bubble";
+        let mut preset = TextStylePreset {
+            font_family: "Inter".into(),
+            font_postscript: String::new(),
+            font_size: 24.0,
+            leading: 28.0,
+            ..TextStylePreset::default()
+        };
+
+        let fitted = fit_script_text_to_selection(text, &mut preset, &selection, bounds, 72.0, true, 75.0).unwrap();
+        let fitted = fitted.expect("the ellipse selection must fit after reducing the type size");
+
+        assert!(fitted.contains('\n'));
+        assert!(preset.font_size < 24.0);
+        assert!(preset.font_size >= 18.0);
+        let line_lengths: Vec<_> = fitted.lines().map(|line| line.chars().count()).collect();
+        assert!(line_lengths.first().zip(line_lengths.get(line_lengths.len() / 2)).is_some_and(|(top, middle)| top < middle));
+        let compact = |value: &str| value.chars().filter(|character| !character.is_whitespace()).collect::<String>();
+        assert_eq!(compact(&fitted), compact(text));
+    }
+
+    #[test]
+    fn contour_fit_rejects_an_empty_selection() {
+        let selection = Surface::new(photocraft_color::PixelFormat::GRAY8);
+        let mut preset = TextStylePreset::default();
+        assert_eq!(
+            fit_script_text_to_selection("Hello", &mut preset, &selection, Rect::new(0, 0, 200, 200), 72.0, true, 75.0).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn contour_wrap_balances_adjacent_lines_to_avoid_a_one_word_widow() {
+        let words = vec![vec![
+            ("one".into(), 20.0),
+            ("two".into(), 20.0),
+            ("three".into(), 20.0),
+            ("four".into(), 20.0),
+        ]];
+        let profile: Vec<_> = (0..100).map(|y| (y, 0, 100)).collect();
+
+        let lines = wrap_words_for_contour(&words, &profile, Rect::new(0, 0, 100, 100), 2, 10.0, 10.0, 5.0).unwrap();
+
+        assert_eq!(lines, vec!["one two", "three four"]);
+    }
+
+    #[test]
+    fn script_markdown_becomes_editable_character_runs() {
+        let (plain, words) = parse_script_markup("Regular **bold text** and *italic*");
+        assert_eq!(plain, "Regular bold text and italic");
+        let runs = script_markup_run_params(&plain, &words);
+        assert_eq!(
+            runs,
+            vec![
+                serde_json::json!({"start": 8, "end": 12, "fauxBold": true}),
+                serde_json::json!({"start": 13, "end": 17, "fauxBold": true}),
+                serde_json::json!({"start": 22, "end": 28, "fauxItalic": true})
+            ]
+        );
+    }
+
+    #[test]
+    fn script_markdown_preserves_unmatched_and_escaped_markers() {
+        let (plain, words) = parse_script_markup(r"Keep \*literal\* and **unclosed");
+        assert_eq!(plain, "Keep *literal* and **unclosed");
+        assert!(script_markup_run_params(&plain, &words).is_empty());
+    }
+
+    #[test]
+    fn script_markdown_runs_use_character_offsets_with_unicode_and_wrapped_lines() {
+        let (plain, words) = parse_script_markup("普通 **太字**\n*声*");
+        assert_eq!(plain, "普通 太字\n声");
+        assert_eq!(
+            script_markup_run_params(&plain, &words),
+            vec![
+                serde_json::json!({"start": 3, "end": 5, "fauxBold": true}),
+                serde_json::json!({"start": 6, "end": 7, "fauxItalic": true})
+            ]
+        );
+    }
+
+    #[test]
+    fn document_style_scan_imports_and_deduplicates_editable_type_styles() {
+        let style = CharStyle {
+            font_family: "Example Sans".into(),
+            postscript_name: Some("ExampleSans-Bold".into()),
+            font_style: "Bold".into(),
+            weight: 700,
+            size_pt: 18.0,
+            color: photocraft_color::Color::rgba(0.1, 0.2, 0.3, 1.0),
+            tracking: 25.0,
+            horizontal_scale: 0.9,
+            faux_bold: true,
+            kerning: Kerning::Optical,
+            ..CharStyle::default()
+        };
+        let text_layer = TextLayer {
+            text: "Sample text".into(),
+            runs: vec![TextRun { len: "Sample text".len(), style }],
+            antialias: AntiAlias::Sharp,
+            ..TextLayer::default()
+        };
+        let mut doc = Document::new(
+            "Style scan",
+            photocraft_geom::Size::new(100, 100),
+            photocraft_color::ColorMode::Rgb,
+            photocraft_color::SampleType::U8,
+        );
+        let mut layer = photocraft_doc::Layer::new("Dialogue", LayerContent::Text(text_layer));
+        layer.effects.enabled = true;
+        layer.effects.items.push(Effect::Stroke(photocraft_doc::effects::StrokeFx {
+            common: photocraft_doc::effects::FxCommon::new(photocraft_doc::BlendMode::Normal, 0.5),
+            size: 2.0,
+            position: photocraft_doc::effects::StrokePosition::Outside,
+            paint: FxPaint::Color(photocraft_color::Color::WHITE),
+            overprint: false,
+        }));
+        doc.layers.push(layer);
+
+        let mut state = TypesetterState::default();
+        let (added, unsupported) = state.scan_document_text_styles(&doc);
+        assert_eq!((added, unsupported), (1, 0));
+        let preset = state.active_preset().unwrap();
+        assert_eq!(preset.name, "Dialogue");
+        assert_eq!(preset.font_family, "Example Sans");
+        assert_eq!(preset.font_postscript, "ExampleSans-Bold");
+        assert_eq!(preset.font_size, 18.0);
+        assert_eq!(preset.tracking, 25);
+        assert_eq!(preset.horizontal_scale, 90.0);
+        assert!(preset.bold);
+        assert_eq!(preset.text_color, [26, 51, 77, 255]);
+        assert_eq!(preset.measurement_system, MeasurementSystem::Optical);
+        assert_eq!(preset.anti_alias, "sharp");
+        assert_eq!(preset.stroke_width, 2.0);
+        assert_eq!(preset.stroke_color, [255, 255, 255, 128]);
+        assert_eq!(state.scan_document_text_styles(&doc), (0, 0));
+    }
+
+    #[test]
+    fn document_style_scan_reports_strokes_not_representable_by_type_styles() {
+        let text_layer = TextLayer {
+            text: "Outlined".into(),
+            runs: vec![TextRun {
+                len: "Outlined".len(),
+                style: CharStyle { font_family: "Unsupported Stroke Test".into(), ..CharStyle::default() },
+            }],
+            ..TextLayer::default()
+        };
+        let mut layer = photocraft_doc::Layer::new("Outlined", LayerContent::Text(text_layer));
+        layer.effects.enabled = true;
+        layer.effects.items.push(Effect::Stroke(photocraft_doc::effects::StrokeFx {
+            common: photocraft_doc::effects::FxCommon::new(photocraft_doc::BlendMode::Normal, 1.0),
+            size: 2.0,
+            position: photocraft_doc::effects::StrokePosition::Inside,
+            paint: FxPaint::Color(photocraft_color::Color::WHITE),
+            overprint: false,
+        }));
+        let mut doc = Document::new(
+            "Unsupported stroke",
+            photocraft_geom::Size::new(100, 100),
+            photocraft_color::ColorMode::Rgb,
+            photocraft_color::SampleType::U8,
+        );
+        doc.layers.push(layer);
+
+        assert_eq!(TypesetterState::default().scan_document_text_styles(&doc), (1, 1));
+    }
+
+    #[test]
+    fn tpl_import_maps_photoshop_text_preset_and_reports_skips() {
+        use photocraft_psd::descriptor::{Descriptor, Id, UnicodeString, Value};
+
+        let character = Descriptor::new("TxtS")
+            .with("fontPostScriptName", Value::Text(UnicodeString::new_nul("ExampleSans-Bold")))
+            .with("FntN", Value::Text(UnicodeString::new_nul("Example Sans")))
+            .with("FntS", Value::Text(UnicodeString::new_nul("Bold")))
+            .with("Sz  ", Value::UnitFloat { unit: *b"#Pnt", value: 18.0 })
+            .with("Ldng", Value::UnitFloat { unit: *b"#Pnt", value: 22.0 })
+            .with("autoLeading", Value::Boolean(false))
+            .with("Trck", Value::Integer(25))
+            .with("HrzS", Value::Double(92.0))
+            .with("AntA", Value::Integer(16))
+            .with("syntheticItalic", Value::Boolean(true))
+            .with("fontCaps", Value::Enumerated { type_id: Id::new("fontCaps"), value: Id::new("AllCaps") })
+            .with("AtKr", Value::Enumerated { type_id: Id::new("AtKr"), value: Id::new("opticalKern") })
+            .with(
+                "Clr ",
+                Value::Descriptor(
+                    Descriptor::new("RGBC")
+                        .with("Rd  ", Value::Double(200.4))
+                        .with("Grn ", Value::Double(30.0))
+                        .with("Bl  ", Value::Double(10.0)),
+                ),
+            );
+        let type_tool = Descriptor::new("typeCreateOrEditTool")
+            .with(
+                "textToolCharacterOptions",
+                Value::Descriptor(Descriptor::new("textToolCharacterOptions").with("TxtS", Value::Descriptor(character.clone()))),
+            )
+            .with(
+                "textToolParagraphOptions",
+                Value::Descriptor(
+                    Descriptor::new("textToolParagraphOptions")
+                        .with("Ornt", Value::Enumerated { type_id: Id::new("Ornt"), value: Id::new("Hrzn") }),
+                ),
+            );
+        let vertical_tool = Descriptor::new("typeVerticalCreateOrEditTool")
+            .with(
+                "textToolCharacterOptions",
+                Value::Descriptor(Descriptor::new("textToolCharacterOptions").with("TxtS", Value::Descriptor(character))),
+            )
+            .with(
+                "textToolParagraphOptions",
+                Value::Descriptor(
+                    Descriptor::new("textToolParagraphOptions")
+                        .with("Ornt", Value::Enumerated { type_id: Id::new("Ornt"), value: Id::new("Vrtc") }),
+                ),
+            );
+
+        let mut section = Vec::new();
+        section.extend_from_slice(&3u32.to_be_bytes());
+        append_tpl_entry(&mut section, "$$$/Presets/Tools/Text_tpl=Dialogue", type_tool);
+        append_tpl_entry(&mut section, "Brush", Descriptor::new("paintbrushTool"));
+        append_tpl_entry(&mut section, "Vertical", vertical_tool);
+        let data = tpl_file(section);
+
+        let mut state = TypesetterState::default();
+        let report = state.import_tool_presets_tpl(&data, "Chapter").unwrap();
+        assert_eq!(report, TplImportReport { imported: 2, skipped: 1, vertical_imported: 1 });
+        let imported = state.presets.iter().find(|preset| preset.name == "Dialogue").unwrap();
+        assert_eq!(imported.name, "Dialogue");
+        assert_eq!(imported.folder.as_deref(), Some("Chapter"));
+        assert_eq!(imported.font_family, "Example Sans");
+        assert_eq!(imported.font_postscript, "ExampleSans-Bold");
+        assert_eq!(imported.font_style, "Bold");
+        assert!(imported.bold);
+        assert!(imported.italic);
+        assert!(imported.all_caps);
+        assert_eq!(imported.font_size, 18.0);
+        assert_eq!(imported.leading, 22.0);
+        assert_eq!(imported.tracking, 25);
+        assert_eq!(imported.horizontal_scale, 92.0);
+        assert_eq!(imported.text_color, [200, 30, 10, 255]);
+        assert_eq!(imported.anti_alias, "sharp");
+        assert_eq!(imported.measurement_system, MeasurementSystem::Optical);
+        assert_eq!(imported.stroke_width, 0.0);
+        assert!(state.presets.iter().any(|preset| preset.name == "Vertical" && preset.orientation == "vertical"));
+    }
+
+    #[test]
+    fn tpl_import_reads_float_rgb_and_rejects_incomplete_text_presets() {
+        use photocraft_psd::descriptor::{Descriptor, UnicodeString, Value};
+
+        let complete = Descriptor::new("TxtS")
+            .with("FntN", Value::Text(UnicodeString::new_nul("Float Colour")))
+            .with("Sz  ", Value::UnitFloat { unit: *b"#Pnt", value: 12.0 })
+            .with(
+                "Clr ",
+                Value::Descriptor(
+                    Descriptor::new("RGBC")
+                        .with("redFloat", Value::Double(0.5))
+                        .with("greenFloat", Value::Double(0.0))
+                        .with("blueFloat", Value::Double(1.0)),
+                ),
+            );
+        // No font name or size: Photoshop writes these for incomplete presets, and TypeR
+        // skips them rather than inventing a default face.
+        let incomplete = Descriptor::new("TxtS").with("FntN", Value::Text(UnicodeString::new_nul("Only a name")));
+        let make_tool = |character: Descriptor| {
+            Descriptor::new("typeCreateOrEditTool").with(
+                "textToolCharacterOptions",
+                Value::Descriptor(Descriptor::new("textToolCharacterOptions").with("TxtS", Value::Descriptor(character))),
+            )
+        };
+
+        let mut section = Vec::new();
+        section.extend_from_slice(&2u32.to_be_bytes());
+        append_tpl_entry(&mut section, "Float", make_tool(complete));
+        append_tpl_entry(&mut section, "Incomplete", make_tool(incomplete));
+
+        let mut state = TypesetterState::default();
+        let report = state.import_tool_presets_tpl(&tpl_file(section), "Float").unwrap();
+        assert_eq!(report, TplImportReport { imported: 1, skipped: 1, vertical_imported: 0 });
+        assert_eq!(state.presets.last().unwrap().text_color, [128, 0, 255, 255]);
+    }
+
+    #[test]
+    fn punctuation_only_lines_scale_size_and_leading() {
+        assert!(is_punctuation_only_text("?!"));
+        assert!(is_punctuation_only_text("  ?! …  "));
+        assert!(!is_punctuation_only_text("?! ok"));
+        assert!(!is_punctuation_only_text(""));
+        assert!(!is_punctuation_only_text("   "));
+
+        let mut preset = TextStylePreset { font_size: 20.0, leading: 24.0, punctuation_only_scale: 2.0, ..TextStylePreset::default() };
+        assert_eq!(preset.scale_for_punctuation_only("?! …"), 2.0);
+        assert_eq!((preset.font_size, preset.leading), (40.0, 48.0));
+
+        let mut ordinary = TextStylePreset { font_size: 20.0, leading: 24.0, punctuation_only_scale: 3.0, ..TextStylePreset::default() };
+        assert_eq!(ordinary.scale_for_punctuation_only("Wait!"), 1.0);
+        assert_eq!((ordinary.font_size, ordinary.leading), (20.0, 24.0));
+
+        let json = serde_json::json!({"styles": [{"name": "Shout", "punctuationOnlyScale": 3}]});
+        let mut state = TypesetterState::default();
+        state.import_styles_json(&json.to_string()).unwrap();
+        assert_eq!(state.presets.last().unwrap().punctuation_only_scale, 3.0);
+        let exported = state.export_styles_json(None).unwrap();
+        assert!(exported.contains("\"punctuationOnlyScale\": 3.0"));
+    }
+
+    #[test]
+    fn text_shape_candidates_include_balanced_and_contour_layouts() {
+        let bounds = Rect::new(0, 0, 220, 180);
+        let mut pixels = vec![0.0; bounds.width() as usize * bounds.height() as usize];
+        for y in 0..180 {
+            for x in 0..220 {
+                let dx = (x as f32 - 110.0) / 105.0;
+                let dy = (y as f32 - 90.0) / 85.0;
+                if dx * dx + dy * dy <= 1.0
+                    && let Some(pixel) = pixels.get_mut(y * 220 + x)
+                {
+                    *pixel = 1.0;
+                }
+            }
+        }
+        let mut selection = Surface::new(photocraft_color::PixelFormat::GRAY8);
+        selection.write_region(bounds, &pixels);
+        let preset = TextStylePreset { font_family: "Inter".into(), font_size: 20.0, leading: 24.0, ..TextStylePreset::default() };
+
+        let candidates = text_shape_candidates(
+            "This is a sample line with enough words to need several balanced lines inside a bubble",
+            &preset,
+            Some(&selection),
+            bounds,
+            72.0,
+            true,
+            75.0,
+        )
+        .unwrap();
+
+        assert!(candidates.iter().any(|candidate| candidate.kind == TextShapeKind::Original));
+        assert!(candidates.iter().any(|candidate| candidate.kind == TextShapeKind::Balanced));
+        assert!(candidates.iter().any(|candidate| candidate.kind == TextShapeKind::ContourFit));
+        let mut texts: Vec<_> = candidates.iter().map(|candidate| candidate.text.as_str()).collect();
+        texts.sort_unstable();
+        texts.dedup();
+        assert_eq!(texts.len(), candidates.len(), "candidates must be unique");
+    }
+
+    #[test]
+    fn paragraph_and_orientation_settings_round_trip_through_json() {
+        let json = serde_json::json!({"styles": [{
+            "name": "Narration",
+            "orientation": "vertical",
+            "alignment": "right",
+            "direction": "rtl",
+            "firstLineIndent": 12.0,
+            "startIndent": 4.0,
+            "endIndent": 6.0,
+            "spaceBefore": 2.0,
+            "spaceAfter": 3.0,
+            "hyphenate": true
+        }]});
+        let mut state = TypesetterState::default();
+        state.import_styles_json(&json.to_string()).unwrap();
+        let preset = state.presets.last().unwrap();
+        assert_eq!(preset.orientation, "vertical");
+        assert_eq!(preset.alignment, "right");
+        assert_eq!(preset.direction, "rtl");
+        assert_eq!((preset.first_line_indent, preset.start_indent, preset.end_indent), (12.0, 4.0, 6.0));
+        assert_eq!((preset.space_before, preset.space_after), (2.0, 3.0));
+        assert!(preset.hyphenate);
+
+        let exported: serde_json::Value = serde_json::from_str(&state.export_styles_json(None).unwrap()).unwrap();
+        let style = exported.get("styles").and_then(serde_json::Value::as_array).and_then(|styles| styles.last()).unwrap();
+        assert_eq!(style.get("orientation").and_then(serde_json::Value::as_str), Some("vertical"));
+        assert_eq!(style.get("hyphenate").and_then(serde_json::Value::as_bool), Some(true));
+    }
+
+    #[test]
+    fn tpl_import_rejects_libraries_without_text_presets() {
+        use photocraft_psd::descriptor::Descriptor;
+
+        let mut section = 1u32.to_be_bytes().to_vec();
+        append_tpl_entry(&mut section, "Brush", Descriptor::new("paintbrushTool"));
+        assert!(TypesetterState::default().import_tool_presets_tpl(&tpl_file(section), "Brushes").is_err());
+    }
+
+    #[test]
+    fn contour_fit_leaves_disconnected_bubbles_to_the_fallback() {
+        let bounds = Rect::new(0, 0, 200, 120);
+        let mut pixels = vec![0.0; bounds.width() as usize * bounds.height() as usize];
+        for y in 20..100 {
+            for x in 10..75 {
+                if let Some(pixel) = pixels.get_mut(y * bounds.width() as usize + x) {
+                    *pixel = 1.0;
+                }
+            }
+            for x in 125..190 {
+                if let Some(pixel) = pixels.get_mut(y * bounds.width() as usize + x) {
+                    *pixel = 1.0;
+                }
+            }
+        }
+        let mut selection = Surface::new(photocraft_color::PixelFormat::GRAY8);
+        selection.write_region(bounds, &pixels);
+        let mut preset = TextStylePreset::default();
+
+        assert_eq!(
+            fit_script_text_to_selection("Hello bubble", &mut preset, &selection, bounds, 72.0, true, 75.0).unwrap(),
+            None
+        );
+        assert_eq!(preset.font_size, TextStylePreset::default().font_size);
+    }
+
+    #[test]
+    fn contour_fit_leaves_vertically_separated_bubbles_to_the_fallback() {
+        let bounds = Rect::new(0, 0, 160, 140);
+        let mut pixels = vec![0.0; bounds.width() as usize * bounds.height() as usize];
+        for y in 5..45 {
+            for x in 50..110 {
+                if let Some(pixel) = pixels.get_mut(y * bounds.width() as usize + x) {
+                    *pixel = 1.0;
+                }
+            }
+        }
+        for y in 95..135 {
+            for x in 50..110 {
+                if let Some(pixel) = pixels.get_mut(y * bounds.width() as usize + x) {
+                    *pixel = 1.0;
+                }
+            }
+        }
+        let mut selection = Surface::new(photocraft_color::PixelFormat::GRAY8);
+        selection.write_region(bounds, &pixels);
+        let mut preset = TextStylePreset::default();
+
+        assert_eq!(
+            fit_script_text_to_selection("Hello bubble", &mut preset, &selection, bounds, 72.0, true, 75.0).unwrap(),
+            None
+        );
     }
 
     #[test]

@@ -5084,6 +5084,7 @@ shape	Appearance	Оформление
 	Automatically advance script to the next page	Автоматический переход на следующую страницу скрипта
 	Baseline shift:	Сдвиг базовой линии:
 	Choose TypeR styles file	Выберите файл стилей TypeR
+	Choose Photoshop tool presets	Выберите пресеты инструментов Photoshop
 	Choose script file	Выберите файл сценария
 	Clear entire script	Очистить весь сценарий
 	Clear script	Очистить сценарий
@@ -5094,10 +5095,23 @@ shape	Appearance	Оформление
 	Export TypeR JSON…	Экспорт TypeR JSON…
 	Export TypeR styles	Экспорт стилей TypeR
 	Export error	Ошибка экспорта
+	Scan text layers in current document	Извлечь стили из документа
+	No document is open to scan	Сначала откройте документ для сканирования
+	No new text styles were found	Новых стилей текста не найдено
+	Added {count} text styles	Добавлено стилей текста: {count}
+	Added {count} text styles; {effects} layer strokes could not be represented	Добавлено стилей: {count}; обводки {effects} слоёв невозможно представить в стиле TypeR
+	Scan PSD file for text styles…	Извлечь стили текста из PSD…
+	Choose a Photoshop document to scan	Выберите документ Photoshop для сканирования
+	A text-style scan is already running	Сканирование стилей текста уже выполняется
+	Scanning text styles in {file}	Сканирование стилей текста в {file}
+	Could not start text-style scan: {error}	Не удалось начать сканирование стилей текста: {error}
+	Text-style scan failed: {error}	Не удалось просканировать стили текста: {error}
+	Text-style scan stopped unexpectedly	Сканирование стилей текста неожиданно остановилось
 	File:	Файл:
 	Font Settings	Настройки шрифта
 	GEOMETRY & CENTERING	ГЕОМЕТРИЯ И ЦЕНТРИРОВАНИЕ
 	Go to current line/page	Перейти к текущей странице/реплике
+	Import Photoshop TPL…	Импорт Photoshop TPL…
 	Import TypeR JSON…	Импорт TypeR JSON…
 	Import error	Ошибка импорта
 	Insert current line into selection/bubble (Enter)	Вставить текущую строку в выделение/баббл (Enter)
@@ -5109,6 +5123,7 @@ shape	Appearance	Оформление
 	Load script file (.txt)	Загрузить файл сценария (.txt)
 	Load script file (.txt)…	Загрузить файл сценария (.txt)…
 	Loaded dialogues	Загружено реплик
+	Loaded {count} text styles ({vertical} vertical); skipped {skipped} presets	Загружено стилей текста: {count} (вертикальных: {vertical}); пропущено пресетов: {skipped}
 	Loaded styles	Загружено стилей
 	Make this line current	Сделать эту реплику активной
 	Manga Script (Full Text)	Сценарий манги (Полный текст)
@@ -5141,6 +5156,39 @@ shape	Appearance	Оформление
 	Show current page dialogues only	Показывать только реплики текущей страницы
 	Strip character names	Очищать имена персонажей
 	Strip character names at start of line ('HERO: Text')	Очищать имена персонажей в начале строки ('ГЕРОЙ: Текст')
+	Insert	Вставить
+	Increase text size	Увеличить кегль
+	Decrease text size	Уменьшить кегль
+	Center in selection	Центрировать в выделении
+	Layer centered in the selection	Слой отцентрирован в выделении
+	Align failed: {error}	Не удалось выровнять: {error}
+	Back to TypeR	Назад в TypeR
+	Capture bubble	Захватить баббл
+	Capture the current selection for multi-bubble fill	Запомнить текущее выделение для заполнения нескольких бабблов
+	Fill bubbles	Заполнить бабблы
+	Clear captured bubbles	Очистить захваченные бабблы
+	Capture a selection first	Сначала создайте выделение
+	Bubble captured ({count})	Баббл захвачен ({count})
+	Filled {count} bubbles	Заполнено бабблов: {count}
+	TextShapeR	TextShapeR
+	TextShapeR…	TextShapeR…
+	Original line breaks	Исходные переносы
+	Contour fit	Подгонка по контуру
+	Bubble wrap	Перенос по баблу
+	Balanced	Балансировка
+	No suitable line breaks were found	Подходящие переносы не найдены
+	TextShapeR proposals are ready	Варианты TextShapeR готовы
+	Select a text layer on the page	Выберите текстовый слой на странице
+	TextShapeR applied to the selected text layer	TextShapeR применён к выбранному текстовому слою
+	TextShapeR failed: {error}	Ошибка TextShapeR: {error}
+	Script style prefixes	Префиксы стилей сценария
+	Punctuation-only size	Кегль для строк из знаков препинания
+	Enlarge lines made only of punctuation, such as ?!	Увеличивать строки только из знаков препинания, например ?!
+	Paste current line when a selection is made	Вставлять текущую реплику при создании выделения
+	Auto-select style from script prefixes	Автовыбор стиля по префиксу сценария
+	Match prefixes across all style folders	Искать префиксы во всех папках стилей
+	Minimum size when fitting to a bubble	Минимальный кегль при подгонке по бабблу
+	Keep the original size when possible; shrink only to this percentage	Сохранять исходный кегль, если текст помещается; уменьшать только до указанного процента
 	Strip leading dashes	Очищать тире в начале реплик
 	Strip leading dashes ('- Text', '— Text')	Очищать тире в начале реплик ('- Текст', '— Текст')
 	Styles successfully exported	Стили успешно экспортированы

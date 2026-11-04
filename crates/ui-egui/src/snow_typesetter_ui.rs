@@ -2,7 +2,7 @@ use egui::{
     Align, Color32, CornerRadius, Frame, Layout, Margin, RichText, ScrollArea, Sense, Stroke,
     Window, vec2,
 };
-use photocraft_engine::typesetter::{ScriptLine, TextStylePreset, TypesetterState};
+use photocraft_engine::typesetter::{TextShapeCandidate, TextShapeKind, TextStylePreset, TypesetterState};
 use serde::{Deserialize, Serialize};
 
 use crate::theme::Tokens;
@@ -41,6 +41,22 @@ fn default_true() -> bool {
 
 fn default_script_list_height() -> f32 {
     160.0
+}
+
+fn read_tpl_file(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
+    let file = std::fs::File::open(path)?;
+    let max_bytes = photocraft_engine::typesetter::MAX_TPL_FILE_BYTES;
+    let limit = max_bytes as u64;
+    if file.metadata()?.len() > limit {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Photoshop TPL file exceeds the size limit"));
+    }
+    let mut reader = std::io::Read::take(file, limit + 1);
+    let mut data = Vec::new();
+    std::io::Read::read_to_end(&mut reader, &mut data)?;
+    if data.len() > max_bytes {
+        return Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "Photoshop TPL file exceeds the size limit"));
+    }
+    Ok(data)
 }
 
 /// Point size for style names drawn in their own face on the style cards.
@@ -157,6 +173,19 @@ pub struct TypesetterUi {
     pub scroll_to_active_line: bool,
     pub script_buffer: String,
     pub script_list_height: f32,
+    document_style_scan_requested: bool,
+    document_style_file_scan_requested: Option<std::path::PathBuf>,
+    text_shape_requested: bool,
+    text_shape_candidates: Vec<TextShapeCandidate>,
+    text_shape_selected: usize,
+    show_text_shape_window: bool,
+    text_shape_layer: Option<u64>,
+    text_shape_apply_requested: Option<(u64, String)>,
+    text_shape_preview_preset: Option<TextStylePreset>,
+    multi_bubble_captures: Vec<photocraft_raster::Surface>,
+    multi_bubble_capture_requested: bool,
+    multi_bubble_fill_requested: bool,
+    align_requested: bool,
     /// Pass number in which the auxiliary windows were last drawn, so a frame that renders both
     /// the docked body and the floating one does not open them twice.
     aux_pass: u64,
@@ -197,6 +226,19 @@ impl Default for TypesetterUi {
             scroll_to_active_line: false,
             script_buffer: String::new(),
             script_list_height: 160.0,
+            document_style_scan_requested: false,
+            document_style_file_scan_requested: None,
+            text_shape_requested: false,
+            text_shape_candidates: Vec::new(),
+            text_shape_selected: 0,
+            show_text_shape_window: false,
+            text_shape_layer: None,
+            text_shape_apply_requested: None,
+            text_shape_preview_preset: None,
+            multi_bubble_captures: Vec::new(),
+            multi_bubble_capture_requested: false,
+            multi_bubble_fill_requested: false,
+            align_requested: false,
             aux_pass: u64::MAX,
             legacy_merged: false,
             caret_line: None,
@@ -225,30 +267,148 @@ impl TypesetterUi {
         }
     }
 
+    pub fn take_document_style_scan_request(&mut self) -> bool {
+        std::mem::take(&mut self.document_style_scan_requested)
+    }
+
+    pub fn take_document_style_file_scan_request(&mut self) -> Option<std::path::PathBuf> {
+        self.document_style_file_scan_requested.take()
+    }
+
+    pub fn take_text_shape_request(&mut self) -> bool {
+        std::mem::take(&mut self.text_shape_requested)
+    }
+
+    pub fn set_text_shape_candidates(&mut self, candidates: Vec<TextShapeCandidate>, layer: u64, preset: TextStylePreset) {
+        self.set_text_shape_candidates_inline(candidates, layer, preset);
+        self.show_text_shape_window = !self.text_shape_candidates.is_empty();
+    }
+
+    /// Refresh the inline cards without opening the modal preview window.
+    pub fn set_text_shape_candidates_inline(&mut self, candidates: Vec<TextShapeCandidate>, layer: u64, preset: TextStylePreset) {
+        self.text_shape_selected = self.text_shape_selected.min(candidates.len().saturating_sub(1));
+        self.text_shape_candidates = candidates;
+        self.text_shape_layer = if self.text_shape_candidates.is_empty() { None } else { Some(layer) };
+        self.text_shape_preview_preset = if self.text_shape_candidates.is_empty() { None } else { Some(preset) };
+        if self.text_shape_candidates.is_empty() {
+            self.show_text_shape_window = false;
+        }
+    }
+
+    pub fn take_text_shape_apply_request(&mut self) -> Option<(u64, String)> {
+        self.text_shape_apply_requested.take()
+    }
+
+    pub fn has_text_shape_candidates(&self) -> bool {
+        !self.text_shape_candidates.is_empty() && self.text_shape_layer.is_some()
+    }
+
+    pub fn first_text_shape_candidate_text(&self) -> Option<String> {
+        self.text_shape_candidates.first().map(|candidate| candidate.text.clone())
+    }
+
+    pub fn clear_text_shape_candidates(&mut self) {
+        self.text_shape_candidates.clear();
+        self.text_shape_layer = None;
+        self.text_shape_preview_preset = None;
+        self.show_text_shape_window = false;
+    }
+
+    fn apply_text_shape_candidate(&mut self, index: usize) {
+        let Some(layer) = self.text_shape_layer else { return };
+        let Some(candidate) = self.text_shape_candidates.get(index) else { return };
+        self.text_shape_apply_requested = Some((layer, candidate.text.clone()));
+        self.show_text_shape_window = false;
+    }
+
+    pub fn take_align_request(&mut self) -> bool {
+        std::mem::take(&mut self.align_requested)
+    }
+
+    pub fn take_multi_bubble_capture_request(&mut self) -> bool {
+        std::mem::take(&mut self.multi_bubble_capture_requested)
+    }
+
+    pub fn take_multi_bubble_fill_request(&mut self) -> bool {
+        std::mem::take(&mut self.multi_bubble_fill_requested)
+    }
+
+    pub fn push_multi_bubble_capture(&mut self, selection: photocraft_raster::Surface) {
+        self.multi_bubble_captures.push(selection);
+    }
+
+    pub fn drain_multi_bubble_captures(&mut self) -> Vec<photocraft_raster::Surface> {
+        std::mem::take(&mut self.multi_bubble_captures)
+    }
+
+    pub fn multi_bubble_count(&self) -> usize {
+        self.multi_bubble_captures.len()
+    }
+
     /// Синхронизирует массив строк реплик и метаданных при редактировании единого текстового буфера.
     pub fn sync_state_from_script_buffer(&mut self) {
-        let lines: Vec<&str> = self.script_buffer.split('\n').collect();
-        let mut new_lines = Vec::with_capacity(lines.len());
-        let mut page = 1;
-        for (i, line_str) in lines.iter().enumerate() {
-            let trimmed = line_str.trim();
-            if let Some(p) = photocraft_engine::typesetter::detect_page_header(trimmed) {
-                page = p;
+        let previous_lines = self.state.lines.clone();
+        let current_line_idx = self.state.current_line_idx;
+        self.state.load_script(&self.script_buffer);
+        for (idx, line) in self.state.lines.iter_mut().enumerate() {
+            if let Some(previous) = previous_lines.get(idx)
+                && previous.raw == line.raw
+            {
+                line.is_applied = previous.is_applied;
             }
-            let cleaned = photocraft_engine::typesetter::clean_script_line_with_options(trimmed, &self.state.options);
-            let was_applied = self.state.lines.get(i).map(|l| l.is_applied).unwrap_or(false);
-            new_lines.push(ScriptLine {
-                raw: line_str.to_string(),
-                text: if cleaned.is_empty() { line_str.to_string() } else { cleaned },
-                is_applied: was_applied,
-                page,
-            });
         }
-        self.state.lines = new_lines;
-        if self.state.current_line_idx >= self.state.lines.len() {
-            self.state.current_line_idx = self.state.lines.len().saturating_sub(1);
+        if !self.state.lines.is_empty() {
+            self.state.set_current_line(current_line_idx.min(self.state.lines.len() - 1));
         }
         self.auto_save();
+    }
+
+    /// Splits the current script line before `char_index` (the break preview click), adding the
+    /// hyphen and a line break, then rebuilding the queue from the buffer.
+    pub fn split_current_line_at(&mut self, char_index: usize, hyphenate: bool) {
+        let Some(line) = self.state.lines.get(self.state.current_line_idx) else { return };
+        let start: usize = self.state.lines.iter().take(self.state.current_line_idx).map(|l| l.raw.chars().count() + 1).sum();
+        let line_len = line.raw.chars().count();
+        let (left, right) = crate::snow_breaks_ui::split_line(&line.raw, char_index, hyphenate);
+        if right.is_empty() {
+            return;
+        }
+        let buffer: Vec<char> = self.script_buffer.chars().collect();
+        if start + line_len > buffer.len() {
+            return;
+        }
+        let mut updated: Vec<char> = buffer.get(..start).map(<[char]>::to_vec).unwrap_or_default();
+        updated.extend(left.chars());
+        updated.push(char::from(10));
+        updated.extend(right.chars());
+        let tail = (start + line_len + 1).min(buffer.len());
+        updated.extend(buffer.get(tail..).unwrap_or_default());
+        self.script_buffer = updated.into_iter().collect();
+        self.sync_state_from_script_buffer();
+        self.caret_line = None;
+    }
+
+    /// Joins the current line with the next one when it ends with a hyphen.
+    pub fn merge_current_line(&mut self) {
+        let Some(line) = self.state.lines.get(self.state.current_line_idx) else { return };
+        let Some(next) = self.state.lines.get(self.state.current_line_idx + 1) else { return };
+        if !line.raw.trim_end().ends_with('-') {
+            return;
+        }
+        let start: usize = self.state.lines.iter().take(self.state.current_line_idx).map(|l| l.raw.chars().count() + 1).sum();
+        let line_len = line.raw.chars().count();
+        let next_len = next.raw.chars().count();
+        let merged = crate::snow_breaks_ui::merge_lines(&line.raw, &next.raw);
+        let buffer: Vec<char> = self.script_buffer.chars().collect();
+        if start + line_len + 1 + next_len > buffer.len() {
+            return;
+        }
+        let mut updated: Vec<char> = buffer.get(..start).map(<[char]>::to_vec).unwrap_or_default();
+        updated.extend(merged.chars());
+        updated.extend(buffer.get(start + line_len + 1 + next_len..).unwrap_or_default());
+        self.script_buffer = updated.into_iter().collect();
+        self.sync_state_from_script_buffer();
+        self.caret_line = None;
     }
     pub fn new() -> Self {
         Self::default()
@@ -453,6 +613,7 @@ impl TypesetterUi {
             .show(ui, |ui| {
                 self.render_header_toolbar(ui);
                 self.render_body(ui, &mut action);
+                self.render_type_r_footer(ui);
             });
         // Придоканная панель тоже должна открывать окна стиля/сценария; в плавающем режиме их
         // рисует `show`, а счётчик pass не даст открыть их дважды за кадр.
@@ -501,6 +662,47 @@ impl TypesetterUi {
                     self.render_full_text_content(ui, &mut *action);
                 });
             self.show_full_text_window = show_win;
+        }
+
+        if self.show_text_shape_window {
+            let mut open = self.show_text_shape_window;
+            let mut apply = None;
+            Window::new(tl!("TextShapeR"))
+                .id(egui::Id::new("typer_text_shape_window"))
+                .open(&mut open)
+                .default_width(420.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    if self.text_shape_candidates.is_empty() {
+                        ui.label(tl!("No suitable line breaks were found"));
+                        return;
+                    }
+                    for index in 0..self.text_shape_candidates.len() {
+                        let label = self.text_shape_candidates.get(index).map(|candidate| match candidate.kind {
+                            TextShapeKind::Original => tl!("Original line breaks"),
+                            TextShapeKind::ContourFit => tl!("Contour fit"),
+                            TextShapeKind::BubbleWrap => tl!("Bubble wrap"),
+                            TextShapeKind::Balanced => tl!("Balanced"),
+                        });
+                        if let Some(label) = label {
+                            ui.radio_value(&mut self.text_shape_selected, index, label);
+                        }
+                    }
+                    ui.separator();
+                    if let Some(candidate) = self.text_shape_candidates.get(self.text_shape_selected) {
+                        let text = candidate.text.clone();
+                        ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                            ui.label(RichText::new(text).monospace());
+                        });
+                        if ui.button(tl!("Apply")).clicked() {
+                            apply = Some(self.text_shape_selected);
+                        }
+                    }
+                });
+            self.show_text_shape_window = open;
+            if let Some(index) = apply {
+                self.apply_text_shape_candidate(index);
+            }
         }
 
         // Модальное окно настроек конкретного шрифта / стиля
@@ -559,15 +761,11 @@ impl TypesetterUi {
         let t = Tokens::get(ui.ctx());
 
         ui.horizontal(|ui| {
-            for (tab_val, label_key) in [
-                (TypesetterTab::Queue, "Typesetter"),
-                (TypesetterTab::FullText, "Script"),
-                (TypesetterTab::Settings, "Options"),
-            ] {
-                let label = tl!(label_key);
-                let is_sel = self.current_tab == tab_val;
-                if widgets::pill_tab(ui, label, is_sel).clicked() {
-                    self.current_tab = tab_val;
+            ui.label(RichText::new("TypeR").strong());
+            ui.label(RichText::new(tl!("Typesetter")).color(t.text_dim).small());
+            if self.current_tab != TypesetterTab::Queue {
+                if ui.small_button("◀").on_hover_text(tl!("Back to TypeR")).clicked() {
+                    self.current_tab = TypesetterTab::Queue;
                 }
             }
 
@@ -638,6 +836,48 @@ impl TypesetterUi {
                         }
                     }
 
+                    if ui.button(tl!("Import Photoshop TPL…")).clicked() {
+                        ui.close();
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Photoshop Tool Presets (*.tpl)", &["tpl"])
+                            .set_title(tl!("Choose Photoshop tool presets"))
+                            .pick_file()
+                        {
+                            match read_tpl_file(&path) {
+                                Ok(data) => {
+                                    let folder = path.file_stem().and_then(|name| name.to_str()).unwrap_or("Photoshop TPL");
+                                    match self.state.import_tool_presets_tpl(&data, folder) {
+                                        Ok(report) => {
+                                            self.status_message = Some(crate::i18n::fmt(
+                                                tl!("Loaded {count} text styles ({vertical} vertical); skipped {skipped} presets"),
+                                                &[
+                                                    ("count", &report.imported.to_string()),
+                                                    ("skipped", &report.skipped.to_string()),
+                                                    ("vertical", &report.vertical_imported.to_string()),
+                                                ],
+                                            ));
+                                            self.status_error = false;
+                                            self.auto_save();
+                                        }
+                                        Err(error) => {
+                                            self.status_message = Some(format!("{}: {}", tl!("Import error"), error));
+                                            self.status_error = true;
+                                        }
+                                    }
+                                }
+                                Err(error) => {
+                                    self.status_message = Some(format!("{}: {}", tl!("Read error"), error));
+                                    self.status_error = true;
+                                }
+                            }
+                        }
+                    }
+
+                    if ui.button(tl!("TextShapeR…")).clicked() {
+                        ui.close();
+                        self.text_shape_requested = true;
+                    }
+
                     if ui.button(tl!("Export TypeR JSON…")).clicked() {
                         ui.close();
                         if let Some(path) = rfd::FileDialog::new()
@@ -661,6 +901,22 @@ impl TypesetterUi {
                                     self.status_error = true;
                                 }
                             }
+                        }
+                    }
+
+                    if ui.button(tl!("Scan text layers in current document")).clicked() {
+                        ui.close();
+                        self.document_style_scan_requested = true;
+                    }
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if ui.button(tl!("Scan PSD file for text styles…")).clicked() {
+                        ui.close();
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Photoshop documents (*.psd, *.psb)", &["psd", "psb"])
+                            .set_title(tl!("Choose a Photoshop document to scan"))
+                            .pick_file()
+                        {
+                            self.document_style_file_scan_requested = Some(path);
                         }
                     }
                 });
@@ -688,6 +944,51 @@ impl TypesetterUi {
         ui.add_space(2.0);
     }
 
+    /// TypeR's footer rail: workspace, full script and settings, plus queue progress.
+    fn render_type_r_footer(&mut self, ui: &mut egui::Ui) {
+        let t = Tokens::get(ui.ctx());
+        ui.add_space(3.0);
+        widgets::hairline(ui);
+        ui.horizontal(|ui| {
+            for (tab, icon, tooltip) in [
+                (TypesetterTab::Queue, "▦", "Typesetter"),
+                (TypesetterTab::FullText, "📄", "Script"),
+                (TypesetterTab::Settings, "⚙", "Options"),
+            ] {
+                let selected = self.current_tab == tab;
+                let button = egui::Button::new(
+                    RichText::new(icon).color(if selected { t.accent } else { t.text_dim }),
+                )
+                .frame(false);
+                if ui.add(button).on_hover_text(tl!(tooltip)).clicked() {
+                    self.current_tab = tab;
+                }
+            }
+            if ui
+                .checkbox(&mut self.state.options.paste_on_click, "Вставка по клику")
+                .on_hover_text("Вставляет текущую реплику сразу после создания выделения")
+                .changed()
+            {
+                self.auto_save();
+            }
+            if ui
+                .checkbox(&mut self.state.options.auto_clean, "Авто-клин")
+                .on_hover_text("Заполняет баллон чистым цветом на слое TypeR Clean, скрывая исходный текст")
+                .changed()
+            {
+                self.auto_save();
+            }
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let applied = self.state.lines.iter().filter(|line| line.is_applied).count();
+                ui.label(
+                    RichText::new(format!("{}/{}", applied, self.state.lines.len()))
+                        .color(t.text_dim)
+                        .small(),
+                );
+            });
+        });
+    }
+
     /// Тело активной вкладки тайпсеттера.
     fn render_body(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
         match self.current_tab {
@@ -707,128 +1008,209 @@ impl TypesetterUi {
         }
     }
 
+    /// TypeR's two action rows: paste/align/size, then TextShapeR and page navigation.
+    fn render_type_r_action_bar(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
+        let t = Tokens::get(ui.ctx());
+        ui.horizontal(|ui| {
+            let insert = egui::Button::new(RichText::new(format!("⤓ {}", tl!("Insert"))).strong().color(t.accent_text))
+                .fill(t.accent)
+                .min_size(vec2(150.0, 24.0));
+            if ui.add(insert).on_hover_text(tl!("Insert current line into selection/bubble (Enter)")).clicked() {
+                self.send_active_line(action);
+            }
+
+            let align = egui::Button::new(format!("⊹ {}", tl!("Align"))).min_size(vec2(120.0, 24.0));
+            if ui.add(align).clicked() {
+                self.align_requested = true;
+            }
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if ui.small_button("＋").on_hover_text(tl!("Increase text size")).clicked() {
+                    self.state.adjust_active_preset_size(1.0);
+                    self.auto_save();
+                }
+                ui.label(RichText::new("1 px").small());
+                if ui.small_button("－").on_hover_text(tl!("Decrease text size")).clicked() {
+                    self.state.adjust_active_preset_size(-1.0);
+                    self.auto_save();
+                }
+                let _ = ui.small_button("◎").on_hover_text(tl!("Center in selection"));
+            });
+        });
+
+        ui.horizontal(|ui| {
+            if ui.button(tl!("TextShapeR")).clicked() {
+                self.text_shape_requested = true;
+            }
+            let _ = ui.small_button("☆");
+            let _ = ui.small_button("▦");
+            let _ = ui.small_button("▤");
+
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let pages = self.state.pages();
+                let current = self.state.current_page;
+                let index = pages.iter().position(|page| *page == current).unwrap_or(0);
+                if ui.small_button("▶").on_hover_text(tl!("Next page")).clicked() {
+                    if let Some(next) = pages.get(index + 1).copied() {
+                        self.set_current_page(next);
+                    }
+                }
+                ui.label(RichText::new(format!("{} / {}", index + 1, pages.len().max(1))).small());
+                if ui.small_button("◀").on_hover_text(tl!("Previous page")).clicked() {
+                    if let Some(next) = index.checked_sub(1).and_then(|i| pages.get(i)).copied() {
+                        self.set_current_page(next);
+                    }
+                }
+            });
+        });
+    }
+
+    fn send_active_line(&mut self, action: &mut Option<TypesetterAction>) {
+        if let Some(line) = self.state.active_line() {
+            if let Some(preset) = self.state.preset_for_line(self.state.current_line_idx).cloned() {
+                *action = Some(TypesetterAction { text: line.text.clone(), preset });
+                self.state.advance_line();
+                self.scroll_to_active_line = true;
+                self.auto_save();
+            }
+        }
+    }
+
+    fn set_current_page(&mut self, page: usize) {
+        self.state.current_page = page;
+        if let Some((index, _)) = self.state.lines_for_page(page).first() {
+            self.state.set_current_line(*index);
+        }
+        self.scroll_to_active_line = true;
+        self.auto_save();
+    }
+
+    fn render_type_r_preview_cards(&mut self, ui: &mut egui::Ui) {
+        let t = Tokens::get(ui.ctx());
+        if !self.text_shape_candidates.is_empty() && self.text_shape_layer.is_some() {
+            let candidates = self.text_shape_candidates.clone();
+            ui.columns(3, |columns| {
+                for column in 0..3 {
+                    let Some(candidate) = candidates.get(column) else { continue };
+                    let selected = column == self.text_shape_selected;
+                    Frame::NONE
+                        .fill(if selected { t.accent_soft } else { t.field })
+                        .stroke(Stroke::new(1.0, if selected { t.accent } else { t.field_border }))
+                        .corner_radius(CornerRadius::same(4))
+                        .inner_margin(Margin::symmetric(6, 5))
+                        .show(&mut columns[column], |ui| {
+                            ui.set_min_height(78.0);
+                            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                                ui.label(RichText::new(format!("{}", column + 1)).color(t.text_dim).small());
+                            });
+                            let (rect, response) = ui.allocate_exact_size(
+                                vec2(ui.available_width(), 62.0),
+                                Sense::click(),
+                            );
+                            let mut painted = false;
+                            if let Some(preset) = &self.text_shape_preview_preset {
+                                let luma = 0.299 * f32::from(preset.text_color[0])
+                                    + 0.587 * f32::from(preset.text_color[1])
+                                    + 0.114 * f32::from(preset.text_color[2]);
+                                let color = if preset.text_color[3] == 0 || (luma < 48.0 && preset.stroke_width <= 0.0) {
+                                    t.text
+                                } else {
+                                    Color32::from_rgba_unmultiplied(
+                                        preset.text_color[0],
+                                        preset.text_color[1],
+                                        preset.text_color[2],
+                                        preset.text_color[3],
+                                    )
+                                };
+                                let stroke = (preset.stroke_width > 0.0).then(|| {
+                                    (
+                                        Color32::from_rgba_unmultiplied(
+                                            preset.stroke_color[0],
+                                            preset.stroke_color[1],
+                                            preset.stroke_color[2],
+                                            preset.stroke_color[3],
+                                        ),
+                                        preset.stroke_width.clamp(0.5, 2.0),
+                                    )
+                                });
+                                if crate::font_preview::name_size(ui.ctx(), &preset.font_family, &candidate.text, preset.font_size).is_some() {
+                                    crate::font_preview::paint_centered(
+                                        ui,
+                                        &preset.font_family,
+                                        &candidate.text,
+                                        preset.font_size,
+                                        rect,
+                                        color,
+                                        stroke,
+                                    );
+                                    painted = true;
+                                }
+                            }
+                            if !painted {
+                                ui.painter().text(
+                                    rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    &candidate.text,
+                                    egui::FontId::proportional(10.0),
+                                    t.text,
+                                );
+                            }
+                            if response.clicked() {
+                                self.text_shape_selected = column;
+                                self.apply_text_shape_candidate(column);
+                            }
+                        });
+                }
+            });
+            ui.add_space(2.0);
+            return;
+        }
+        // The three fields belong to TextShapeR, not to the script queue. With no selected
+        // text layer they stay empty instead of showing typer lines.
+        ui.columns(3, |columns| {
+            for column in 0..3 {
+                Frame::NONE
+                    .fill(t.field)
+                    .stroke(Stroke::new(1.0, t.field_border))
+                    .corner_radius(CornerRadius::same(4))
+                    .inner_margin(Margin::symmetric(6, 5))
+                    .show(&mut columns[column], |ui| {
+                        ui.set_min_height(78.0);
+                        ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                            ui.label(RichText::new(format!("{}", column + 1)).color(t.text_dim).small());
+                        });
+                        ui.label(RichText::new(tl!("Select a text layer on the page")).color(t.text_faint).small());
+                    });
+            }
+        });
+        ui.add_space(2.0);
+    }
+
     /// Вертикальная раскладка TypeR (для боковых доков и плавающего окна).
     fn render_vertical_typer_workspace(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
         let t = Tokens::get(ui.ctx());
         let total_lines = self.state.lines.len();
         let cur_idx = self.state.current_line_idx;
 
-        // --- 1. ВЕРХНИЙ БЛОК: СТРЕЛКИ ▲/▼, СТАТУС, ВСТАВКА (➔), ТЕКУЩАЯ СТРОКА ---
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 1.0;
-                let up_btn = egui::Button::new("▲").min_size(vec2(22.0, 16.0));
-                if ui.add(up_btn).on_hover_text(tl!("Previous line (↑)")).clicked() {
-                    self.state.prev_line();
-                    self.scroll_to_active_line = true;
-                }
-                let down_btn = egui::Button::new("▼").min_size(vec2(22.0, 16.0));
-                if ui.add(down_btn).on_hover_text(tl!("Next line (↓)")).clicked() {
-                    self.state.next_line();
-                    // Navigation only: it must not mark the line as applied (sent).
-                    self.scroll_to_active_line = true;
-                }
-            });
-
-            ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-
-                let line_num_str = if total_lines == 0 { 0 } else { cur_idx + 1 };
-                let style_name = self.state.active_preset().map(|p| p.name.clone()).unwrap_or_else(|| tl!("Default").into());
-                let font_size = self.state.active_preset().map(|p| p.font_size.round() as i32).unwrap_or(12);
-
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new(format!(
-                            "{}: {}, {}: {}, {}: {}pt",
-                            tl!("line"), line_num_str, tl!("style"), style_name, tl!("size"), font_size
-                        ))
-                        .color(t.text_dim)
-                        .small(),
-                    );
-
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let insert_btn = egui::Button::new(
-                            RichText::new("▶")
-                                .color(t.accent_text)
-                                .strong(),
-                        )
-                        .fill(t.accent)
-                        .min_size(vec2(26.0, 18.0));
-
-                        if ui.add(insert_btn).on_hover_text(tl!("Insert current line into selection/bubble (Enter)")).clicked() {
-                            if let Some(line) = self.state.active_line() {
-                                if let Some(preset) = self.state.active_preset().cloned() {
-                                    *action = Some(TypesetterAction {
-                                        text: line.text.clone(),
-                                        preset,
-                                    });
-                                    self.state.advance_line();
-                                    self.scroll_to_active_line = true;
-                                    self.auto_save();
-                                }
-                            }
-                        }
-                    });
-                });
-
-                let current_text = self.state.active_line().map(|l| l.text.as_str()).unwrap_or("");
-                Frame::NONE
-                    .fill(Color32::WHITE)
-                    .stroke(Stroke::new(1.0, Color32::from_rgb(170, 175, 185)))
-                    .corner_radius(CornerRadius::same(3))
-                    .inner_margin(Margin::symmetric(6, 4))
-                    .show(ui, |ui| {
-                        let display = if current_text.is_empty() {
-                            if total_lines == 0 {
-                                tl!("(no script loaded — see 'Script' tab)")
-                            } else {
-                                tl!("(end of script)")
-                            }
-                        } else {
-                            current_text
-                        };
-
-                        let text_color = if current_text.is_empty() {
-                            Color32::from_rgb(140, 145, 155)
-                        } else {
-                            Color32::from_rgb(20, 25, 35)
-                        };
-
-                        ui.add(
-                            egui::Label::new(
-                                RichText::new(display)
-                                    .color(text_color)
-                                    .size(12.0)
-                                    .strong(),
-                            )
-                            .wrap_mode(egui::TextWrapMode::Wrap),
-                        );
-                    });
-            });
-        });
+        self.render_type_r_action_bar(ui, action);
+        self.render_type_r_preview_cards(ui);
 
         widgets::hairline(ui);
         ui.add_space(2.0);
 
         ui.horizontal(|ui| {
-            let is_narrow = ui.available_width() < 300.0;
-            ui.label(RichText::new(format!("{}:", tl!("Script"))).color(t.text_dim).small().strong());
-
-            let paste_text = if is_narrow { "📋".to_string() } else { format!("📋 {}", tl!("Paste")) };
-            if ui.small_button(paste_text).on_hover_text(tl!("Paste script text from clipboard (Ctrl+V)")).clicked() {
+            if ui.small_button("📋").on_hover_text(tl!("Paste script text from clipboard (Ctrl+V)")).clicked() {
                 self.paste_script_from_clipboard();
             }
-
-            let edit_text = if is_narrow { "📝".to_string() } else { format!("📝 {}", tl!("Editor")) };
-            if ui.small_button(edit_text).on_hover_text(tl!("Open script text editor")).clicked() {
+            if ui.small_button("📝").on_hover_text(tl!("Open script text editor")).clicked() {
                 self.open_script_editor();
             }
-
-            if ui.small_button("📥 .txt").on_hover_text(tl!("Load script file (.txt)")).clicked() {
+            if ui.small_button("📥").on_hover_text(tl!("Load script file (.txt)")).clicked() {
                 self.open_script_file_dialog();
             }
-
+            if ui.small_button("⚙").on_hover_text(tl!("Options")).clicked() {
+                self.current_tab = TypesetterTab::Settings;
+            }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if total_lines > 0 {
                     ui.label(
@@ -933,6 +1315,20 @@ impl TypesetterUi {
                     );
                 });
 
+                ui.horizontal(|ui| {
+                    if ui.small_button(tl!("Capture bubble")).on_hover_text(tl!("Capture the current selection for multi-bubble fill")).clicked() {
+                        self.multi_bubble_capture_requested = true;
+                    }
+                    let count = self.multi_bubble_count();
+                    let fill = egui::Button::new(format!("{} ({count})", tl!("Fill bubbles")));
+                    if ui.add_enabled(count > 0, fill).clicked() {
+                        self.multi_bubble_fill_requested = true;
+                    }
+                    if count > 0 && ui.small_button("✖").on_hover_text(tl!("Clear captured bubbles")).clicked() {
+                        self.multi_bubble_captures.clear();
+                    }
+                });
+
                 let current_text = self.state.active_line().map(|l| l.text.as_str()).unwrap_or("");
                 let box_h = (ui.available_height() - 32.0).max(40.0);
                 Frame::NONE
@@ -964,7 +1360,7 @@ impl TypesetterUi {
                     .min_size(vec2(ui.available_width(), 24.0));
                 if ui.add(insert_btn).clicked() {
                     if let Some(line) = self.state.active_line() {
-                        if let Some(preset) = self.state.active_preset().cloned() {
+                        if let Some(preset) = self.state.preset_for_line(self.state.current_line_idx).cloned() {
                             *action = Some(TypesetterAction {
                                 text: line.text.clone(),
                                 preset,
@@ -1067,6 +1463,7 @@ impl TypesetterUi {
             self.sync_script_buffer_from_state();
         }
 
+        let t = Tokens::get(ui.ctx());
         let gutter_w = 46.0f32;
         let action_w = 24.0f32;
         let edit_id = egui::Id::new("typer_unified_script_text_edit");
@@ -1076,14 +1473,14 @@ impl TypesetterUi {
         // Если буфер пуст и реплик нет — показываем плашку быстрого старта с кнопками
         if self.script_buffer.trim().is_empty() && self.state.lines.is_empty() {
             Frame::NONE
-                .fill(Color32::WHITE)
-                .stroke(Stroke::new(1.0, Color32::from_rgb(180, 185, 195)))
+                .fill(t.field)
+                .stroke(Stroke::new(1.0, t.field_border))
                 .corner_radius(CornerRadius::same(2))
                 .inner_margin(Margin::same(12))
                 .show(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         ui.add_space(8.0);
-                        ui.label(RichText::new(tl!("No script loaded")).color(Color32::from_rgb(120, 125, 135)).small());
+                        ui.label(RichText::new(tl!("No script loaded")).color(t.text_dim).small());
                         ui.add_space(6.0);
                         ui.horizontal_wrapped(|ui| {
                             if ui.button(RichText::new(format!("📋 {}", tl!("Paste"))).strong()).on_hover_text(tl!("Paste script from clipboard (Ctrl+V)")).clicked() {
@@ -1103,6 +1500,18 @@ impl TypesetterUi {
         }
 
 
+        // Phase 2: the line-break preview above the editor; hovering shows syllable markers, a
+        // click splits the line, a click on the join mark merges it with the next one.
+        let break_idx = self.state.current_line_idx;
+        if let Some(raw) = self.state.lines.get(break_idx).map(|l| l.raw.clone()) {
+            let next_raw = self.state.lines.get(break_idx + 1).map(|l| l.raw.clone());
+            match crate::snow_breaks_ui::show(ui, &raw, next_raw.as_deref()) {
+                Some(crate::snow_breaks_ui::BreakAction::Split { char_index, hyphenate }) => self.split_current_line_at(char_index, hyphenate),
+                Some(crate::snow_breaks_ui::BreakAction::Merge) => self.merge_current_line(),
+                None => {}
+            }
+        }
+
         let programmatic_line = self.caret_line != Some(self.state.current_line_idx);
 
         ScrollArea::vertical()
@@ -1121,7 +1530,7 @@ impl TypesetterUi {
                     .id(edit_id)
                     // Рабочий текст сценария читается пропорциональным шрифтом, а не моноширинным.
                     .font(egui::TextStyle::Body)
-                    .text_color(Color32::from_rgb(20, 25, 35))
+                    .text_color(t.text)
                     // Frame::NONE заменяет margin целиком, поэтому отступы задаём во фрейме:
                     // иначе текст начинается под левым гуттером и первые символы строки скрыты.
                     .frame(egui::Frame::NONE.inner_margin(egui::Margin {
@@ -1136,24 +1545,27 @@ impl TypesetterUi {
                 // Резервируем форму подложки до отрисовки TextEdit: иначе белая заливка,
                 // добавленная после текста, перекрыла бы его в том же слое painter.
                 let background_idx = ui.painter().add(egui::Shape::Noop);
+                // Reserve one shape per logical line before the TextEdit paints, so the active
+                // line's highlight sits behind its glyphs instead of tinting them.
+                let line_highlights: Vec<egui::layers::ShapeIdx> =
+                    (0..self.state.lines.len()).map(|_| ui.painter().add(egui::Shape::Noop)).collect();
                 let output = edit.show(ui);
                 let rect = output.response.rect;
 
                 // 1. Отрисовка подложки и вертикальных границ колонок
-                ui.painter().set(background_idx, egui::Shape::rect_filled(rect, CornerRadius::same(2), Color32::WHITE));
+                ui.painter().set(background_idx, egui::Shape::rect_filled(rect, CornerRadius::same(2), t.field));
 
-                // Левый гуттер (#e4e6eb)
+                // Left gutter.
                 let left_gutter_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + gutter_w, rect.bottom()));
-                ui.painter().rect_filled(left_gutter_rect, CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, Color32::from_rgb(228, 230, 235));
-                ui.painter().vline(rect.left() + gutter_w, rect.top()..=rect.bottom(), Stroke::new(1.0, Color32::from_rgb(205, 208, 215)));
+                ui.painter().rect_filled(left_gutter_rect, CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, t.chrome);
+                ui.painter().vline(rect.left() + gutter_w, rect.top()..=rect.bottom(), Stroke::new(1.0, t.separator));
 
-                // Правый гуттер (#fafafc)
+                // Right action gutter.
                 let right_gutter_rect = egui::Rect::from_min_max(egui::pos2(rect.right() - action_w, rect.top()), rect.max);
-                ui.painter().rect_filled(right_gutter_rect, CornerRadius { ne: 2, se: 2, nw: 0, sw: 0 }, Color32::from_rgb(250, 250, 252));
-                ui.painter().vline(rect.right() - action_w, rect.top()..=rect.bottom(), Stroke::new(1.0, Color32::from_rgb(225, 228, 235)));
+                ui.painter().rect_filled(right_gutter_rect, CornerRadius { ne: 2, se: 2, nw: 0, sw: 0 }, t.card);
+                ui.painter().vline(rect.right() - action_w, rect.top()..=rect.bottom(), Stroke::new(1.0, t.separator));
 
-                // Внешняя аккуратная рамка
-                ui.painter().rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, Color32::from_rgb(180, 185, 195)), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, t.field_border), egui::StrokeKind::Inside);
 
                 // 2. Расчет геометрии логических строк по строкам галлеи (PlacedRow)
                 let mut logical_line_idx = 0;
@@ -1204,6 +1616,21 @@ impl TypesetterUi {
 
                     let is_active = line_idx == active_line_idx;
                     let is_applied = self.state.lines.get(line_idx).map(|l| l.is_applied).unwrap_or(false);
+                    if is_active
+                        && let Some(shape) = line_highlights.get(line_idx)
+                    {
+                        ui.painter().set(
+                            *shape,
+                            egui::Shape::rect_filled(
+                                egui::Rect::from_min_max(
+                                    egui::pos2(rect.left() + gutter_w, screen_start_y),
+                                    egui::pos2(rect.right() - action_w, screen_end_y),
+                                ),
+                                CornerRadius::ZERO,
+                                t.row_selected,
+                            ),
+                        );
+                    }
 
                     // Скролл к активной строке при программной смене (стрелки ▲/▼, Enter)
                     if is_active && do_scroll_active {
@@ -1217,11 +1644,11 @@ impl TypesetterUi {
 
                     // А. Левый гуттер: номер строки
                     let num_color = if is_active {
-                        Color32::from_rgb(0, 100, 200)
+                        t.accent
                     } else if is_applied {
-                        Color32::from_rgb(160, 165, 175)
+                        t.text_faint
                     } else {
-                        Color32::from_rgb(100, 105, 115)
+                        t.text_dim
                     };
                     ui.painter().text(
                         egui::pos2(rect.left() + 22.0, screen_center_y),
@@ -1237,15 +1664,15 @@ impl TypesetterUi {
                     let is_target_hovered = mouse_pos.is_some_and(|p| target_rect.contains(p));
 
                     if is_active {
-                        ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.3, Color32::from_rgb(0, 120, 215)));
-                        ui.painter().circle_filled(target_center, 2.3, Color32::from_rgb(0, 120, 215));
+                        ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.3, t.accent));
+                        ui.painter().circle_filled(target_center, 2.3, t.accent);
                     } else {
                         let stroke_color = if is_target_hovered {
-                            Color32::from_rgb(0, 120, 215)
+                            t.accent
                         } else if is_applied {
-                            Color32::from_rgb(175, 180, 190)
+                            t.text_faint
                         } else {
-                            Color32::from_rgb(130, 135, 145)
+                            t.text_dim
                         };
                         ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.2, stroke_color));
                         ui.painter().circle_stroke(target_center, 1.5, Stroke::new(1.0, stroke_color));
@@ -1260,21 +1687,9 @@ impl TypesetterUi {
                     let action_rect = egui::Rect::from_center_size(action_center, vec2(18.0, 18.0));
                     let is_action_hovered = mouse_pos.is_some_and(|p| action_rect.contains(p));
 
-                    let btn_bg = if is_action_hovered {
-                        Color32::from_rgb(0, 120, 215)
-                    } else {
-                        Color32::from_rgb(240, 243, 248)
-                    };
-                    let icon_color = if is_action_hovered {
-                        Color32::WHITE
-                    } else {
-                        Color32::from_rgb(120, 125, 135)
-                    };
-                    let border_color = if is_action_hovered {
-                        Color32::from_rgb(0, 100, 190)
-                    } else {
-                        Color32::from_rgb(205, 210, 220)
-                    };
+                    let btn_bg = if is_action_hovered { t.accent } else { t.hover };
+                    let icon_color = if is_action_hovered { t.accent_text } else { t.text_dim };
+                    let border_color = if is_action_hovered { t.accent } else { t.separator };
 
                     ui.painter().circle_filled(action_center, 7.5, btn_bg);
                     ui.painter().circle_stroke(action_center, 7.5, Stroke::new(1.0, border_color));
@@ -1291,7 +1706,7 @@ impl TypesetterUi {
                     }
 
                     // В. Горизонтальная пунктирная линия под строкой
-                    let dash_stroke = Stroke::new(1.0, Color32::from_rgb(181, 181, 181)); // #b5b5b5
+                    let dash_stroke = Stroke::new(1.0, t.separator);
                     draw_dashed_hline(ui.painter(), rect.left(), rect.right(), screen_end_y, dash_stroke);
                 }
 
@@ -1301,10 +1716,10 @@ impl TypesetterUi {
                 }
 
                 if let Some(act_idx) = clicked_action_line {
-                    if let Some(line) = self.state.lines.get(act_idx) {
-                        if let Some(preset) = self.state.active_preset().cloned() {
+                    if let Some(text) = self.state.lines.get(act_idx).map(|line| line.text.clone()) {
+                        if let Some(preset) = self.state.preset_for_line(act_idx).cloned() {
                             *action = Some(TypesetterAction {
-                                text: line.text.clone(),
+                                text,
                                 preset,
                             });
                             self.state.set_current_line(act_idx);
@@ -1838,7 +2253,7 @@ impl TypesetterUi {
                 }
 
                 if let Some((idx, line)) = line_to_insert {
-                    if let Some(preset) = self.state.active_preset().cloned() {
+                    if let Some(preset) = self.state.preset_for_line(idx).cloned() {
                         *action = Some(TypesetterAction {
                             text: line.text.clone(),
                             preset,
@@ -1981,6 +2396,101 @@ impl TypesetterUi {
                     } else {
                         Some(folder_str.trim().to_string())
                     };
+                    changed = true;
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label(format!("{}:", tl!("Script style prefixes")));
+                let mut prefixes = preset.script_prefixes.join(", ");
+                if ui.text_edit_singleline(&mut prefixes).changed() {
+                    preset.script_prefixes = prefixes
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|prefix| !prefix.is_empty())
+                        .map(str::to_string)
+                        .collect();
+                    changed = true;
+                }
+            });
+
+            ui.horizontal(|ui| {
+                ui.label(format!("{}:", tl!("Punctuation-only size")));
+                for (label, value) in [("1×", 1.0f32), ("2×", 2.0), ("3×", 3.0)] {
+                    if ui.selectable_label((preset.punctuation_only_scale - value).abs() < 0.01, label).clicked() {
+                        preset.punctuation_only_scale = value;
+                        changed = true;
+                    }
+                }
+            })
+            .response
+            .on_hover_text(tl!("Enlarge lines made only of punctuation, such as ?!"));
+
+            ui.separator();
+            ui.label(RichText::new(tl!("Paragraph")).strong());
+            ui.horizontal(|ui| {
+                ui.label(format!("{}:", tl!("Orientation")));
+                egui::ComboBox::from_id_salt("typer_style_orientation")
+                    .selected_text(if preset.orientation == "vertical" { tl!("Vertical") } else { tl!("Horizontal") })
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_value(&mut preset.orientation, "horizontal".to_string(), tl!("Horizontal")).clicked() {
+                            changed = true;
+                        }
+                        if ui.selectable_value(&mut preset.orientation, "vertical".to_string(), tl!("Vertical")).clicked() {
+                            changed = true;
+                        }
+                    });
+                ui.label(format!("{}:", tl!("Alignment")));
+                let alignment_label = match preset.alignment.as_str() {
+                    "left" => tl!("Left"),
+                    "right" => tl!("Right"),
+                    "justify" => tl!("Justify"),
+                    "justifyCenter" => tl!("Justify last centered"),
+                    "justifyRight" => tl!("Justify last right"),
+                    "justifyAll" => tl!("Justify all"),
+                    _ => tl!("Center"),
+                };
+                egui::ComboBox::from_id_salt("typer_style_alignment")
+                    .selected_text(alignment_label)
+                    .show_ui(ui, |ui| {
+                        for (label, value) in [
+                            (tl!("Left"), "left"),
+                            (tl!("Center"), "center"),
+                            (tl!("Right"), "right"),
+                            (tl!("Justify"), "justify"),
+                            (tl!("Justify last centered"), "justifyCenter"),
+                            (tl!("Justify last right"), "justifyRight"),
+                            (tl!("Justify all"), "justifyAll"),
+                        ] {
+                            if ui.selectable_value(&mut preset.alignment, value.to_string(), label).clicked() {
+                                changed = true;
+                            }
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                for (label, value) in [
+                    (tl!("First Line Indent"), &mut preset.first_line_indent),
+                    (tl!("Indent Left"), &mut preset.start_indent),
+                    (tl!("Indent Right"), &mut preset.end_indent),
+                ] {
+                    ui.label(label);
+                    if ui.add(egui::DragValue::new(value).speed(0.5).suffix(" pt").range(-500.0..=500.0)).changed() {
+                        changed = true;
+                    }
+                }
+            });
+            ui.horizontal(|ui| {
+                for (label, value) in [
+                    (tl!("Space Before"), &mut preset.space_before),
+                    (tl!("Space After"), &mut preset.space_after),
+                ] {
+                    ui.label(label);
+                    if ui.add(egui::DragValue::new(value).speed(0.5).suffix(" pt").range(-500.0..=500.0)).changed() {
+                        changed = true;
+                    }
+                }
+                if ui.checkbox(&mut preset.hyphenate, tl!("Hyphenate")).changed() {
                     changed = true;
                 }
             });
@@ -2253,6 +2763,7 @@ impl TypesetterUi {
         }
 
         if changed {
+            self.state.recompute_script_style_matches();
             self.auto_save();
         }
     }
@@ -2278,6 +2789,15 @@ impl TypesetterUi {
                 self.auto_save();
             }
 
+            ui.label(tl!("Minimum size when fitting to a bubble"));
+            if ui.add(
+                egui::Slider::new(&mut self.state.options.minimum_fit_scale_percent, 50.0..=100.0)
+                    .suffix("%")
+                    .max_decimals(0),
+            ).on_hover_text(tl!("Keep the original size when possible; shrink only to this percentage")).changed() {
+                self.auto_save();
+            }
+
             if ui.checkbox(
                 &mut self.state.options.strip_character_names,
                 tl!("Strip character names"),
@@ -2289,6 +2809,26 @@ impl TypesetterUi {
                 &mut self.state.options.strip_dash_prefix,
                 tl!("Strip leading dashes"),
             ).on_hover_text(tl!("Strip leading dashes ('- Text', '— Text')")).changed() {
+                self.auto_save();
+            }
+
+            let mut matching_changed = ui.checkbox(
+                &mut self.state.options.match_style_prefixes,
+                tl!("Auto-select style from script prefixes"),
+            ).changed();
+            matching_changed |= ui.checkbox(
+                &mut self.state.options.match_prefixes_across_folders,
+                tl!("Match prefixes across all style folders"),
+            ).changed();
+            if matching_changed {
+                self.state.recompute_script_style_matches();
+                self.auto_save();
+            }
+
+            if ui.checkbox(
+                &mut self.state.options.paste_on_click,
+                tl!("Paste current line when a selection is made"),
+            ).changed() {
                 self.auto_save();
             }
 
@@ -2424,9 +2964,33 @@ impl TypesetterUi {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tpl_file_reader_rejects_oversized_files() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        file.as_file().set_len(photocraft_engine::typesetter::MAX_TPL_FILE_BYTES as u64 + 1).unwrap();
+
+        let error = read_tpl_file(file.path()).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::InvalidData);
+    }
     use photocraft_doc::LayerContent;
     use photocraft_engine::typesetter::MeasurementSystem;
     use serde_json::json;
+
+    #[test]
+    fn document_style_scan_request_is_consumed_once() {
+        let mut ui = TypesetterUi { document_style_scan_requested: true, ..TypesetterUi::default() };
+        assert!(ui.take_document_style_scan_request());
+        assert!(!ui.take_document_style_scan_request());
+    }
+
+    #[test]
+    fn document_style_file_scan_request_is_taken_once() {
+        let path = std::path::PathBuf::from("sample.psd");
+        let mut ui = TypesetterUi { document_style_file_scan_requested: Some(path.clone()), ..TypesetterUi::default() };
+        assert_eq!(ui.take_document_style_file_scan_request(), Some(path));
+        assert_eq!(ui.take_document_style_file_scan_request(), None);
+    }
 
     #[test]
     fn typesetter_action_applies_font_color_and_measurement_system() {
@@ -2494,6 +3058,193 @@ mod tests {
         }
     }
 
+    #[test]
+    fn typesetter_action_fits_text_to_selection_contour() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 260, "height": 220})).unwrap();
+        let bounds = photocraft_geom::Rect::new(0, 0, 260, 220);
+        let mut pixels = vec![0.0; bounds.width() as usize * bounds.height() as usize];
+        for y in bounds.y0..bounds.y1 {
+            for x in bounds.x0..bounds.x1 {
+                let dx = (x as f32 - 130.0) / 128.0;
+                let dy = (y as f32 - 110.0) / 108.0;
+                if dx * dx + dy * dy <= 1.0 {
+                    if let Some(pixel) = pixels.get_mut(y as usize * bounds.width() as usize + x as usize) {
+                        *pixel = 1.0;
+                    }
+                }
+            }
+        }
+        let mut selection = photocraft_raster::Surface::new(photocraft_color::PixelFormat::GRAY8);
+        selection.write_region(bounds, &pixels);
+        std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(selection);
+
+        app.handle_typesetter_action(TypesetterAction {
+            text: "This is a longer sample dialogue that needs several carefully balanced lines inside the selected speech bubble".into(),
+            preset: TextStylePreset {
+                font_family: "Inter".into(),
+                font_postscript: String::new(),
+                font_size: 24.0,
+                leading: 28.0,
+                ..TextStylePreset::default()
+            },
+        });
+
+        let st = app.session.active().unwrap();
+        let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
+        let LayerContent::Text(text) = &layer.content else {
+            panic!("Expected text layer");
+        };
+        assert!(text.text.contains('\n'));
+        assert!(text.runs[0].style.size_pt < 24.0);
+    }
+
+    #[test]
+    fn typesetter_action_enlarges_punctuation_only_lines() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+        app.handle_typesetter_action(TypesetterAction {
+            text: "?!".into(),
+            preset: TextStylePreset { font_size: 20.0, leading: 24.0, punctuation_only_scale: 2.0, ..TextStylePreset::default() },
+        });
+
+        let st = app.session.active().unwrap();
+        let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
+        let LayerContent::Text(text) = &layer.content else {
+            panic!("Expected text layer");
+        };
+        assert_eq!(text.text, "?!");
+        assert_eq!(text.runs[0].style.size_pt, 40.0);
+    }
+
+    fn rect_selection(x0: i32, y0: i32, width: i32, height: i32) -> photocraft_raster::Surface {
+        let bounds = photocraft_geom::Rect::new(x0, y0, x0 + width, y0 + height);
+        let mut selection = photocraft_raster::Surface::new(photocraft_color::PixelFormat::GRAY8);
+        selection.write_region(bounds, &vec![1.0; width as usize * height as usize]);
+        selection
+    }
+
+    #[test]
+    fn paste_on_click_pastes_the_active_line_when_the_selection_changes() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+        app.typesetter.state.options.paste_on_click = true;
+        app.typesetter.state.load_script("Clicked line");
+        std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(rect_selection(10, 10, 80, 80));
+        // The first frame only arms the toggle.
+        app.maybe_typesetter_paste_on_click();
+        std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(rect_selection(20, 20, 90, 90));
+        app.maybe_typesetter_paste_on_click();
+
+        let st = app.session.active().unwrap();
+        assert!(st.doc.walk().into_iter().any(|(_, _, layer)| matches!(&layer.content, LayerContent::Text(text) if {
+            let normalized: String = text.text.chars().filter(|ch| ch.is_alphanumeric()).collect();
+            normalized.to_uppercase().contains("CLICKED")
+        })));
+    }
+
+    #[test]
+    fn multi_bubble_capture_fills_consecutive_lines() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+        app.typesetter.state.load_script("First chamber\nSecond chamber");
+        std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(rect_selection(10, 10, 100, 80));
+        app.capture_typesetter_bubble();
+        std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(rect_selection(200, 200, 100, 80));
+        app.capture_typesetter_bubble();
+        assert_eq!(app.typesetter.multi_bubble_count(), 2);
+
+        app.fill_typesetter_bubbles();
+
+        let st = app.session.active().unwrap();
+        let texts: Vec<String> = st.doc.walk().into_iter().filter_map(|(_, _, layer)| match &layer.content {
+            LayerContent::Text(text) => Some(text.text.clone()),
+            _ => None,
+        }).collect();
+        assert!(texts.iter().any(|text| text.contains("FIRST")));
+        assert!(texts.iter().any(|text| text.contains("SECOND")));
+    }
+
+    #[test]
+    fn text_shape_reads_and_updates_the_selected_text_layer() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+        let id = app
+            .run("type.create", json!({"x": 20, "y": 60, "text": "A selected text layer with enough words to break", "size": 24}))
+            .unwrap()["layer"]
+            .as_u64()
+            .unwrap();
+        app.session.active_mut().unwrap().active_layer = Some(photocraft_doc::LayerId(id));
+
+        app.typesetter.state.load_script("Queue line that must not appear");
+        app.refresh_typesetter_text_shape();
+        assert!(app.typesetter.has_text_shape_candidates(), "the selected text layer must drive TextShapeR");
+        assert!(
+            app.typesetter
+                .first_text_shape_candidate_text()
+                .is_some_and(|text| text.contains("selected text layer")),
+            "the queue must not populate the TextShapeR fields"
+        );
+
+        app.apply_typesetter_text_shape(id, "A selected text layer\nwith enough words to break".into());
+        let layer = app.session.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap();
+        let LayerContent::Text(text) = &layer.content else {
+            panic!("Expected text layer");
+        };
+        assert!(text.text.contains('\n'));
+        assert!(!app.typesetter.has_text_shape_candidates());
+    }
+
+    #[test]
+    fn typesetter_action_applies_paragraph_settings() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+        app.handle_typesetter_action(TypesetterAction {
+            text: "First line\nSecond line".into(),
+            preset: TextStylePreset {
+                alignment: "right".into(),
+                first_line_indent: 12.0,
+                start_indent: 4.0,
+                space_after: 3.0,
+                hyphenate: true,
+                ..TextStylePreset::default()
+            },
+        });
+
+        let st = app.session.active().unwrap();
+        let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
+        let LayerContent::Text(text) = &layer.content else {
+            panic!("Expected text layer");
+        };
+        let paragraph = text.paragraphs.first().expect("a paragraph run");
+        assert_eq!(paragraph.style.align, photocraft_doc::text::TextAlign::Right);
+        assert_eq!(paragraph.style.first_line_indent_pt, 12.0);
+        assert_eq!(paragraph.style.start_indent_pt, 4.0);
+        assert_eq!(paragraph.style.space_after_pt, 3.0);
+        assert!(paragraph.style.hyphenate);
+    }
+
+    #[test]
+    fn typesetter_action_keeps_script_markdown_editable() {
+        let mut app = crate::PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+        app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+        app.handle_typesetter_action(TypesetterAction {
+            text: "Regular **bold** and *italic*".into(),
+            preset: TextStylePreset { all_caps: false, ..TextStylePreset::default() },
+        });
+
+        let st = app.session.active().unwrap();
+        let layer = st.doc.layer(st.active_layer.unwrap()).unwrap();
+        let LayerContent::Text(text) = &layer.content else {
+            panic!("Expected text layer");
+        };
+        assert_eq!(text.text, "Regular bold and italic");
+        let bold = text.runs.iter().find(|run| run.len > 0 && run.style.faux_bold);
+        let italic = text.runs.iter().find(|run| run.len > 0 && run.style.faux_italic);
+        assert_eq!(bold.map(|run| run.len), Some(4));
+        assert_eq!(italic.map(|run| run.len), Some(6));
+    }
+
     /// The style-settings window must be draggable. It used to be `.anchor`ed to the screen
     /// centre, which re-pinned it there every frame, so its title bar could not be dragged.
     #[test]
@@ -2507,7 +3258,9 @@ mod tests {
         typer.is_open = true;
         typer.editing_preset_idx = Some(0);
         let mut frames = 0u32;
-        let mut h = Harness::builder().with_size(egui::vec2(900.0, 700.0)).build_ui_state(
+        // Tall enough for the whole style dialog: the test drags it upward, and a window
+        // taller than the harness cannot move up by the asserted distance.
+        let mut h = Harness::builder().with_size(egui::vec2(900.0, 900.0)).build_ui_state(
             move |ui, typer: &mut TypesetterUi| {
                 crate::PhotocraftApp::setup_context(ui.ctx(), crate::theme::ThemeKind::ALL[0]);
                 frames += 1;

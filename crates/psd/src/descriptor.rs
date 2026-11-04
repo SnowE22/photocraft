@@ -286,6 +286,17 @@ impl Descriptor {
         Ok(d)
     }
 
+    /// Parses one descriptor at the start of `data`, returning the descriptor and bytes consumed.
+    ///
+    /// Trailing data is allowed, for example when a format stores multiple descriptors
+    /// consecutively.
+    pub fn parse_prefix(data: &[u8]) -> Result<(Self, usize)> {
+        let mut r = Reader::new(data);
+        let descriptor = Self::read(&mut r)?;
+        Ok((descriptor, r.pos()))
+    }
+
+
     /// Serializes the descriptor.
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut v = Vec::new();

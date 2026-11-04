@@ -6,6 +6,7 @@ use std::sync::PoisonError;
 use egui::{ColorImage, Rect, TextureHandle, TextureOptions, pos2, vec2};
 use photocraft_color::{ColorMode, PixelFormat, SampleType};
 use photocraft_doc::TextLayer;
+use photocraft_doc::text::{ParagraphRun, ParagraphStyle, TextAlign, TextShape};
 use photocraft_engine::prefs::FontPreview;
 use photocraft_geom::Affine;
 
@@ -223,13 +224,32 @@ fn render_label(
     if text.trim().is_empty() || !engine.fonts.has_family(family) {
         return None;
     }
-    let layer = TextLayer {
+    let mut layer = TextLayer {
         text: text.into(),
         font_family: family.into(),
         size_pt: size * scale,
         ..Default::default()
     };
-    let layout = engine.layout(&layer, 72.0);
+    let mut layout = engine.layout(&layer, 72.0);
+    // Point text is always left-aligned. For a multi-line sample, measure the widest line
+    // once, then re-lay it as centred box text so each line is centred like TypeR's cards.
+    if text.contains('\n')
+        && let Some(measured) = layout.bounds()
+    {
+        let width = (measured[2] - measured[0]).abs().max(1.0);
+        let lines = text.lines().count().max(1) as f32;
+        layer.shape = TextShape::Box {
+            x: 0.0,
+            y: 0.0,
+            width: width + 1.0,
+            height: (size * scale * lines * 2.0).max(1.0),
+        };
+        layer.paragraphs = vec![ParagraphRun {
+            len: text.len(),
+            style: ParagraphStyle { align: TextAlign::Center, ..Default::default() },
+        }];
+        layout = engine.layout(&layer, 72.0);
+    }
     let bounds = layout.bounds()?;
     let width = ((bounds[2] - bounds[0]).abs().ceil() as usize).saturating_add(2);
     let height = ((bounds[3] - bounds[1]).abs().ceil() as usize).saturating_add(2);
@@ -319,6 +339,42 @@ pub(crate) fn paint_name(ui: &egui::Ui, family: &str, text: &str, size: f32, rec
     );
 }
 
+/// Paint a multi-line sample centred in `rect`, scaled down to fit, optionally with a
+/// faux outline so the tiny TextShapeR cards read like the real styled type.
+pub(crate) fn paint_centered(
+    ui: &egui::Ui,
+    family: &str,
+    text: &str,
+    size: f32,
+    rect: Rect,
+    color: egui::Color32,
+    stroke: Option<(egui::Color32, f32)>,
+) {
+    let Some(sample) = label_sample(ui.ctx(), family, text, size) else {
+        return;
+    };
+    let [w, h] = sample.size;
+    if w <= 0.0 || h <= 0.0 || rect.width() <= 1.0 || rect.height() <= 1.0 {
+        return;
+    }
+    let scale = (rect.width() / w).min(rect.height() / h).min(1.0);
+    let target = Rect::from_center_size(rect.center(), vec2(w * scale, h * scale));
+    let painter = ui.painter().with_clip_rect(rect);
+    let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+    if let Some((stroke_color, width)) = stroke.filter(|(_, width)| *width > 0.0) {
+        let offset = width.max(1.0);
+        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)] {
+            painter.image(
+                sample.texture.id(),
+                target.translate(vec2(dx * offset, dy * offset)),
+                uv,
+                stroke_color,
+            );
+        }
+    }
+    painter.image(sample.texture.id(), target, uv, color);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -331,6 +387,32 @@ mod tests {
         let mut chars: Vec<char> = text.chars().collect();
         chars.sort_unstable();
         chars
+    }
+
+    #[test]
+    fn multiline_labels_center_each_line() {
+        let mut engine = photocraft_text::TextEngine::new();
+        let (image, _) = render_label(&mut engine, "Inter", "WWWWWWWW\nx", 1.0, 20.0).expect("bundled sans");
+        let width = image.size[0];
+        let mut rows = Vec::new();
+        for y in 0..image.size[1] {
+            let mut xs = Vec::new();
+            for x in 0..width {
+                if image.pixels[y * width + x].a() > 8 {
+                    xs.push(x);
+                }
+            }
+            if let (Some(&first), Some(&last)) = (xs.first(), xs.last()) {
+                rows.push((y, first, last));
+            }
+        }
+        let Some(&(last_y, _, _)) = rows.last() else { panic!("the sample has ink") };
+        let last_row = rows.iter().rev().find(|(y, _, _)| *y + 2 >= last_y).expect("last ink row");
+        let narrow_center = (last_row.1 + last_row.2) as f32 / 2.0;
+        assert!(
+            (narrow_center - width as f32 / 2.0).abs() <= 2.0,
+            "the short line must be centred: width {width}, centre {narrow_center}"
+        );
     }
 
     #[test]

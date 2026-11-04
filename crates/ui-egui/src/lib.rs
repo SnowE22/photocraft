@@ -229,6 +229,9 @@ pub mod spring_tools;
 pub mod stack_dialog;
 pub mod state;
 pub mod snow_typesetter_ui;
+pub mod snow_breaks_ui;
+pub mod snow_clean;
+pub mod snow_typer_style;
 pub use snow_typesetter_ui as typesetter_ui;
 pub mod stroke_constraint;
 pub mod stroke_trace;
@@ -716,6 +719,9 @@ type InfoSampleKey = (i32, i32, u64, u32);
 
 pub struct PhotocraftApp {
     pub typesetter: typesetter_ui::TypesetterUi,
+    /// Paste-on-click: whether the toggle was already armed, and the last selection it saw.
+    pub(crate) typesetter_paste_on_click_was_enabled: bool,
+    pub(crate) typesetter_paste_fingerprint: Option<u64>,
     pub pages: pages_panel::PagesPanelState,
     pub pages_thumbnails: HashMap<photocraft_doc::DocId, (u64, egui::TextureHandle)>,
     pub session: Session,
@@ -1068,6 +1074,8 @@ impl PhotocraftApp {
     pub fn new(session: Session, services: Services) -> Self {
         let mut app = Self {
             typesetter: typesetter_ui::TypesetterUi::new(),
+            typesetter_paste_on_click_was_enabled: false,
+            typesetter_paste_fingerprint: None,
             pages: pages_panel::PagesPanelState::new(),
             pages_thumbnails: HashMap::new(),
             session,
@@ -1631,6 +1639,194 @@ impl PhotocraftApp {
     }
 
     /// Обработка пользовательских действий в панели страниц (выбор, закрытие, сортировка, открытие главы).
+    /// TypeR's deferred requests: the panel asks, the app performs (one place per frame).
+    pub(crate) fn typesetter_requests(&mut self) {
+        if self.typesetter.take_text_shape_request() {
+            self.refresh_typesetter_text_shape();
+        }
+        if let Some((layer, text)) = self.typesetter.take_text_shape_apply_request() {
+            self.apply_typesetter_text_shape(layer, text);
+        }
+        if self.typesetter.take_align_request() {
+            self.align_typesetter_layer();
+        }
+        if self.typesetter.take_multi_bubble_capture_request() {
+            self.capture_typesetter_bubble();
+        }
+        if self.typesetter.take_multi_bubble_fill_request() {
+            self.fill_typesetter_bubbles();
+        }
+        self.maybe_typesetter_paste_on_click();
+    }
+
+    /// TextShapeR: proposes line breaks for the selected text layer's own text.
+    pub(crate) fn refresh_typesetter_text_shape(&mut self) {
+        let Some(st) = self.session.active() else { return };
+        let Some(id) = st.active_layer else {
+            self.typesetter.clear_text_shape_candidates();
+            return;
+        };
+        let Some(layer) = st.doc.layer(id) else { return };
+        let photocraft_doc::LayerContent::Text(text) = &layer.content else {
+            self.typesetter.clear_text_shape_candidates();
+            return;
+        };
+        let source = text.text.clone();
+        let preset = self.typesetter.state.preset_for_line(self.typesetter.state.current_line_idx).cloned().unwrap_or_default();
+        let selection = st.doc.selection.clone();
+        let candidates = photocraft_engine::typesetter::text_shape_candidates(
+            &source,
+            &preset,
+            selection.as_ref(),
+            st.doc.bounds(),
+            st.doc.resolution_dpi,
+            self.typesetter.state.options.line_spacing_sync,
+            self.typesetter.state.options.minimum_fit_scale_percent,
+        );
+        match candidates {
+            Ok(candidates) => self.typesetter.set_text_shape_candidates(candidates, id.0, preset),
+            Err(error) => {
+                self.typesetter.clear_text_shape_candidates();
+                self.ui.status = format!("TextShapeR: {error}");
+                self.ui.status_error = true;
+            }
+        }
+    }
+
+    /// Applies one TextShapeR candidate to its text layer.
+    pub(crate) fn apply_typesetter_text_shape(&mut self, layer: u64, text: String) {
+        if let Err(error) = self.run("type.edit", serde_json::json!({"layer": layer, "text": text})) {
+            self.ui.status = error;
+            self.ui.status_error = true;
+            return;
+        }
+        self.typesetter.clear_text_shape_candidates();
+        self.typesetter.auto_save();
+    }
+
+    /// Paste the current script line once a new selection appears (TypeR's paste-on-click); the
+    /// selection fingerprint stops it from pasting again on every frame.
+    pub(crate) fn maybe_typesetter_paste_on_click(&mut self) {
+        if !self.typesetter.state.options.paste_on_click {
+            self.typesetter_paste_on_click_was_enabled = false;
+            self.typesetter_paste_fingerprint = None;
+            return;
+        }
+        let Some(st) = self.session.active() else {
+            self.typesetter_paste_fingerprint = None;
+            return;
+        };
+        let fingerprint = st.doc.selection.as_ref().map(crate::snow_clean::selection_fingerprint);
+        if !self.typesetter_paste_on_click_was_enabled {
+            // Arming the toggle with an existing selection must not paste immediately.
+            self.typesetter_paste_on_click_was_enabled = true;
+            self.typesetter_paste_fingerprint = fingerprint;
+            return;
+        }
+        let Some(fingerprint) = fingerprint else {
+            self.typesetter_paste_fingerprint = None;
+            return;
+        };
+        if self.typesetter_paste_fingerprint == Some(fingerprint) {
+            return;
+        }
+        self.typesetter_paste_fingerprint = Some(fingerprint);
+        let Some(text) = self.typesetter.state.active_line().map(|line| line.text.clone()) else { return };
+        let Some(preset) = self.typesetter.state.preset_for_line(self.typesetter.state.current_line_idx).cloned() else {
+            return;
+        };
+        if self.typesetter.state.options.auto_clean
+            && let Err(error) = self.typesetter_clean_selection()
+        {
+            self.ui.status = error;
+            self.ui.status_error = true;
+        }
+        self.handle_typesetter_action(typesetter_ui::TypesetterAction { text, preset });
+        self.typesetter.state.advance_line();
+        self.typesetter.auto_save();
+    }
+
+    /// Fills the selected balloon with a clean white or black on the `TypeR Clean` layer.
+    pub(crate) fn typesetter_clean_selection(&mut self) -> Result<(), String> {
+        let Some(st) = self.session.active() else { return Ok(()) };
+        let Some(selection) = st.doc.selection.clone() else { return Ok(()) };
+        let layer = st.active_layer.and_then(|id| st.doc.layer(id)).and_then(|layer| match &layer.content {
+            photocraft_doc::LayerContent::Raster(surface) if crate::snow_clean::is_sampleable(surface) => Some(surface.clone()),
+            _ => None,
+        });
+        let color = crate::snow_clean::clean_fill_color(layer.as_ref(), &selection);
+        let hex = format!("#{:02X}{:02X}{:02X}", color[0], color[1], color[2]);
+        let existing = st.doc.layers.iter().find(|layer| layer.name == crate::snow_clean::CLEAN_LAYER).map(|layer| layer.id.0);
+        let id = match existing {
+            Some(id) => id,
+            None => {
+                let created = self.run("layer.new.layer", serde_json::json!({"name": crate::snow_clean::CLEAN_LAYER}))?;
+                created.get("layer").and_then(serde_json::Value::as_u64).ok_or("the clean layer was not created")?
+            }
+        };
+        self.run("layer.select", serde_json::json!({"layer": id}))?;
+        self.run("edit.fill", serde_json::json!({"color": hex}))?;
+        Ok(())
+    }
+
+    /// Multi-bubble fill: one selection captured per sub-tool click.
+    pub(crate) fn capture_typesetter_bubble(&mut self) {
+        let Some(selection) = self.session.active().and_then(|st| st.doc.selection.clone()) else {
+            self.ui.status = tl!("Capture a selection first").into();
+            self.ui.status_error = true;
+            return;
+        };
+        self.typesetter.push_multi_bubble_capture(selection);
+        let count = self.typesetter.multi_bubble_count();
+        self.ui.status = format!("{}: {count}", tl!("Bubble captured"));
+        self.ui.status_error = false;
+    }
+
+    /// Multi-bubble fill: pastes the queue into the captured balloons in order.
+    pub(crate) fn fill_typesetter_bubbles(&mut self) {
+        let captures = self.typesetter.drain_multi_bubble_captures();
+        if captures.is_empty() {
+            return;
+        }
+        let mut filled = 0usize;
+        for selection in captures {
+            let Some(text) = self.typesetter.state.active_line().map(|line| line.text.clone()) else { break };
+            let Some(preset) = self.typesetter.state.preset_for_line(self.typesetter.state.current_line_idx).cloned() else {
+                break;
+            };
+            if let Some(st) = self.session.active_mut() {
+                std::sync::Arc::make_mut(&mut st.doc).selection = Some(selection);
+            } else {
+                break;
+            }
+            if self.typesetter.state.options.auto_clean {
+                let _ = self.typesetter_clean_selection();
+            }
+            self.handle_typesetter_action(typesetter_ui::TypesetterAction { text, preset });
+            self.typesetter.state.advance_line();
+            filled = filled.saturating_add(1);
+        }
+        self.ui.status = format!("{}: {filled}", tl!("Filled bubbles"));
+        self.ui.status_error = false;
+        self.typesetter.auto_save();
+    }
+
+    /// Centers the active TypeR text layer in the selection.
+    pub(crate) fn align_typesetter_layer(&mut self) {
+        let horizontal = self.run("layer.align.horizontalCenters", serde_json::json!({}));
+        let vertical = self.run("layer.align.verticalCenters", serde_json::json!({}));
+        match (horizontal, vertical) {
+            (Ok(_), Ok(_)) => {
+                self.ui.status = tl!("Layer centered in the selection").into();
+                self.ui.status_error = false;
+            }
+            (Err(error), _) | (_, Err(error)) => {
+                self.ui.status = format!("{}: {error}", tl!("Align failed"));
+                self.ui.status_error = true;
+            }
+        }
+    }
+
     pub(crate) fn handle_pages_action(&mut self, action: pages_panel::PagesPanelAction) {
         match action {
             pages_panel::PagesPanelAction::SelectPage(idx) => {
@@ -3040,6 +3236,7 @@ impl PhotocraftApp {
         if let Some(action) = typesetter_action {
             self.handle_typesetter_action(action);
         }
+        self.typesetter_requests();
         analysis_ui::windows(self, &ctx);
         timeline_ui::windows(self, &ctx);
         workspace_ui::windows(self, &ctx);
