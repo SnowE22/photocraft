@@ -1381,24 +1381,57 @@ impl PhotocraftApp {
             }
         });
 
-        // Готовим финальный текст (применяем ALL_CAPS если задано в стиле TypeR)
-        let mut final_text = if action.preset.all_caps {
-            action.text.to_uppercase()
-        } else {
-            action.text
-        };
+        // Готовим финальный текст (применяем ALL_CAPS если задано в стиле TypeR), снимаем
+        // markdown-маркеры сценария и запоминаем выделенные слова для faux-начертаний.
+        let source_text = if action.preset.all_caps { action.text.to_uppercase() } else { action.text };
+        let (stripped, styled_segments) = strip_typer_markdown(&source_text);
+        let mut final_text = stripped;
 
-        // Автоматический перенос строк (word wrap) и устранение «висячих» предлогов (солвер Кнута—Пласса)
+        // Пунктуационные реплики ("?!", "!!!", "…") масштабируются в TypeR, обычные — нет.
+        let mut font_size = action.preset.font_size;
+        let mut leading = if action.preset.leading > 0.0 { action.preset.leading } else { font_size * 1.2 };
+        if action.preset.punctuation_only_scale > 1.0 && is_punctuation_only(&final_text) {
+            font_size *= action.preset.punctuation_only_scale;
+            leading *= action.preset.punctuation_only_scale;
+        }
+
+        // Автоматический перенос строк (word wrap) и устранение «висячих» предлогов; в контуре
+        // (эллипс, лассо, овальный баллон) кегль уменьшается, пока блок не впишется в вписанный
+        // прямоугольник контура, а не только в его bounding box.
         if let Some([_bx, _by, bw, bh]) = selection_box {
             final_text = photocraft_engine::knuth_plass::knuth_plass_bubble_wrap_ext(
                 &final_text,
                 bw,
                 bh,
-                action.preset.font_size,
+                font_size,
                 st.doc.resolution_dpi,
                 action.preset.horizontal_scale,
                 action.preset.hanging_punctuation,
             );
+            let h_scale = if action.preset.horizontal_scale > 1.5 { action.preset.horizontal_scale / 100.0 } else { 1.0 };
+            for _ in 0..6 {
+                let lines = final_text.split('\n').count().max(1) as f32;
+                let widest = final_text
+                    .split('\n')
+                    .map(|line| photocraft_engine::knuth_plass::measure_token_width(line, font_size, h_scale))
+                    .fold(0.0f32, f32::max);
+                let block_height = lines * leading;
+                let factor = ((bw * 0.72) / widest.max(1.0)).min((bh * 0.72) / block_height.max(1.0)).min(1.0);
+                if factor > 0.97 {
+                    break;
+                }
+                font_size = (font_size * factor).max(6.0);
+                leading = (leading * factor).max(font_size * 1.05);
+                final_text = photocraft_engine::knuth_plass::knuth_plass_bubble_wrap_ext(
+                    &final_text,
+                    bw,
+                    bh,
+                    font_size,
+                    st.doc.resolution_dpi,
+                    action.preset.horizontal_scale,
+                    action.preset.hanging_punctuation,
+                );
+            }
         } else {
             final_text = photocraft_engine::knuth_plass::bind_orphan_prepositions(&final_text);
         }
@@ -1485,11 +1518,6 @@ impl PhotocraftApp {
         // Рассчитываем оптический центр и базовую линию для Point Text
         // Это обеспечивает 100% совместимость с Adobe Photoshop (исключает программный сбой при открытии PSD с Area Text)
         let line_count = final_text.split('\n').count().max(1) as f32;
-        let leading = if action.preset.leading > 0.0 {
-            action.preset.leading
-        } else {
-            action.preset.font_size * 1.2
-        };
 
         let (cx, cy) = if let Some([bx, by, bw, bh]) = selection_box {
             (bx + bw * 0.5, by + bh * 0.5)
@@ -1500,22 +1528,29 @@ impl PhotocraftApp {
         };
 
         // Базовая линия первой строки так, чтобы центр всего блока строк пришелся на cy
-        let baseline_y = cy - (line_count - 1.0) * leading * 0.5 + action.preset.font_size * 0.225;
+        let baseline_y = cy - (line_count - 1.0) * leading * 0.5 + font_size * 0.225;
 
+        let runs_text = final_text.clone();
         let mut type_params = serde_json::json!({
             "x": cx,
             "y": baseline_y,
             "text": final_text,
-            "size": action.preset.font_size,
+            "size": font_size,
             "font": resolved_family,
             "fontStyle": style_name,
             "weight": weight,
             "italic": action.preset.italic,
             "fauxBold": faux_bold,
             "fauxItalic": faux_italic,
-            "align": "center",
+            "align": action.preset.alignment.as_str(),
+            "firstLineIndent": action.preset.first_line_indent,
+            "startIndent": action.preset.start_indent,
+            "endIndent": action.preset.end_indent,
+            "spaceAfter": action.preset.space_after,
+            "hyphenate": action.preset.hyphenate,
+            "direction": action.preset.direction.as_str(),
             "tracking": action.preset.tracking,
-            "leading": action.preset.leading,
+            "leading": leading,
             "horizontalScale": action.preset.horizontal_scale,
             "color": hex_text_color,
             "kerning": kerning_mode,
@@ -1532,6 +1567,36 @@ impl PhotocraftApp {
 
         if let Ok(v) = res {
             if let Some(layer_id) = v.get("layer").and_then(serde_json::Value::as_u64) {
+                // Markdown из сценария: **слово** → faux bold, *слово* → faux italic.
+                if !styled_segments.is_empty() {
+                    let chars: Vec<char> = runs_text.chars().collect();
+                    let mut runs = Vec::new();
+                    let mut at = 0usize;
+                    for (content, bold, italic) in &styled_segments {
+                        let needle: Vec<char> = content.chars().collect();
+                        let mut found = None;
+                        let mut index = at;
+                        while index + needle.len() <= chars.len() {
+                            if chars.get(index..index + needle.len()).is_some_and(|slice| slice == needle.as_slice()) {
+                                found = Some(index);
+                                break;
+                            }
+                            index += 1;
+                        }
+                        if let Some(start) = found {
+                            runs.push(serde_json::json!({
+                                "start": start,
+                                "end": start + needle.len(),
+                                "fauxBold": bold,
+                                "fauxItalic": italic
+                            }));
+                            at = start + needle.len();
+                        }
+                    }
+                    if !runs.is_empty() {
+                        let _ = self.run("type.edit", serde_json::json!({"layer": layer_id, "runs": runs}));
+                    }
+                }
                 if action.preset.stroke_width > 0.0 {
                     let hex_color = format!(
                         "#{:02x}{:02x}{:02x}",
@@ -4864,6 +4929,56 @@ mod channel_tint_tests {
         assert_eq!(channel_tint(Grayscale, 0, 77, true), Color32::from_gray(77));
         assert_eq!(channel_tint(Rgb, 0, 77, false), Color32::from_gray(77));
     }
+}
+
+/// TypeR's script markdown: `**word**` is faux bold, `*word*` faux italic. Returns the plain text
+/// (markers removed) and the styled segments in reading order, for `type.edit` runs.
+fn strip_typer_markdown(text: &str) -> (String, Vec<(String, bool, bool)>) {
+    let chars: Vec<char> = text.chars().collect();
+    let mut plain = String::new();
+    let mut segment = String::new();
+    let mut segments = Vec::new();
+    let (mut bold, mut italic) = (false, false);
+    let flush = |segment: &mut String, bold: bool, italic: bool, segments: &mut Vec<(String, bool, bool)>| {
+        if !segment.is_empty() && (bold || italic) {
+            segments.push((std::mem::take(segment), bold, italic));
+        } else {
+            segment.clear();
+        }
+    };
+    let mut index = 0usize;
+    while index < chars.len() {
+        if chars[index] == '*' {
+            if chars.get(index + 1) == Some(&'*') {
+                flush(&mut segment, bold, italic, &mut segments);
+                bold = !bold;
+                index += 2;
+                continue;
+            }
+            flush(&mut segment, bold, italic, &mut segments);
+            italic = !italic;
+            index += 1;
+            continue;
+        }
+        plain.push(chars[index]);
+        if bold || italic {
+            segment.push(chars[index]);
+        } else if !segment.is_empty() {
+            flush(&mut segment, bold, italic, &mut segments);
+        }
+        index += 1;
+    }
+    flush(&mut segment, bold, italic, &mut segments);
+    (plain, segments)
+}
+
+/// A line that is only punctuation (`?!`, `!!!`, `…`) is enlarged by TypeR.
+fn is_punctuation_only(text: &str) -> bool {
+    let trimmed = text.trim();
+    !trimmed.is_empty()
+        && trimmed.chars().all(|c| {
+            c.is_ascii_punctuation() || matches!(c, '…' | '—' | '–' | '«' | '»' | '“' | '”' | '‘' | '’' | '！' | '？')
+        })
 }
 
 #[cfg(test)]
