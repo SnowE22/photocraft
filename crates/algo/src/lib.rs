@@ -42,6 +42,7 @@ pub mod histogram;
 mod image;
 pub mod inpaint;
 pub mod lens;
+pub mod snow_inpaint;
 pub mod liquify;
 pub mod magnetic;
 pub mod matting;
