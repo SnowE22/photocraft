@@ -186,6 +186,8 @@ pub struct TypesetterUi {
     multi_bubble_capture_requested: bool,
     multi_bubble_fill_requested: bool,
     align_requested: bool,
+    /// Style to apply to the text layer already selected on the page.
+    apply_style_requested: Option<TextStylePreset>,
     /// Pass number in which the auxiliary windows were last drawn, so a frame that renders both
     /// the docked body and the floating one does not open them twice.
     aux_pass: u64,
@@ -239,6 +241,7 @@ impl Default for TypesetterUi {
             multi_bubble_capture_requested: false,
             multi_bubble_fill_requested: false,
             align_requested: false,
+            apply_style_requested: None,
             aux_pass: u64::MAX,
             legacy_merged: false,
             caret_line: None,
@@ -319,6 +322,10 @@ impl TypesetterUi {
         let Some(candidate) = self.text_shape_candidates.get(index) else { return };
         self.text_shape_apply_requested = Some((layer, candidate.text.clone()));
         self.show_text_shape_window = false;
+    }
+
+    pub fn take_apply_style_request(&mut self) -> Option<TextStylePreset> {
+        self.apply_style_requested.take()
     }
 
     pub fn take_align_request(&mut self) -> bool {
@@ -1157,12 +1164,15 @@ impl TypesetterUi {
                                         preset.stroke_width.clamp(0.5, 2.0),
                                     )
                                 });
-                                if crate::font_preview::name_size(ui.ctx(), &preset.font_family, &candidate.text, preset.font_size).is_some() {
+                                if let Some([text_w, text_h]) = crate::font_preview::name_size(ui.ctx(), &preset.font_family, &candidate.text, preset.font_size) {
+                                    let scale = (rect.width() / text_w.max(1.0)).min(rect.height() / text_h.max(1.0)).min(1.0) * 0.92;
+                                    let size = (preset.font_size * scale).max(6.0);
+                                    ui.set_clip_rect(rect);
                                     crate::font_preview::paint_centered(
                                         ui,
                                         &preset.font_family,
                                         &candidate.text,
-                                        preset.font_size,
+                                        size,
                                         rect,
                                         color,
                                         stroke,
@@ -1821,6 +1831,7 @@ impl TypesetterUi {
         let mut style_to_duplicate = None;
         let mut style_to_apply = None;
         let mut style_to_delete = None;
+        let mut style_to_layer = None;
 
         let mut folder_names = self.state.folders();
         folder_names.push(tl!("No folder").to_string());
@@ -1871,6 +1882,7 @@ impl TypesetterUi {
                                     (ty.ui, ty.line, ty.text)
                                 };
 
+                                let card_top = col.cursor().min.y;
                                 Frame::NONE
                                     .fill(card_bg)
                                     .stroke(Stroke::new(1.0, card_border))
@@ -1912,6 +1924,10 @@ impl TypesetterUi {
                                                 .frame(false);
                                                 if ui.add(edit_btn).on_hover_text("Настройки шрифта и стиля").clicked() {
                                                     open_edit = true;
+                                                }
+                                                let apply_layer = egui::Button::new(RichText::new("⇢").color(if is_active { Color32::WHITE } else { t.text_dim }).small()).frame(false);
+                                                if ui.add(apply_layer).on_hover_text("Применить стиль к выделенному слою на странице").clicked() {
+                                                    style_to_layer = Some(p_idx);
                                                 }
 
                                                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
@@ -1987,6 +2003,15 @@ impl TypesetterUi {
                                             }
                                         });
                                     });
+                                let card_bottom = col.cursor().min.y;
+                                let card_rect = egui::Rect::from_min_max(egui::pos2(col.min_rect().left(), card_top), egui::pos2(col.min_rect().right(), card_bottom));
+                                let card_resp = col.interact(card_rect, col.id().with(("typer_style_card", p_idx)), Sense::click());
+                                if card_resp.clicked() {
+                                    style_to_select = Some(p_idx);
+                                }
+                                if card_resp.double_clicked() {
+                                    style_to_apply = Some(p_idx);
+                                }
                                 col.add_space(3.0);
                             };
 
@@ -2027,6 +2052,12 @@ impl TypesetterUi {
                     self.state.selected_preset_idx = self.state.presets.len().saturating_sub(1);
                 }
                 self.auto_save();
+            }
+        }
+
+        if let Some(idx) = style_to_layer {
+            if let Some(preset) = self.state.presets.get(idx).cloned() {
+                self.apply_style_requested = Some(preset);
             }
         }
 

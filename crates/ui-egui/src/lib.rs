@@ -1719,6 +1719,9 @@ impl PhotocraftApp {
         if self.typesetter.take_align_request() {
             self.align_typesetter_layer();
         }
+        if let Some(preset) = self.typesetter.take_apply_style_request() {
+            self.apply_typesetter_style_to_active_layer(&preset);
+        }
         if self.typesetter.take_multi_bubble_capture_request() {
             self.capture_typesetter_bubble();
         }
@@ -1908,6 +1911,41 @@ impl PhotocraftApp {
         self.ui.status = format!("{}: {filled}", tl!("Filled bubbles"));
         self.ui.status_error = false;
         self.typesetter.auto_save();
+    }
+
+    /// Applies a TypeR style preset to the text layer already selected on the page, without
+    /// inserting text: character and paragraph properties go through `type.setStyle`.
+    pub(crate) fn apply_typesetter_style_to_active_layer(&mut self, preset: &photocraft_engine::typesetter::TextStylePreset) {
+        let hex = format!("#{:02x}{:02x}{:02x}{:02x}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]);
+        let leading = if preset.leading > 0.0 { serde_json::json!(preset.leading) } else { serde_json::json!("auto") };
+        let params = serde_json::json!({
+            "font": preset.font_family,
+            "postscriptName": preset.font_postscript,
+            "size": preset.font_size,
+            "leading": leading,
+            "tracking": preset.tracking,
+            "horizontalScale": preset.horizontal_scale,
+            "italic": preset.italic,
+            "fauxBold": preset.bold,
+            "color": hex,
+            "align": preset.alignment,
+            "firstLineIndent": preset.first_line_indent,
+            "startIndent": preset.start_indent,
+            "endIndent": preset.end_indent,
+            "spaceAfter": preset.space_after,
+            "hyphenate": preset.hyphenate,
+            "direction": preset.direction
+        });
+        match self.run("type.setStyle", params) {
+            Ok(_) => {
+                self.ui.status = format!("Стиль «{}» применён к слою", preset.name);
+                self.ui.status_error = false;
+            }
+            Err(error) => {
+                self.ui.status = format!("Стиль не применён: {error}");
+                self.ui.status_error = true;
+            }
+        }
     }
 
     /// Centers the active TypeR text layer in the selection.

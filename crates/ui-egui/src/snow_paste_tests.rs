@@ -94,3 +94,25 @@ fn text_shape_previews_follow_the_selected_page_layer() {
     app.refresh_text_shape_previews_from_page();
     assert!(!app.typesetter.has_text_shape_candidates(), "no selected layer clears the previews");
 }
+#[test]
+fn style_preset_applies_to_the_selected_text_layer() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+    let id = app.run("type.create", json!({"x": 20, "y": 60, "text": "Style me please", "size": 12})).unwrap()["layer"].as_u64().unwrap();
+    app.session.active_mut().unwrap().active_layer = Some(photocraft_doc::LayerId(id));
+    let preset = photocraft_engine::typesetter::TextStylePreset {
+        name: "Applied".into(),
+        font_size: 33.0,
+        alignment: "right".into(),
+        first_line_indent: 5.0,
+        hyphenate: true,
+        ..photocraft_engine::typesetter::TextStylePreset::default()
+    };
+    app.apply_typesetter_style_to_active_layer(&preset);
+    let st = app.session.active().unwrap();
+    let layer = st.doc.layer(photocraft_doc::LayerId(id)).unwrap();
+    let LayerContent::Text(text) = &layer.content else { panic!("text layer") };
+    assert_eq!(text.runs[0].style.size_pt, 33.0);
+    assert_eq!(text.paragraphs[0].style.align, photocraft_doc::text::TextAlign::Right);
+    assert_eq!(text.paragraphs[0].style.first_line_indent_pt, 5.0);
+}
