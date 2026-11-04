@@ -64,7 +64,7 @@ const STYLE_NAME_PT: f32 = 13.0;
 
 /// Extra leading between script rows in the unified editor (logical pixels). egui's multiline
 /// `TextEdit` packs rows at the font's own line height, which is too tight for reading a script.
-const SCRIPT_LINE_SPACING: f32 = 4.0;
+const SCRIPT_LINE_SPACING: f32 = 1.0;
 
 #[derive(Serialize, Deserialize)]
 struct TypesetterPersistedState {
@@ -1675,7 +1675,7 @@ impl TypesetterUi {
                                     egui::pos2(rect.right() - action_w, screen_end_y),
                                 ),
                                 CornerRadius::ZERO,
-                                t.row_selected,
+                                crate::snow_typer_style::TyperStyle::get(ui.ctx()).blue,
                             ),
                         );
                     }
@@ -1692,7 +1692,7 @@ impl TypesetterUi {
 
                     // А. Левый гуттер: номер строки
                     let num_color = if is_active {
-                        t.accent
+                        Color32::WHITE
                     } else if is_applied {
                         t.text_faint
                     } else {
@@ -1712,8 +1712,10 @@ impl TypesetterUi {
                     let is_target_hovered = mouse_pos.is_some_and(|p| target_rect.contains(p));
 
                     if is_active {
-                        ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.3, t.accent));
-                        ui.painter().circle_filled(target_center, 2.3, t.accent);
+                        ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.3, Color32::WHITE));
+                        ui.painter().circle_filled(target_center, 2.3, Color32::WHITE);
+                    } else if is_applied {
+                        ui.painter().text(target_center, egui::Align2::CENTER_CENTER, "✓", egui::FontId::proportional(11.0), t.text_dim);
                     } else {
                         let stroke_color = if is_target_hovered {
                             t.accent
