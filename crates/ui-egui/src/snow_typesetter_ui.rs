@@ -3227,7 +3227,7 @@ mod tests {
         app.session.active_mut().unwrap().active_layer = Some(photocraft_doc::LayerId(id));
 
         app.typesetter.state.load_script("Queue line that must not appear");
-        app.refresh_typesetter_text_shape();
+        app.refresh_typesetter_text_shape(true);
         assert!(app.typesetter.has_text_shape_candidates(), "the selected text layer must drive TextShapeR");
         assert!(
             app.typesetter

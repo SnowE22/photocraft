@@ -722,6 +722,8 @@ pub struct PhotocraftApp {
     /// Paste-on-click: whether the toggle was already armed, and the last selection it saw.
     pub(crate) typesetter_paste_on_click_was_enabled: bool,
     pub(crate) typesetter_paste_fingerprint: Option<u64>,
+    /// Hash of the page text layer the TextShapeR previews were built from.
+    pub(crate) typesetter_text_shape_source: Option<u64>,
     pub pages: pages_panel::PagesPanelState,
     pub pages_thumbnails: HashMap<photocraft_doc::DocId, (u64, egui::TextureHandle)>,
     pub session: Session,
@@ -1076,6 +1078,7 @@ impl PhotocraftApp {
             typesetter: typesetter_ui::TypesetterUi::new(),
             typesetter_paste_on_click_was_enabled: false,
             typesetter_paste_fingerprint: None,
+            typesetter_text_shape_source: None,
             pages: pages_panel::PagesPanelState::new(),
             pages_thumbnails: HashMap::new(),
             session,
@@ -1707,8 +1710,9 @@ impl PhotocraftApp {
     /// TypeR's deferred requests: the panel asks, the app performs (one place per frame).
     pub(crate) fn typesetter_requests(&mut self) {
         if self.typesetter.take_text_shape_request() {
-            self.refresh_typesetter_text_shape();
+            self.refresh_typesetter_text_shape(true);
         }
+        self.refresh_text_shape_previews_from_page();
         if let Some((layer, text)) = self.typesetter.take_text_shape_apply_request() {
             self.apply_typesetter_text_shape(layer, text);
         }
@@ -1725,7 +1729,31 @@ impl PhotocraftApp {
     }
 
     /// TextShapeR: proposes line breaks for the selected text layer's own text.
-    pub(crate) fn refresh_typesetter_text_shape(&mut self) {
+    /// Keeps the three TextShapeR preview cards tied to the text layer selected on the page.
+    pub(crate) fn refresh_text_shape_previews_from_page(&mut self) {
+        let source = self.session.active().and_then(|st| {
+            let id = st.active_layer?;
+            let layer = st.doc.layer(id)?;
+            let photocraft_doc::LayerContent::Text(text) = &layer.content else { return None };
+            let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+            for byte in id.0.to_le_bytes().iter().chain(text.text.as_bytes()) {
+                hash ^= u64::from(*byte);
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            Some(hash)
+        });
+        if source == self.typesetter_text_shape_source {
+            return;
+        }
+        self.typesetter_text_shape_source = source;
+        if source.is_some() {
+            self.refresh_typesetter_text_shape(false);
+        } else {
+            self.typesetter.clear_text_shape_candidates();
+        }
+    }
+
+    pub(crate) fn refresh_typesetter_text_shape(&mut self, open_window: bool) {
         let Some(st) = self.session.active() else { return };
         let Some(id) = st.active_layer else {
             self.typesetter.clear_text_shape_candidates();
@@ -1749,7 +1777,13 @@ impl PhotocraftApp {
             self.typesetter.state.options.minimum_fit_scale_percent,
         );
         match candidates {
-            Ok(candidates) => self.typesetter.set_text_shape_candidates(candidates, id.0, preset),
+            Ok(candidates) => {
+                if open_window {
+                    self.typesetter.set_text_shape_candidates(candidates, id.0, preset);
+                } else {
+                    self.typesetter.set_text_shape_candidates_inline(candidates, id.0, preset);
+                }
+            }
             Err(error) => {
                 self.typesetter.clear_text_shape_candidates();
                 self.ui.status = format!("TextShapeR: {error}");
@@ -4987,3 +5021,5 @@ mod browse_field_tests;
 mod options_hit_area_tests;
 #[cfg(test)]
 mod select_and_mask_button_tests;
+#[cfg(test)]
+mod snow_paste_tests;

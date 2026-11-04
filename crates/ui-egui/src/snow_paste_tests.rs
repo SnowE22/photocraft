@@ -76,3 +76,21 @@ fn auto_clean_is_off_by_default_and_leaves_no_layer() {
     app.maybe_typesetter_paste_on_click();
     assert!(!app.session.active().unwrap().doc.layers.iter().any(|layer| layer.name == crate::snow_clean::CLEAN_LAYER));
 }
+
+#[test]
+fn text_shape_previews_follow_the_selected_page_layer() {
+    let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.run("file.new", json!({"width": 400, "height": 400})).unwrap();
+    let id = app
+        .run("type.create", json!({"x": 20, "y": 60, "text": "A selected text layer on the page with words", "size": 24}))
+        .unwrap()["layer"]
+        .as_u64()
+        .unwrap();
+    app.session.active_mut().unwrap().active_layer = Some(photocraft_doc::LayerId(id));
+    app.refresh_text_shape_previews_from_page();
+    assert!(app.typesetter.has_text_shape_candidates(), "the page layer fills the preview cards");
+    assert!(app.typesetter.first_text_shape_candidate_text().is_some());
+    app.session.active_mut().unwrap().active_layer = None;
+    app.refresh_text_shape_previews_from_page();
+    assert!(!app.typesetter.has_text_shape_candidates(), "no selected layer clears the previews");
+}
