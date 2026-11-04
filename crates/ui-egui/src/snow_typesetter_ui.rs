@@ -609,7 +609,8 @@ impl TypesetterUi {
         self.rendered_this_frame = true;
         let mut action = None;
         egui::Frame::NONE
-            .inner_margin(egui::Margin { left: 6, right: 6, top: 4, bottom: 4 })
+            .fill(crate::snow_typer_style::TyperStyle::get(ui.ctx()).ui_darker)
+            .inner_margin(egui::Margin { left: 4, right: 4, top: 3, bottom: 3 })
             .show(ui, |ui| {
                 self.render_header_toolbar(ui);
                 self.render_body(ui, &mut action);
@@ -947,7 +948,11 @@ impl TypesetterUi {
     /// TypeR's footer rail: workspace, full script and settings, plus queue progress.
     fn render_type_r_footer(&mut self, ui: &mut egui::Ui) {
         let t = Tokens::get(ui.ctx());
-        ui.add_space(3.0);
+        let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
+        egui::Frame::NONE
+            .fill(ty.ui_dark)
+            .inner_margin(Margin::symmetric(4, 2))
+            .show(ui, |ui| {
         widgets::hairline(ui);
         ui.horizontal(|ui| {
             for (tab, icon, tooltip) in [
@@ -987,6 +992,7 @@ impl TypesetterUi {
                 );
             });
         });
+            });
     }
 
     /// Тело активной вкладки тайпсеттера.
@@ -1759,6 +1765,7 @@ impl TypesetterUi {
     /// Сетка карточек стилей шрифтов по папкам (с адаптивным числом колонок).
     fn render_style_presets_grid(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>, num_cols: usize) {
         let t = Tokens::get(ui.ctx());
+        let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
         let active_preset_idx = self.state.selected_preset_idx;
 
         let mut style_to_select = None;
@@ -1809,24 +1816,16 @@ impl TypesetterUi {
                                 let is_active = p_idx == active_preset_idx;
 
                                 let (card_bg, card_border, text_color) = if is_active {
-                                    (
-                                        Color32::from_rgb(0, 120, 215),
-                                        Color32::from_rgb(100, 180, 255),
-                                        Color32::WHITE,
-                                    )
+                                    (ty.blue, ty.blue_dark, Color32::WHITE)
                                 } else {
-                                    (
-                                        t.field,
-                                        t.field_border,
-                                        t.text,
-                                    )
+                                    (ty.ui, ty.line, ty.text)
                                 };
 
                                 Frame::NONE
                                     .fill(card_bg)
                                     .stroke(Stroke::new(1.0, card_border))
                                     .corner_radius(CornerRadius::same(t.radius_sm as u8))
-                                    .inner_margin(Margin::symmetric(4, 3))
+                                    .inner_margin(Margin::symmetric(5, 2))
                                     .show(col, |ui| {
                                         ui.horizontal(|ui| {
                                             let sel_icon = if is_active { "●" } else { "○" };
@@ -1890,6 +1889,11 @@ impl TypesetterUi {
                                                         ui.add(egui::Label::new(title).truncate().sense(Sense::click()))
                                                     };
 
+                                                    ui.label(
+                                                        egui::RichText::new(format!("{:.0}pt", preset.font_size))
+                                                            .color(if is_active { Color32::WHITE } else { ty.blue })
+                                                            .size(10.0),
+                                                    );
                                                     let sys_label = if preset.measurement_system.is_optical() { "Оптическая" } else { "Метрическая" };
                                                     let hex_c = format!("#{:02X}{:02X}{:02X}{:02X}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]);
                                                     let tip = format!(
@@ -1933,7 +1937,7 @@ impl TypesetterUi {
                                             }
                                         });
                                     });
-                                col.add_space(2.0);
+                                col.add_space(3.0);
                             };
 
                             if num_cols <= 1 {
