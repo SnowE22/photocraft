@@ -1581,7 +1581,7 @@ impl TypesetterUi {
                     .text_color(t.text)
                     // Frame::NONE заменяет margin целиком, поэтому отступы задаём во фрейме:
                     // иначе текст начинается под левым гуттером и первые символы строки скрыты.
-                    .frame(egui::Frame::NONE.fill(crate::snow_typer_style::TyperStyle::get(ui.ctx()).ui_dark).inner_margin(egui::Margin {
+                    .frame(egui::Frame::NONE.inner_margin(egui::Margin {
                         left: gutter_w as i8,
                         right: action_w as i8,
                         top: 4,
@@ -1671,7 +1671,7 @@ impl TypesetterUi {
                             *shape,
                             egui::Shape::rect_filled(
                                 egui::Rect::from_min_max(
-                                    egui::pos2(rect.left() + gutter_w, screen_start_y),
+                                    egui::pos2(rect.left(), screen_start_y),
                                     egui::pos2(rect.right() - action_w, screen_end_y),
                                 ),
                                 CornerRadius::ZERO,
@@ -1714,8 +1714,6 @@ impl TypesetterUi {
                     if is_active {
                         ui.painter().circle_stroke(target_center, 4.5, Stroke::new(1.3, Color32::WHITE));
                         ui.painter().circle_filled(target_center, 2.3, Color32::WHITE);
-                    } else if is_applied {
-                        ui.painter().text(target_center, egui::Align2::CENTER_CENTER, "✓", egui::FontId::proportional(11.0), t.text_dim);
                     } else {
                         let stroke_color = if is_target_hovered {
                             t.accent
