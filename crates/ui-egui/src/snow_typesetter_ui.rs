@@ -1956,9 +1956,6 @@ impl TypesetterUi {
                                                     if name_label.clicked() {
                                                         style_to_select = Some(p_idx);
                                                     }
-                                                    if name_label.double_clicked() {
-                                                        style_to_apply = Some(p_idx);
-                                                    }
 
                                                     name_label.context_menu(|ui| {
                                                         if ui.button("✏ Редактировать стиль...").clicked() {
@@ -1992,9 +1989,6 @@ impl TypesetterUi {
                                 let card_resp = col.interact(card_rect, col.id().with(("typer_style_card", p_idx)), Sense::click());
                                 if card_resp.clicked() {
                                     style_to_select = Some(p_idx);
-                                }
-                                if card_resp.double_clicked() {
-                                    style_to_apply = Some(p_idx);
                                 }
                                 col.add_space(3.0);
                             };
