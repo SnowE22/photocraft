@@ -984,6 +984,10 @@ impl TypesetterUi {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 let applied = self.state.lines.iter().filter(|line| line.is_applied).count();
+                if ui.add(egui::Button::new(RichText::new("?").color(t.text_dim).size(11.0)).frame(false)).on_hover_text("Клик — дефис · Alt+клик — без дефиса · тяните маркер").clicked() {}
+                if ui.add(egui::Button::new(RichText::new("⚙").color(t.text_dim).size(11.0)).frame(false)).on_hover_text(tl!("Options")).clicked() {
+                    self.current_tab = TypesetterTab::Settings;
+                }
                 ui.label(
                     RichText::new(format!("{}/{}", applied, self.state.lines.len()))
                         .color(t.text_dim)
@@ -1279,7 +1283,7 @@ impl TypesetterUi {
             let folder = egui::Button::new(RichText::new("＋ Добавить папку").size(11.5).color(ty.text))
                 .fill(ty.ui)
                 .corner_radius(2.0)
-                .min_size(vec2(half, 26.0));
+                .min_size(vec2(half, 22.0));
             if ui.add(folder).clicked() {
                 self.creating_new_folder = true;
                 self.new_folder_name_buffer = tl!("New Folder").into();
@@ -1287,7 +1291,7 @@ impl TypesetterUi {
             let style = egui::Button::new(RichText::new("＋ Добавить стиль").size(11.5).color(ty.text))
                 .fill(ty.ui)
                 .corner_radius(2.0)
-                .min_size(vec2(half, 26.0));
+                .min_size(vec2(half, 22.0));
             if ui.add(style).clicked() {
                 self.state.presets.push(TextStylePreset { name: tl!("New Preset").to_string(), ..TextStylePreset::default() });
                 self.editing_preset_idx = Some(self.state.presets.len().saturating_sub(1));
@@ -1823,7 +1827,7 @@ impl TypesetterUi {
 
         let filter_lower = self.style_filter.trim().to_lowercase();
 
-        let grid_h = (ui.available_height() - 36.0).max(80.0);
+        let grid_h = (ui.available_height() - 28.0).max(48.0);
         ScrollArea::vertical()
             .id_salt("typer_folders_scroll")
             .max_height(grid_h)
