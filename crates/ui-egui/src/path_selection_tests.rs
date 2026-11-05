@@ -367,3 +367,33 @@ fn loading_a_path_after_hiding_extras_restores_outline() {
     assert_eq!(selection(&h), Some([10, 10, 50, 40]));
     assert!(h.state().ui.view.shows(h.state().ui.view.show.selection_edges));
 }
+
+/// Regression test for the TypeR panel scenario: when a `TextEdit` widget has focus
+/// (so `ctx.text_edit_focused()` is true), ⌘↩ must still fire the global menu shortcut
+/// `path.toSelection` instead of being swallowed by the text field.
+#[test]
+fn cmd_enter_with_text_edit_focus_loads_path_as_selection() {
+    let mut h = harness();
+    h.state_mut().run("path.set", json!({"name": "work", "path": rect_path(15.0, 25.0, 40.0, 30.0)})).unwrap();
+    assert!(h.state().session.active().unwrap().doc.selection.is_none());
+
+    // Focus a text edit widget so `ctx.text_edit_focused()` returns true — this is what
+    // happens when the TypeR panel's `TextEdit::multiline` (or any `TextEdit`) has focus.
+    let mut dummy = String::new();
+    h.ctx
+        .run_ui(Default::default(), |ui| {
+            ui.text_edit_singleline(&mut dummy).request_focus();
+        })
+        .textures_delta
+        .clear();
+    assert!(h.ctx.text_edit_focused(), "text edit must be focused");
+
+    // Cmd+Enter should still load the work path as a selection.
+    press(&mut h, Key::Enter, command());
+    assert!(
+        h.state().session.active().unwrap().doc.selection.is_some(),
+        "⌘↩ loaded a selection despite text edit focus: {}",
+        h.state().ui.status
+    );
+    assert_eq!(selection(&h), Some([15, 25, 40, 30]));
+}

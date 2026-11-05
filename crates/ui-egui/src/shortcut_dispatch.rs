@@ -199,9 +199,8 @@ impl Focus {
             Focus::DeletingWidget => sc.modifiers.command || !(navigation || matches!(k, Key::Backspace | Key::Delete)),
             Focus::Text => {
                 let text_edit = !sc.modifiers.alt && matches!(k, Key::A | Key::C | Key::X | Key::V | Key::Z | Key::Y)
-                    || navigation
                     || matches!(k, Key::Backspace | Key::Delete);
-                function || (sc.modifiers.command && !text_edit)
+                function || (sc.modifiers.command && !text_edit) || !navigation
             }
         }
     }
