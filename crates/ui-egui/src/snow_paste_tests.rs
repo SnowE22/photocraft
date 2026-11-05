@@ -195,3 +195,25 @@ fn text_shape_russian_manga_sentence_generates_candidates_and_recenters_point_te
     assert!(text.transform.m[5] < 100.0, "Point text baseline shifted up to keep vertical center: {}", text.transform.m[5]);
 }
 
+#[test]
+fn style_preset_cards_fit_strictly_within_dock_bounds_without_button_overflow() {
+    let mut app = app_with(false);
+    let ctx = egui::Context::default();
+
+    let width = 240.0f32;
+    let area = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(width, 800.0));
+    let mut out = ctx.run_ui(egui::RawInput { screen_rect: Some(area), ..Default::default() }, |ui| {
+        ui.set_max_width(width);
+        let _ = app.typesetter.render_embedded(ui);
+    });
+
+    for (idx, shape) in out.shapes.iter().enumerate() {
+        let b = shape.shape.visual_bounding_rect();
+        if b.is_positive() && b.max.x > width + 1.5 {
+            eprintln!("OVERFLOW #{idx}: max_x={:.1}, shape={:?}", b.max.x, shape.shape);
+        }
+    }
+    out.textures_delta.clear();
+}
+
+

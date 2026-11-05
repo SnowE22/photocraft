@@ -1008,13 +1008,13 @@ impl TypesetterUi {
         let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
         egui::Frame::NONE
             .fill(ty.ui_dark)
-            .inner_margin(Margin::symmetric(8, 4))
+            .inner_margin(Margin::symmetric(6, 4))
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.link(RichText::new("Справка").color(ty.muted).size(11.0)).on_hover_text("Открыть справку и горячие клавиши TypeR").clicked() {
                         self.show_help_modal = true;
                     }
-                    ui.add_space(4.0);
+                    ui.add_space(2.0);
                     if ui.link(RichText::new("Настройки").color(ty.muted).size(11.0)).on_hover_text("Переключить вкладку настроек тайпсеттера").clicked() {
                         self.current_tab = if self.current_tab == TypesetterTab::Settings {
                             TypesetterTab::Queue
@@ -1022,19 +1022,17 @@ impl TypesetterUi {
                             TypesetterTab::Settings
                         };
                     }
-                    ui.add_space(4.0);
-                    if ui.link(RichText::new("Открыть каталог PSD").color(ty.muted).size(11.0)).on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+                    ui.add_space(2.0);
+                    if ui.link(RichText::new("Каталог PSD").color(ty.muted).size(11.0)).on_hover_text("Загрузить файл сценария (.txt)").clicked() {
                         self.open_script_file_dialog();
                     }
-
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let mb_on = self.multi_bubble_count() > 0;
-                        let dot_color = if mb_on { Color32::from_rgb(52, 199, 89) } else { Color32::from_rgb(107, 107, 107) };
-                        let mb_text = if mb_on { format!("MB вкл ({})", self.multi_bubble_count()) } else { "MB выкл".into() };
-                        ui.label(RichText::new(mb_text).color(ty.muted).size(11.0));
-                        let (dot_rect, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
-                        ui.painter().circle_filled(dot_rect.center(), 3.5, dot_color);
-                    });
+                    ui.add_space(4.0);
+                    let mb_on = self.multi_bubble_count() > 0;
+                    let dot_color = if mb_on { Color32::from_rgb(52, 199, 89) } else { Color32::from_rgb(107, 107, 107) };
+                    let mb_text = if mb_on { format!("MB вкл ({})", self.multi_bubble_count()) } else { "MB выкл".into() };
+                    ui.label(RichText::new(mb_text).color(ty.muted).size(11.0));
+                    let (dot_rect, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
+                    ui.painter().circle_filled(dot_rect.center(), 3.5, dot_color);
                 });
             });
     }
@@ -1064,8 +1062,8 @@ impl TypesetterUi {
         ui.horizontal(|ui| {
             let avail = ui.available_width();
             let stepper_w = 68.0f32;
-            let spacing = ui.spacing().item_spacing.x * 2.0;
-            let rem = (avail - stepper_w - spacing).max(120.0);
+            let spacing = ui.spacing().item_spacing.x;
+            let rem = (avail - stepper_w - spacing * 2.0).max(10.0);
             let insert_w = (rem * 0.58).floor();
             let align_w = (rem - insert_w).floor();
 
@@ -1175,11 +1173,15 @@ impl TypesetterUi {
                     ui.set_width(box_w);
                     ui.horizontal(|ui| {
                         let line_num_str = if total_lines == 0 { 0 } else { cur_idx + 1 };
-                        ui.label(
-                            RichText::new(format!("строка: {}, стиль: {}, масштаб: 100 %", line_num_str, style_name))
-                                .color(ty.muted)
-                                .size(10.5),
-                        );
+                        let title_text = format!("строка: {}, стиль: {}, масштаб: 100 %", line_num_str, style_name);
+                        let meta_w = (box_w - 28.0).max(10.0);
+                        ui.allocate_ui_with_layout(vec2(meta_w, 16.0), Layout::left_to_right(Align::Center), |ui| {
+                            ui.add(egui::Label::new(
+                                RichText::new(title_text)
+                                    .color(ty.muted)
+                                    .size(10.5),
+                            ).truncate());
+                        });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let send_btn = egui::Button::new(RichText::new("⇢").color(ty.text).size(12.0)).frame(false);
                             if ui.add(send_btn).on_hover_text("Вставить строку на холст").clicked() {
@@ -1193,11 +1195,14 @@ impl TypesetterUi {
                     } else {
                         &cur_text
                     };
-                    ui.label(
-                        RichText::new(display_text)
-                            .color(Color32::WHITE)
-                            .strong()
-                            .size(11.5),
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(display_text)
+                                .color(Color32::WHITE)
+                                .strong()
+                                .size(11.5),
+                        )
+                        .truncate(),
                     );
                 });
         });
@@ -1370,13 +1375,14 @@ impl TypesetterUi {
 
         self.render_preset_toolbar(ui);
 
-        let num_cols = if ui.available_width() < 260.0 { 1 } else { 2 };
+        let num_cols = if ui.available_width() < 240.0 { 1 } else { 2 };
         self.render_style_presets_grid(ui, action, num_cols);
 
         // TypeR's two wide style buttons (at the bottom of style tree, matching TypeR Studio).
         ui.add_space(3.0);
         let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
-        let half = ((ui.available_width() - 6.0) * 0.5).max(80.0);
+        let spacing = ui.spacing().item_spacing.x;
+        let half = ((ui.available_width() - spacing) * 0.5).floor().max(10.0);
         ui.horizontal(|ui| {
             let folder = egui::Button::new(RichText::new("＋ Добавить папку").size(11.5).color(ty.text))
                 .fill(ty.ui)
@@ -1877,28 +1883,38 @@ impl TypesetterUi {
         self.scroll_to_active_line = false;
     }
 
-fn draw_duplicate_icon(ui: &mut egui::Ui, color: Color32) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), Sense::click());
-    let stroke = Stroke::new(1.0, if resp.hovered() { Color32::WHITE } else { color });
-    let r1 = egui::Rect::from_min_size(egui::pos2(rect.min.x + 3.0, rect.min.y + 1.0), egui::vec2(8.0, 8.0));
-    ui.painter().rect_stroke(r1, 1.0, stroke, egui::StrokeKind::Inside);
-    let r2 = egui::Rect::from_min_size(egui::pos2(rect.min.x + 1.0, rect.min.y + 4.0), egui::vec2(8.0, 8.0));
-    ui.painter().rect_filled(r2, 1.0, ui.visuals().window_fill());
-    ui.painter().rect_stroke(r2, 1.0, stroke, egui::StrokeKind::Inside);
-    resp
+fn paint_pencil_icon(painter: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let stroke = Stroke::new(1.0, color);
+    let p_tip = egui::pos2(rect.min.x + 2.5, rect.max.y - 2.5);
+    let p_top_left = egui::pos2(rect.max.x - 4.5, rect.min.y + 2.5);
+    let p_top_right = egui::pos2(rect.max.x - 2.5, rect.min.y + 4.5);
+    let p_bot_right = egui::pos2(rect.min.x + 4.5, rect.max.y - 2.5);
+    let p_bot_left = egui::pos2(rect.min.x + 2.5, rect.max.y - 4.5);
+    painter.line_segment([p_bot_left, p_top_left], stroke);
+    painter.line_segment([p_bot_right, p_top_right], stroke);
+    painter.line_segment([p_top_left, p_top_right], stroke);
+    painter.line_segment([p_bot_left, p_tip], stroke);
+    painter.line_segment([p_bot_right, p_tip], stroke);
 }
 
-fn draw_apply_layer_icon(ui: &mut egui::Ui, color: Color32) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(egui::vec2(14.0, 14.0), Sense::click());
-    let stroke = Stroke::new(1.0, if resp.hovered() { Color32::WHITE } else { color });
+fn paint_duplicate_icon(painter: &egui::Painter, rect: egui::Rect, color: Color32, fill_bg: Color32) {
+    let stroke = Stroke::new(1.0, color);
+    let r1 = egui::Rect::from_min_size(egui::pos2(rect.min.x + 3.0, rect.min.y + 1.0), egui::vec2(8.0, 8.0));
+    painter.rect_stroke(r1, 1.0, stroke, egui::StrokeKind::Inside);
+    let r2 = egui::Rect::from_min_size(egui::pos2(rect.min.x + 1.0, rect.min.y + 4.0), egui::vec2(8.0, 8.0));
+    painter.rect_filled(r2, 1.0, fill_bg);
+    painter.rect_stroke(r2, 1.0, stroke, egui::StrokeKind::Inside);
+}
+
+fn paint_apply_layer_icon(painter: &egui::Painter, rect: egui::Rect, color: Color32) {
+    let stroke = Stroke::new(1.0, color);
     let c = rect.center();
-    ui.painter().circle_stroke(c, 5.0, stroke);
+    painter.circle_stroke(c, 5.0, stroke);
     let p_tip = egui::pos2(c.x + 2.5, c.y);
     let p_start = egui::pos2(c.x - 2.5, c.y);
-    ui.painter().line_segment([p_start, p_tip], stroke);
-    ui.painter().line_segment([egui::pos2(c.x + 0.5, c.y - 2.0), p_tip], stroke);
-    ui.painter().line_segment([egui::pos2(c.x + 0.5, c.y + 2.0), p_tip], stroke);
-    resp
+    painter.line_segment([p_start, p_tip], stroke);
+    painter.line_segment([egui::pos2(c.x + 0.5, c.y - 2.0), p_tip], stroke);
+    painter.line_segment([egui::pos2(c.x + 0.5, c.y + 2.0), p_tip], stroke);
 }
 
     /// Сетка карточек стилей шрифтов по папкам (с адаптивным числом колонок).
@@ -1925,6 +1941,9 @@ fn draw_apply_layer_icon(ui: &mut egui::Ui, color: Color32) -> egui::Response {
             .max_height(grid_h)
             .auto_shrink([false, true])
             .show(ui, |ui| {
+                ui.spacing_mut().indent = 0.0;
+                ui.spacing_mut().item_spacing.x = 4.0;
+
                 for folder_name in &folder_names {
                     let is_unassigned = folder_name == tl!("No folder");
 
@@ -1963,137 +1982,170 @@ fn draw_apply_layer_icon(ui: &mut egui::Ui, color: Color32) -> egui::Response {
                                     (ty.ui, ty.line, ty.text)
                                 };
 
-                                let card_top = col.cursor().min.y;
-                                Frame::NONE
-                                    .fill(card_bg)
-                                    .stroke(Stroke::new(1.0, card_border))
-                                    .corner_radius(CornerRadius::same(t.radius_sm as u8))
-                                    .inner_margin(Margin::symmetric(5, 2))
-                                    .show(col, |ui| {
-                                        let mut open_edit = false;
-                                        let card_w = ui.available_width();
-                                        let actions_w = 46.0;
-                                        let left_w = (card_w - actions_w - 4.0).max(10.0);
+                                let card_w = col.available_width().max(40.0);
+                                let card_h = 24.0f32;
+                                let (card_rect, _) = col.allocate_exact_size(vec2(card_w, card_h), Sense::hover());
 
-                                        ui.horizontal(|ui| {
-                                            ui.allocate_ui_with_layout(vec2(left_w, ui.available_height()), Layout::left_to_right(Align::Center), |ui| {
-                                                let sel_icon = if is_active { "●" } else { "○" };
-                                                let ind_color = if is_active { Color32::WHITE } else { t.text_dim };
-                                                if ui.add(egui::Label::new(RichText::new(sel_icon).color(ind_color).small()).sense(Sense::click())).clicked() {
-                                                    style_to_select = Some(p_idx);
-                                                }
+                                col.painter().rect_filled(card_rect, CornerRadius::same(t.radius_sm as u8), card_bg);
+                                col.painter().rect_stroke(card_rect, CornerRadius::same(t.radius_sm as u8), Stroke::new(1.0, card_border), egui::StrokeKind::Inside);
 
-                                                let swatch_color = egui::Color32::from_rgba_unmultiplied(
-                                                    preset.text_color[0],
-                                                    preset.text_color[1],
-                                                    preset.text_color[2],
-                                                    preset.text_color[3],
-                                                );
-                                                let (swatch_rect, _) = ui.allocate_exact_size(egui::vec2(8.0, 8.0), egui::Sense::hover());
-                                                ui.painter().rect_filled(swatch_rect, 2.0, swatch_color);
-                                                if preset.stroke_width > 0.0 {
-                                                    let stroke_c = egui::Color32::from_rgba_unmultiplied(
-                                                        preset.stroke_color[0],
-                                                        preset.stroke_color[1],
-                                                        preset.stroke_color[2],
-                                                        preset.stroke_color[3],
-                                                    );
-                                                    ui.painter().rect_stroke(swatch_rect, 2.0, egui::Stroke::new(1.0, stroke_c), egui::StrokeKind::Outside);
-                                                }
+                                // 1. Right action buttons (strictly anchored inside the right edge of the card)
+                                let icon_default_color = if is_active { Color32::WHITE } else { t.text_dim };
+                                let btn_sz = 14.0f32;
+                                let right_pad = 4.0f32;
+                                let btn_gap = 2.0f32;
 
-                                                let mut title = RichText::new(&preset.name).color(text_color).small();
-                                                if preset.bold {
-                                                    title = title.strong();
-                                                }
-                                                if preset.italic {
-                                                    title = title.italics();
-                                                }
-
-                                                let title_avail = ui.available_width().max(10.0);
-                                                let name_label = if let Some([w, h]) = crate::font_preview::name_size(ui.ctx(), &preset.font_family, &preset.name, STYLE_NAME_PT)
-                                                    .filter(|[w, _]| *w <= title_avail)
-                                                {
-                                                    let (rect, resp) = ui.allocate_exact_size(
-                                                        vec2(w, h.max(ui.text_style_height(&egui::TextStyle::Body))),
-                                                        Sense::click(),
-                                                    );
-                                                    crate::font_preview::paint_name(ui, &preset.font_family, &preset.name, STYLE_NAME_PT, rect, text_color);
-                                                    resp
-                                                } else {
-                                                    ui.add(egui::Label::new(title).truncate().sense(Sense::click()))
-                                                };
-
-                                                let sys_label = if preset.measurement_system.is_optical() { "Оптическая" } else { "Метрическая" };
-                                                let hex_c = format!("#{:02X}{:02X}{:02X}{:02X}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]);
-                                                let tip = format!(
-                                                    "{}\nШрифт: {}\nКегль: {}pt\nИнтерлиньяж: {}pt\nТрекинг: {}\nЦвет шрифта: {}\nСистема: {}\n\nЛКМ: выбрать стиль\n2xЛКМ: применить и вставить\nПКМ: меню действий",
-                                                    preset.name, preset.font_family, preset.font_size, preset.leading, preset.tracking, hex_c, sys_label
-                                                );
-
-                                                let name_label = name_label.on_hover_text(tip);
-
-                                                if name_label.clicked() {
-                                                    style_to_select = Some(p_idx);
-                                                }
-
-                                                name_label.context_menu(|ui| {
-                                                    if ui.button("✏ Редактировать стиль...").clicked() {
-                                                        open_edit = true;
-                                                        ui.close();
-                                                    }
-                                                    if ui.button("+ Дублировать стиль").clicked() {
-                                                        style_to_duplicate = Some(p_idx);
-                                                        ui.close();
-                                                    }
-                                                    if ui.button("▶ Применить и вставить").clicked() {
-                                                        style_to_apply = Some(p_idx);
-                                                        ui.close();
-                                                    }
-                                                    ui.separator();
-                                                    if ui.button(RichText::new("🗑 Удалить стиль").color(t.danger)).clicked() {
-                                                        style_to_delete = Some(p_idx);
-                                                        ui.close();
-                                                    }
-                                                });
-                                            });
-
-                                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                                let btn_color = if is_active { Color32::WHITE } else { t.text_dim };
-                                                let apply_resp = Self::draw_apply_layer_icon(ui, btn_color);
-                                                if apply_resp.on_hover_text("Применить стиль к выделенному слою на странице").clicked() {
-                                                    style_to_layer = Some(p_idx);
-                                                }
-                                                let dup_resp = Self::draw_duplicate_icon(ui, btn_color);
-                                                if dup_resp.on_hover_text("Дублировать стиль").clicked() {
-                                                    style_to_duplicate = Some(p_idx);
-                                                }
-                                                let edit_btn = egui::Button::new(RichText::new("✏").color(btn_color).small()).frame(false);
-                                                if ui.add(edit_btn).on_hover_text("Настройки шрифта и стиля").clicked() {
-                                                    open_edit = true;
-                                                }
-                                            });
-                                        });
-
-                                        if open_edit {
-                                            style_to_edit = Some(p_idx);
-                                        }
-                                    });
-                                let card_bottom = col.cursor().min.y;
-                                let card_rect = egui::Rect::from_min_max(
-                                    egui::pos2(col.cursor().min.x - col.available_width(), card_top),
-                                    egui::pos2(col.cursor().max.x, card_bottom),
+                                // Apply to layer (rightmost)
+                                let apply_rect = egui::Rect::from_center_size(
+                                    egui::pos2(card_rect.right() - right_pad - btn_sz * 0.5, card_rect.center().y),
+                                    vec2(btn_sz, btn_sz),
                                 );
-                                let card_interact_rect = egui::Rect::from_min_max(
-                                    egui::pos2(card_rect.left(), card_top),
-                                    egui::pos2((card_rect.right() - 56.0).max(card_rect.left() + 10.0), card_bottom),
+                                let apply_resp = col.interact(apply_rect, col.id().with(("typer_card_apply", p_idx)), Sense::click())
+                                    .on_hover_text("Применить стиль к выделенному слою на странице");
+                                if apply_resp.clicked() {
+                                    style_to_layer = Some(p_idx);
+                                }
+                                let apply_col = if apply_resp.hovered() { Color32::WHITE } else { icon_default_color };
+                                Self::paint_apply_layer_icon(col.painter(), apply_rect, apply_col);
+
+                                // Duplicate (middle)
+                                let dup_rect = egui::Rect::from_center_size(
+                                    egui::pos2(card_rect.right() - right_pad - btn_sz * 1.5 - btn_gap, card_rect.center().y),
+                                    vec2(btn_sz, btn_sz),
                                 );
-                                let card_resp = col.interact(card_interact_rect, col.id().with(("typer_card_click", p_idx)), Sense::click());
-                                if card_resp.clicked() {
+                                let dup_resp = col.interact(dup_rect, col.id().with(("typer_card_dup", p_idx)), Sense::click())
+                                    .on_hover_text("Дублировать стиль");
+                                if dup_resp.clicked() {
+                                    style_to_duplicate = Some(p_idx);
+                                }
+                                let dup_col = if dup_resp.hovered() { Color32::WHITE } else { icon_default_color };
+                                Self::paint_duplicate_icon(col.painter(), dup_rect, dup_col, card_bg);
+
+                                // Edit (left of the 3 buttons)
+                                let edit_rect = egui::Rect::from_center_size(
+                                    egui::pos2(card_rect.right() - right_pad - btn_sz * 2.5 - btn_gap * 2.0, card_rect.center().y),
+                                    vec2(btn_sz, btn_sz),
+                                );
+                                let edit_resp = col.interact(edit_rect, col.id().with(("typer_card_edit", p_idx)), Sense::click())
+                                    .on_hover_text("Настройки шрифта и стиля");
+                                let mut open_edit = false;
+                                if edit_resp.clicked() {
+                                    open_edit = true;
+                                }
+                                let edit_col = if edit_resp.hovered() { Color32::WHITE } else { icon_default_color };
+                                Self::paint_pencil_icon(col.painter(), edit_rect, edit_col);
+
+                                // 2. Left indicator & swatch
+                                let sel_rect = egui::Rect::from_center_size(
+                                    egui::pos2(card_rect.left() + 9.0, card_rect.center().y),
+                                    vec2(10.0, 10.0),
+                                );
+                                let sel_resp = col.interact(sel_rect, col.id().with(("typer_card_sel", p_idx)), Sense::click());
+                                if sel_resp.clicked() {
                                     style_to_select = Some(p_idx);
                                 }
-                                if card_resp.double_clicked() {
+                                let sel_icon = if is_active { "●" } else { "○" };
+                                let ind_color = if is_active { Color32::WHITE } else { t.text_dim };
+                                col.painter().text(sel_rect.center(), egui::Align2::CENTER_CENTER, sel_icon, egui::FontId::proportional(11.0), ind_color);
+
+                                let swatch_rect = egui::Rect::from_center_size(
+                                    egui::pos2(card_rect.left() + 20.0, card_rect.center().y),
+                                    vec2(8.0, 8.0),
+                                );
+                                let swatch_color = egui::Color32::from_rgba_unmultiplied(
+                                    preset.text_color[0],
+                                    preset.text_color[1],
+                                    preset.text_color[2],
+                                    preset.text_color[3],
+                                );
+                                col.painter().rect_filled(swatch_rect, 2.0, swatch_color);
+                                if preset.stroke_width > 0.0 {
+                                    let stroke_c = egui::Color32::from_rgba_unmultiplied(
+                                        preset.stroke_color[0],
+                                        preset.stroke_color[1],
+                                        preset.stroke_color[2],
+                                        preset.stroke_color[3],
+                                    );
+                                    col.painter().rect_stroke(swatch_rect, 2.0, egui::Stroke::new(1.0, stroke_c), egui::StrokeKind::Outside);
+                                }
+
+                                // 3. Middle text: starts after swatch (x = left + 27.0) and ends before edit button (x = right - 50.0)
+                                let text_x0 = card_rect.left() + 27.0;
+                                let text_x1 = (card_rect.right() - 50.0).max(text_x0 + 4.0);
+                                let text_rect = egui::Rect::from_min_max(
+                                    egui::pos2(text_x0, card_rect.top()),
+                                    egui::pos2(text_x1, card_rect.bottom()),
+                                );
+                                let text_avail = text_rect.width();
+
+                                if let Some([w, h]) = crate::font_preview::name_size(col.ctx(), &preset.font_family, &preset.name, STYLE_NAME_PT)
+                                    .filter(|[w, _]| *w <= text_avail)
+                                {
+                                    let target = egui::Rect::from_min_size(
+                                        egui::pos2(text_rect.left(), (card_rect.center().y - h * 0.5).round()),
+                                        vec2(w, h),
+                                    );
+                                    crate::font_preview::paint_name(col, &preset.font_family, &preset.name, STYLE_NAME_PT, target, text_color);
+                                } else {
+                                    let mut job = egui::text::LayoutJob::simple_singleline(
+                                        preset.name.clone(),
+                                        egui::FontId::proportional(11.0),
+                                        text_color,
+                                    );
+                                    job.wrap.max_width = text_avail;
+                                    job.wrap.break_anywhere = false;
+                                    let galley = col.painter().layout_job(job);
+                                    col.painter().galley(
+                                        egui::pos2(text_rect.left(), (card_rect.center().y - galley.size().y * 0.5).round()),
+                                        galley,
+                                        text_color,
+                                    );
+                                }
+
+                                // 4. Main card interaction (click = select, 2xclick = apply and insert, context menu = actions)
+                                let card_body_rect = egui::Rect::from_min_max(
+                                    egui::pos2(card_rect.left() + 15.0, card_rect.top()),
+                                    egui::pos2(card_rect.right() - 50.0, card_rect.bottom()),
+                                );
+                                let card_interact_resp = col.interact(card_body_rect, col.id().with(("typer_card_click", p_idx)), Sense::click());
+                                if card_interact_resp.clicked() {
+                                    style_to_select = Some(p_idx);
+                                }
+                                if card_interact_resp.double_clicked() {
                                     style_to_apply = Some(p_idx);
                                 }
+
+                                let sys_label = if preset.measurement_system.is_optical() { "Оптическая" } else { "Метрическая" };
+                                let hex_c = format!("#{:02X}{:02X}{:02X}{:02X}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]);
+                                let tip = format!(
+                                    "{}\nШрифт: {}\nКегль: {}pt\nИнтерлиньяж: {}pt\nТрекинг: {}\nЦвет шрифта: {}\nСистема: {}\n\nЛКМ: выбрать стиль\n2xЛКМ: применить и вставить\nПКМ: меню действий",
+                                    preset.name, preset.font_family, preset.font_size, preset.leading, preset.tracking, hex_c, sys_label
+                                );
+
+                                card_interact_resp.on_hover_text(tip).context_menu(|ui| {
+                                    if ui.button("✏ Редактировать стиль...").clicked() {
+                                        open_edit = true;
+                                        ui.close();
+                                    }
+                                    if ui.button("+ Дублировать стиль").clicked() {
+                                        style_to_duplicate = Some(p_idx);
+                                        ui.close();
+                                    }
+                                    if ui.button("▶ Применить и вставить").clicked() {
+                                        style_to_apply = Some(p_idx);
+                                        ui.close();
+                                    }
+                                    ui.separator();
+                                    if ui.button(RichText::new("🗑 Удалить стиль").color(t.danger)).clicked() {
+                                        style_to_delete = Some(p_idx);
+                                        ui.close();
+                                    }
+                                });
+
+                                if open_edit {
+                                    style_to_edit = Some(p_idx);
+                                }
+
                                 col.add_space(3.0);
                             };
 
