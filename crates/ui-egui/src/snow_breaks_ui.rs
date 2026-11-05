@@ -118,10 +118,12 @@ pub fn show(ui: &mut egui::Ui, line: &str, next: Option<&str>) -> Option<BreakAc
                         ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new(HINT_OPEN), hint));
                     }
                     if hint {
-                        ui.label(
-                            egui::RichText::new("клик — дефис · Alt+клик — без дефиса · тяните маркер — двигать")
-                                .color(style.muted)
-                                .size(10.0),
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new("клик — дефис · Alt+клик — без дефиса · тяните маркер — двигать")
+                                    .color(style.muted)
+                                    .size(10.0),
+                            ).truncate(),
                         );
                     }
                 });
