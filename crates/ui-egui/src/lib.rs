@@ -1809,10 +1809,58 @@ impl PhotocraftApp {
 
     /// Applies one TextShapeR candidate to its text layer.
     pub(crate) fn apply_typesetter_text_shape(&mut self, layer: u64, text: String) {
-        if let Err(error) = self.run("type.edit", serde_json::json!({"layer": layer, "text": text})) {
+        let (new_point, new_hash) = if let Some(st) = self.session.active() {
+            let layer_ref = st.doc.layer(photocraft_doc::LayerId(layer));
+            let text_layer = layer_ref.and_then(|l| match &l.content {
+                photocraft_doc::LayerContent::Text(t) => Some(t),
+                _ => None,
+            });
+            if let Some(t) = text_layer {
+                let font_size = t.char_runs().first().map(|r| r.style.size_pt).unwrap_or(24.0);
+                let leading = t.char_runs().first().and_then(|r| r.style.leading_pt).unwrap_or(font_size * 1.2);
+                let old_lines = t.text.lines().count().max(1) as f64;
+                let new_lines = text.lines().count().max(1) as f64;
+                let cur_pt = [t.transform.m[4], t.transform.m[5]];
+                let pt = if let Some(sel) = &st.doc.selection {
+                    let b = sel.content_bounds();
+                    if !b.is_empty() {
+                        let cx = b.x0 as f64 + b.width() as f64 * 0.5;
+                        let cy = b.y0 as f64 + b.height() as f64 * 0.5;
+                        let baseline_y = cy - (new_lines - 1.0) * (leading as f64) * 0.5 + (font_size as f64) * 0.225;
+                        Some([cx, baseline_y])
+                    } else {
+                        let new_y = cur_pt[1] - (new_lines - old_lines) * (leading as f64) * 0.5;
+                        Some([cur_pt[0], new_y])
+                    }
+                } else {
+                    let new_y = cur_pt[1] - (new_lines - old_lines) * (leading as f64) * 0.5;
+                    Some([cur_pt[0], new_y])
+                };
+                let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+                for byte in layer.to_le_bytes().iter().chain(text.as_bytes()) {
+                    hash ^= u64::from(*byte);
+                    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+                }
+                (pt, Some(hash))
+            } else {
+                (None, None)
+            }
+        } else {
+            (None, None)
+        };
+
+        let mut edit_params = serde_json::json!({"layer": layer, "text": text});
+        if let Some(pt) = new_point {
+            edit_params["point"] = serde_json::json!(pt);
+        }
+        if let Err(error) = self.run("type.edit", edit_params) {
             self.ui.status = error;
             self.ui.status_error = true;
             return;
+        }
+        let _ = self.run("type.setStyle", serde_json::json!({"layer": layer, "align": "center"}));
+        if let Some(h) = new_hash {
+            self.typesetter_text_shape_source = Some(h);
         }
         self.typesetter.clear_text_shape_candidates();
         self.typesetter.auto_save();

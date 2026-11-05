@@ -165,3 +165,33 @@ fn style_arrow_request_does_not_advance_script_line() {
     assert_eq!(app.typesetter.state.active_line().map(|l| l.text.as_str()), Some("Current script line"));
 }
 
+#[test]
+fn text_shape_russian_manga_sentence_generates_candidates_and_recenters_point_text() {
+    let mut app = app_with(false);
+    let id = app
+        .run("type.create", json!({"x": 100, "y": 100, "text": "ПОЧЕМУ РАЙАН В КОМНАТЕ КОМАНДЫ «СПИКА»?", "size": 24}))
+        .unwrap()["layer"]
+        .as_u64()
+        .unwrap();
+    app.session.active_mut().unwrap().active_layer = Some(photocraft_doc::LayerId(id));
+
+    // Refresh TextShapeR
+    app.refresh_typesetter_text_shape(false);
+    assert!(app.typesetter.has_text_shape_candidates());
+
+    let c1 = app.typesetter.first_text_shape_candidate_text().unwrap();
+    assert!(c1.contains("ПОЧЕМУ"));
+
+    // Apply a 3-line candidate
+    let candidate_text = "ПОЧЕМУ РАЙАН\nВ КОМНАТЕ КОМАНДЫ\n«СПИКА»?";
+    app.apply_typesetter_text_shape(id, candidate_text.into());
+
+    let layer = app.session.active().unwrap().doc.layer(photocraft_doc::LayerId(id)).unwrap();
+    let photocraft_doc::LayerContent::Text(text) = &layer.content else { panic!("expected text layer") };
+    assert_eq!(text.text, candidate_text);
+    assert_eq!(text.paragraphs[0].style.align, photocraft_doc::text::TextAlign::Center);
+
+    // Verify baseline was adjusted upwards so Point text remains centered (old y was 100, new lines = 3, old lines = 1)
+    assert!(text.transform.m[5] < 100.0, "Point text baseline shifted up to keep vertical center: {}", text.transform.m[5]);
+}
+

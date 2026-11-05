@@ -1986,6 +1986,87 @@ fn balanced_plain_wrap(text: &str) -> String {
     output.join("\n")
 }
 
+/// Balanced 2-line wrap: searches the single split point that minimizes character difference.
+fn balanced_two_line_wrap(text: &str) -> String {
+    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
+    if words.len() <= 2 {
+        return words.join(" ");
+    }
+    let mut best_split = 1;
+    let mut min_diff = usize::MAX;
+    for i in 1..words.len() {
+        let l1 = words[..i].join(" ").chars().count();
+        let l2 = words[i..].join(" ").chars().count();
+        let diff = l1.abs_diff(l2);
+        if diff < min_diff {
+            min_diff = diff;
+            best_split = i;
+        }
+    }
+    format!("{}\n{}", words[..best_split].join(" "), words[best_split..].join(" "))
+}
+
+/// Diamond / Manga speech-bubble wrap: 3 lines where the middle line is wider than top and bottom.
+fn diamond_manga_wrap(text: &str) -> String {
+    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
+    if words.len() <= 2 {
+        return words.join(" ");
+    }
+    if words.len() == 3 {
+        return balanced_two_line_wrap(text);
+    }
+    let mut best_i = 1;
+    let mut best_j = 2;
+    let mut best_cost = f32::MAX;
+
+    for i in 1..words.len().saturating_sub(1) {
+        for j in (i + 1)..words.len() {
+            let len1 = words[..i].join(" ").chars().count();
+            let len2 = words[i..j].join(" ").chars().count();
+            let len3 = words[j..].join(" ").chars().count();
+
+            // Diamond bonus: middle line wider than both top and bottom
+            let diamond_penalty = if len2 >= len1 && len2 >= len3 { 0.0 } else { 120.0 };
+            // Symmetry penalty between top and bottom
+            let sym_penalty = (len1 as f32 - len3 as f32).abs();
+            // Ratio: middle line ideally ~1.2x to 1.5x of edges
+            let max_edge = len1.max(len3).max(1) as f32;
+            let ratio_cost = ((len2 as f32 / max_edge) - 1.3).abs() * 15.0;
+
+            let cost = diamond_penalty + sym_penalty + ratio_cost;
+            if cost < best_cost {
+                best_cost = cost;
+                best_i = i;
+                best_j = j;
+            }
+        }
+    }
+
+    format!(
+        "{}\n{}\n{}",
+        words[..best_i].join(" "),
+        words[best_i..best_j].join(" "),
+        words[best_j..].join(" ")
+    )
+}
+
+/// Balanced 4-line wrap for longer phrases or vertical/narrow bubbles.
+fn balanced_four_line_wrap(text: &str) -> String {
+    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
+    if words.len() < 4 {
+        return balanced_plain_wrap(text);
+    }
+    let per_line = words.len().div_ceil(4);
+    let mut lines = Vec::new();
+    let mut idx = 0;
+    while idx < words.len() {
+        let end = (idx + per_line).min(words.len());
+        lines.push(words[idx..end].join(" "));
+        idx = end;
+    }
+    lines.join("\n")
+}
+
 /// Proposes line breaks for the active TypeR line. This is a bounded, local TextShapeR:
 /// it reuses the existing contour fit, rectangular wrap and a balanced split instead of
 /// TypeR's trained lettering model.
@@ -2002,18 +2083,24 @@ pub fn text_shape_candidates(
         return Ok(Vec::new());
     }
     let mut candidates = Vec::new();
-    let mut push = |kind, text: String| {
-        if !text.trim().is_empty() && !candidates.iter().any(|candidate: &TextShapeCandidate| candidate.text == text) {
-            candidates.push(TextShapeCandidate { kind, text });
+    let push_candidate = |candidates: &mut Vec<TextShapeCandidate>, kind, text: String| {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() && !candidates.iter().any(|c: &TextShapeCandidate| c.text == trimmed) {
+            candidates.push(TextShapeCandidate { kind, text: trimmed.to_string() });
         }
     };
 
-    push(TextShapeKind::Original, crate::snow_knuth_plass::bind_orphan_prepositions(text));
+    // Clean un-broken text for algorithmic generation
+    let clean_text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let bound_clean = crate::snow_knuth_plass::bind_orphan_prepositions(&clean_text);
+
+    // 1. Original text (with bound prepositions) is always available
+    push_candidate(&mut candidates, TextShapeKind::Original, bound_clean.clone());
 
     if let Some(selection) = selection {
         let mut fitted_preset = preset.clone();
         if let Some(fitted) = fit_script_text_to_selection(
-            text,
+            &clean_text,
             &mut fitted_preset,
             selection,
             document_bounds,
@@ -2021,14 +2108,15 @@ pub fn text_shape_candidates(
             sync_leading,
             minimum_fit_scale_percent,
         )? {
-            push(TextShapeKind::ContourFit, fitted);
+            push_candidate(&mut candidates, TextShapeKind::ContourFit, fitted);
         }
         let bubble = selection.content_bounds().intersect(&document_bounds);
         if bubble.width() >= 10 && bubble.height() >= 10 {
-            push(
+            push_candidate(
+                &mut candidates,
                 TextShapeKind::BubbleWrap,
                 crate::snow_knuth_plass::knuth_plass_bubble_wrap_ext(
-                    text,
+                    &clean_text,
                     bubble.width() as f32,
                     bubble.height() as f32,
                     preset.font_size,
@@ -2039,7 +2127,28 @@ pub fn text_shape_candidates(
             );
         }
     }
-    push(TextShapeKind::Balanced, balanced_plain_wrap(text));
+
+    // Propose balanced manga variations
+    let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
+    if words_count >= 3 {
+        // 1. Diamond manga bubble wrap (wider middle)
+        push_candidate(&mut candidates, TextShapeKind::Balanced, diamond_manga_wrap(&bound_clean));
+        // 2. Balanced 2-line wrap
+        push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
+        // 3. Compact / 4-line wrap if text is long enough, else balanced plain
+        if words_count >= 5 {
+            push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_four_line_wrap(&bound_clean));
+        } else {
+            push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
+        }
+    } else {
+        push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
+    }
+
+    if candidates.is_empty() {
+        push_candidate(&mut candidates, TextShapeKind::Original, bound_clean);
+    }
+
     Ok(candidates)
 }
 
