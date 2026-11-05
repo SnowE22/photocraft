@@ -833,7 +833,7 @@ fn the_dock_can_be_as_wide_as_the_window_allows() {
 #[test]
 fn multi_sided_docking_edge_snapping_and_typesetter_registration() {
     // 1. Verify typesetter is registered in PANELS
-    assert!(PANELS.iter().any(|(id, label, _)| *id == "typesetter" && *label == "TypeR Manga"));
+    assert!(PANELS.iter().any(|(id, label, _)| *id == "typesetter" && *label == "TypeR"));
 
     // 2. Test harness with ctx to test detect_edge_zone
     let h = harness(app(), vec2(1280.0, 800.0));
