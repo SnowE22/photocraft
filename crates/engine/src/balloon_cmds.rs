@@ -27,7 +27,7 @@ fn leak(s: String) -> &'static str {
 
 /// A finite finite-coordinate point parameter.
 fn point(cmd: &str, p: &Value, key: &str) -> Result<Point> {
-    p.get(key).and_then(|v| pt(v)).ok_or_else(|| bad(cmd, format!("`{key}` must be a finite [x, y] point")))
+    p.get(key).and_then(pt).ok_or_else(|| bad(cmd, format!("`{key}` must be a finite [x, y] point")))
 }
 
 /// Two points from `[[x, y], [x, y]]`.
@@ -235,7 +235,7 @@ fn sai_point(v: &Value) -> Option<SaiPoint> {
     let (x, y, pressure, corner) = if let Some(a) = v.as_array() {
         let x = a.first().and_then(Value::as_f64)?;
         let y = a.get(1).and_then(Value::as_f64)?;
-        (x, y, 1.0f64, a.get(2).map_or(false, |c| c.as_bool().unwrap_or(false)))
+        (x, y, 1.0f64, a.get(2).is_some_and(|c| c.as_bool().unwrap_or(false)))
     } else {
         let x = v.get("x").and_then(Value::as_f64)?;
         let y = v.get("y").and_then(Value::as_f64)?;
@@ -326,9 +326,9 @@ pub fn specs() -> Vec<CommandSpec> {
             "shape.balloon.stroke",
             "New Vector Stroke",
             [],
-            leak(format!(
-                r##"{{"points":[{{"x":px,"y":px,"pressure":0..1=1,"corner":bool=false}} | [x,y,corner?]] (2..4096, click nodes smoothed with a Catmull-Rom spline),"width":px=6,"minRatio":0..1=0.05 (taper floor),"tapered":bool=true (filled outline, weight per node) | false (uniform stroke path),"name":str?}} → shape.info"##
-            )),
+            leak(
+                r##"{"points":[{"x":px,"y":px,"pressure":0..1=1,"corner":bool=false} | [x,y,corner?]] (2..4096, click nodes smoothed with a Catmull-Rom spline),"width":px=6,"minRatio":0..1=0.05 (taper floor),"tapered":bool=true (filled outline, weight per node) | false (uniform stroke path),"name":str?} → shape.info"##.to_string()
+            ),
             has_doc,
             balloon_stroke
         ),

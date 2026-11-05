@@ -6,7 +6,7 @@
 //! into the word, so callers can map them to bytes without guessing UTF-8 boundaries.
 
 /// Languages the detector and the hyphenator know, in TypeR's order.
-pub const LANGUAGES: [&'static str; 9] = ["de", "en", "es", "fr", "it", "pt", "ru", "tr", "uk"];
+pub const LANGUAGES: [&str; 9] = ["de", "en", "es", "fr", "it", "pt", "ru", "tr", "uk"];
 
 const FR_WORDS: &str = "je tu il elle nous vous ils elles on moi toi lui le les des du une et est suis es sont ai as ont pas ne ce cette ces ça c'est j'ai qu'il qu'on qu'elle mais pour dans avec sur oui non qui bien très tout ici alors quoi comment pourquoi merci bonjour salut hein mon ton son ma ta sa mes tes ses a me te se au aux";
 const EN_WORDS: &str = "i you he she we they it him her us them the an and is am are was were be been do does did don't i'm you're it's that's have has had will would can could should not yes what why how who where when this that these those my your his our their of to in for with at but so just";

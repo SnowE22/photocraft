@@ -12,17 +12,12 @@ const DEFAULT_TYPE_FIT_MIN_PERCENT: f32 = 75.0;
 /// Maximum `.tpl` input accepted by the TypeR importer.
 pub const MAX_TPL_FILE_BYTES: usize = photocraft_psd::tpl::MAX_FILE_BYTES;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MeasurementSystem {
     Metric,
+    #[default]
     Optical,
-}
-
-impl Default for MeasurementSystem {
-    fn default() -> Self {
-        Self::Optical
-    }
 }
 
 impl MeasurementSystem {
@@ -950,12 +945,11 @@ impl TypesetterState {
                 parse_color_value(c)
             } else if let Some(c) = text_style.and_then(|ts| ts.get("color")) {
                 let mut col = parse_color_value(c);
-                if let Some(ref mut col) = col {
-                    if let Some(op) = text_style.and_then(|ts| ts.get("opacity")).or_else(|| item.get("opacity")).and_then(|v| v.as_f64()) {
-                        if (0.0..=100.0).contains(&op) {
-                            col[3] = ((op / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8;
-                        }
-                    }
+                if let Some(ref mut col) = col
+                    && let Some(op) = text_style.and_then(|ts| ts.get("opacity")).or_else(|| item.get("opacity")).and_then(|v| v.as_f64())
+                    && (0.0..=100.0).contains(&op)
+                {
+                    col[3] = ((op / 100.0) * 255.0).round().clamp(0.0, 255.0) as u8;
                 }
                 col
             } else if let Some(c) = item.get("color") {
@@ -987,10 +981,8 @@ impl TypesetterState {
 
             let hanging_punctuation = if let Some(hr) = para_style.and_then(|ps| ps.get("hangingRoman")).and_then(|v| v.as_bool()) {
                 hr
-            } else if let Some(hp) = item.get("hangingPunctuation").or_else(|| item.get("hanging_punctuation")).and_then(|v| v.as_bool()) {
-                hp
             } else {
-                true
+                item.get("hangingPunctuation").or_else(|| item.get("hanging_punctuation")).and_then(|v| v.as_bool()).unwrap_or(true)
             };
 
             let anti_alias = if let Some(aa) = item.get("antiAlias").or_else(|| item.get("anti_alias")).and_then(|v| v.as_str()) {
@@ -1105,26 +1097,26 @@ impl TypesetterState {
 
         let mut folder_id_counter = 1;
         for preset in &self.presets {
-            if let Some(folder) = &preset.folder {
-                if !folders_map.contains_key(folder) {
-                    let id = format!("folder_{}", folder_id_counter);
-                    folder_id_counter += 1;
-                    folders_map.insert(folder.clone(), id.clone());
-                    folders_arr.push(serde_json::json!({
-                        "id": id,
-                        "name": folder,
-                        "order": folders_arr.len()
-                    }));
-                }
+            if let Some(folder) = &preset.folder
+                && !folders_map.contains_key(folder)
+            {
+                let id = format!("folder_{}", folder_id_counter);
+                folder_id_counter += 1;
+                folders_map.insert(folder.clone(), id.clone());
+                folders_arr.push(serde_json::json!({
+                    "id": id,
+                    "name": folder,
+                    "order": folders_arr.len()
+                }));
             }
         }
 
         let mut styles_arr = Vec::new();
         for preset in &self.presets {
-            if let Some(target_f) = folder_filter {
-                if preset.folder.as_deref() != Some(target_f) {
-                    continue;
-                }
+            if let Some(target_f) = folder_filter
+                && preset.folder.as_deref() != Some(target_f)
+            {
+                continue;
             }
 
             let folder_id = preset.folder.as_ref().and_then(|f| folders_map.get(f));
@@ -1346,10 +1338,10 @@ impl TypesetterState {
             self.current_line_idx += 1;
             self.activate_current_line_preset();
             let next = self.lines.get(self.current_line_idx);
-            if self.options.auto_page_switch {
-                if let Some(nl) = next {
-                    self.current_page = nl.page;
-                }
+            if self.options.auto_page_switch
+                && let Some(nl) = next
+            {
+                self.current_page = nl.page;
             }
             next
         } else {
@@ -1374,10 +1366,10 @@ impl TypesetterState {
         if self.current_line_idx > 0 {
             self.current_line_idx -= 1;
             self.activate_current_line_preset();
-            if self.options.auto_page_switch {
-                if let Some(line) = self.lines.get(self.current_line_idx) {
-                    self.current_page = line.page;
-                }
+            if self.options.auto_page_switch
+                && let Some(line) = self.lines.get(self.current_line_idx)
+            {
+                self.current_page = line.page;
             }
         }
     }
@@ -1498,10 +1490,10 @@ pub fn detect_page_header(line: &str) -> Option<usize> {
     for prefix in prefixes {
         if let Some(rest) = lower.strip_prefix(prefix) {
             let digits: String = rest.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
-            if let Ok(num) = digits.parse::<usize>() {
-                if num > 0 {
-                    return Some(num);
-                }
+            if let Ok(num) = digits.parse::<usize>()
+                && num > 0
+            {
+                return Some(num);
             }
         }
     }
@@ -1512,18 +1504,18 @@ pub fn detect_page_header(line: &str) -> Option<usize> {
 pub fn clean_script_line_with_options(line: &str, options: &TypesetterOptions) -> String {
     let mut s = line.trim();
 
-    if options.strip_dash_prefix {
-        if let Some(stripped) = s.strip_prefix("- ").or_else(|| s.strip_prefix("— ")) {
-            s = stripped.trim();
-        }
+    if options.strip_dash_prefix
+        && let Some(stripped) = s.strip_prefix("- ").or_else(|| s.strip_prefix("— "))
+    {
+        s = stripped.trim();
     }
 
-    if options.strip_character_names {
-        if let Some((_, text)) = s.split_once(':') {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() {
-                s = trimmed;
-            }
+    if options.strip_character_names
+        && let Some((_, text)) = s.split_once(':')
+    {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            s = trimmed;
         }
     }
 
@@ -2094,8 +2086,17 @@ pub fn text_shape_candidates(
     let clean_text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let bound_clean = crate::snow_knuth_plass::bind_orphan_prepositions(&clean_text);
 
-    // 1. Original text (with bound prepositions) is always available
-    push_candidate(&mut candidates, TextShapeKind::Original, bound_clean.clone());
+    // 1. Original text (preserving existing line breaks if multi-line, otherwise bound clean)
+    let original_text = if text.contains('\n') {
+        text.lines()
+            .map(|l| crate::snow_knuth_plass::bind_orphan_prepositions(l.trim()))
+            .filter(|l| !l.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        bound_clean.clone()
+    };
+    push_candidate(&mut candidates, TextShapeKind::Original, original_text);
 
     if let Some(selection) = selection {
         let mut fitted_preset = preset.clone();

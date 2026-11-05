@@ -1109,7 +1109,7 @@ mod tests {
         s.edit("Paint Gradient", |doc, _| {
             let surf = doc.layer_mut(active_id).unwrap().surface_mut().unwrap();
             let dark_rect = Rect::new(0, 0, 48, 72);
-            let dark_px = vec![0.15f32, 0.15, 0.15, 1.0].repeat((48 * 72) as usize);
+            let dark_px = [0.15f32, 0.15, 0.15, 1.0].repeat((48 * 72) as usize);
             surf.write_region(dark_rect, &dark_px);
             Ok(())
         })
@@ -1179,7 +1179,7 @@ mod tests {
         s.edit("Paint Midtone", |doc, _| {
             let surf = doc.layer_mut(active_id).unwrap().surface_mut().unwrap();
             let rect = Rect::new(0, 0, 48, 72);
-            let px = vec![0.3f32, 0.3, 0.3, 1.0].repeat((48 * 72) as usize);
+            let px = [0.3f32, 0.3, 0.3, 1.0].repeat((48 * 72) as usize);
             surf.write_region(rect, &px);
             Ok(())
         })

@@ -797,19 +797,19 @@ impl<'a> Planner<'a> {
         } else {
             let start = self.passes.len();
             let mut content = self.content(layer)?;
-            if let LayerContent::Screentone(tone) = &layer.content {
-                if tone.spec.mode == ScreentoneMode::Shading && tone.spec.use_source_luminance {
-                    let retained = self.retain(backdrop);
-                    if let Some(pass) = self.passes.get_mut(start) {
-                        if pass.kernel == Kernel::Screentone {
-                            pass.a = Some(retained);
-                            log::info!("[SCREENTONE:GPU_PLAN] Bound backdrop slot {} to Kernel::Screentone pass for Shading mode", backdrop);
-                        } else {
-                            self.release(retained);
-                        }
+            if let LayerContent::Screentone(tone) = &layer.content
+                && tone.spec.mode == ScreentoneMode::Shading && tone.spec.use_source_luminance
+            {
+                let retained = self.retain(backdrop);
+                if let Some(pass) = self.passes.get_mut(start) {
+                    if pass.kernel == Kernel::Screentone {
+                        pass.a = Some(retained);
+                        log::info!("[SCREENTONE:GPU_PLAN] Bound backdrop slot {} to Kernel::Screentone pass for Shading mode", backdrop);
                     } else {
                         self.release(retained);
                     }
+                } else {
+                    self.release(retained);
                 }
             }
             for c in visible_clipped {

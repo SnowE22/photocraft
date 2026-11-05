@@ -651,8 +651,7 @@ pub fn catmull_rom_knots(points: &[P], closed: bool, tension: f64) -> Vec<Knot> 
         mul(sub(next, prev), 0.5 * tension)
     };
     let mut knots = Vec::with_capacity(n);
-    for i in 0..n {
-        let anchor = points[i];
+    for (i, &anchor) in points.iter().enumerate().take(n) {
         let t = tangent(i);
         let c1 = add(anchor, mul(t, 1.0 / 3.0));
         let c2 = sub(anchor, mul(t, 1.0 / 3.0));
@@ -803,7 +802,7 @@ pub fn tapered_outline(points: &[SaiPoint], base_width: f64, min_ratio: f64) -> 
     let mut right: Vec<P> = Vec::with_capacity(n);
     for i in 0..n {
         let prev = if i == 0 {
-            if n > 1 { pts[0] } else { pts[0] }
+            pts[0]
         } else {
             pts[i - 1]
         };

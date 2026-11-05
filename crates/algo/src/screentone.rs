@@ -716,8 +716,8 @@ pub fn screentone(src: &Image, out: Rect, ctx: &Ctx, spec: &ScreentoneSpec) -> V
     } else {
         Rect::new(0, 0, 0, 0)
     };
-    let ww = work_rect.width().max(0) as usize;
-    let wh = work_rect.height().max(0) as usize;
+    let ww = work_rect.width() as usize;
+    let wh = work_rect.height() as usize;
 
     let mut luma_grid = Vec::new();
     let mut line_edge_grid = Vec::new();

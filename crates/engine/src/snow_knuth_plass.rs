@@ -122,7 +122,7 @@ pub fn char_width_factor(c: char) -> f32 {
         c if ('А'..='Я').contains(&c) || c == 'Ё' => 0.65,
         c if ('а'..='я').contains(&c) || c == 'ё' => 0.52,
         c if c.is_ascii_digit() => 0.55,
-        c if c >= '\u{3000}' && c <= '\u{9FFF}' => 1.0, // CJK
+        c if ('\u{3000}'..='\u{9FFF}').contains(&c) => 1.0, // CJK
         _ => 0.50,
     }
 }
@@ -152,19 +152,33 @@ pub fn hyphenation_point(word: &str) -> Option<usize> {
 
 fn hyphenation_candidates(word: &str) -> Vec<usize> {
     let chars: Vec<char> = word.chars().collect();
-    if chars.len() < 7 || chars.len() > 40 || !chars.iter().all(|ch| ch.is_alphabetic()) {
+    if chars.len() < 7 || chars.len() > 160 || !chars.iter().all(|ch| ch.is_alphabetic() || *ch == '-') {
         return Vec::new();
     }
     let middle = chars.len() / 2;
-    // Language-aware syllabification ported from TypeR Studio hyphenation rules; the old
+
+    // 1. Existing hyphens in compound words (e.g. "какой-то") are priority break points
+    let mut candidates: Vec<usize> = Vec::new();
+    for (byte, ch) in word.char_indices() {
+        if ch == '-' && byte + 1 < word.len() {
+            candidates.push(byte + 1);
+        }
+    }
+
+    // 2. Language-aware syllabification ported from TypeR Studio hyphenation rules; the old
     // vowel-group heuristic remains as a fallback for words without a legal break.
-    let mut candidates: Vec<usize> = crate::snow_hyphenation::hyphenate(word, None)
-        .into_iter()
-        .filter_map(|index| word.char_indices().nth(index).map(|(byte, _)| byte))
-        .collect();
+    if candidates.is_empty() {
+        candidates = crate::snow_hyphenation::hyphenate(word, None)
+            .into_iter()
+            .filter_map(|index| word.char_indices().nth(index).map(|(byte, _)| byte))
+            .collect();
+    }
+
+    // 3. Vowel-group fallback mapping char index to exact UTF-8 byte boundary
     if candidates.is_empty() {
         candidates = (3..chars.len().saturating_sub(2))
             .filter(|&index| is_vowel(chars[index - 1]) && !is_vowel(chars[index]))
+            .filter_map(|index| word.char_indices().nth(index).map(|(byte, _)| byte))
             .collect();
     }
     candidates.sort_by_key(|byte| word.get(..*byte).map_or(0, |prefix| prefix.chars().count()).abs_diff(middle));
@@ -175,11 +189,18 @@ fn hyphenation_candidates(word: &str) -> Vec<usize> {
 /// part fits `max_width`. At most one hyphen is inserted per word, as TypeR does.
 pub fn hyphenate_token(token: &str, max_width: f32, font_size_px: f32, h_scale: f32) -> Option<(String, String)> {
     for break_at in hyphenation_candidates(token) {
+        if !token.is_char_boundary(break_at) {
+            continue;
+        }
         let (left, right) = token.split_at(break_at);
         if left.is_empty() || right.is_empty() {
             continue;
         }
-        let left = format!("{left}-");
+        let left = if left.ends_with('-') {
+            left.to_string()
+        } else {
+            format!("{left}-")
+        };
         if measure_token_width(&left, font_size_px, h_scale) <= max_width {
             return Some((left, right.to_string()));
         }
@@ -295,14 +316,16 @@ pub fn knuth_plass_bubble_wrap_ext(
     // Токенизация: разделяем по обычным пробелам (токены с NBSP внутри остаются едиными блоками!)
     let mut tokens: Vec<String> = Vec::new();
     for token in bound_text.split(' ').filter(|s| !s.is_empty()) {
-        if measure_token_width(token, font_size_px, h_scale) > max_safe_width
-            && let Some((left, right)) = hyphenate_token(token, max_safe_width, font_size_px, h_scale)
-        {
-            tokens.push(left);
-            tokens.push(right);
-        } else {
-            tokens.push(token.to_string());
+        let mut cur = token.to_string();
+        while measure_token_width(&cur, font_size_px, h_scale) > max_safe_width {
+            if let Some((left, right)) = hyphenate_token(&cur, max_safe_width, font_size_px, h_scale) {
+                tokens.push(left);
+                cur = right;
+            } else {
+                break;
+            }
         }
+        tokens.push(cur);
     }
     if tokens.len() <= 1 {
         return bound_text;
@@ -428,10 +451,10 @@ pub fn knuth_plass_bubble_wrap_ext(
         let end = window[1];
         lines.push(join_tokens(&tokens[start..end]));
     }
-    if let Some(&last_start) = best_break_indices.last() {
-        if last_start < tokens.len() {
-            lines.push(join_tokens(&tokens[last_start..]));
-        }
+    if let Some(&last_start) = best_break_indices.last()
+        && last_start < tokens.len()
+    {
+        lines.push(join_tokens(&tokens[last_start..]));
     }
 
     lines.join("\n")
@@ -493,5 +516,27 @@ mod tests {
         assert!(russian.contains(char::from(10)), "the word is split into lines: {russian}");
         let english = hyphenate_long_words_with_breaks("EXTRAORDINARY", 150.0, 26.0, 1.0);
         assert!(english.contains(char::from(10)), "{english}");
+    }
+
+    #[test]
+    fn compound_words_with_hyphen_do_not_produce_double_hyphens() {
+        let compound = "какой-то";
+        let candidates = hyphenation_candidates(compound);
+        assert!(!candidates.is_empty());
+        let (left, right) = hyphenate_token(compound, 1000.0, 20.0, 1.0).unwrap();
+        assert_eq!(left, "какой-");
+        assert_eq!(right, "то");
+        assert!(!left.ends_with("--"));
+    }
+
+    #[test]
+    fn multi_hyphenation_breaks_very_long_words_iteratively() {
+        let very_long = "Rindfleischetikettierungsüberwachungsaufgabenübertragungsgesetz";
+        let wrapped = knuth_plass_bubble_wrap(very_long, 120.0, 120.0, 14.0, 72.0, 100.0);
+        let lines: Vec<&str> = wrapped.split('\n').collect();
+        assert!(lines.len() >= 2, "must break into multiple lines: {wrapped}");
+        for line in &lines {
+            assert!(!line.contains("--"));
+        }
     }
 }
