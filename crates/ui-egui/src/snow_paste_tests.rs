@@ -16,6 +16,8 @@ fn rect_selection(x0: i32, y0: i32, width: i32, height: i32) -> Surface {
 
 fn app_with(dark: bool) -> PhotocraftApp {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), crate::Services::default());
+    app.typesetter.state.options.auto_clean = false;
+    app.typesetter.state.options.paste_on_click = false;
     app.run("file.new", json!({"width": 400, "height": 400, "background": "white"})).unwrap();
     if dark {
         app.run("edit.fill", json!({"color": "#000000"})).unwrap();
@@ -116,3 +118,50 @@ fn style_preset_applies_to_the_selected_text_layer() {
     assert_eq!(text.paragraphs[0].style.align, photocraft_doc::text::TextAlign::Right);
     assert_eq!(text.paragraphs[0].style.first_line_indent_pt, 5.0);
 }
+
+#[test]
+fn settings_modal_blocks_canvas_insertion_and_paste_on_click() {
+    let mut app = app_with(false);
+    app.typesetter.state.options.paste_on_click = true;
+    app.typesetter.state.load_script("Line 1\nLine 2");
+    
+    // With settings modal open, insertion is strictly blocked
+    app.typesetter.editing_preset_idx = Some(0);
+    assert!(app.typesetter.is_blocking_canvas_insertion());
+
+    // Selection occurs, but paste-on-click must NOT trigger and line must NOT advance
+    std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(rect_selection(10, 10, 80, 80));
+    app.maybe_typesetter_paste_on_click();
+    assert_eq!(app.typesetter.state.current_line_idx, 0, "line did not advance during settings edit");
+    assert_eq!(app.session.active().unwrap().doc.layers.len(), 1, "no text layer created");
+
+    // Close settings modal -> now paste-on-click is unblocked
+    app.typesetter.editing_preset_idx = None;
+    assert!(!app.typesetter.is_blocking_canvas_insertion());
+    // Arming selection
+    std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(rect_selection(20, 20, 90, 90));
+    app.maybe_typesetter_paste_on_click();
+    // New balloon selection triggers paste
+    std::sync::Arc::make_mut(&mut app.session.active_mut().unwrap().doc).selection = Some(rect_selection(30, 30, 100, 100));
+    app.maybe_typesetter_paste_on_click();
+    assert_eq!(app.typesetter.state.current_line_idx, 1, "line advanced after modal closed");
+}
+
+#[test]
+fn style_arrow_request_does_not_advance_script_line() {
+    let mut app = app_with(false);
+    app.typesetter.state.load_script("Current script line");
+    assert_eq!(app.typesetter.state.current_line_idx, 0);
+
+    let preset = photocraft_engine::typesetter::TextStylePreset {
+        name: "TestStyle".into(),
+        font_size: 20.0,
+        ..photocraft_engine::typesetter::TextStylePreset::default()
+    };
+    app.apply_typesetter_style_to_active_layer(&preset);
+
+    // Applying a style preset directly must leave the script queue untouched
+    assert_eq!(app.typesetter.state.current_line_idx, 0);
+    assert_eq!(app.typesetter.state.active_line().map(|l| l.text.as_str()), Some("Current script line"));
+}
+

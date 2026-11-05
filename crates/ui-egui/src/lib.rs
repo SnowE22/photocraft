@@ -1363,7 +1363,7 @@ impl PhotocraftApp {
 
     /// Обработка действий тайпсеттера: создание текстового слоя на активном холсте.
     pub(crate) fn handle_typesetter_action(&mut self, action: typesetter_ui::TypesetterAction) {
-        if self.typesetter.editing_preset_idx.is_some() {
+        if self.typesetter.is_blocking_canvas_insertion() {
             return;
         }
         let Some(st) = self.session.active() else {
@@ -1821,6 +1821,9 @@ impl PhotocraftApp {
     /// Paste the current script line once a new selection appears (TypeR's paste-on-click); the
     /// selection fingerprint stops it from pasting again on every frame.
     pub(crate) fn maybe_typesetter_paste_on_click(&mut self) {
+        if self.typesetter.is_blocking_canvas_insertion() {
+            return;
+        }
         if !self.typesetter.state.options.paste_on_click {
             self.typesetter_paste_on_click_was_enabled = false;
             self.typesetter_paste_fingerprint = None;

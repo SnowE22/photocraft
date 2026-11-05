@@ -203,6 +203,8 @@ pub struct TypesetterUi {
     /// Pass number in which the auxiliary windows were last drawn, so a frame that renders both
     /// the docked body and the floating one does not open them twice.
     aux_pass: u64,
+    /// Whether the help modal dialog is open.
+    pub show_help_modal: bool,
     /// The legacy-state migration already ran (persisted, so removed favorites stay removed).
     legacy_merged: bool,
     /// Script line the editor caret was on last frame; when the current line differs, the caret
@@ -238,6 +240,7 @@ impl Default for TypesetterUi {
             favorite_fonts: Vec::new(),
             rendered_this_frame: false,
             scroll_to_active_line: false,
+            show_help_modal: false,
             script_buffer: String::new(),
             script_list_height: 160.0,
             document_style_scan_requested: false,
@@ -334,6 +337,16 @@ impl TypesetterUi {
         let Some(candidate) = self.text_shape_candidates.get(index) else { return };
         self.text_shape_apply_requested = Some((layer, candidate.text.clone()));
         self.show_text_shape_window = false;
+    }
+
+    pub fn is_blocking_canvas_insertion(&self) -> bool {
+        self.editing_preset_idx.is_some()
+            || self.current_tab == TypesetterTab::Settings
+            || self.show_full_text_window
+            || self.show_text_shape_window
+            || self.show_help_modal
+            || self.creating_new_folder
+            || self.duplicating_folder.is_some()
     }
 
     pub fn take_apply_style_request(&mut self) -> Option<TextStylePreset> {
@@ -755,6 +768,29 @@ impl TypesetterUi {
             }
         }
 
+        if self.show_help_modal {
+            let mut show_help = self.show_help_modal;
+            Window::new("Справка TypeR")
+                .id(egui::Id::new("typer_help_window"))
+                .open(&mut show_help)
+                .default_width(340.0)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.heading("Горячие клавиши и подсказки");
+                    ui.add_space(6.0);
+                    ui.label("• Enter / ⤓ — вставить текущую строку в выделение/баллон");
+                    ui.label("• ⇢ на стиле — применить стиль к выделенному тексту на странице");
+                    ui.label("• Клик по стилю — выбрать стиль для следующих реплик");
+                    ui.label("• Двойной клик по стилю — применить стиль и вставить строку");
+                    ui.label("• ✏ — открыть детальные настройки шрифта и стиля");
+                    ui.label("• ⎘ — дублировать стиль");
+                    ui.label("• Вставка по клику — авто-вставка строки при создании выделения");
+                    ui.label("• Авто-клин — очистка баллона на слое TypeR Clean перед вставкой");
+                    ui.add_space(8.0);
+                });
+            self.show_help_modal = show_help;
+        }
+
         // Модальное окно ввода и редактирования текста сценария
         if self.show_script_editor_modal {
             let mut close_modal = false;
@@ -965,55 +1001,37 @@ impl TypesetterUi {
 
     /// TypeR's footer rail: workspace, full script and settings, plus queue progress.
     fn render_type_r_footer(&mut self, ui: &mut egui::Ui) {
-        let t = Tokens::get(ui.ctx());
         let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
         egui::Frame::NONE
             .fill(ty.ui_dark)
-            .inner_margin(Margin::symmetric(4, 2))
+            .inner_margin(Margin::symmetric(8, 4))
             .show(ui, |ui| {
-        widgets::hairline(ui);
-        ui.horizontal(|ui| {
-            for (tab, icon, tooltip) in [
-                (TypesetterTab::Queue, "▦", "Typesetter"),
-                (TypesetterTab::FullText, "📄", "Script"),
-                (TypesetterTab::Settings, "⚙", "Options"),
-            ] {
-                let selected = self.current_tab == tab;
-                let button = egui::Button::new(
-                    RichText::new(icon).color(if selected { t.accent } else { t.text_dim }),
-                )
-                .frame(false);
-                if ui.add(button).on_hover_text(tl!(tooltip)).clicked() {
-                    self.current_tab = tab;
-                }
-            }
-            if ui
-                .checkbox(&mut self.state.options.paste_on_click, "Вставка по клику")
-                .on_hover_text("Вставляет текущую реплику сразу после создания выделения")
-                .changed()
-            {
-                self.auto_save();
-            }
-            if ui
-                .checkbox(&mut self.state.options.auto_clean, "Авто-клин")
-                .on_hover_text("Заполняет баллон чистым цветом на слое TypeR Clean, скрывая исходный текст")
-                .changed()
-            {
-                self.auto_save();
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let applied = self.state.lines.iter().filter(|line| line.is_applied).count();
-                if ui.add(egui::Button::new(RichText::new("?").color(t.text_dim).size(11.0)).frame(false)).on_hover_text("Клик — дефис · Alt+клик — без дефиса · тяните маркер").clicked() {}
-                if ui.add(egui::Button::new(RichText::new("⚙").color(t.text_dim).size(11.0)).frame(false)).on_hover_text(tl!("Options")).clicked() {
-                    self.current_tab = TypesetterTab::Settings;
-                }
-                ui.label(
-                    RichText::new(format!("{}/{}", applied, self.state.lines.len()))
-                        .color(t.text_dim)
-                        .small(),
-                );
-            });
-        });
+                ui.horizontal(|ui| {
+                    if ui.link(RichText::new("Справка").color(ty.muted).size(11.0)).on_hover_text("Открыть справку и горячие клавиши TypeR").clicked() {
+                        self.show_help_modal = true;
+                    }
+                    ui.add_space(4.0);
+                    if ui.link(RichText::new("Настройки").color(ty.muted).size(11.0)).on_hover_text("Переключить вкладку настроек тайпсеттера").clicked() {
+                        self.current_tab = if self.current_tab == TypesetterTab::Settings {
+                            TypesetterTab::Queue
+                        } else {
+                            TypesetterTab::Settings
+                        };
+                    }
+                    ui.add_space(4.0);
+                    if ui.link(RichText::new("Открыть каталог PSD").color(ty.muted).size(11.0)).on_hover_text("Загрузить файл сценария (.txt)").clicked() {
+                        self.open_script_file_dialog();
+                    }
+
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let mb_on = self.multi_bubble_count() > 0;
+                        let dot_color = if mb_on { Color32::from_rgb(52, 199, 89) } else { Color32::from_rgb(107, 107, 107) };
+                        let mb_text = if mb_on { format!("MB вкл ({})", self.multi_bubble_count()) } else { "MB выкл".into() };
+                        ui.label(RichText::new(mb_text).color(ty.muted).size(11.0));
+                        let (dot_rect, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
+                        ui.painter().circle_filled(dot_rect.center(), 3.5, dot_color);
+                    });
+                });
             });
     }
 
@@ -1036,14 +1054,21 @@ impl TypesetterUi {
         }
     }
 
-    /// TypeR's two action rows: paste/align/size, then TextShapeR and page navigation.
+    /// TypeR's two action rows: paste/align/size, then TextShapeR or page navigation.
     fn render_type_r_action_bar(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
         let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
-        ui.horizontal_wrapped(|ui| {
-            let insert = egui::Button::new(RichText::new(format!("⤓ {}", tl!("Insert"))).color(Color32::WHITE).size(12.0))
+        ui.horizontal(|ui| {
+            let avail = ui.available_width();
+            let stepper_w = 68.0f32;
+            let spacing = ui.spacing().item_spacing.x * 2.0;
+            let rem = (avail - stepper_w - spacing).max(120.0);
+            let insert_w = (rem * 0.58).floor();
+            let align_w = (rem - insert_w).floor();
+
+            let insert = egui::Button::new(RichText::new(format!("⤓ {}", tl!("Insert"))).color(Color32::WHITE).size(12.0).strong())
                 .fill(ty.blue)
                 .corner_radius(2.0)
-                .min_size(vec2(136.0, 24.0));
+                .min_size(vec2(insert_w, 26.0));
             if ui.add(insert).on_hover_text(tl!("Insert current line into selection/bubble (Enter)")).clicked() {
                 self.send_active_line(action);
             }
@@ -1051,60 +1076,126 @@ impl TypesetterUi {
             let align = egui::Button::new(RichText::new(format!("⊹ {}", tl!("Align"))).size(12.0).color(ty.text))
                 .fill(ty.ui)
                 .corner_radius(2.0)
-                .min_size(vec2(104.0, 24.0));
+                .min_size(vec2(align_w, 26.0));
             if ui.add(align).clicked() {
                 self.align_requested = true;
             }
 
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let plus = egui::Button::new("+").fill(ty.ui).min_size(vec2(18.0, 20.0));
-                if ui.add(plus).on_hover_text(tl!("Increase text size")).clicked() {
-                    self.state.adjust_active_preset_size(1.0);
+            // Stepper: [-] [1 px] [+]
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
+                let minus = egui::Button::new("−").fill(ty.ui).min_size(vec2(18.0, 26.0));
+                if ui.add(minus).on_hover_text(tl!("Decrease text size")).clicked() {
+                    self.state.adjust_active_preset_size(-1.0);
                     self.auto_save();
                 }
                 Frame::NONE
                     .fill(ty.ui_dark)
                     .stroke(Stroke::new(1.0, ty.line))
-                    .corner_radius(2.0)
-                    .inner_margin(Margin::symmetric(6, 2))
+                    .corner_radius(0.0)
+                    .inner_margin(Margin::symmetric(5, 4))
                     .show(ui, |ui| {
                         ui.label(RichText::new("1 px").color(ty.text).size(11.0));
                     });
-                let minus = egui::Button::new("−").fill(ty.ui).min_size(vec2(18.0, 20.0));
-                if ui.add(minus).on_hover_text(tl!("Decrease text size")).clicked() {
-                    self.state.adjust_active_preset_size(-1.0);
+                let plus = egui::Button::new("+").fill(ty.ui).min_size(vec2(18.0, 26.0));
+                if ui.add(plus).on_hover_text(tl!("Increase text size")).clicked() {
+                    self.state.adjust_active_preset_size(1.0);
                     self.auto_save();
                 }
             });
         });
 
-        ui.horizontal(|ui| {
-            ui.menu_button(RichText::new(format!("{}  ⌄", tl!("TextShapeR"))).color(ty.text).size(11.5), |ui| {
-                if ui.button(tl!("TextShapeR")).clicked() {
-                    ui.close();
-                    self.text_shape_requested = true;
-                }
-            });
-            let _ = ui.add(egui::Button::new("☆").frame(false));
-            let _ = ui.add(egui::Button::new("▦").frame(false));
-            let _ = ui.add(egui::Button::new("▤").frame(false));
+        if self.text_shape_layer.is_some() && !self.text_shape_candidates.is_empty() {
+            ui.horizontal(|ui| {
+                ui.menu_button(RichText::new(format!("{}  ⌄", tl!("TextShapeR"))).color(ty.text).size(11.5), |ui| {
+                    if ui.button(tl!("TextShapeR")).clicked() {
+                        ui.close();
+                        self.text_shape_requested = true;
+                    }
+                });
+                let _ = ui.add(egui::Button::new("☆").frame(false));
+                let _ = ui.add(egui::Button::new("▦").frame(false));
+                let _ = ui.add(egui::Button::new("▤").frame(false));
 
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let pages = self.state.pages();
-                let current = self.state.current_page;
-                let index = pages.iter().position(|page| *page == current).unwrap_or(0);
-                if ui.add(egui::Button::new("▶").frame(false)).on_hover_text(tl!("Next page")).clicked() {
-                    if let Some(next) = pages.get(index + 1).copied() {
-                        self.set_current_page(next);
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let pages = self.state.pages();
+                    let current = self.state.current_page;
+                    let index = pages.iter().position(|page| *page == current).unwrap_or(0);
+                    if ui.add(egui::Button::new("▶").frame(false)).on_hover_text(tl!("Next page")).clicked() {
+                        if let Some(next) = pages.get(index + 1).copied() {
+                            self.set_current_page(next);
+                        }
                     }
+                    ui.label(RichText::new(format!("{} / {}", index + 1, pages.len().max(1))).color(ty.muted).size(11.0));
+                    if ui.add(egui::Button::new("◀").frame(false)).on_hover_text(tl!("Previous page")).clicked() {
+                        if let Some(next) = index.checked_sub(1).and_then(|i| pages.get(i)).copied() {
+                            self.set_current_page(next);
+                        }
+                    }
+                });
+            });
+        }
+    }
+
+    fn render_active_line_preview_box(&mut self, ui: &mut egui::Ui, action: &mut Option<TypesetterAction>) {
+        let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
+        let cur_idx = self.state.current_line_idx;
+        let total_lines = self.state.lines.len();
+        let cur_text = self.state.active_line().map(|l| l.text.clone()).unwrap_or_default();
+        let style_name = self.state.active_preset().map(|p| p.name.clone()).unwrap_or_else(|| tl!("Default").into());
+
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
+                let up = egui::Button::new("↑").fill(ty.ui).min_size(vec2(22.0, 18.0));
+                if ui.add(up).on_hover_text(tl!("Previous line (Up)")).clicked() {
+                    self.state.prev_line();
+                    self.scroll_to_active_line = true;
+                    self.auto_save();
                 }
-                ui.label(RichText::new(format!("{} / {}", index + 1, pages.len().max(1))).color(ty.muted).size(11.0));
-                if ui.add(egui::Button::new("◀").frame(false)).on_hover_text(tl!("Previous page")).clicked() {
-                    if let Some(next) = index.checked_sub(1).and_then(|i| pages.get(i)).copied() {
-                        self.set_current_page(next);
-                    }
+                let down = egui::Button::new("↓").fill(ty.ui).min_size(vec2(22.0, 18.0));
+                if ui.add(down).on_hover_text(tl!("Next line (Down)")).clicked() {
+                    self.state.advance_line();
+                    self.scroll_to_active_line = true;
+                    self.auto_save();
                 }
             });
+
+            let box_w = ui.available_width();
+            Frame::NONE
+                .fill(ty.ui_dark)
+                .stroke(Stroke::new(1.0, ty.line))
+                .corner_radius(CornerRadius::same(3))
+                .inner_margin(Margin::symmetric(8, 4))
+                .show(ui, |ui| {
+                    ui.set_width(box_w);
+                    ui.horizontal(|ui| {
+                        let line_num_str = if total_lines == 0 { 0 } else { cur_idx + 1 };
+                        ui.label(
+                            RichText::new(format!("строка: {}, стиль: {}, масштаб: 100 %", line_num_str, style_name))
+                                .color(ty.muted)
+                                .size(10.5),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            let send_btn = egui::Button::new(RichText::new("⇢").color(ty.text).size(12.0)).frame(false);
+                            if ui.add(send_btn).on_hover_text("Вставить строку на холст").clicked() {
+                                self.send_active_line(action);
+                            }
+                        });
+                    });
+                    ui.add_space(2.0);
+                    let display_text = if cur_text.is_empty() {
+                        if total_lines == 0 { "(сценарий не загружен)" } else { "(пустая строка)" }
+                    } else {
+                        &cur_text
+                    };
+                    ui.label(
+                        RichText::new(display_text)
+                            .color(Color32::WHITE)
+                            .strong()
+                            .size(11.5),
+                    );
+                });
         });
     }
 
@@ -1213,7 +1304,11 @@ impl TypesetterUi {
         let cur_idx = self.state.current_line_idx;
 
         self.render_type_r_action_bar(ui, action);
-        self.render_type_r_preview_cards(ui);
+        if self.text_shape_layer.is_some() && !self.text_shape_candidates.is_empty() {
+            self.render_type_r_preview_cards(ui);
+        } else {
+            self.render_active_line_preview_box(ui, action);
+        }
 
         widgets::hairline(ui);
         ui.add_space(2.0);
@@ -1271,7 +1366,10 @@ impl TypesetterUi {
 
         self.render_preset_toolbar(ui);
 
-        // TypeR's two wide style buttons (above the list, so they stay visible in short panels).
+        let num_cols = if ui.available_width() < 260.0 { 1 } else { 2 };
+        self.render_style_presets_grid(ui, action, num_cols);
+
+        // TypeR's two wide style buttons (at the bottom of style tree, matching TypeR Studio).
         ui.add_space(3.0);
         let ty = crate::snow_typer_style::TyperStyle::get(ui.ctx());
         let half = ((ui.available_width() - 6.0) * 0.5).max(80.0);
@@ -1279,7 +1377,7 @@ impl TypesetterUi {
             let folder = egui::Button::new(RichText::new("＋ Добавить папку").size(11.5).color(ty.text))
                 .fill(ty.ui)
                 .corner_radius(2.0)
-                .min_size(vec2(half, 22.0));
+                .min_size(vec2(half, 24.0));
             if ui.add(folder).clicked() {
                 self.creating_new_folder = true;
                 self.new_folder_name_buffer = tl!("New Folder").into();
@@ -1287,16 +1385,13 @@ impl TypesetterUi {
             let style = egui::Button::new(RichText::new("＋ Добавить стиль").size(11.5).color(ty.text))
                 .fill(ty.ui)
                 .corner_radius(2.0)
-                .min_size(vec2(half, 22.0));
+                .min_size(vec2(half, 24.0));
             if ui.add(style).clicked() {
                 self.state.presets.push(TextStylePreset { name: tl!("New Preset").to_string(), ..TextStylePreset::default() });
                 self.editing_preset_idx = Some(self.state.presets.len().saturating_sub(1));
                 self.auto_save();
             }
         });
-
-        let num_cols = if ui.available_width() < 300.0 { 1 } else { 2 };
-        self.render_style_presets_grid(ui, action, num_cols);
     }
 
     /// Горизонтальная раскладка TypeR (специально для Нижнего дока).
@@ -1563,24 +1658,17 @@ impl TypesetterUi {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let styles = ui.style_mut();
-                styles.text_styles.insert(egui::TextStyle::Body, egui::FontId::proportional(12.0));
+                styles.text_styles.insert(egui::TextStyle::Body, egui::FontId::monospace(12.0));
                 ui.visuals_mut().selection.bg_fill = crate::snow_typer_style::TyperStyle::get(ui.ctx()).blue;
-                ui.visuals_mut().widgets.inactive.bg_fill = crate::snow_typer_style::TyperStyle::get(ui.ctx()).ui_dark;
+                ui.visuals_mut().widgets.inactive.bg_fill = Color32::WHITE;
                 let avail_w = ui.available_width().max(180.0);
-                // Строки сценария читаются слишком плотно при стандартном line-height egui:
-                // добавляем межстрочный интервал, который TextEdit учитывает при раскладке.
                 ui.spacing_mut().extra_text_line_spacing = SCRIPT_LINE_SPACING;
-                // Высота редактора должна следовать за ползунком-сплиттером: без desired_rows
-                // TextEdit всегда занимает 4 строки, и изменение script_list_height не видно.
                 let row_h = (ui.text_style_height(&egui::TextStyle::Body) + SCRIPT_LINE_SPACING).max(1.0);
                 let desired_rows = (((max_height - 8.0) / row_h).floor() as usize).max(1);
                 let edit = egui::TextEdit::multiline(&mut self.script_buffer)
                     .id(edit_id)
-                    // Рабочий текст сценария читается пропорциональным шрифтом, а не моноширинным.
                     .font(egui::TextStyle::Body)
-                    .text_color(t.text)
-                    // Frame::NONE заменяет margin целиком, поэтому отступы задаём во фрейме:
-                    // иначе текст начинается под левым гуттером и первые символы строки скрыты.
+                    .text_color(Color32::from_rgb(18, 18, 18))
                     .frame(egui::Frame::NONE.inner_margin(egui::Margin {
                         left: gutter_w as i8,
                         right: action_w as i8,
@@ -1590,30 +1678,26 @@ impl TypesetterUi {
                     .desired_rows(desired_rows)
                     .desired_width(avail_w);
 
-                // Резервируем форму подложки до отрисовки TextEdit: иначе белая заливка,
-                // добавленная после текста, перекрыла бы его в том же слое painter.
                 let background_idx = ui.painter().add(egui::Shape::Noop);
-                // Reserve one shape per logical line before the TextEdit paints, so the active
-                // line's highlight sits behind its glyphs instead of tinting them.
                 let line_highlights: Vec<egui::layers::ShapeIdx> =
                     (0..self.state.lines.len()).map(|_| ui.painter().add(egui::Shape::Noop)).collect();
                 let output = edit.show(ui);
                 let rect = output.response.rect;
 
-                // 1. Отрисовка подложки и вертикальных границ колонок
-                ui.painter().set(background_idx, egui::Shape::rect_filled(rect, CornerRadius::same(2), t.field));
+                // 1. Отрисовка подложки и вертикальных границ колонок: чистый белый фон, светлый гуттер
+                ui.painter().set(background_idx, egui::Shape::rect_filled(rect, CornerRadius::same(2), Color32::WHITE));
 
-                // Left gutter.
+                // Left gutter (светло-серая колонка нумерации)
                 let left_gutter_rect = egui::Rect::from_min_max(rect.min, egui::pos2(rect.left() + gutter_w, rect.bottom()));
-                ui.painter().rect_filled(left_gutter_rect, CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, t.chrome);
-                ui.painter().vline(rect.left() + gutter_w, rect.top()..=rect.bottom(), Stroke::new(1.0, t.separator));
+                ui.painter().rect_filled(left_gutter_rect, CornerRadius { nw: 2, sw: 2, ne: 0, se: 0 }, Color32::from_rgb(228, 230, 235));
+                ui.painter().vline(rect.left() + gutter_w, rect.top()..=rect.bottom(), Stroke::new(1.0, Color32::from_rgb(205, 208, 215)));
 
-                // Right action gutter.
+                // Right action gutter (колонка кнопки отправки на холст)
                 let right_gutter_rect = egui::Rect::from_min_max(egui::pos2(rect.right() - action_w, rect.top()), rect.max);
-                ui.painter().rect_filled(right_gutter_rect, CornerRadius { ne: 2, se: 2, nw: 0, sw: 0 }, t.card);
-                ui.painter().vline(rect.right() - action_w, rect.top()..=rect.bottom(), Stroke::new(1.0, t.separator));
+                ui.painter().rect_filled(right_gutter_rect, CornerRadius { ne: 2, se: 2, nw: 0, sw: 0 }, Color32::from_rgb(245, 245, 247));
+                ui.painter().vline(rect.right() - action_w, rect.top()..=rect.bottom(), Stroke::new(1.0, Color32::from_rgb(220, 222, 228)));
 
-                ui.painter().rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, t.field_border), egui::StrokeKind::Inside);
+                ui.painter().rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, Color32::from_rgb(195, 198, 205)), egui::StrokeKind::Inside);
 
                 // 2. Расчет геометрии логических строк по строкам галлеи (PlacedRow)
                 let mut logical_line_idx = 0;
@@ -1675,7 +1759,7 @@ impl TypesetterUi {
                                     egui::pos2(rect.right() - action_w, screen_end_y),
                                 ),
                                 CornerRadius::ZERO,
-                                crate::snow_typer_style::TyperStyle::get(ui.ctx()).blue,
+                                Color32::from_rgba_unmultiplied(40, 142, 223, 40),
                             ),
                         );
                     }
@@ -1753,8 +1837,8 @@ impl TypesetterUi {
                         clicked_action_line = Some(line_idx);
                     }
 
-                    // В. Горизонтальная пунктирная линия под строкой
-                    let dash_stroke = Stroke::new(1.0, t.separator);
+                    // В. Горизонтальная пунктирная линия под строкой (1px dashed #b5b5b5)
+                    let dash_stroke = Stroke::new(1.0, Color32::from_rgb(181, 181, 181));
                     draw_dashed_hline(ui.painter(), rect.left(), rect.right(), screen_end_y, dash_stroke);
                 }
 
@@ -1913,6 +1997,10 @@ impl TypesetterUi {
                                                 if ui.add(apply_layer).on_hover_text("Применить стиль к выделенному слою на странице").clicked() {
                                                     style_to_layer = Some(p_idx);
                                                 }
+                                                let dup_btn = egui::Button::new(RichText::new("⎘").color(if is_active { Color32::WHITE } else { t.text_dim }).small()).frame(false);
+                                                if ui.add(dup_btn).on_hover_text("Дублировать стиль").clicked() {
+                                                    style_to_duplicate = Some(p_idx);
+                                                }
 
                                                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                                                     let mut title = RichText::new(&preset.name).color(text_color).small();
@@ -1985,10 +2073,20 @@ impl TypesetterUi {
                                         });
                                     });
                                 let card_bottom = col.cursor().min.y;
-                                let card_rect = egui::Rect::from_min_max(egui::pos2(col.min_rect().left(), card_top), egui::pos2((col.min_rect().right() - 46.0).max(col.min_rect().left() + 20.0), card_bottom));
-                                let card_resp = col.interact(card_rect, col.id().with(("typer_style_card", p_idx)), Sense::click());
+                                let card_rect = egui::Rect::from_min_max(
+                                    egui::pos2(col.cursor().min.x - col.available_width(), card_top),
+                                    egui::pos2(col.cursor().max.x, card_bottom),
+                                );
+                                let card_interact_rect = egui::Rect::from_min_max(
+                                    egui::pos2(card_rect.left(), card_top),
+                                    egui::pos2((card_rect.right() - 56.0).max(card_rect.left() + 10.0), card_bottom),
+                                );
+                                let card_resp = col.interact(card_interact_rect, col.id().with(("typer_card_click", p_idx)), Sense::click());
                                 if card_resp.clicked() {
                                     style_to_select = Some(p_idx);
+                                }
+                                if card_resp.double_clicked() {
+                                    style_to_apply = Some(p_idx);
                                 }
                                 col.add_space(3.0);
                             };
