@@ -224,4 +224,19 @@ fn style_preset_cards_fit_strictly_within_dock_bounds_without_button_overflow() 
     }
 }
 
+#[test]
+fn test_render_label_kurai_voice() {
+    let mut guard = photocraft_text::shared().lock().unwrap();
+    let has = guard.fonts.has_family("Kurai Voice 2");
+    println!("has Kurai Voice 2 in shared(): {}", has);
+    if has {
+        let res = crate::font_preview::render_label(&mut guard, "Kurai Voice 2", "ПОЧЕМУ РАЙАН\nВ КОМНАТЕ КОМАНДЫ\n«СПИКА»?", 1.0, 18.0, false, false);
+        if let Some((img, logical)) = res {
+            println!("img size: {:?}, logical: {:?}, non-zero alpha pixels: {}", img.size, logical, img.pixels.iter().filter(|p| p.a() > 0).count());
+        } else {
+            println!("render_label returned None for multi-line!");
+        }
+    }
+}
+
 

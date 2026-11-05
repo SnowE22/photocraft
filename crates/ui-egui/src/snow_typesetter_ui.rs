@@ -43,6 +43,7 @@ fn default_script_list_height() -> f32 {
     160.0
 }
 
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 fn read_tpl_file(path: &std::path::Path) -> std::io::Result<Vec<u8>> {
     let file = std::fs::File::open(path)?;
     let max_bytes = photocraft_engine::typesetter::MAX_TPL_FILE_BYTES;
@@ -214,6 +215,10 @@ pub struct TypesetterUi {
     /// Script line the editor caret was on last frame; when the current line differs, the caret
     /// follows the line (▲/▼, ➔) instead of dragging the selection back to where it was.
     caret_line: Option<usize>,
+    /// Pending auto-save dirty flag.
+    save_dirty: bool,
+    /// Deadline for debounced auto-save.
+    save_dirty_until: Option<std::time::Instant>,
 }
 
 impl Default for TypesetterUi {
@@ -264,6 +269,8 @@ impl Default for TypesetterUi {
             aux_pass: u64::MAX,
             legacy_merged: false,
             caret_line: None,
+            save_dirty: false,
+            save_dirty_until: None,
         };
         ui.auto_load();
         ui
@@ -278,6 +285,17 @@ fn draw_dashed_hline(painter: &egui::Painter, x_start: f32, x_end: f32, y: f32, 
         let x2 = (x + dash_len).min(x_end);
         painter.line_segment([egui::pos2(x, y), egui::pos2(x2, y)], stroke);
         x += dash_len + gap_len;
+    }
+}
+
+fn get_system_clipboard_text() -> Option<String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        arboard::Clipboard::new().ok().and_then(|mut cb| cb.get_text().ok())
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
     }
 }
 
@@ -348,6 +366,7 @@ impl TypesetterUi {
             || self.current_tab == TypesetterTab::Settings
             || self.show_full_text_window
             || self.show_text_shape_window
+            || self.show_script_editor_modal
             || self.show_help_modal
             || self.creating_new_folder
             || self.duplicating_folder.is_some()
@@ -395,6 +414,8 @@ impl TypesetterUi {
         }
         if !self.state.lines.is_empty() {
             self.state.set_current_line(current_line_idx.min(self.state.lines.len() - 1));
+        } else {
+            self.state.set_current_line(0);
         }
         self.auto_save();
     }
@@ -452,7 +473,7 @@ impl TypesetterUi {
 
     /// Вставить сценарий напрямую из буфера обмена.
     pub fn paste_script_from_clipboard(&mut self) {
-        let text_opt = arboard::Clipboard::new().ok().and_then(|mut cb| cb.get_text().ok());
+        let text_opt = get_system_clipboard_text();
         if let Some(text) = text_opt {
             let trimmed = text.trim();
             if !trimmed.is_empty() {
@@ -483,6 +504,7 @@ impl TypesetterUi {
 
     /// Диалог выбора .txt файла сценария.
     pub fn open_script_file_dialog(&mut self) {
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Текстовые файлы (*.txt)", &["txt"])
             .set_title("Выберите файл сценария")
@@ -544,8 +566,36 @@ impl TypesetterUi {
         self.legacy_merged = found;
         self.auto_save();
     }
-    /// Автоматическое сохранение состояния и пресетов в файл настроек.
-    pub fn auto_save(&self) {
+    /// Автоматическое сохранение состояния и пресетов в файл настроек (дебаунс 300 мс).
+    pub fn auto_save(&mut self) {
+        self.save_dirty = true;
+        self.save_dirty_until = Some(std::time::Instant::now() + std::time::Duration::from_millis(300));
+    }
+
+    /// Проверяет таймер дебаунса автосохранения и сохраняет при истечении.
+    pub fn check_auto_save_debounce(&mut self) {
+        if self.save_dirty {
+            if let Some(deadline) = self.save_dirty_until {
+                if std::time::Instant::now() >= deadline {
+                    self.save_now();
+                    self.save_dirty = false;
+                    self.save_dirty_until = None;
+                }
+            }
+        }
+    }
+
+    /// Немедленный сброс отложенного сохранения на диск.
+    pub fn flush_auto_save(&mut self) {
+        if self.save_dirty {
+            self.save_now();
+            self.save_dirty = false;
+            self.save_dirty_until = None;
+        }
+    }
+
+    /// Прямая запись состояния в файл на диске.
+    pub fn save_now(&self) {
         let persisted = TypesetterPersistedState {
             dock_mode: self.dock_mode,
             state: self.state.clone(),
@@ -642,6 +692,7 @@ impl TypesetterUi {
 
     /// Отрисовка TypeR при встраивании в контейнер дока (левый, правый или нижний).
     pub fn render_embedded(&mut self, ui: &mut egui::Ui) -> Option<TypesetterAction> {
+        self.check_auto_save_debounce();
         self.rendered_this_frame = true;
         let mut action = None;
         let avail_w = ui.available_width();
@@ -663,7 +714,9 @@ impl TypesetterUi {
 
     /// Основная точка отрисовки UI (поддержка свободного окна и плавающего режима).
     pub fn show(&mut self, ui: &mut egui::Ui) -> Option<TypesetterAction> {
+        self.check_auto_save_debounce();
         if !self.is_open {
+            self.flush_auto_save();
             self.rendered_this_frame = false;
             return None;
         }
@@ -870,6 +923,7 @@ impl TypesetterUi {
                     ui.separator();
                     ui.label(RichText::new(tl!("TypeR Styles")).size(11.0).color(t.text_dim).strong());
 
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button(tl!("Import TypeR JSON…")).clicked() {
                         ui.close();
                         if let Some(path) = rfd::FileDialog::new()
@@ -897,6 +951,7 @@ impl TypesetterUi {
                         }
                     }
 
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button(tl!("Import Photoshop TPL…")).clicked() {
                         ui.close();
                         if let Some(path) = rfd::FileDialog::new()
@@ -939,6 +994,7 @@ impl TypesetterUi {
                         self.text_shape_requested = true;
                     }
 
+                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button(tl!("Export TypeR JSON…")).clicked() {
                         ui.close();
                         if let Some(path) = rfd::FileDialog::new()
@@ -1281,7 +1337,30 @@ impl TypesetterUi {
                                         preset.text_color[3],
                                     )
                                 };
-                                crate::font_preview::paint_centered(ui, &preset.font_family, &short, preset.font_size.min(18.0), rect, color, None);
+                                let stroke = if preset.stroke_width > 0.0 {
+                                    Some((
+                                        Color32::from_rgba_unmultiplied(
+                                            preset.stroke_color[0],
+                                            preset.stroke_color[1],
+                                            preset.stroke_color[2],
+                                            preset.stroke_color[3],
+                                        ),
+                                        preset.stroke_width.clamp(0.5, 3.0),
+                                    ))
+                                } else {
+                                    None
+                                };
+                                crate::font_preview::paint_centered(
+                                    ui,
+                                    &preset.font_family,
+                                    &short,
+                                    preset.font_size.min(18.0),
+                                    rect,
+                                    color,
+                                    stroke,
+                                    preset.bold,
+                                    preset.italic,
+                                );
                             } else {
                                 ui.painter().text(
                                     rect.center(),
@@ -2061,8 +2140,9 @@ fn paint_apply_layer_icon(painter: &egui::Painter, rect: egui::Rect, color: Colo
                             );
                             let apply_resp = col.interact(apply_rect, col.id().with(("typer_card_apply", p_idx)), Sense::click())
                                 .on_hover_text("Применить стиль к выделенному слою на странице");
-                            if apply_resp.clicked() {
+                            if apply_resp.clicked() || apply_resp.double_clicked() {
                                 style_to_layer = Some(p_idx);
+                                style_to_apply = None;
                             }
                             let apply_col = if apply_resp.hovered() { Color32::WHITE } else { icon_default_color };
                             Self::paint_apply_layer_icon(col.painter(), apply_rect, apply_col);
@@ -2137,14 +2217,14 @@ fn paint_apply_layer_icon(painter: &egui::Painter, rect: egui::Rect, color: Colo
                             );
                             let text_avail = text_rect.width();
 
-                            if let Some([w, h]) = crate::font_preview::name_size(col.ctx(), &preset.font_family, &preset.name, STYLE_NAME_PT)
+                            if let Some([w, h]) = crate::font_preview::name_size(col.ctx(), &preset.font_family, &preset.name, STYLE_NAME_PT, preset.bold, preset.italic)
                                 .filter(|[w, _]| *w <= text_avail)
                             {
                                 let target = egui::Rect::from_min_size(
                                     egui::pos2(text_rect.left(), (card_rect.center().y - h * 0.5).round()),
                                     vec2(w, h),
                                 );
-                                crate::font_preview::paint_name(col, &preset.font_family, &preset.name, STYLE_NAME_PT, target, text_color);
+                                crate::font_preview::paint_name(col, &preset.font_family, &preset.name, STYLE_NAME_PT, target, text_color, preset.bold, preset.italic);
                             } else {
                                 let mut job = egui::text::LayoutJob::simple_singleline(
                                     preset.name.clone(),
@@ -2245,6 +2325,8 @@ fn paint_apply_layer_icon(painter: &egui::Painter, rect: egui::Rect, color: Colo
         }
 
         if let Some(idx) = style_to_layer {
+            self.state.selected_preset_idx = idx;
+            *action = None;
             if let Some(preset) = self.state.presets.get(idx).cloned() {
                 self.apply_style_requested = Some(preset);
             }
@@ -2550,15 +2632,14 @@ fn paint_apply_layer_icon(painter: &egui::Painter, rect: egui::Rect, color: Colo
 
         ui.horizontal(|ui| {
             if ui.button(format!("📋 {}", tl!("Paste from Clipboard (Ctrl+V)"))).on_hover_text(tl!("Paste copied text from clipboard")).clicked() {
-                if let Ok(mut cb) = arboard::Clipboard::new() {
-                    if let Ok(text) = cb.get_text() {
-                        if !text.trim().is_empty() {
-                            self.script_editor_buffer = text;
-                        }
+                if let Some(text) = get_system_clipboard_text() {
+                    if !text.trim().is_empty() {
+                        self.script_editor_buffer = text;
                     }
                 }
             }
 
+            #[cfg(not(target_arch = "wasm32"))]
             if ui.button(format!("📥 {}", tl!("Load file (.txt)…"))).clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("Текстовые файлы (*.txt)", &["txt"])
@@ -3182,6 +3263,7 @@ fn paint_apply_layer_icon(painter: &egui::Painter, rect: egui::Rect, color: Colo
             }
 
             ui.horizontal_wrapped(|ui| {
+                #[cfg(not(target_arch = "wasm32"))]
                 if ui.button(tl!("Choose folder…")).on_hover_text(tl!("Choose a custom directory to store typesetter presets and state")).clicked() {
                     let mut dlg = rfd::FileDialog::new().set_title(tl!("Choose presets folder"));
                     if let Some(curr) = self.storage_path().and_then(|p| p.parent().map(|d| d.to_path_buf())) {
@@ -3342,10 +3424,10 @@ mod tests {
             for x in bounds.x0..bounds.x1 {
                 let dx = (x as f32 - 130.0) / 128.0;
                 let dy = (y as f32 - 110.0) / 108.0;
-                if dx * dx + dy * dy <= 1.0 {
-                    if let Some(pixel) = pixels.get_mut(y as usize * bounds.width() as usize + x as usize) {
-                        *pixel = 1.0;
-                    }
+                if dx * dx + dy * dy <= 1.0
+                    && let Some(pixel) = pixels.get_mut(y as usize * bounds.width() as usize + x as usize)
+                {
+                    *pixel = 1.0;
                 }
             }
         }
@@ -3466,7 +3548,7 @@ mod tests {
             panic!("Expected text layer");
         };
         assert!(text.text.contains('\n'));
-        assert!(!app.typesetter.has_text_shape_candidates());
+        assert!(app.typesetter.has_text_shape_candidates(), "candidates remain interactive after applying one");
     }
 
     #[test]

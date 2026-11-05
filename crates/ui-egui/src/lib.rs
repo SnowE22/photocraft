@@ -1723,6 +1723,9 @@ impl PhotocraftApp {
             self.align_typesetter_layer();
         }
         if let Some(preset) = self.typesetter.take_apply_style_request() {
+            if let Some(st) = self.session.active() {
+                self.typesetter_paste_fingerprint = st.doc.selection.as_ref().map(crate::snow_clean::selection_fingerprint);
+            }
             self.apply_typesetter_style_to_active_layer(&preset);
         }
         if self.typesetter.take_multi_bubble_capture_request() {
@@ -1738,11 +1741,11 @@ impl PhotocraftApp {
     /// Keeps the three TextShapeR preview cards tied to the text layer selected on the page.
     pub(crate) fn refresh_text_shape_previews_from_page(&mut self) {
         let source = self.session.active().and_then(|st| {
+            let is_text = |id: photocraft_doc::LayerId| matches!(st.doc.layer(id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_)));
             let id = st
-                .selected_layers()
-                .into_iter()
-                .find(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_))))
-                .or_else(|| st.active_layer.filter(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_)))))?;
+                .active_layer
+                .filter(|&id| is_text(id))
+                .or_else(|| st.selected_layers().into_iter().rev().find(|&id| is_text(id)))?;
             let layer = st.doc.layer(id)?;
             let photocraft_doc::LayerContent::Text(text) = &layer.content else { return None };
             let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
@@ -1765,11 +1768,11 @@ impl PhotocraftApp {
 
     pub(crate) fn refresh_typesetter_text_shape(&mut self, open_window: bool) {
         let Some(st) = self.session.active() else { return };
+        let is_text = |id: photocraft_doc::LayerId| matches!(st.doc.layer(id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_)));
         let target = st
-            .selected_layers()
-            .into_iter()
-            .find(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_))))
-            .or_else(|| st.active_layer.filter(|id| matches!(st.doc.layer(*id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_)))));
+            .active_layer
+            .filter(|&id| is_text(id))
+            .or_else(|| st.selected_layers().into_iter().rev().find(|&id| is_text(id)));
         let Some(id) = target else {
             self.typesetter.clear_text_shape_candidates();
             return;
@@ -1780,7 +1783,30 @@ impl PhotocraftApp {
             return;
         };
         let source = text.text.clone();
-        let preset = self.typesetter.state.preset_for_line(self.typesetter.state.current_line_idx).cloned().unwrap_or_default();
+        let mut preset = photocraft_engine::snow_typesetter::TextStylePreset::default();
+        if let Some(run) = text.char_runs().first() {
+            preset.font_family = run.style.font_family.clone();
+            preset.font_postscript = run.style.postscript_name.clone().unwrap_or_default();
+            preset.font_size = run.style.size_pt;
+            preset.leading = run.style.leading_pt.unwrap_or(run.style.size_pt * 1.2);
+            preset.tracking = run.style.tracking as i32;
+            preset.horizontal_scale = run.style.horizontal_scale;
+            preset.bold = run.style.faux_bold || run.style.weight >= 700;
+            preset.italic = run.style.italic || run.style.faux_italic;
+            preset.text_color = run.style.color.to_rgba8();
+        }
+        for fx in &layer.effects.items {
+            if let photocraft_doc::Effect::Stroke(s) = fx {
+                if s.common.enabled {
+                    preset.stroke_width = s.size;
+                    if let photocraft_doc::FxPaint::Color(sc) = &s.paint {
+                        let mut sc_rgba = sc.to_rgba8();
+                        sc_rgba[3] = (s.common.opacity * 255.0).clamp(0.0, 255.0).round() as u8;
+                        preset.stroke_color = sc_rgba;
+                    }
+                }
+            }
+        }
         let selection = st.doc.selection.clone();
         let candidates = photocraft_engine::typesetter::text_shape_candidates(
             &source,
@@ -1862,7 +1888,7 @@ impl PhotocraftApp {
         if let Some(h) = new_hash {
             self.typesetter_text_shape_source = Some(h);
         }
-        self.typesetter.clear_text_shape_candidates();
+        // Keep candidates visible so user can freely click and compare candidate 1, 2, 3
         self.typesetter.auto_save();
     }
 
@@ -1979,9 +2005,21 @@ impl PhotocraftApp {
     /// Applies a TypeR style preset to the text layer already selected on the page, without
     /// inserting text: character and paragraph properties go through `type.setStyle`.
     pub(crate) fn apply_typesetter_style_to_active_layer(&mut self, preset: &photocraft_engine::typesetter::TextStylePreset) {
+        let target = self.session.active().and_then(|st| {
+            let is_text = |id: photocraft_doc::LayerId| matches!(st.doc.layer(id).map(|layer| &layer.content), Some(photocraft_doc::LayerContent::Text(_)));
+            st.active_layer
+                .filter(|&id| is_text(id))
+                .or_else(|| st.selected_layers().into_iter().rev().find(|&id| is_text(id)))
+        });
+        let Some(target_layer_id) = target else {
+            self.ui.status = "Выберите текстовый слой на странице".into();
+            self.ui.status_error = true;
+            return;
+        };
         let hex = format!("#{:02x}{:02x}{:02x}{:02x}", preset.text_color[0], preset.text_color[1], preset.text_color[2], preset.text_color[3]);
         let leading = if preset.leading > 0.0 { serde_json::json!(preset.leading) } else { serde_json::json!("auto") };
         let params = serde_json::json!({
+            "layer": target_layer_id.0,
             "font": preset.font_family,
             "postscriptName": preset.font_postscript,
             "size": preset.font_size,
@@ -2001,8 +2039,28 @@ impl PhotocraftApp {
         });
         match self.run("type.setStyle", params) {
             Ok(_) => {
+                if preset.stroke_width > 0.0 {
+                    let hex_color = format!(
+                        "#{:02x}{:02x}{:02x}",
+                        preset.stroke_color[0],
+                        preset.stroke_color[1],
+                        preset.stroke_color[2]
+                    );
+                    let _ = self.run(
+                        "layer.layerStyle.stroke",
+                        serde_json::json!({
+                            "layer": target_layer_id.0,
+                            "size": preset.stroke_width,
+                            "position": "outside",
+                            "color": hex_color,
+                            "opacity": (preset.stroke_color[3] as f32 / 2.55).round() as u32
+                        }),
+                    );
+                }
                 self.ui.status = format!("Стиль «{}» применён к слою", preset.name);
                 self.ui.status_error = false;
+                self.typesetter_text_shape_source = None;
+                self.refresh_typesetter_text_shape(false);
             }
             Err(error) => {
                 self.ui.status = format!("Стиль не применён: {error}");
@@ -2058,6 +2116,7 @@ impl PhotocraftApp {
                 let _ = self.run("file.close", serde_json::json!({"document": idx}));
             }
             pages_panel::PagesPanelAction::OpenChapterFolder => {
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(folder) = rfd::FileDialog::new().pick_folder() {
                     let folder_name = folder.file_name().and_then(|n| n.to_str()).unwrap_or("Chapter").to_string();
                     self.ui.chapter_folder_name = Some(folder_name);
@@ -2084,6 +2143,7 @@ impl PhotocraftApp {
                 }
             }
             pages_panel::PagesPanelAction::AddPages => {
+                #[cfg(not(target_arch = "wasm32"))]
                 if let Some(files) = rfd::FileDialog::new()
                     .add_filter("Images", &["png", "jpg", "jpeg", "webp", "psd", "tif", "tiff"])
                     .pick_files()

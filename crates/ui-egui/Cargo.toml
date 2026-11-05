@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "photocraft-ui-egui"
 version.workspace = true
 edition.workspace = true
@@ -44,9 +44,9 @@ base64 = "0.22"
 # Inflating the translation catalogs, stored deflated (build.rs); already linked through photocraft-io.
 flate2 = { workspace = true }
 rfd.workspace = true
-arboard = "3.6"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+arboard = "3.6"
 rayon = { workspace = true }
 # Safe native UI-language APIs (Windows/macOS); no subprocess or web dependency.
 sys-locale = "=0.3.2"

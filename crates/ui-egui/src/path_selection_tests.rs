@@ -397,3 +397,24 @@ fn cmd_enter_with_text_edit_focus_loads_path_as_selection() {
     );
     assert_eq!(selection(&h), Some([15, 25, 40, 30]));
 }
+
+/// Regression test: when a `TextEdit` widget has focus, pressing Backspace or Delete
+/// must NOT be swallowed by global shortcuts (e.g. `edit.clear`), so the user can delete text.
+#[test]
+fn text_edit_focus_allows_backspace_and_delete() {
+    let backspace = egui::KeyboardShortcut {
+        logical_key: egui::Key::Backspace,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let delete = egui::KeyboardShortcut {
+        logical_key: egui::Key::Delete,
+        modifiers: egui::Modifiers::NONE,
+    };
+    let cmd_enter = egui::KeyboardShortcut {
+        logical_key: egui::Key::Enter,
+        modifiers: egui::Modifiers::COMMAND,
+    };
+    assert!(!crate::shortcut_dispatch::Focus::Text.allows(&backspace));
+    assert!(!crate::shortcut_dispatch::Focus::Text.allows(&delete));
+    assert!(crate::shortcut_dispatch::Focus::Text.allows(&cmd_enter));
+}

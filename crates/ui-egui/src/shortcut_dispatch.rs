@@ -198,9 +198,21 @@ impl Focus {
             Focus::Widget => sc.modifiers.command || !navigation,
             Focus::DeletingWidget => sc.modifiers.command || !(navigation || matches!(k, Key::Backspace | Key::Delete)),
             Focus::Text => {
-                let text_edit = !sc.modifiers.alt && matches!(k, Key::A | Key::C | Key::X | Key::V | Key::Z | Key::Y)
+                let text_nav = matches!(
+                    k,
+                    Key::ArrowLeft
+                        | Key::ArrowRight
+                        | Key::ArrowUp
+                        | Key::ArrowDown
+                        | Key::Home
+                        | Key::End
+                        | Key::PageUp
+                        | Key::PageDown
+                );
+                let text_edit = (!sc.modifiers.alt && matches!(k, Key::A | Key::C | Key::X | Key::V | Key::Z | Key::Y))
+                    || text_nav
                     || matches!(k, Key::Backspace | Key::Delete);
-                function || (sc.modifiers.command && !text_edit) || !navigation
+                function || (sc.modifiers.command && !text_edit)
             }
         }
     }
