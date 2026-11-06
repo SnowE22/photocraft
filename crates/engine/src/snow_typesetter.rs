@@ -2085,35 +2085,47 @@ pub fn detect_speech_bubble_bounds(
             px[0]
         }
     };
-    let center_luma = get_luma(anchor_x, anchor_y);
-    if center_luma < 0.50 {
-        return None;
+    let mut seed = None;
+    for r in [0, 4, 8, 12, 16, 20] {
+        for dy in [-r, 0, r] {
+            for dx in [-r, 0, r] {
+                let sx = anchor_x + dx;
+                let sy = anchor_y + dy;
+                if bounds.contains(sx, sy) && get_luma(sx, sy) >= 0.50 {
+                    seed = Some((sx, sy));
+                    break;
+                }
+            }
+            if seed.is_some() { break; }
+        }
+        if seed.is_some() { break; }
     }
+    let (seed_x, seed_y) = seed?;
     let max_r = max_radius.clamp(20, 600);
-    let mut min_x = anchor_x;
-    while min_x > anchor_x - max_r && min_x > bounds.x0 {
-        if get_luma(min_x - 1, anchor_y) < 0.45 {
+    let mut min_x = seed_x;
+    while min_x > seed_x - max_r && min_x > bounds.x0 {
+        if get_luma(min_x - 1, seed_y) < 0.45 {
             break;
         }
         min_x -= 1;
     }
-    let mut max_x = anchor_x;
-    while max_x < anchor_x + max_r && max_x < bounds.x1 {
-        if get_luma(max_x + 1, anchor_y) < 0.45 {
+    let mut max_x = seed_x;
+    while max_x < seed_x + max_r && max_x < bounds.x1 {
+        if get_luma(max_x + 1, seed_y) < 0.45 {
             break;
         }
         max_x += 1;
     }
-    let mut min_y = anchor_y;
-    while min_y > anchor_y - max_r && min_y > bounds.y0 {
-        if get_luma(anchor_x, min_y - 1) < 0.45 {
+    let mut min_y = seed_y;
+    while min_y > seed_y - max_r && min_y > bounds.y0 {
+        if get_luma(seed_x, min_y - 1) < 0.45 {
             break;
         }
         min_y -= 1;
     }
-    let mut max_y = anchor_y;
-    while max_y < anchor_y + max_r && max_y < bounds.y1 {
-        if get_luma(anchor_x, max_y + 1) < 0.45 {
+    let mut max_y = seed_y;
+    while max_y < seed_y + max_r && max_y < bounds.y1 {
+        if get_luma(seed_x, max_y + 1) < 0.45 {
             break;
         }
         max_y += 1;
@@ -2208,80 +2220,114 @@ pub fn text_shape_candidates(
 
     // Предложения с учетом формы баббла
     let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
-    match bubble_shape {
-        crate::snow_knuth_plass::BubbleShape::VerticalOval => {
-            let bw = bubble_w.unwrap_or(120.0);
-            let bh = bubble_h.unwrap_or(240.0);
-            push_candidate(
-                &mut candidates,
-                TextShapeKind::Balanced,
-                crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
-                    &clean_text,
-                    bw * 0.90,
-                    bh,
-                    preset.font_size,
-                    dpi,
-                    preset.horizontal_scale,
-                    preset.hanging_punctuation,
-                    crate::snow_knuth_plass::BubbleShape::VerticalOval,
-                ),
-            );
-            push_candidate(&mut candidates, TextShapeKind::BubbleWrap, diamond_manga_wrap(&bound_clean));
-            if words_count >= 4 {
-                push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_four_line_wrap(&bound_clean));
-            }
-        }
-        crate::snow_knuth_plass::BubbleShape::HorizontalOval => {
-            push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
-            let bw = bubble_w.unwrap_or(240.0);
-            let bh = bubble_h.unwrap_or(120.0);
-            push_candidate(
-                &mut candidates,
-                TextShapeKind::Balanced,
-                crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
-                    &clean_text,
-                    bw,
-                    bh,
-                    preset.font_size,
-                    dpi,
-                    preset.horizontal_scale,
-                    preset.hanging_punctuation,
-                    crate::snow_knuth_plass::BubbleShape::HorizontalOval,
-                ),
-            );
-        }
-        crate::snow_knuth_plass::BubbleShape::Rectangle => {
-            let bw = bubble_w.unwrap_or(160.0);
-            let bh = bubble_h.unwrap_or(160.0);
-            push_candidate(
-                &mut candidates,
-                TextShapeKind::Balanced,
-                crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
-                    &clean_text,
-                    bw,
-                    bh,
-                    preset.font_size,
-                    dpi,
-                    preset.horizontal_scale,
-                    preset.hanging_punctuation,
-                    crate::snow_knuth_plass::BubbleShape::Rectangle,
-                ),
-            );
-            push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
-        }
-        _ => {
-            if words_count >= 3 {
-                push_candidate(&mut candidates, TextShapeKind::Balanced, diamond_manga_wrap(&bound_clean));
-                push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
-                if words_count >= 5 {
+    if words_count <= 5 {
+        match bubble_shape {
+            crate::snow_knuth_plass::BubbleShape::VerticalOval => {
+                let bw = bubble_w.unwrap_or(120.0);
+                let bh = bubble_h.unwrap_or(240.0);
+                push_candidate(
+                    &mut candidates,
+                    TextShapeKind::Balanced,
+                    crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                        &clean_text,
+                        bw * 0.90,
+                        bh,
+                        preset.font_size,
+                        dpi,
+                        preset.horizontal_scale,
+                        preset.hanging_punctuation,
+                        crate::snow_knuth_plass::BubbleShape::VerticalOval,
+                    ),
+                );
+                push_candidate(&mut candidates, TextShapeKind::BubbleWrap, diamond_manga_wrap(&bound_clean));
+                if words_count >= 4 {
                     push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_four_line_wrap(&bound_clean));
+                }
+            }
+            crate::snow_knuth_plass::BubbleShape::HorizontalOval => {
+                push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
+                let bw = bubble_w.unwrap_or(240.0);
+                let bh = bubble_h.unwrap_or(120.0);
+                push_candidate(
+                    &mut candidates,
+                    TextShapeKind::Balanced,
+                    crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                        &clean_text,
+                        bw,
+                        bh,
+                        preset.font_size,
+                        dpi,
+                        preset.horizontal_scale,
+                        preset.hanging_punctuation,
+                        crate::snow_knuth_plass::BubbleShape::HorizontalOval,
+                    ),
+                );
+            }
+            crate::snow_knuth_plass::BubbleShape::Rectangle => {
+                let bw = bubble_w.unwrap_or(160.0);
+                let bh = bubble_h.unwrap_or(160.0);
+                push_candidate(
+                    &mut candidates,
+                    TextShapeKind::Balanced,
+                    crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                        &clean_text,
+                        bw,
+                        bh,
+                        preset.font_size,
+                        dpi,
+                        preset.horizontal_scale,
+                        preset.hanging_punctuation,
+                        crate::snow_knuth_plass::BubbleShape::Rectangle,
+                    ),
+                );
+                push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
+            }
+            _ => {
+                if words_count >= 3 {
+                    push_candidate(&mut candidates, TextShapeKind::Balanced, diamond_manga_wrap(&bound_clean));
+                    push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
+                    if words_count >= 5 {
+                        push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_four_line_wrap(&bound_clean));
+                    } else {
+                        push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
+                    }
                 } else {
                     push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
                 }
-            } else {
-                push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
             }
         }
+    } else {
+        // Большой текст (6+ слов): не форсируем 2-3 строки, используем адаптивный перенос по форме
+        let bw = bubble_w.unwrap_or(150.0);
+        let bh = bubble_h.unwrap_or(300.0);
+        push_candidate(
+            &mut candidates,
+            TextShapeKind::Balanced,
+            crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                &clean_text,
+                bw * 0.85,
+                bh,
+                preset.font_size,
+                dpi,
+                preset.horizontal_scale,
+                preset.hanging_punctuation,
+                bubble_shape,
+            ),
+        );
+        push_candidate(
+            &mut candidates,
+            TextShapeKind::Balanced,
+            crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                &clean_text,
+                bw * 1.15,
+                bh,
+                preset.font_size,
+                dpi,
+                preset.horizontal_scale,
+                preset.hanging_punctuation,
+                bubble_shape,
+            ),
+        );
     }
 
     // Если есть длинные слова, предлагаем вариант со слоговыми переносами
@@ -2345,25 +2391,58 @@ pub fn text_shape_candidates_with_bubble(
                 fake_shape,
             ),
         });
-        match fake_shape {
-            crate::snow_knuth_plass::BubbleShape::VerticalOval => {
-                candidates.push(TextShapeCandidate {
-                    kind: TextShapeKind::Balanced,
-                    text: diamond_manga_wrap(&bound_clean),
-                });
+        let bw = bubble.width() as f32;
+        let bh = bubble.height() as f32;
+        let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
+        if words_count <= 5 {
+            match fake_shape {
+                crate::snow_knuth_plass::BubbleShape::VerticalOval => {
+                    candidates.push(TextShapeCandidate {
+                        kind: TextShapeKind::Balanced,
+                        text: diamond_manga_wrap(&bound_clean),
+                    });
+                }
+                crate::snow_knuth_plass::BubbleShape::HorizontalOval | crate::snow_knuth_plass::BubbleShape::Rectangle => {
+                    candidates.push(TextShapeCandidate {
+                        kind: TextShapeKind::Balanced,
+                        text: balanced_two_line_wrap(&bound_clean),
+                    });
+                }
+                _ => {
+                    candidates.push(TextShapeCandidate {
+                        kind: TextShapeKind::Balanced,
+                        text: diamond_manga_wrap(&bound_clean),
+                    });
+                }
             }
-            crate::snow_knuth_plass::BubbleShape::HorizontalOval | crate::snow_knuth_plass::BubbleShape::Rectangle => {
-                candidates.push(TextShapeCandidate {
-                    kind: TextShapeKind::Balanced,
-                    text: balanced_two_line_wrap(&bound_clean),
-                });
-            }
-            _ => {
-                candidates.push(TextShapeCandidate {
-                    kind: TextShapeKind::Balanced,
-                    text: diamond_manga_wrap(&bound_clean),
-                });
-            }
+        } else {
+            // Для длинного текста (6+ слов) предлагаем более плотную и более широкую разбивку
+            candidates.push(TextShapeCandidate {
+                kind: TextShapeKind::Balanced,
+                text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                    &clean_text,
+                    bw * 0.85,
+                    bh,
+                    preset.font_size,
+                    dpi,
+                    preset.horizontal_scale,
+                    preset.hanging_punctuation,
+                    fake_shape,
+                ),
+            });
+            candidates.push(TextShapeCandidate {
+                kind: TextShapeKind::Balanced,
+                text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                    &clean_text,
+                    bw * 1.15,
+                    bh,
+                    preset.font_size,
+                    dpi,
+                    preset.horizontal_scale,
+                    preset.hanging_punctuation,
+                    fake_shape,
+                ),
+            });
         }
         return Ok(candidates);
     }
