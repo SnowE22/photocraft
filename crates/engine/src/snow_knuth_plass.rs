@@ -584,6 +584,361 @@ pub fn knuth_plass_bubble_wrap_with_shape(
     )
 }
 
+// ============================================================================
+// TypeR Studio TextShapeR Core Engine (Ported directly from TypeR Studio textShapeR.js)
+// ============================================================================
+
+/// Единичная ширина символа по метрикам TypeR Studio (базовый символ = 1.0)
+pub fn visible_char_width(c: char) -> f32 {
+    if c.is_whitespace() || matches!(c, 'i' | 'l' | 'I' | '.' | ',' | ';' | ':' | '!' | '|' | '\'' | '’' | '«' | '»' | '‹' | '›' | '(' | ')' | '[' | ']' | '{' | '}' | '…') {
+        0.45
+    } else if matches!(c, 'm' | 'w' | 'M' | 'W' | '@' | '#' | '%' | '&' | 'ж' | 'ш' | 'щ' | 'ю' | 'Ж' | 'Ш' | 'Щ' | 'Ю') {
+        1.32
+    } else if c.is_ascii_uppercase() || ('А'..='Я').contains(&c) || matches!(c, 'Ё' | 'Ї' | 'І' | 'Є' | 'Ґ') {
+        1.12
+    } else {
+        1.0
+    }
+}
+
+/// Измеряет визуальную длину строки в единицах TypeR Studio
+pub fn measure_visible_width(text: &str) -> f32 {
+    let mut w = 0.0;
+    for c in text.chars() {
+        w += visible_char_width(c);
+    }
+    w
+}
+
+/// Измеряет визуальную длину строки с учетом межсловных пробелов (0.45 em)
+pub fn line_visible_width(line: &str) -> f32 {
+    let words: Vec<&str> = line.split(' ').filter(|w| !w.is_empty()).collect();
+    if words.is_empty() {
+        return 0.0;
+    }
+    let words_w: f32 = words.iter().map(|w| measure_visible_width(w)).sum();
+    words_w + (words.len() - 1) as f32 * 0.45
+}
+
+/// Расчет весов силуэта баббла (TypeR Studio buildWeights)
+pub fn build_textshaper_weights(line_count: usize, curve: f32, shift: f32, min_weight: f32) -> Vec<f32> {
+    if line_count <= 1 {
+        return vec![1.0];
+    }
+    let center = (line_count as f32 - 1.0) / 2.0 + shift;
+    let max_dist = center.max(line_count as f32 - 1.0 - center).max(1.0);
+    (0..line_count)
+        .map(|idx| {
+            let dist = (idx as f32 - center).abs() / max_dist;
+            (1.0 - dist * curve).max(min_weight)
+        })
+        .collect()
+}
+
+/// Построение целевой ширины строк (TypeR Studio buildTargets)
+pub fn build_textshaper_targets(
+    tokens: &[String],
+    line_count: usize,
+    curve: f32,
+    shift: f32,
+    bias: f32,
+    min_weight: f32,
+) -> Vec<f32> {
+    let total: f32 = tokens.iter().map(|t| measure_visible_width(t)).sum::<f32>()
+        + tokens.len().saturating_sub(line_count) as f32 * 0.45;
+    let weights = build_textshaper_weights(line_count, curve, shift, min_weight);
+    let w_sum: f32 = weights.iter().sum::<f32>().max(0.001);
+    weights
+        .into_iter()
+        .map(|w| ((total * w) / w_sum + bias).max(1.0))
+        .collect()
+}
+
+/// 2D Динамическое программирование (TypeR Studio buildCandidate)
+pub fn build_textshaper_candidate_dp(
+    tokens: &[String],
+    line_count: usize,
+    targets: &[f32],
+) -> Option<Vec<String>> {
+    let n = tokens.len();
+    if n < line_count || line_count < 1 {
+        return None;
+    }
+    let token_widths: Vec<f32> = tokens.iter().map(|t| measure_visible_width(t)).collect();
+    let mut prefix = vec![0.0; n + 1];
+    let mut ends_break = vec![false; n];
+    for (i, t) in tokens.iter().enumerate() {
+        prefix[i + 1] = prefix[i] + token_widths[i];
+        ends_break[i] = t.ends_with(['.', ',', ';', ':', '!', '?', '…', '»', ')', ']', '}']);
+    }
+
+    let stride = n + 1;
+    let mut dp = vec![f64::INFINITY; (line_count + 1) * stride];
+    let mut prev = vec![-1i32; (line_count + 1) * stride];
+    dp[0] = 0.0;
+
+    for line_idx in 0..line_count {
+        let target = targets.get(line_idx).copied().unwrap_or(1.0) as f64;
+        let prune_width = target * 3.5;
+        let is_last = line_idx == line_count - 1;
+        let row_offset = line_idx * stride;
+        let next_row_offset = (line_idx + 1) * stride;
+        let max_to = n - (line_count - line_idx - 1);
+
+        for from_idx in line_idx..=n {
+            let base_cost = dp[row_offset + from_idx];
+            if base_cost.is_infinite() {
+                continue;
+            }
+            let from_p = prefix[from_idx] as f64;
+            for to_idx in (from_idx + 1)..=max_to {
+                let w = (prefix[to_idx] as f64 - from_p) + 0.45 * (to_idx - from_idx - 1) as f64;
+                if w > prune_width && to_idx > from_idx + 1 {
+                    break;
+                }
+                let ratio = (w - target) / target;
+                let mut cost = ratio * ratio;
+                if !is_last && ends_break[to_idx - 1] {
+                    cost = (cost - 0.09).max(0.0);
+                }
+                let next_cost = base_cost + cost;
+                if next_cost < dp[next_row_offset + to_idx] {
+                    dp[next_row_offset + to_idx] = next_cost;
+                    prev[next_row_offset + to_idx] = from_idx as i32;
+                }
+            }
+        }
+    }
+
+    if dp[line_count * stride + n].is_infinite() {
+        return None;
+    }
+
+    let mut lines = Vec::with_capacity(line_count);
+    let mut cursor = n;
+    for line_idx in (1..=line_count).rev() {
+        let from_idx = prev[line_idx * stride + cursor];
+        if from_idx < 0 {
+            return None;
+        }
+        lines.push(tokens[from_idx as usize..cursor].join(" "));
+        cursor = from_idx as usize;
+    }
+    lines.reverse();
+    Some(lines)
+}
+
+/// Эстетическая оценка силуэта баббла (TypeR Studio scoreSilhouetteAesthetics)
+pub fn score_textshaper_silhouette(lengths: &[f32], smoothness_weight: f32, adjacent_slack: f32) -> f32 {
+    let line_count = lengths.len();
+    let max_len = lengths.iter().copied().fold(0.0f32, f32::max);
+    if max_len <= 0.0 || line_count < 2 {
+        return 0.0;
+    }
+
+    if line_count == 2 {
+        let diff = (lengths[0] - lengths[1]).abs() / max_len;
+        let excess = (diff - 0.24).max(0.0);
+        return excess * excess * smoothness_weight;
+    }
+
+    let interior = &lengths[1..line_count - 1];
+    let interior_max = interior.iter().copied().fold(0.0f32, f32::max);
+    let mut score = 0.0;
+
+    let edge_max = lengths[0].max(lengths[line_count - 1]);
+    if edge_max > interior_max {
+        let d = (edge_max - interior_max) / max_len;
+        score += d * d * 420.0 + 20.0;
+    }
+
+    if interior_max > 0.0 {
+        for &edge in &[lengths[0], lengths[line_count - 1]] {
+            let edge_excess = (edge / interior_max - 0.85).max(0.0);
+            score += edge_excess * edge_excess * 900.0;
+        }
+    }
+
+    let peak_idx = lengths.iter().position(|&l| (l - max_len).abs() < 1e-4).unwrap_or(0);
+    for i in 1..=peak_idx {
+        let drop = lengths[i - 1] - lengths[i];
+        if drop > 0.0 {
+            let r = drop / max_len;
+            score += r * r * 300.0;
+        }
+    }
+    for i in (peak_idx + 1)..line_count {
+        let rise = lengths[i] - lengths[i - 1];
+        if rise > 0.0 {
+            let r = rise / max_len;
+            score += r * r * 300.0;
+        }
+    }
+
+    let center_idx = (line_count as f32 - 1.0) / 2.0;
+    if center_idx > 0.0 {
+        let offset = (peak_idx as f32 - center_idx).abs() / center_idx;
+        score += offset * offset * 60.0;
+    }
+
+    for i in 1..line_count {
+        let diff = (lengths[i] - lengths[i - 1]).abs() / max_len;
+        let excess = (diff - adjacent_slack).max(0.0);
+        if excess > 0.0 {
+            score += excess * excess * smoothness_weight;
+        }
+    }
+
+    score
+}
+
+/// Полный расчет штрафов кандидата (TypeR Studio scoreCandidate)
+pub fn score_textshaper_candidate(
+    lines: &[String],
+    hyphen_count: usize,
+    target_lines: usize,
+    bubble_w: Option<f32>,
+    bubble_h: Option<f32>,
+    unit_px: f32,
+    line_px: f32,
+) -> f32 {
+    let lengths: Vec<f32> = lines.iter().map(|l| line_visible_width(l)).collect();
+    let line_count = lines.len();
+    let total_len: f32 = lengths.iter().sum();
+    let weights = build_textshaper_weights(line_count, 0.65, 0.0, 0.35);
+    let w_sum = weights.iter().sum::<f32>().max(0.001);
+    let targets: Vec<f32> = weights.into_iter().map(|w| (total_len * w) / w_sum).collect();
+    let max_line_width = 28.0;
+
+    let line_delta = line_count as f32 - target_lines as f32;
+    let delta_factor = if line_delta < 0.0 { 3.0 } else { 1.0 };
+    let mut score = hyphen_count as f32 * 130.0 + line_delta.abs().powf(1.5) * 16.0 * delta_factor;
+
+    if let (Some(bw), Some(bh)) = (bubble_w, bubble_h) {
+        let h_excess = ((line_count as f32 * line_px) / (bh * 0.90) - 1.0).max(0.0);
+        if h_excess > 0.0 {
+            score += 80.0 + h_excess * h_excess * 900.0;
+        }
+        let avail_units = (bw * 0.90) / unit_px.max(1.0);
+        for &l in &lengths {
+            let w_excess = (l / avail_units - 1.0).max(0.0);
+            if w_excess > 0.0 {
+                score += 60.0 + w_excess * w_excess * 1600.0;
+            }
+        }
+    }
+
+    for (idx, &l) in lengths.iter().enumerate() {
+        let tgt = targets.get(idx).copied().unwrap_or(1.0).max(1.0);
+        let rel = (l - tgt) / tgt;
+        score += rel * rel * 120.0;
+        let w_excess = ((l - max_line_width) / max_line_width).max(0.0);
+        score += w_excess * w_excess * 320.0;
+        if idx < line_count - 1 && lines[idx].ends_with(['.', ',', ';', ':', '!', '?', '…', '»']) {
+            score -= 14.0;
+        }
+    }
+
+    score += score_textshaper_silhouette(&lengths, 160.0, 0.3);
+    score
+}
+
+/// Генерация разнообразных вариантов TextShapeR по полному алгоритму TypeR Studio
+pub fn generate_textshaper_variants(
+    text: &str,
+    bubble_w: Option<f32>,
+    bubble_h: Option<f32>,
+    font_size_pt: f32,
+    dpi: f32,
+    limit: usize,
+) -> Vec<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let bound_text = bind_orphan_prepositions(trimmed);
+    let tokens: Vec<String> = bound_text.split(' ').filter(|w| !w.is_empty()).map(|w| w.to_string()).collect();
+    let n = tokens.len();
+    if n <= 1 {
+        return vec![bound_text];
+    }
+
+    let dpi_scale = if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
+    let font_size_px = font_size_pt * dpi_scale;
+    let unit_px = (font_size_px * 0.52).max(1.0);
+    let line_px = (font_size_px * 1.25).max(1.0);
+
+    let total_units: f32 = tokens.iter().map(|t| measure_visible_width(t)).sum::<f32>() + tokens.len().saturating_sub(1) as f32 * 0.45;
+
+    let (min_lines, max_lines, target_lines) = if let (Some(bw), Some(bh)) = (bubble_w, bubble_h) {
+        let avail_units = ((bw * 0.90) / unit_px).max(6.0);
+        let est = (total_units / (avail_units * 0.75)).ceil() as usize;
+        let aspect = (bh / bw.max(1.0)).clamp(0.25, 3.0);
+        let tgt = if aspect >= 1.15 { est.max(((bh / line_px) * 0.7).round() as usize).max(1) } else { est.max(1) };
+        let min_l = tgt.saturating_sub(1).max(1).min(n);
+        let max_l = (tgt + 2).max(min_l).min(n);
+        (min_l, max_l, tgt)
+    } else {
+        let vol = (total_units / 2.6).sqrt().round() as usize;
+        let tgt = vol.clamp(if n >= 3 { 2 } else { 1 }, 6);
+        let min_l = if n <= 2 { 1 } else { 2 };
+        let max_l = (tgt + 2).clamp(min_l, n.min(8));
+        (min_l, max_l, tgt)
+    };
+
+    let curves = [0.35f32, 0.45, 0.6, 0.75];
+    let shifts = [0.0f32, -0.12, 0.12, -0.2, 0.2];
+    let biases = [-1.0f32, 0.0, 1.0];
+
+    let mut map: std::collections::HashMap<String, (f32, usize)> = std::collections::HashMap::new();
+
+    for lc in min_lines..=max_lines {
+        for &c in &curves {
+            for &s in &shifts {
+                for &b in &biases {
+                    let targets = build_textshaper_targets(&tokens, lc, c, s, b, 0.35);
+                    if let Some(lines) = build_textshaper_candidate_dp(&tokens, lc, &targets) {
+                        let candidate_text = lines.join("\n");
+                        map.entry(candidate_text).or_insert_with(|| {
+                            let score = score_textshaper_candidate(&lines, 0, target_lines, bubble_w, bubble_h, unit_px, line_px);
+                            (score, lc)
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if map.is_empty() {
+        return vec![bound_text];
+    }
+
+    let mut sorted: Vec<(String, f32, usize)> = map.into_iter().map(|(t, (sc, lc))| (t, sc, lc)).collect();
+    sorted.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // TypeR Studio Diversity Guarantee: 1 лучший кандидат для каждой высоты строк, затем заполнение оставшихся слотов
+    let mut picked = Vec::new();
+    let mut seen_texts = std::collections::HashSet::new();
+    let mut seen_lcs = std::collections::HashSet::new();
+
+    for (t, _, lc) in &sorted {
+        if !seen_lcs.contains(lc) && picked.len() < limit {
+            picked.push(t.clone());
+            seen_texts.insert(t.clone());
+            seen_lcs.insert(*lc);
+        }
+    }
+
+    for (t, _, _) in &sorted {
+        if !seen_texts.contains(t) && picked.len() < limit {
+            picked.push(t.clone());
+            seen_texts.insert(t.clone());
+        }
+    }
+
+    picked
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

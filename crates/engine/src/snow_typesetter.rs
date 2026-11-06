@@ -2234,62 +2234,25 @@ pub fn text_shape_candidates(
         }
     }
 
-    // Предложения с учетом формы баббла (строки всегда узкие, 1-2 слова, без растягивания на всю ширину)
+    // Генерация разнообразных вариантов TextShapeR по полному алгоритму TypeR Studio
     let bw = bubble_w.unwrap_or(130.0).clamp(70.0, 180.0);
     let bh = bubble_h.unwrap_or(240.0);
-
-    let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
-    let k1 = if words_count >= 5 { Some(3) } else if words_count >= 3 { Some(2) } else { None };
-    push_candidate(
-        &mut candidates,
-        TextShapeKind::BubbleWrap,
-        crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
-            &clean_text,
-            bw * 0.85,
-            bh,
-            preset.font_size,
-            dpi,
-            preset.horizontal_scale,
-            preset.hanging_punctuation,
-            crate::snow_knuth_plass::BubbleShape::VerticalOval,
-            k1,
-        ),
+    let variants = crate::snow_knuth_plass::generate_textshaper_variants(
+        &bound_clean,
+        Some(bw),
+        Some(bh),
+        preset.font_size,
+        dpi,
+        12,
     );
-
-    let k2 = if words_count >= 5 { Some(2) } else if words_count >= 4 { Some(3) } else { Some(2) };
-    let balanced_w = if words_count <= 5 { bw * 0.90 } else { bw * 0.72 };
-    push_candidate(
-        &mut candidates,
-        TextShapeKind::Balanced,
-        crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
-            &clean_text,
-            balanced_w,
-            bh,
-            preset.font_size,
-            dpi,
-            preset.horizontal_scale,
-            preset.hanging_punctuation,
-            bubble_shape,
-            k2,
-        ),
-    );
+    for (idx, variant) in variants.into_iter().enumerate() {
+        let kind = if idx == 0 { TextShapeKind::BubbleWrap } else { TextShapeKind::Balanced };
+        push_candidate(&mut candidates, kind, variant);
+    }
     if !candidates.iter().any(|c| c.kind == TextShapeKind::Balanced) {
+        let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
         let alt = if words_count >= 4 { balanced_four_line_wrap(&bound_clean) } else { diamond_manga_wrap(&bound_clean) };
         push_candidate(&mut candidates, TextShapeKind::Balanced, alt);
-    }
-
-    // Кандидат 3: Если есть длинные слова, предлагаем вариант со слоговыми переносами
-    let longest_word = bound_clean.split(' ').map(|w| w.chars().count()).max().unwrap_or(0);
-    if longest_word >= 7 {
-        let dpi_scale = if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
-        let h_scale = (preset.horizontal_scale / 100.0).clamp(0.1, 5.0);
-        let hyphenated = crate::snow_knuth_plass::hyphenate_long_words_with_breaks(
-            &bound_clean,
-            bw * 0.85,
-            preset.font_size * dpi_scale,
-            h_scale,
-        );
-        push_candidate(&mut candidates, TextShapeKind::Balanced, hyphenated);
     }
 
     if candidates.is_empty() {
@@ -2311,7 +2274,6 @@ pub fn text_shape_candidates_with_bubble(
     minimum_fit_scale_percent: f32,
 ) -> Result<Vec<TextShapeCandidate>, String> {
     if selection.is_none() && let Some(bubble) = detected_bubble {
-        let fake_shape = crate::snow_knuth_plass::BubbleShape::from_aspect_ratio(bubble.width() as f32, bubble.height() as f32);
         let mut candidates = Vec::new();
         let clean_text = text.split_whitespace().collect::<Vec<_>>().join(" ");
         let bound_clean = crate::snow_knuth_plass::bind_orphan_prepositions(&clean_text);
@@ -2327,55 +2289,22 @@ pub fn text_shape_candidates_with_bubble(
         candidates.push(TextShapeCandidate { kind: TextShapeKind::Original, text: original_text });
         let bw = (bubble.width() as f32).clamp(70.0, 180.0);
         let bh = bubble.height() as f32;
-
-        let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
-        let k1 = if words_count >= 5 { Some(3) } else if words_count >= 3 { Some(2) } else { None };
-        candidates.push(TextShapeCandidate {
-            kind: TextShapeKind::BubbleWrap,
-            text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
-                &clean_text,
-                bw * 0.85,
-                bh,
-                preset.font_size,
-                dpi,
-                preset.horizontal_scale,
-                preset.hanging_punctuation,
-                crate::snow_knuth_plass::BubbleShape::VerticalOval,
-                k1,
-            ),
-        });
-
-        let k2 = if words_count >= 5 { Some(2) } else if words_count >= 4 { Some(3) } else { Some(2) };
-        candidates.push(TextShapeCandidate {
-            kind: TextShapeKind::Balanced,
-            text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
-                &clean_text,
-                bw,
-                bh,
-                preset.font_size,
-                dpi,
-                preset.horizontal_scale,
-                preset.hanging_punctuation,
-                fake_shape,
-                k2,
-            ),
-        });
-
-        // Кандидат 3: Вариант со слоговыми дефисами
-        let longest_word = bound_clean.split(' ').map(|w| w.chars().count()).max().unwrap_or(0);
-        if longest_word >= 7 {
-            let dpi_scale = if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
-            let h_scale = (preset.horizontal_scale / 100.0).clamp(0.1, 5.0);
-            let hyphenated = crate::snow_knuth_plass::hyphenate_long_words_with_breaks(
-                &bound_clean,
-                bw * 0.85,
-                preset.font_size * dpi_scale,
-                h_scale,
-            );
-            candidates.push(TextShapeCandidate {
-                kind: TextShapeKind::Balanced,
-                text: hyphenated,
-            });
+        let variants = crate::snow_knuth_plass::generate_textshaper_variants(
+            &bound_clean,
+            Some(bw),
+            Some(bh),
+            preset.font_size,
+            dpi,
+            12,
+        );
+        for (idx, variant) in variants.into_iter().enumerate() {
+            if !candidates.iter().any(|c| c.text == variant) {
+                let kind = if idx == 0 { TextShapeKind::BubbleWrap } else { TextShapeKind::Balanced };
+                candidates.push(TextShapeCandidate {
+                    kind,
+                    text: variant,
+                });
+            }
         }
         return Ok(candidates);
     }

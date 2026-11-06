@@ -192,6 +192,7 @@ pub struct TypesetterUi {
     text_shape_requested: bool,
     text_shape_candidates: Vec<TextShapeCandidate>,
     text_shape_selected: usize,
+    text_shape_page: usize,
     show_text_shape_window: bool,
     text_shape_layer: Option<u64>,
     text_shape_apply_requested: Option<(u64, String)>,
@@ -254,6 +255,7 @@ impl Default for TypesetterUi {
             text_shape_requested: false,
             text_shape_candidates: Vec::new(),
             text_shape_selected: 0,
+            text_shape_page: 0,
             show_text_shape_window: false,
             text_shape_layer: None,
             text_shape_apply_requested: None,
@@ -324,6 +326,7 @@ impl TypesetterUi {
     /// Refresh the inline cards without opening the modal preview window.
     pub fn set_text_shape_candidates_inline(&mut self, candidates: Vec<TextShapeCandidate>, layer: u64, preset: TextStylePreset) {
         self.text_shape_selected = self.text_shape_selected.min(candidates.len().saturating_sub(1));
+        self.text_shape_page = 0;
         self.text_shape_candidates = candidates;
         self.text_shape_layer = if self.text_shape_candidates.is_empty() { None } else { Some(layer) };
         self.text_shape_preview_preset = if self.text_shape_candidates.is_empty() { None } else { Some(preset) };
@@ -1185,18 +1188,16 @@ impl TypesetterUi {
                 let _ = ui.add(egui::Button::new("▤").frame(false));
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let pages = self.state.pages();
-                    let current = self.state.current_page;
-                    let index = pages.iter().position(|page| *page == current).unwrap_or(0);
+                    let total_pages = ((self.text_shape_candidates.len() + 2) / 3).max(1);
                     if ui.add(egui::Button::new("▶").frame(false)).on_hover_text(tl!("Next page")).clicked() {
-                        if let Some(next) = pages.get(index + 1).copied() {
-                            self.set_current_page(next);
+                        if self.text_shape_page + 1 < total_pages {
+                            self.text_shape_page += 1;
                         }
                     }
-                    ui.label(RichText::new(format!("{} / {}", index + 1, pages.len().max(1))).color(ty.muted).size(11.0));
+                    ui.label(RichText::new(format!("{} / {}", self.text_shape_page + 1, total_pages)).color(ty.muted).size(11.0));
                     if ui.add(egui::Button::new("◀").frame(false)).on_hover_text(tl!("Previous page")).clicked() {
-                        if let Some(next) = index.checked_sub(1).and_then(|i| pages.get(i)).copied() {
-                            self.set_current_page(next);
+                        if self.text_shape_page > 0 {
+                            self.text_shape_page -= 1;
                         }
                     }
                 });
@@ -1288,6 +1289,7 @@ impl TypesetterUi {
         }
     }
 
+    #[allow(dead_code)]
     fn set_current_page(&mut self, page: usize) {
         self.state.current_page = page;
         if let Some((index, _)) = self.state.lines_for_page(page).first() {
@@ -1301,10 +1303,12 @@ impl TypesetterUi {
         let t = Tokens::get(ui.ctx());
         if !self.text_shape_candidates.is_empty() && self.text_shape_layer.is_some() {
             let candidates = self.text_shape_candidates.clone();
+            let page_offset = self.text_shape_page * 3;
             ui.columns(3, |columns| {
                 for column in 0..3 {
-                    let Some(candidate) = candidates.get(column) else { continue };
-                    let selected = column == self.text_shape_selected;
+                    let candidate_idx = page_offset + column;
+                    let Some(candidate) = candidates.get(candidate_idx) else { continue };
+                    let selected = candidate_idx == self.text_shape_selected;
                     Frame::NONE
                         .fill(if selected { t.accent_soft } else { t.field })
                         .stroke(Stroke::new(1.0, if selected { t.accent } else { t.field_border }))
@@ -1313,7 +1317,7 @@ impl TypesetterUi {
                         .show(&mut columns[column], |ui| {
                             ui.set_min_height(78.0);
                             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                                ui.label(RichText::new(format!("{}", column + 1)).color(t.text_dim).small());
+                                ui.label(RichText::new(format!("{}", candidate_idx + 1)).color(t.text_dim).small());
                             });
                             let (rect, response) = ui.allocate_exact_size(
                                 vec2(ui.available_width(), 62.0),
@@ -1332,8 +1336,8 @@ impl TypesetterUi {
                                 t.text,
                             );
                             if response.clicked() {
-                                self.text_shape_selected = column;
-                                self.apply_text_shape_candidate(column);
+                                self.text_shape_selected = candidate_idx;
+                                self.apply_text_shape_candidate(candidate_idx);
                             }
                         });
                 }
