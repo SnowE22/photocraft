@@ -71,21 +71,32 @@ const SCRIPT_LINE_SPACING: f32 = 1.0;
 fn preview_short_text(text: &str) -> String {
     let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     let total_lines = lines.len();
-    let mut out_lines = Vec::new();
-    let max_lines = 16;
-    for l in lines.into_iter().take(max_lines) {
-        if l.chars().count() > 36 {
-            let mut short: String = l.chars().take(35).collect();
-            short.push('…');
-            out_lines.push(short);
-        } else {
-            out_lines.push(l.to_string());
+    if total_lines <= 5 {
+        let mut out = Vec::new();
+        for l in lines {
+            if l.chars().count() > 18 {
+                let mut s: String = l.chars().take(17).collect();
+                s.push('…');
+                out.push(s);
+            } else {
+                out.push(l.to_string());
+            }
         }
+        out.join("\n")
+    } else {
+        let mut out = Vec::new();
+        for l in lines.into_iter().take(4) {
+            if l.chars().count() > 18 {
+                let mut s: String = l.chars().take(17).collect();
+                s.push('…');
+                out.push(s);
+            } else {
+                out.push(l.to_string());
+            }
+        }
+        out.push(format!("… ({} стр)", total_lines));
+        out.join("\n")
     }
-    if total_lines > max_lines {
-        out_lines.push("…".to_string());
-    }
-    out_lines.join("\n")
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1330,8 +1341,7 @@ impl TypesetterUi {
                             let short = preview_short_text(&candidate.text);
                             let font_family = self.text_shape_preview_preset.as_ref().map(|p| p.font_family.as_str()).unwrap_or("");
                             let line_count = short.lines().count().max(1) as f32;
-                            let base_font_size = self.text_shape_preview_preset.as_ref().map_or(13.0, |p| p.font_size.min(18.0));
-                            let font_size = base_font_size.min((54.0 / (line_count * 1.15)).max(5.5));
+                            let font_size = (12.5 - (line_count - 1.0) * 0.6).clamp(10.0, 13.0);
                             crate::font_preview::paint_centered(
                                 ui,
                                 font_family,

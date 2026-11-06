@@ -1806,35 +1806,35 @@ impl PhotocraftApp {
         let selection = st.doc.selection.clone();
         let detected_bubble = if selection.is_none() {
             let anchor = [text.transform.m[4] as i32, text.transform.m[5] as i32];
-            let from_surface = st.doc.layers.iter().rev()
-                .filter(|l| l.visible && l.id != id)
-                .find_map(|l| l.surface().and_then(|surf| {
-                    photocraft_engine::snow_typesetter::detect_speech_bubble_bounds(surf, anchor[0], anchor[1], 450)
-                }));
-            from_surface.or_else(|| {
-                match text.shape {
-                    photocraft_doc::text::TextShape::Box { width, height, .. } if width > 20.0 && height > 20.0 => {
-                        Some(photocraft_geom::Rect::from_xywh(
-                            anchor[0],
-                            anchor[1],
-                            (width.round() as u32).max(20),
-                            (height.round() as u32).max(20),
-                        ))
-                    }
-                    _ => {
-                        let line_count = text.text.lines().count().max(1) as f32;
-                        let max_line_chars = text.text.lines().map(|l| l.chars().count()).max().unwrap_or(10).max(4) as f32;
-                        let font_size = preset.font_size.max(10.0);
-                        let est_w = (max_line_chars * font_size * 0.65).clamp(60.0, 600.0);
-                        let est_h = (line_count * font_size * 1.3).clamp(40.0, 1000.0);
-                        Some(photocraft_geom::Rect::from_xywh(
-                            anchor[0],
-                            anchor[1],
-                            (est_w.round() as u32).max(20),
-                            (est_h.round() as u32).max(20),
-                        ))
-                    }
+            let from_box = match text.shape {
+                photocraft_doc::text::TextShape::Box { width, height, .. } if width > 20.0 && height > 20.0 => {
+                    Some(photocraft_geom::Rect::from_xywh(
+                        anchor[0],
+                        anchor[1],
+                        width.round() as u32,
+                        height.round() as u32,
+                    ))
                 }
+                _ => None,
+            };
+            from_box.or_else(|| {
+                st.doc.layers.iter().rev()
+                    .filter(|l| l.visible && l.id != id)
+                    .find_map(|l| l.surface().and_then(|surf| {
+                        photocraft_engine::snow_typesetter::detect_speech_bubble_bounds(surf, anchor[0], anchor[1], 240)
+                    }))
+            }).or_else(|| {
+                let line_count = text.text.lines().count().max(1) as f32;
+                let max_line_chars = text.text.lines().map(|l| l.chars().count()).max().unwrap_or(10).max(4) as f32;
+                let font_size = preset.font_size.max(10.0);
+                let est_w = (max_line_chars.min(14.0) * font_size * 0.55).clamp(80.0, 180.0);
+                let est_h = (line_count * font_size * 1.25).clamp(40.0, 800.0);
+                Some(photocraft_geom::Rect::from_xywh(
+                    anchor[0],
+                    anchor[1],
+                    est_w.round() as u32,
+                    est_h.round() as u32,
+                ))
             })
         } else {
             None

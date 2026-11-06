@@ -366,15 +366,15 @@ pub fn knuth_plass_bubble_wrap_with_shape(
     let line_height_px = font_size_px * 1.25;
 
     // Максимальное количество строк, которое может вместить баббло по высоте
-    let max_height_lines = if bubble_height > 10.0 {
+    let _max_height_lines = if bubble_height > 10.0 {
         ((bubble_height * 0.88) / line_height_px.max(1.0)).floor() as usize
     } else {
         usize::MAX
     };
 
-    // Максимальная безопасная ширина строки внутри баббла (с учетом внутренних отступов и формы)
+    // Максимальная безопасная ширина строки внутри баббла
     let max_safe_width = match shape {
-        BubbleShape::VerticalOval => (bubble_width * 0.82).max(font_size_px * 1.8),
+        BubbleShape::VerticalOval => (bubble_width * 0.78).max(font_size_px * 1.8),
         BubbleShape::HorizontalOval => (bubble_width * 0.90).max(font_size_px * 2.0),
         BubbleShape::Rectangle => (bubble_width * 0.92).max(font_size_px * 2.0),
         _ => (bubble_width * 0.85).max(font_size_px * 2.0),
@@ -403,19 +403,15 @@ pub fn knuth_plass_bubble_wrap_with_shape(
     let total_text_width: f32 = token_widths.iter().sum::<f32>() + (tokens.len() - 1) as f32 * space_width;
 
     // Если весь текст комфортно помещается в одну строку
-    if total_text_width <= max_safe_width * 0.80 {
+    if total_text_width <= max_safe_width * 0.95 {
         return bound_text;
     }
 
-    // Оцениваем диапазон количества строк для перебора
-    let est_lines = match shape {
-        BubbleShape::VerticalOval => (total_text_width / (max_safe_width * 0.65)).round() as usize,
-        BubbleShape::HorizontalOval => (total_text_width / (max_safe_width * 0.85)).round() as usize,
-        _ => (total_text_width / (max_safe_width * 0.72)).round() as usize,
-    };
-    
-    let min_lines = est_lines.max(2).saturating_sub(1).max(2);
-    let max_lines = (est_lines + 2).min(tokens.len()).max(min_lines).min(max_height_lines.max(min_lines));
+    // Оцениваем количество строк: диапазон k строго ограничен числом токенов n
+    let n = tokens.len();
+    let est_lines = (total_text_width / (max_safe_width * 0.75)).ceil() as usize;
+    let min_lines = est_lines.saturating_sub(1).max(2).min(n);
+    let max_lines = (est_lines + 2).clamp(min_lines, n);
 
     let mut best_demerits = f64::MAX;
     let mut best_break_indices: Vec<usize> = Vec::new();
