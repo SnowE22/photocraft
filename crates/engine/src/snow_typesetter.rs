@@ -2062,6 +2062,71 @@ fn balanced_four_line_wrap(text: &str) -> String {
 /// Proposes line breaks for the active TypeR line. This is a bounded, local TextShapeR:
 /// it reuses the existing contour fit, rectangular wrap and a balanced split instead of
 /// TypeR's trained lettering model.
+/// Автоматически обнаруживает прямоугольные границы баббла вокруг якорной точки (центра текста)
+/// на растровой поверхности, трассируя лучи во все 4 стороны до темной границы (luma < 0.45).
+pub fn detect_speech_bubble_bounds(
+    surface: &Surface,
+    anchor_x: i32,
+    anchor_y: i32,
+    max_radius: i32,
+) -> Option<Rect> {
+    let bounds = surface.content_bounds();
+    if !bounds.contains(anchor_x, anchor_y) {
+        return None;
+    }
+    let get_luma = |x: i32, y: i32| -> f32 {
+        let px = surface.pixel(x, y);
+        if px.is_empty() {
+            return 0.0;
+        }
+        if px.len() >= 3 {
+            0.299 * px[0] + 0.587 * px[1] + 0.114 * px[2]
+        } else {
+            px[0]
+        }
+    };
+    let center_luma = get_luma(anchor_x, anchor_y);
+    if center_luma < 0.50 {
+        return None;
+    }
+    let max_r = max_radius.clamp(20, 600);
+    let mut min_x = anchor_x;
+    while min_x > anchor_x - max_r && min_x > bounds.x0 {
+        if get_luma(min_x - 1, anchor_y) < 0.45 {
+            break;
+        }
+        min_x -= 1;
+    }
+    let mut max_x = anchor_x;
+    while max_x < anchor_x + max_r && max_x < bounds.x1 {
+        if get_luma(max_x + 1, anchor_y) < 0.45 {
+            break;
+        }
+        max_x += 1;
+    }
+    let mut min_y = anchor_y;
+    while min_y > anchor_y - max_r && min_y > bounds.y0 {
+        if get_luma(anchor_x, min_y - 1) < 0.45 {
+            break;
+        }
+        min_y -= 1;
+    }
+    let mut max_y = anchor_y;
+    while max_y < anchor_y + max_r && max_y < bounds.y1 {
+        if get_luma(anchor_x, max_y + 1) < 0.45 {
+            break;
+        }
+        max_y += 1;
+    }
+    let w = max_x - min_x;
+    let h = max_y - min_y;
+    if w >= 20 && h >= 20 {
+        Some(Rect::new(min_x, min_y, max_x, max_y))
+    } else {
+        None
+    }
+}
+
 pub fn text_shape_candidates(
     text: &str,
     preset: &TextStylePreset,
@@ -2098,6 +2163,16 @@ pub fn text_shape_candidates(
     };
     push_candidate(&mut candidates, TextShapeKind::Original, original_text);
 
+    let (bubble_w, bubble_h, bubble_shape) = if let Some(sel) = selection {
+        let b = sel.content_bounds().intersect(&document_bounds);
+        let w = b.width().max(1) as f32;
+        let h = b.height().max(1) as f32;
+        let shape = crate::snow_knuth_plass::BubbleShape::from_aspect_ratio(w, h);
+        (Some(w), Some(h), shape)
+    } else {
+        (None, None, crate::snow_knuth_plass::BubbleShape::RoundOval)
+    };
+
     if let Some(selection) = selection {
         let mut fitted_preset = preset.clone();
         if let Some(fitted) = fit_script_text_to_selection(
@@ -2111,39 +2186,117 @@ pub fn text_shape_candidates(
         )? {
             push_candidate(&mut candidates, TextShapeKind::ContourFit, fitted);
         }
-        let bubble = selection.content_bounds().intersect(&document_bounds);
-        if bubble.width() >= 10 && bubble.height() >= 10 {
+        if let (Some(w), Some(h)) = (bubble_w, bubble_h)
+            && w >= 10.0 && h >= 10.0
+        {
+            push_candidate(
+                    &mut candidates,
+                    TextShapeKind::BubbleWrap,
+                    crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                        &clean_text,
+                        w,
+                        h,
+                        preset.font_size,
+                        dpi,
+                        preset.horizontal_scale,
+                        preset.hanging_punctuation,
+                        bubble_shape,
+                    ),
+                );
+        }
+    }
+
+    // Предложения с учетом формы баббла
+    let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
+    match bubble_shape {
+        crate::snow_knuth_plass::BubbleShape::VerticalOval => {
+            let bw = bubble_w.unwrap_or(120.0);
+            let bh = bubble_h.unwrap_or(240.0);
             push_candidate(
                 &mut candidates,
-                TextShapeKind::BubbleWrap,
-                crate::snow_knuth_plass::knuth_plass_bubble_wrap_ext(
+                TextShapeKind::Balanced,
+                crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
                     &clean_text,
-                    bubble.width() as f32,
-                    bubble.height() as f32,
+                    bw * 0.90,
+                    bh,
                     preset.font_size,
                     dpi,
                     preset.horizontal_scale,
                     preset.hanging_punctuation,
+                    crate::snow_knuth_plass::BubbleShape::VerticalOval,
+                ),
+            );
+            push_candidate(&mut candidates, TextShapeKind::BubbleWrap, diamond_manga_wrap(&bound_clean));
+            if words_count >= 4 {
+                push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_four_line_wrap(&bound_clean));
+            }
+        }
+        crate::snow_knuth_plass::BubbleShape::HorizontalOval => {
+            push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
+            let bw = bubble_w.unwrap_or(240.0);
+            let bh = bubble_h.unwrap_or(120.0);
+            push_candidate(
+                &mut candidates,
+                TextShapeKind::Balanced,
+                crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                    &clean_text,
+                    bw,
+                    bh,
+                    preset.font_size,
+                    dpi,
+                    preset.horizontal_scale,
+                    preset.hanging_punctuation,
+                    crate::snow_knuth_plass::BubbleShape::HorizontalOval,
                 ),
             );
         }
+        crate::snow_knuth_plass::BubbleShape::Rectangle => {
+            let bw = bubble_w.unwrap_or(160.0);
+            let bh = bubble_h.unwrap_or(160.0);
+            push_candidate(
+                &mut candidates,
+                TextShapeKind::Balanced,
+                crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                    &clean_text,
+                    bw,
+                    bh,
+                    preset.font_size,
+                    dpi,
+                    preset.horizontal_scale,
+                    preset.hanging_punctuation,
+                    crate::snow_knuth_plass::BubbleShape::Rectangle,
+                ),
+            );
+            push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
+        }
+        _ => {
+            if words_count >= 3 {
+                push_candidate(&mut candidates, TextShapeKind::Balanced, diamond_manga_wrap(&bound_clean));
+                push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
+                if words_count >= 5 {
+                    push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_four_line_wrap(&bound_clean));
+                } else {
+                    push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
+                }
+            } else {
+                push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
+            }
+        }
     }
 
-    // Propose balanced manga variations
-    let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
-    if words_count >= 3 {
-        // 1. Diamond manga bubble wrap (wider middle)
-        push_candidate(&mut candidates, TextShapeKind::Balanced, diamond_manga_wrap(&bound_clean));
-        // 2. Balanced 2-line wrap
-        push_candidate(&mut candidates, TextShapeKind::BubbleWrap, balanced_two_line_wrap(&bound_clean));
-        // 3. Compact / 4-line wrap if text is long enough, else balanced plain
-        if words_count >= 5 {
-            push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_four_line_wrap(&bound_clean));
-        } else {
-            push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
-        }
-    } else {
-        push_candidate(&mut candidates, TextShapeKind::Balanced, balanced_plain_wrap(&bound_clean));
+    // Если есть длинные слова, предлагаем вариант со слоговыми переносами
+    let longest_word = bound_clean.split(' ').map(|w| w.chars().count()).max().unwrap_or(0);
+    if longest_word >= 8 {
+        let bw = bubble_w.unwrap_or(140.0);
+        let dpi_scale = if dpi.is_finite() && dpi > 0.0 { dpi / 72.0 } else { 1.0 };
+        let h_scale = (preset.horizontal_scale / 100.0).clamp(0.1, 5.0);
+        let hyphenated = crate::snow_knuth_plass::hyphenate_long_words_with_breaks(
+            &bound_clean,
+            bw * 0.85,
+            preset.font_size * dpi_scale,
+            h_scale,
+        );
+        push_candidate(&mut candidates, TextShapeKind::BubbleWrap, hyphenated);
     }
 
     if candidates.is_empty() {
@@ -2151,6 +2304,70 @@ pub fn text_shape_candidates(
     }
 
     Ok(candidates)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn text_shape_candidates_with_bubble(
+    text: &str,
+    preset: &TextStylePreset,
+    selection: Option<&Surface>,
+    detected_bubble: Option<Rect>,
+    document_bounds: Rect,
+    dpi: f32,
+    sync_leading: bool,
+    minimum_fit_scale_percent: f32,
+) -> Result<Vec<TextShapeCandidate>, String> {
+    if selection.is_none() && let Some(bubble) = detected_bubble {
+        let fake_shape = crate::snow_knuth_plass::BubbleShape::from_aspect_ratio(bubble.width() as f32, bubble.height() as f32);
+        let mut candidates = Vec::new();
+        let clean_text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let bound_clean = crate::snow_knuth_plass::bind_orphan_prepositions(&clean_text);
+        let original_text = if text.contains('\n') {
+            text.lines()
+                .map(|l| crate::snow_knuth_plass::bind_orphan_prepositions(l.trim()))
+                .filter(|l| !l.is_empty())
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            bound_clean.clone()
+        };
+        candidates.push(TextShapeCandidate { kind: TextShapeKind::Original, text: original_text });
+        candidates.push(TextShapeCandidate {
+            kind: TextShapeKind::BubbleWrap,
+            text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+                &clean_text,
+                bubble.width() as f32,
+                bubble.height() as f32,
+                preset.font_size,
+                dpi,
+                preset.horizontal_scale,
+                preset.hanging_punctuation,
+                fake_shape,
+            ),
+        });
+        match fake_shape {
+            crate::snow_knuth_plass::BubbleShape::VerticalOval => {
+                candidates.push(TextShapeCandidate {
+                    kind: TextShapeKind::Balanced,
+                    text: diamond_manga_wrap(&bound_clean),
+                });
+            }
+            crate::snow_knuth_plass::BubbleShape::HorizontalOval | crate::snow_knuth_plass::BubbleShape::Rectangle => {
+                candidates.push(TextShapeCandidate {
+                    kind: TextShapeKind::Balanced,
+                    text: balanced_two_line_wrap(&bound_clean),
+                });
+            }
+            _ => {
+                candidates.push(TextShapeCandidate {
+                    kind: TextShapeKind::Balanced,
+                    text: diamond_manga_wrap(&bound_clean),
+                });
+            }
+        }
+        return Ok(candidates);
+    }
+    text_shape_candidates(text, preset, selection, document_bounds, dpi, sync_leading, minimum_fit_scale_percent)
 }
 
 /// Wraps and scales a TypeR line against the selected bubble's sampled contour.

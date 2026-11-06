@@ -282,15 +282,67 @@ pub fn knuth_plass_bubble_wrap(
     knuth_plass_bubble_wrap_ext(text, bubble_width, bubble_height, font_size_pt, dpi, horizontal_scale_pct, true)
 }
 
+/// Enum для определения формы манга-баббла
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BubbleShape {
+    VerticalOval,
+    HorizontalOval,
+    Rectangle,
+    Diamond,
+    RoundOval,
+}
+
+impl BubbleShape {
+    /// Определяет форму на основе соотношения сторон баббла
+    pub fn from_aspect_ratio(width: f32, height: f32) -> Self {
+        if width <= 10.0 || height <= 10.0 {
+            return BubbleShape::Rectangle;
+        }
+        let ratio = width / height;
+        if ratio > 1.35 {
+            BubbleShape::HorizontalOval
+        } else if ratio < 0.85 {
+            BubbleShape::VerticalOval
+        } else {
+            BubbleShape::RoundOval
+        }
+    }
+}
+
 /// Расширенная версия солвера Кнута—Пласса с поддержкой оптической компенсации знаков в строках (висячая пунктуация)
 pub fn knuth_plass_bubble_wrap_ext(
     text: &str,
     bubble_width: f32,
-    _bubble_height: f32,
+    bubble_height: f32,
     font_size_pt: f32,
     dpi: f32,
     horizontal_scale_pct: f32,
     hanging_punctuation: bool,
+) -> String {
+    let shape = BubbleShape::from_aspect_ratio(bubble_width, bubble_height);
+    knuth_plass_bubble_wrap_with_shape(
+        text,
+        bubble_width,
+        bubble_height,
+        font_size_pt,
+        dpi,
+        horizontal_scale_pct,
+        hanging_punctuation,
+        shape,
+    )
+}
+
+/// Основная реализация Knuth-Plass с учетом формы баббла
+#[allow(clippy::too_many_arguments)]
+pub fn knuth_plass_bubble_wrap_with_shape(
+    text: &str,
+    bubble_width: f32,
+    bubble_height: f32,
+    font_size_pt: f32,
+    dpi: f32,
+    horizontal_scale_pct: f32,
+    hanging_punctuation: bool,
+    shape: BubbleShape,
 ) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() || bubble_width <= 10.0 {
@@ -310,8 +362,23 @@ pub fn knuth_plass_bubble_wrap_ext(
     let font_size_px = font_size_pt * dpi_scale;
     let h_scale = (horizontal_scale_pct / 100.0).clamp(0.1, 5.0);
 
-    // Максимальная безопасная ширина строки внутри баббла (с учетом внутренних отступов)
-    let max_safe_width = (bubble_width * 0.85).max(font_size_px * 2.0);
+    // Высота строки
+    let line_height_px = font_size_px * 1.25;
+
+    // Максимальное количество строк, которое может вместить баббло по высоте
+    let max_height_lines = if bubble_height > 10.0 {
+        ((bubble_height * 0.88) / line_height_px.max(1.0)).floor() as usize
+    } else {
+        usize::MAX
+    };
+
+    // Максимальная безопасная ширина строки внутри баббла (с учетом внутренних отступов и формы)
+    let max_safe_width = match shape {
+        BubbleShape::VerticalOval => (bubble_width * 0.82).max(font_size_px * 1.8),
+        BubbleShape::HorizontalOval => (bubble_width * 0.90).max(font_size_px * 2.0),
+        BubbleShape::Rectangle => (bubble_width * 0.92).max(font_size_px * 2.0),
+        _ => (bubble_width * 0.85).max(font_size_px * 2.0),
+    };
 
     // Токенизация: разделяем по обычным пробелам (токены с NBSP внутри остаются едиными блоками!)
     let mut tokens: Vec<String> = Vec::new();
@@ -341,25 +408,45 @@ pub fn knuth_plass_bubble_wrap_ext(
     }
 
     // Оцениваем диапазон количества строк для перебора
-    let est_lines = (total_text_width / (max_safe_width * 0.72)).round() as usize;
+    let est_lines = match shape {
+        BubbleShape::VerticalOval => (total_text_width / (max_safe_width * 0.65)).round() as usize,
+        BubbleShape::HorizontalOval => (total_text_width / (max_safe_width * 0.85)).round() as usize,
+        _ => (total_text_width / (max_safe_width * 0.72)).round() as usize,
+    };
+    
     let min_lines = est_lines.max(2).saturating_sub(1).max(2);
-    let max_lines = (est_lines + 2).min(tokens.len()).max(min_lines);
+    let max_lines = (est_lines + 2).min(tokens.len()).max(min_lines).min(max_height_lines.max(min_lines));
 
     let mut best_demerits = f64::MAX;
     let mut best_break_indices: Vec<usize> = Vec::new();
 
     // Профиль целевой ширины для эллипса/ромба манга-баллона:
-    // Центральные строки имеют максимальную ширину, верхние и нижние — более компактные.
     let target_width_for_line = |line_idx: usize, total_k: usize| -> f32 {
         if total_k <= 1 {
             return max_safe_width;
         }
         let t = (line_idx as f32 + 0.5) / total_k as f32; // 0.0 .. 1.0
         let y = (t * 2.0 - 1.0).clamp(-1.0, 1.0); // -1.0 .. +1.0
-        // Профиль эллипса: W(y) = W_max * sqrt(1 - y^2)
-        let ellipse_factor = (1.0 - y * y).max(0.0).sqrt();
-        // Сглаженный профиль (минимум 60% ширины по краям, 95% в центре)
-        max_safe_width * (0.60 + 0.35 * ellipse_factor)
+        
+        match shape {
+            BubbleShape::Rectangle => max_safe_width * 0.95,
+            BubbleShape::VerticalOval => {
+                let ellipse_factor = (1.0 - y * y).max(0.0).sqrt();
+                max_safe_width * (0.65 + 0.32 * ellipse_factor)
+            }
+            BubbleShape::HorizontalOval => {
+                let ellipse_factor = (1.0 - y * y).max(0.0).sqrt();
+                max_safe_width * (0.75 + 0.22 * ellipse_factor)
+            }
+            BubbleShape::Diamond => {
+                let diamond_factor = (1.0 - y.abs()).max(0.0);
+                max_safe_width * (0.50 + 0.48 * diamond_factor)
+            }
+            BubbleShape::RoundOval => {
+                let ellipse_factor = (1.0 - y * y).max(0.0).sqrt();
+                max_safe_width * (0.60 + 0.35 * ellipse_factor)
+            }
+        }
     };
 
     // Перебираем количество строк k от min_lines до max_lines
@@ -422,7 +509,16 @@ pub fn knuth_plass_bubble_wrap_ext(
             }
         }
 
-        let cand_demerits = dp[n][k].0;
+        let mut cand_demerits = dp[n][k].0;
+        // Штраф за превышение высоты баббла
+        if bubble_height > 10.0 {
+            let block_h = k as f32 * line_height_px;
+            if block_h > bubble_height * 0.90 {
+                let overflow_h = block_h - bubble_height * 0.90;
+                cand_demerits += (overflow_h * 400.0) as f64;
+            }
+        }
+
         if cand_demerits < best_demerits {
             best_demerits = cand_demerits;
             // Восстанавливаем разрывы строк
@@ -538,5 +634,29 @@ mod tests {
         for line in &lines {
             assert!(!line.contains("--"));
         }
+    }
+
+    #[test]
+    fn test_bubble_shape_wrapping() {
+        
+        let text = "Это длинный текст для проверки вертикального овала, который должен быть узким и высоким.";
+        let result = knuth_plass_bubble_wrap_ext(text, 100.0, 300.0, 12.0, 72.0, 100.0, true);
+        assert!(result.contains('\n'));
+        
+        let text2 = "Горизонтальный овал шире, чем он высок, поэтому текст должен распределяться по ширине.";
+        let result2 = knuth_plass_bubble_wrap_ext(text2, 300.0, 100.0, 12.0, 72.0, 100.0, true);
+        assert!(result2.contains('\n'));
+        
+        let text3 = "Прямоугольник имеет четкие границы, текст должен заполнять его равномерно.";
+        let result3 = knuth_plass_bubble_wrap_ext(text3, 200.0, 150.0, 12.0, 72.0, 100.0, true);
+        assert!(result3.contains('\n'));
+        
+        let text4 = "Ромбическая форма требует особого внимания к центральной части строки.";
+        let result4 = knuth_plass_bubble_wrap_ext(text4, 150.0, 150.0, 12.0, 72.0, 100.0, true);
+        assert!(result4.contains('\n'));
+        
+        let text5 = "Круглый овал симметричен, текст должен быть сбалансирован.";
+        let result5 = knuth_plass_bubble_wrap_ext(text5, 120.0, 120.0, 12.0, 72.0, 100.0, true);
+        assert!(result5.contains('\n'));
     }
 }

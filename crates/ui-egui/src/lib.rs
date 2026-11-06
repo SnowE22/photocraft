@@ -1753,6 +1753,17 @@ impl PhotocraftApp {
                 hash ^= u64::from(*byte);
                 hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
             }
+            if let Some(sel) = st.doc.selection.as_ref() {
+                let b = sel.content_bounds();
+                for byte in b.x0.to_le_bytes().iter()
+                    .chain(b.y0.to_le_bytes().iter())
+                    .chain(b.x1.to_le_bytes().iter())
+                    .chain(b.y1.to_le_bytes().iter())
+                {
+                    hash ^= u64::from(*byte);
+                    hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+                }
+            }
             Some(hash)
         });
         if source == self.typesetter_text_shape_source {
@@ -1793,10 +1804,21 @@ impl PhotocraftApp {
             preset.horizontal_scale = run.style.horizontal_scale;
         }
         let selection = st.doc.selection.clone();
-        let candidates = photocraft_engine::typesetter::text_shape_candidates(
+        let detected_bubble = if selection.is_none() {
+            let anchor = [text.transform.m[4] as i32, text.transform.m[5] as i32];
+            st.doc.layers.iter().rev()
+                .filter(|l| l.visible && l.id != id)
+                .find_map(|l| l.surface().and_then(|surf| {
+                    photocraft_engine::snow_typesetter::detect_speech_bubble_bounds(surf, anchor[0], anchor[1], 450)
+                }))
+        } else {
+            None
+        };
+        let candidates = photocraft_engine::typesetter::text_shape_candidates_with_bubble(
             &source,
             &preset,
             selection.as_ref(),
+            detected_bubble,
             st.doc.bounds(),
             st.doc.resolution_dpi,
             self.typesetter.state.options.line_spacing_sync,
