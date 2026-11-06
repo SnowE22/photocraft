@@ -2238,11 +2238,12 @@ pub fn text_shape_candidates(
     let bw = bubble_w.unwrap_or(130.0).clamp(70.0, 180.0);
     let bh = bubble_h.unwrap_or(240.0);
 
-    // Кандидат 1: Узкая колонка манги (1-2 слова в строке, компактный перенос)
+    let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
+    let k1 = if words_count >= 5 { Some(3) } else if words_count >= 3 { Some(2) } else { None };
     push_candidate(
         &mut candidates,
         TextShapeKind::BubbleWrap,
-        crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+        crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
             &clean_text,
             bw * 0.85,
             bh,
@@ -2251,16 +2252,16 @@ pub fn text_shape_candidates(
             preset.horizontal_scale,
             preset.hanging_punctuation,
             crate::snow_knuth_plass::BubbleShape::VerticalOval,
+            k1,
         ),
     );
 
-    // Кандидат 2: Сбалансированный манга-баббл по форме
-    let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
+    let k2 = if words_count >= 5 { Some(2) } else if words_count >= 4 { Some(3) } else { Some(2) };
     let balanced_w = if words_count <= 5 { bw * 0.90 } else { bw * 0.72 };
     push_candidate(
         &mut candidates,
         TextShapeKind::Balanced,
-        crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+        crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
             &clean_text,
             balanced_w,
             bh,
@@ -2269,6 +2270,7 @@ pub fn text_shape_candidates(
             preset.horizontal_scale,
             preset.hanging_punctuation,
             bubble_shape,
+            k2,
         ),
     );
     if !candidates.iter().any(|c| c.kind == TextShapeKind::Balanced) {
@@ -2326,10 +2328,11 @@ pub fn text_shape_candidates_with_bubble(
         let bw = (bubble.width() as f32).clamp(70.0, 180.0);
         let bh = bubble.height() as f32;
 
-        // Кандидат 1: Узкая манга-колонка (1-2 слова в строке)
+        let words_count = bound_clean.split(' ').filter(|w| !w.is_empty()).count();
+        let k1 = if words_count >= 5 { Some(3) } else if words_count >= 3 { Some(2) } else { None };
         candidates.push(TextShapeCandidate {
             kind: TextShapeKind::BubbleWrap,
-            text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+            text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
                 &clean_text,
                 bw * 0.85,
                 bh,
@@ -2338,13 +2341,14 @@ pub fn text_shape_candidates_with_bubble(
                 preset.horizontal_scale,
                 preset.hanging_punctuation,
                 crate::snow_knuth_plass::BubbleShape::VerticalOval,
+                k1,
             ),
         });
 
-        // Кандидат 2: Сбалансированный манга-баббл
+        let k2 = if words_count >= 5 { Some(2) } else if words_count >= 4 { Some(3) } else { Some(2) };
         candidates.push(TextShapeCandidate {
             kind: TextShapeKind::Balanced,
-            text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_with_shape(
+            text: crate::snow_knuth_plass::knuth_plass_bubble_wrap_lines(
                 &clean_text,
                 bw,
                 bh,
@@ -2353,6 +2357,7 @@ pub fn text_shape_candidates_with_bubble(
                 preset.horizontal_scale,
                 preset.hanging_punctuation,
                 fake_shape,
+                k2,
             ),
         });
 

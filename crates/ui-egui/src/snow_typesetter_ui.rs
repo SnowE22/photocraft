@@ -72,28 +72,9 @@ fn preview_short_text(text: &str) -> String {
     let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
     let total_lines = lines.len();
     if total_lines <= 5 {
-        let mut out = Vec::new();
-        for l in lines {
-            if l.chars().count() > 18 {
-                let mut s: String = l.chars().take(17).collect();
-                s.push('…');
-                out.push(s);
-            } else {
-                out.push(l.to_string());
-            }
-        }
-        out.join("\n")
+        lines.join("\n")
     } else {
-        let mut out = Vec::new();
-        for l in lines.into_iter().take(4) {
-            if l.chars().count() > 18 {
-                let mut s: String = l.chars().take(17).collect();
-                s.push('…');
-                out.push(s);
-            } else {
-                out.push(l.to_string());
-            }
-        }
+        let mut out: Vec<String> = lines.into_iter().take(4).map(|s| s.to_string()).collect();
         out.push(format!("… ({} стр)", total_lines));
         out.join("\n")
     }

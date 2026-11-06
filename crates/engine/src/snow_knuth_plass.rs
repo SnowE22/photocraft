@@ -334,7 +334,7 @@ pub fn knuth_plass_bubble_wrap_ext(
 
 /// Основная реализация Knuth-Plass с учетом формы баббла
 #[allow(clippy::too_many_arguments)]
-pub fn knuth_plass_bubble_wrap_with_shape(
+pub fn knuth_plass_bubble_wrap_lines(
     text: &str,
     bubble_width: f32,
     bubble_height: f32,
@@ -343,6 +343,7 @@ pub fn knuth_plass_bubble_wrap_with_shape(
     horizontal_scale_pct: f32,
     hanging_punctuation: bool,
     shape: BubbleShape,
+    target_lines: Option<usize>,
 ) -> String {
     let trimmed = text.trim();
     if trimmed.is_empty() || bubble_width <= 10.0 {
@@ -402,16 +403,23 @@ pub fn knuth_plass_bubble_wrap_with_shape(
     let token_widths: Vec<f32> = tokens.iter().map(|token| measure_token_width(token, font_size_px, h_scale)).collect();
     let total_text_width: f32 = token_widths.iter().sum::<f32>() + (tokens.len() - 1) as f32 * space_width;
 
-    // Если весь текст комфортно помещается в одну строку
-    if total_text_width <= max_safe_width * 0.95 {
+    // TypeR Studio: короткий текст из 1-2 слов можно оставить в одну строку,
+    // но текст из 3+ слов форматируется в сбалансированные строки
+    if tokens.len() <= 2 && target_lines.is_none() && total_text_width <= max_safe_width * 0.95 {
         return bound_text;
     }
 
     // Оцениваем количество строк: диапазон k строго ограничен числом токенов n
     let n = tokens.len();
     let est_lines = (total_text_width / (max_safe_width * 0.75)).ceil() as usize;
-    let min_lines = est_lines.saturating_sub(1).max(2).min(n);
-    let max_lines = (est_lines + 2).clamp(min_lines, n);
+    let (min_lines, max_lines) = if let Some(k) = target_lines {
+        let k_clamped = k.clamp(1, n);
+        (k_clamped, k_clamped)
+    } else {
+        let min_l = if n >= 3 { 2.min(n) } else { 1 };
+        let max_l = (est_lines + 2).clamp(min_l, n);
+        (min_l, max_l)
+    };
 
     let mut best_demerits = f64::MAX;
     let mut best_break_indices: Vec<usize> = Vec::new();
@@ -550,6 +558,30 @@ pub fn knuth_plass_bubble_wrap_with_shape(
     }
 
     lines.join("\n")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn knuth_plass_bubble_wrap_with_shape(
+    text: &str,
+    bubble_width: f32,
+    bubble_height: f32,
+    font_size_pt: f32,
+    dpi: f32,
+    horizontal_scale_pct: f32,
+    hanging_punctuation: bool,
+    shape: BubbleShape,
+) -> String {
+    knuth_plass_bubble_wrap_lines(
+        text,
+        bubble_width,
+        bubble_height,
+        font_size_pt,
+        dpi,
+        horizontal_scale_pct,
+        hanging_punctuation,
+        shape,
+        None,
+    )
 }
 
 #[cfg(test)]
