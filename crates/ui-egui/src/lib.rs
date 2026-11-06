@@ -1791,21 +1791,6 @@ impl PhotocraftApp {
             preset.leading = run.style.leading_pt.unwrap_or(run.style.size_pt * 1.2);
             preset.tracking = run.style.tracking as i32;
             preset.horizontal_scale = run.style.horizontal_scale;
-            preset.bold = run.style.faux_bold || run.style.weight >= 700;
-            preset.italic = run.style.italic || run.style.faux_italic;
-            preset.text_color = run.style.color.to_rgba8();
-        }
-        for fx in &layer.effects.items {
-            if let photocraft_doc::Effect::Stroke(s) = fx {
-                if s.common.enabled {
-                    preset.stroke_width = s.size;
-                    if let photocraft_doc::FxPaint::Color(sc) = &s.paint {
-                        let mut sc_rgba = sc.to_rgba8();
-                        sc_rgba[3] = (s.common.opacity * 255.0).clamp(0.0, 255.0).round() as u8;
-                        preset.stroke_color = sc_rgba;
-                    }
-                }
-            }
         }
         let selection = st.doc.selection.clone();
         let candidates = photocraft_engine::typesetter::text_shape_candidates(

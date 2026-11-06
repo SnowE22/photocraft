@@ -386,9 +386,6 @@ pub(crate) fn paint_centered(
     size: f32,
     rect: Rect,
     color: egui::Color32,
-    stroke: Option<(egui::Color32, f32)>,
-    bold: bool,
-    italic: bool,
 ) {
     let fallback = |ui: &egui::Ui| {
         let mut job = egui::text::LayoutJob::default();
@@ -398,7 +395,6 @@ pub(crate) fn paint_centered(
             egui::TextFormat {
                 font_id: egui::FontId::proportional(11.0),
                 color,
-                italics: italic,
                 ..Default::default()
             },
         );
@@ -409,15 +405,10 @@ pub(crate) fn paint_centered(
             (rect.center().x - galley.size().x * 0.5).round(),
             (rect.center().y - galley.size().y * 0.5).round(),
         );
-        if let Some((stroke_color, _)) = stroke {
-            for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
-                ui.painter().galley(pos + egui::vec2(dx, dy), galley.clone(), stroke_color);
-            }
-        }
         ui.painter().galley(pos, galley, color);
     };
 
-    let Some(sample) = label_sample(ui.ctx(), family, text, size, bold, italic) else {
+    let Some(sample) = label_sample(ui.ctx(), family, text, size, false, false) else {
         fallback(ui);
         return;
     };
@@ -430,17 +421,6 @@ pub(crate) fn paint_centered(
     let target = Rect::from_center_size(rect.center(), vec2(w * scale, h * scale));
     let painter = ui.painter().with_clip_rect(rect);
     let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
-    if let Some((stroke_color, width)) = stroke.filter(|(_, width)| *width > 0.0) {
-        let offset = width.max(1.0);
-        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0), (-1.0, -1.0), (1.0, 1.0), (-1.0, 1.0), (1.0, -1.0)] {
-            painter.image(
-                sample.texture.id(),
-                target.translate(vec2(dx * offset, dy * offset)),
-                uv,
-                stroke_color,
-            );
-        }
-    }
     painter.image(sample.texture.id(), target, uv, color);
 }
 

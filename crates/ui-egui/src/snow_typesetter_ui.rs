@@ -1323,53 +1323,16 @@ impl TypesetterUi {
                                 Sense::click(),
                             );
                             let short = preview_short_text(&candidate.text);
-                            if let Some(preset) = &self.text_shape_preview_preset {
-                                let luma = 0.299 * f32::from(preset.text_color[0])
-                                    + 0.587 * f32::from(preset.text_color[1])
-                                    + 0.114 * f32::from(preset.text_color[2]);
-                                let color = if preset.text_color[3] == 0 || (luma < 48.0 && preset.stroke_width <= 0.0) {
-                                    t.text
-                                } else {
-                                    Color32::from_rgba_unmultiplied(
-                                        preset.text_color[0],
-                                        preset.text_color[1],
-                                        preset.text_color[2],
-                                        preset.text_color[3],
-                                    )
-                                };
-                                let stroke = if preset.stroke_width > 0.0 {
-                                    Some((
-                                        Color32::from_rgba_unmultiplied(
-                                            preset.stroke_color[0],
-                                            preset.stroke_color[1],
-                                            preset.stroke_color[2],
-                                            preset.stroke_color[3],
-                                        ),
-                                        preset.stroke_width.clamp(0.5, 3.0),
-                                    ))
-                                } else {
-                                    None
-                                };
-                                crate::font_preview::paint_centered(
-                                    ui,
-                                    &preset.font_family,
-                                    &short,
-                                    preset.font_size.min(18.0),
-                                    rect,
-                                    color,
-                                    stroke,
-                                    preset.bold,
-                                    preset.italic,
-                                );
-                            } else {
-                                ui.painter().text(
-                                    rect.center(),
-                                    egui::Align2::CENTER_CENTER,
-                                    &short,
-                                    egui::FontId::proportional(10.0),
-                                    t.text,
-                                );
-                            }
+                            let font_family = self.text_shape_preview_preset.as_ref().map(|p| p.font_family.as_str()).unwrap_or("");
+                            let font_size = self.text_shape_preview_preset.as_ref().map_or(13.0, |p| p.font_size.min(18.0));
+                            crate::font_preview::paint_centered(
+                                ui,
+                                font_family,
+                                &short,
+                                font_size,
+                                rect,
+                                t.text,
+                            );
                             if response.clicked() {
                                 self.text_shape_selected = column;
                                 self.apply_text_shape_candidate(column);
